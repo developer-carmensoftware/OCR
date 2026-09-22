@@ -320,3 +320,61 @@ button.mapping-label.clickable:hover {
     background-color 150ms ease,
     cursor 150ms ease;
 }
+
+/* ─── Narrow screens ──────────────────────────────────────────────────────── */
+
+/* What runs out first here is the page's own chrome, not the layout: `body` takes 2rem
+   either side and `.container` another 2.5rem, so 144px of a 375px phone is padding
+   before a field starts. Claw that back before touching any grid. */
+@media (max-width: 768px) {
+  body {
+    padding: 1.5rem 1rem;
+  }
+
+  .container {
+    margin: 1rem auto;
+    padding: 1.75rem 1.25rem;
+  }
+}
+
+/* `.form-grid`'s label column is a fixed 200px and `.container` is `overflow: hidden`, so
+   below a certain width the value column is not merely squeezed — what spills is cut off
+   with nothing to scroll to, which is how a phone ended up rendering ~40px-wide inputs and
+   helper text one word per line. Stack instead: the label goes above its field, which is
+   all the label column was buying. 640px is both where the two-column form still leaves a
+   field ~280px wide and the breakpoint `ar-reconcile.css` already uses, so the shell this
+   page moves onto next does not introduce a third number. */
+@media (max-width: 640px) {
+  body {
+    padding: 1rem 0.75rem;
+  }
+
+  .container {
+    padding: 1.5rem 1rem;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+    /* Row gap is the label-to-its-own-field distance now, so it tightens; the space
+       between one pair and the next comes from the label's own margin below. */
+    gap: 0.4rem;
+    align-items: start;
+  }
+
+  .form-grid > label {
+    margin-top: 0.75rem;
+  }
+
+  .form-grid > label:first-child {
+    margin-top: 0;
+  }
+
+  h1 {
+    font-size: 1.2rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .section {
+    margin-bottom: 1.75rem;
+  }
+}

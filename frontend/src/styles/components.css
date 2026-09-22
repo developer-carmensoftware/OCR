@@ -2277,6 +2277,18 @@ input[type='text'].detail-input:focus {
   width: 100%;
 }
 
+/* The 210px label minimum above is sized to keep "Credit card commission" on one line.
+   On a phone that pushes both code columns past the right edge, so the row renders as a
+   label and blank space — it scrolls (`.table-wrapper` is `overflow-x: auto`) but nothing
+   says so. Trading a two-line label for a visible sliver of the Dept field is what makes
+   the scroll discoverable. Same 640px breakpoint as pages/mapping.css. */
+@media (max-width: 640px) {
+  .cc-mapping-grid-container {
+    grid-template-columns: 56px minmax(120px, auto) minmax(130px, 1fr) minmax(130px, 1fr) auto;
+    gap: 0.4rem;
+  }
+}
+
 .cc-mapping-grid-container .mapping-header {
   font-weight: 600;
 }
