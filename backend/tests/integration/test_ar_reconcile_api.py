@@ -87,6 +87,31 @@ def test_preview_summary_collapses_to_three_credits():
         assert body["balanced"] is True
 
 
+def test_preview_falls_back_to_the_sample_when_the_real_parked_report_has_no_total_row():
+    """A report parked before decision #28 (2026-09-18) never got a `total_row`. Previewing
+    it as-is would stick the three debit legs at zero forever — a real document that can
+    never balance is a worse worked example than the hardcoded one that always can."""
+    doc = SimpleNamespace(
+        review_payload={
+            "doc_type": "ar_reconcile",
+            "extracted": {
+                "doc_no": "OLD-NO-ANCHOR",
+                "doc_date": "01/01/2026",
+                "details": [{"transaction": "VS LOCAL PREM", "pay_amt": "999.00"}],
+                # No total_row key at all — the pre-#28 shape.
+            },
+        }
+    )
+    with make_test_client(make_mock_db(execute_rows=[doc])) as client:
+        resp = _preview(client)
+        assert resp.status_code == 200
+        body = resp.json()
+
+        assert body["doc_no"] == "210726E00035291", "the hardcoded sample, not the real doc"
+        assert body["total_debit"] == body["total_credit"] == 25091.0
+        assert body["balanced"] is True
+
+
 def test_preview_with_nothing_mapped_reports_every_leg_as_unmapped():
     """No `get_accounting_config` fallback any more (decision #3) — `/preview` takes the
     caller's word for the whole dict, so an empty one is genuinely nothing mapped."""

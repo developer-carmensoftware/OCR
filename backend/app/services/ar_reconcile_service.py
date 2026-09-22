@@ -84,6 +84,14 @@ async def latest_real_sample(
     holds the real thing for as long as a document sits at `pending_review`
     (`_park_for_review` in email_ingest_service.py) — cleared only once it goes terminal
     (`_finish`) — so a tenant with one parked has real data sitting right here already.
+
+    Returns `total_row=None` as readily as any other field: a document parked before
+    decision #28 (2026-09-18) added that anchor, or one whose anchor genuinely failed to
+    read, is still this tenant's own real payment types — exactly what
+    `/sample-payment-types` wants regardless of whether the debit side can be shown.
+    `/preview` is pickier (it needs a balanceable example), so it falls back to the
+    hardcoded sample itself when this row's `total_row` is empty, rather than this
+    function silently passing over real data another caller has a legitimate use for.
     """
     row = (
         (

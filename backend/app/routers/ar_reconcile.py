@@ -106,14 +106,17 @@ async def preview(
     The example itself is this tenant's own most recently parked report for this bank
     when it has one (`svc.latest_real_sample`) — real labels, not invented ones, because
     the point is showing what THIS bank's schemes look like once grouped. Falls back to
-    the built-in KBANK sample only for a tenant that has never had one parked.
+    the built-in KBANK sample when a tenant has never had one parked, and also when the
+    real one has no `total_row`: a document parked before decision #28 (2026-09-18) never
+    got one, and previewing it would show the three debit legs stuck at zero — a real
+    document that can never balance is a worse example than the hardcoded one that always
+    can, and it is a document a person cannot fix from this screen anyway.
     """
     real = await svc.latest_real_sample(db, session.tenant_id, req.bank_code)
-    sample_rows, doc_no, doc_date, total_row_data = real or (
-        _SAMPLE_ROWS,
-        _SAMPLE_DOC_NO,
-        _SAMPLE_DOC_DATE,
-        _SAMPLE_TOTAL_ROW,
+    sample_rows, doc_no, doc_date, total_row_data = (
+        real
+        if real and real[3]
+        else (_SAMPLE_ROWS, _SAMPLE_DOC_NO, _SAMPLE_DOC_DATE, _SAMPLE_TOTAL_ROW)
     )
     details = [ExtractedDetailRow(transaction=t, pay_amt=a) for t, a in sample_rows]
     total_row = ExtractedDetailRow(**total_row_data) if total_row_data else None

@@ -27,6 +27,14 @@ export interface BankConfigHook {
 
 import type React from 'react'
 
+/** `?bank=` off the current hash — the contract `ReviewDocument`'s AR-settings link
+ *  makes (`#/CreditCardOCR/mapping?bank=KBANK`), naming the document's own bank rather
+ *  than leaving the page to open on whatever was last saved. */
+function bankCodeFromHash(): string | null {
+  const query = window.location.hash.split('?')[1]
+  return query ? new URLSearchParams(query).get('bank') : null
+}
+
 export function useBankConfig(): BankConfigHook {
   const [configLoading, setConfigLoading] = useState(true)
   const [bank, setBank] = useState<BankDisplayName | ''>('')
@@ -58,8 +66,13 @@ export function useBankConfig(): BankConfigHook {
     // accounting config has no branch of its own, so it must not blank this out.
     ocrBranch = readAccountingConfig().company?.branch || ''
 
+    // An explicit `?bank=` names the bank a specific document belongs to, which is more
+    // specific than either an in-progress wizard scan or the tenant's last-saved default,
+    // so it wins over both.
+    const bankOverride = codeToDisplayName(bankCodeFromHash()) || ocrBank
+
     const applyConfig = (source: Record<string, unknown>) => {
-      const normalized = normalizeConfigShape(source, ocrBank, detectBankFromCompanyName)
+      const normalized = normalizeConfigShape(source, bankOverride, detectBankFromCompanyName)
       setBank(normalized.finalBank)
       setFilePrefix(normalized.finalPrefix)
       setFileSource(normalized.finalSource)
@@ -103,12 +116,12 @@ export function useBankConfig(): BankConfigHook {
           } catch {
             /* ignore */
           }
-        } else if (ocrBank) {
-          setBank(ocrBank)
+        } else if (bankOverride) {
+          setBank(bankOverride)
           setFilePrefix('IC')
-          setFileSource(BANK_SOURCE_MAP[ocrBank] || '')
-          if (BANK_INFO[ocrBank]) {
-            const info = BANK_INFO[ocrBank]
+          setFileSource(BANK_SOURCE_MAP[bankOverride] || '')
+          if (BANK_INFO[bankOverride]) {
+            const info = BANK_INFO[bankOverride]
             setCompany(prev => ({
               ...prev,
               name: info.name,

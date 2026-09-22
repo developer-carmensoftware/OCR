@@ -347,3 +347,48 @@ async def test_saving_a_new_bank_adds_one_row():
     added = db.add.call_args_list[0].args[0]
     assert added.bank_code == "KBANK" and added.enabled is True
     db.commit.assert_awaited()
+
+
+def _parked(total_row=None, details=None, doc_no="X"):
+    """An `EmailDocument` row shaped for `latest_real_sample` — only `review_payload`
+    is read, so nothing else about the row needs to exist."""
+    return SimpleNamespace(
+        review_payload={
+            "doc_type": "ar_reconcile",
+            "extracted": {
+                "doc_no": doc_no,
+                "doc_date": "21/07/2026",
+                "details": details
+                if details is not None
+                else [{"transaction": "VS", "pay_amt": "1.00"}],
+                "total_row": total_row,
+            },
+        }
+    )
+
+
+class TestLatestRealSample:
+    """Reads whatever this tenant's most recently parked report actually has, `total_row`
+    included when it is `None` — a document parked before decision #28 (2026-09-18) never
+    got one. Whether that is usable is the caller's call: `/sample-payment-types` wants the
+    payment types regardless, `/preview` wants a balanceable example and falls back to its
+    own hardcoded sample when this one has no anchor (see test_ar_reconcile_api.py)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_the_most_recent_row_including_a_missing_total_row(self):
+        db = _db([_parked(total_row=None, doc_no="OLD")])
+
+        out = await svc.latest_real_sample(db, TENANT, "KBANK")
+
+        assert out is not None
+        _rows, doc_no, _doc_date, total_row = out
+        assert doc_no == "OLD"
+        assert total_row is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_nothing_is_parked_at_all(self):
+        db = _db([])
+
+        out = await svc.latest_real_sample(db, TENANT, "KBANK")
+
+        assert out is None

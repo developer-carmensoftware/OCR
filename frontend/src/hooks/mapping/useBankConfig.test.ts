@@ -113,3 +113,33 @@ describe('useBankConfig — savedMappings', () => {
     expect(result.current.savedMappings).toEqual({})
   })
 })
+
+// `ReviewDocument`'s AR-settings link carries `?bank=<code>` so a reviewer lands on the
+// document's own bank rather than whatever the tenant last saved — see the comment at its
+// `arSettingsHref`. `useBankConfig` is the only place that contract is honored.
+describe('useBankConfig — bank from ?bank= in the URL', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+    window.location.hash = '#/CreditCardOCR/mapping'
+  })
+
+  it('overrides the tenant-wide saved bank with the one named in the URL', async () => {
+    window.location.hash = '#/CreditCardOCR/mapping?bank=KBANK'
+    getAccountingConfig.mockResolvedValue(apiConfig({ bank_code: 'GHL' }) as never)
+
+    const { result } = renderHook(() => useBankConfig())
+    await waitFor(() => expect(result.current.configLoading).toBe(false))
+
+    expect(result.current.bank).toBe('Kasikornbank (KBANK)')
+  })
+
+  it('falls back to the saved bank when the URL names none', async () => {
+    getAccountingConfig.mockResolvedValue(apiConfig({ bank_code: 'GHL' }) as never)
+
+    const { result } = renderHook(() => useBankConfig())
+    await waitFor(() => expect(result.current.configLoading).toBe(false))
+
+    expect(result.current.bank).not.toBe('Kasikornbank (KBANK)')
+  })
+})
