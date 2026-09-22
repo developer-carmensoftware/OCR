@@ -41,6 +41,11 @@ interface Props {
   trailing?: ReactNode
   deptPlaceholder?: string
   accPlaceholder?: string
+  /** Names the two pickers once the row stacks and the column header is gone. A
+   *  placeholder cannot do this job: it disappears the moment a value is picked, which is
+   *  exactly when the reader most needs to know which code they are looking at. */
+  deptLabel?: string
+  accLabel?: string
 }
 
 export default function MappingRow({
@@ -57,6 +62,8 @@ export default function MappingRow({
   trailing,
   deptPlaceholder = 'Dept...',
   accPlaceholder = 'Acc...',
+  deptLabel = 'Dept',
+  accLabel = 'Account',
 }: Props) {
   const deptFromMaster = suggestion?.dept
     ? masterDepartments.find(d => d.code === suggestion.dept)
@@ -96,24 +103,31 @@ export default function MappingRow({
         {variant === 'pending' && <AlertTriangle size={14} color="var(--rose)" />}
         {trailing}
       </div>
-      <CustomSearchSelect
-        value={value.dept}
-        onChange={val => onChange('dept', val)}
-        options={masterDepartments}
-        placeholder={deptPlaceholder}
-        topChoice={deptTopChoice?.code ? deptTopChoice : null}
-        suggestedValue={suggestion?.dept ?? null}
-      />
-      <CustomSearchSelect
-        value={value.acc}
-        onChange={val => onChange('acc', val)}
-        options={acctOptions}
-        notice={acctNotice}
-        placeholder={accPlaceholder}
-        hasError={!isAccountAllowed(value.dept, value.acc, masterDepartments)}
-        topChoice={accTopChoice?.code ? accTopChoice : null}
-        suggestedValue={suggestion?.acc ?? null}
-      />
+      {/* `display: contents` above the stacking breakpoint, so these wrappers generate no
+          box and the row's grid tracks are untouched on a desktop. Below it they become
+          the label/value pair, with the name coming from `data-label`. */}
+      <div className="pm-cell" data-label={deptLabel}>
+        <CustomSearchSelect
+          value={value.dept}
+          onChange={val => onChange('dept', val)}
+          options={masterDepartments}
+          placeholder={deptPlaceholder}
+          topChoice={deptTopChoice?.code ? deptTopChoice : null}
+          suggestedValue={suggestion?.dept ?? null}
+        />
+      </div>
+      <div className="pm-cell" data-label={accLabel}>
+        <CustomSearchSelect
+          value={value.acc}
+          onChange={val => onChange('acc', val)}
+          options={acctOptions}
+          notice={acctNotice}
+          placeholder={accPlaceholder}
+          hasError={!isAccountAllowed(value.dept, value.acc, masterDepartments)}
+          topChoice={accTopChoice?.code ? accTopChoice : null}
+          suggestedValue={suggestion?.acc ?? null}
+        />
+      </div>
       {suggestion && onAccept && onReject && (
         <div className="pm-suggest-actions">
           <button type="button" className="pm-accept-btn" onClick={onAccept} title="Accept">

@@ -112,6 +112,15 @@ button.pm-backdrop {
   min-width: 700px;
 }
 
+/* The 700px floor above keeps the desktop grid from squeezing; once rows stack into
+   records at this width (mapping-row.css), it does the opposite — it forces `.pm-body`
+   to scroll horizontally past a layout that no longer has columns to protect. */
+@media (max-width: 720px) {
+  .pm-inner {
+    min-width: 0;
+  }
+}
+
 .pm-section-label {
   padding: 0.5rem;
   background: var(--btn-err-bg);
@@ -166,4 +175,12 @@ button.pm-backdrop {
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
+}
+
+/* Cancel and OK decide whether a mapping is kept. On a phone they are the last thing
+   touched and the easiest to fat-finger. */
+@media (pointer: coarse) {
+  .pm-footer .btn {
+    min-height: 44px;
+  }
 }

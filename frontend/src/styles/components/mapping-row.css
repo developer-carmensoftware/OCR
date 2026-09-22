@@ -112,6 +112,71 @@
   gap: 0.3rem;
 }
 
+/* Above the stacking breakpoint the label wrappers are not in the layout at all: the two
+   pickers stay direct grid children, on the tracks `--pm-cols` describes. */
+.pm-cell {
+  display: contents;
+}
+
+/* ─── Stacked rows ─────────────────────────────────────────────────────────────
+ *
+ * This row is a form, not a ledger: nobody reads a dept code down a column, they fill one
+ * row at a time. So it takes `.rq-table`'s answer at this breakpoint (become records) and
+ * not `.jv-table`'s (keep the columns, scroll sideways) — asking someone to swipe
+ * horizontally to reach the field they are filling in is the thing being fixed.
+ *
+ * Redefining `--pm-cols` is the whole flip, because the header and every row share it.
+ */
+@media (max-width: 720px) {
+  .pm-grid-header,
+  .pm-row {
+    --pm-cols: 1fr;
+  }
+
+  /* Column headings for columns that no longer exist. Each cell names itself now. */
+  .pm-grid-header {
+    display: none;
+  }
+
+  .pm-row {
+    gap: 0.5rem;
+    padding: 0.7rem;
+  }
+
+  .pm-cell {
+    display: grid;
+    grid-template-columns: 6.5rem 1fr;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* Declared only inside the query: a `display: contents` element still generates its
+     pseudo-elements, so this rule outside would print stray labels on the desktop grid. */
+  .pm-cell::before {
+    content: attr(data-label);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  /* The accept/reject pair sized itself to a fixed 4.75rem track that is gone now. */
+  .pm-suggest-actions {
+    justify-content: flex-end;
+  }
+}
+
+/* A row is filled in by thumb as often as by mouse, and a touch laptop needs the floor at
+   any width — so this keys off the pointer rather than the viewport. */
+@media (pointer: coarse) {
+  .pm-accept-btn,
+  .pm-reject-btn,
+  .pm-remove-btn {
+    min-height: 44px;
+  }
+}
+
 .pm-accept-btn {
   padding: 4px 10px;
   background: var(--btn-ok-bg);

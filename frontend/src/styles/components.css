@@ -2247,6 +2247,10 @@ input[type='text'].detail-input:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* AI Suggest + Refresh sit opposite the title. With no wrap they leave it about 50px on
+     a phone and the heading breaks mid-word; the AR card header takes the same measure. */
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .cc-flex-center-gap {
@@ -2277,15 +2281,77 @@ input[type='text'].detail-input:focus {
   width: 100%;
 }
 
-/* The 210px label minimum above is sized to keep "Credit card commission" on one line.
-   On a phone that pushes both code columns past the right edge, so the row renders as a
-   label and blank space — it scrolls (`.table-wrapper` is `overflow-x: auto`) but nothing
-   says so. Trading a two-line label for a visible sliver of the Dept field is what makes
-   the scroll discoverable. Same 640px breakpoint as pages/mapping.css. */
-@media (max-width: 640px) {
+/* The header block and each row are wrappers that do not exist as boxes at this width, so
+   their cells sit on the five tracks above exactly as they did before the wrappers were
+   added. They are here to give the stacked layout something to group. */
+.cc-mapping-head,
+.cc-mapping-row {
+  display: contents;
+}
+
+/* ─── Stacked rows ─────────────────────────────────────────────────────────────
+ *
+ * Same call `.rq-table` makes at this width and the opposite of `.jv-table`'s: a JV is a
+ * ledger whose columns must line up to be checked, but this is a form. Nobody reads a dept
+ * code down a column here, they fill one row at a time — and making someone swipe sideways
+ * to reach the field they are filling in is the failure, not the scrollbar.
+ *
+ * Rows separate with a rule rather than becoming boxes: `.container` is already a card and
+ * a card inside a card is always wrong.
+ */
+@media (max-width: 720px) {
   .cc-mapping-grid-container {
-    grid-template-columns: 56px minmax(120px, auto) minmax(130px, 1fr) minmax(130px, 1fr) auto;
-    gap: 0.4rem;
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  /* Headings for columns that no longer exist; every cell names itself now. */
+  .cc-mapping-head {
+    display: none;
+  }
+
+  .cc-mapping-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 0.85rem 0;
+  }
+
+  .cc-mapping-row + .cc-mapping-row {
+    border-top: 1px solid var(--border);
+  }
+
+  /* Cr/Dr is a two-letter chip that was sized by a 70px track. Left-align it and let it
+     take only the width of its own word. */
+  .cc-mapping-type-credit,
+  .cc-mapping-type-debit {
+    justify-self: start;
+    padding: 0.2rem 0.6rem;
+  }
+
+  /* Spanned three of five tracks; there is one track now. */
+  .cc-grid-span-3 {
+    grid-column: auto;
+  }
+
+  /* `margin-left: auto` strands the badge alone on its own line once the status wraps. */
+  .cc-required-badge {
+    margin-left: 0;
+  }
+
+  .cc-suggestion-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.3rem;
+  }
+}
+
+/* A mapping row is filled in by thumb as often as by mouse, and a touch laptop needs the
+   floor at any width — so this keys off the pointer, not the viewport. */
+@media (pointer: coarse) {
+  .cc-btn-accept,
+  .cc-btn-reject {
+    min-height: 44px;
   }
 }
 

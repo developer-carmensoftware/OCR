@@ -1,4 +1,3 @@
-import React from 'react'
 import {
   Loader2,
   AlertTriangle,
@@ -10,6 +9,10 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import CustomSearchSelect from '../common/CustomSearchSelect'
+// The row shape and its stacked form live here. Imported by the component that renders it
+// rather than left to whichever sibling happens to be mounted — that assumption is the bug
+// this file's own header records.
+import '../../styles/components/mapping-row.css'
 import { useT } from '../../i18n/LanguageContext'
 import { glFieldLabel } from '../../lib/glFieldLabels'
 import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
@@ -88,67 +91,77 @@ export default function MainMappingTable({
 
       <div className="table-wrapper cc-pb-0">
         <div className="cc-mapping-grid-container">
-          <div />
-          <div />
-          <div className="mapping-header">
-            {t('cc.mapDeptCode')}
-            <span className="gl-help-tip" title={t('cc.mapDeptCodeHelp')}>
-              ?
-            </span>
+          {/* Each block below is `display: contents` on a wide screen, so the five tracks
+              above stay exactly as they were. Below the stacking breakpoint they become the
+              thing that groups a row's cells into one readable record. */}
+          <div className="cc-mapping-head">
+            <div />
+            <div />
+            <div className="mapping-header">
+              {t('cc.mapDeptCode')}
+              <span className="gl-help-tip" title={t('cc.mapDeptCodeHelp')}>
+                ?
+              </span>
+            </div>
+            <div className="mapping-header">
+              {t('cc.mapAccCode')}
+              <span className="gl-help-tip" title={t('cc.mapAccCodeHelp')}>
+                ?
+              </span>
+            </div>
+            <div />
           </div>
-          <div className="mapping-header">
-            {t('cc.mapAccCode')}
-            <span className="gl-help-tip" title={t('cc.mapAccCodeHelp')}>
-              ?
-            </span>
-          </div>
-          <div />
 
           {/* Credit row — Account Receivable */}
-          <div className="mapping-type type-credit cc-mapping-type-credit">{t('cc.mapCredit')}</div>
-          <button type="button" className="cc-map-ar-btn" onClick={openAmountModal}>
-            <span className="cc-map-ar-title">{t('cc.mapArBank')}</span>
-            {activeScan.paymentTypes.size > 0 && (
-              <span
-                className={`cc-map-ar-count ${requiredMissingCount > 0 ? 'missing' : 'ready'}`}
-                title={t('cc.mapPtCount', {
-                  mapped: activeScan.paymentTypes.size - requiredMissingCount,
-                  total: activeScan.paymentTypes.size,
-                })}
-              >
-                {activeScan.paymentTypes.size - requiredMissingCount}/{activeScan.paymentTypes.size}
-              </span>
-            )}
-            <ChevronRight size={14} className="cc-map-ar-chevron" />
-          </button>
-          <div className="cc-grid-span-3">
-            <div
-              id="amountMappingStatus"
-              role="status"
-              className={`cc-mapping-status ${requiredMissingCount > 0 ? 'missing' : 'ready'}`}
-            >
-              {activeScan.paymentTypes.size === 0 ? (
-                <>
-                  <Info size={14} className="cc-flex-shrink-0" />
-                  <span>{t('cc.mapPtEmpty')}</span>
-                </>
-              ) : requiredMissingCount > 0 ? (
-                <>
-                  <AlertTriangle size={14} color="var(--rose)" className="cc-flex-shrink-0" />
-                  <span>{t('cc.mapPtFound', { n: activeScan.paymentTypes.size })}</span>
-                  <span className="cc-bullet-divider-missing">·</span>
-                  <span>{t('cc.mapPtPending', { n: requiredMissingCount })}</span>
-                  <Badge variant="error" className="cc-required-badge">
-                    {t('cc.mapPtRequired')}
-                  </Badge>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 size={14} className="cc-flex-shrink-0" />
-                  <span>{t('cc.mapPtAllMapped', { n: activeScan.paymentTypes.size })}</span>
-                  <span className="cc-ready-subtext">{t('cc.mapReadyJv')}</span>
-                </>
+          <div className="cc-mapping-row cc-mapping-row--credit">
+            <div className="mapping-type type-credit cc-mapping-type-credit">
+              {t('cc.mapCredit')}
+            </div>
+            <button type="button" className="cc-map-ar-btn" onClick={openAmountModal}>
+              <span className="cc-map-ar-title">{t('cc.mapArBank')}</span>
+              {activeScan.paymentTypes.size > 0 && (
+                <span
+                  className={`cc-map-ar-count ${requiredMissingCount > 0 ? 'missing' : 'ready'}`}
+                  title={t('cc.mapPtCount', {
+                    mapped: activeScan.paymentTypes.size - requiredMissingCount,
+                    total: activeScan.paymentTypes.size,
+                  })}
+                >
+                  {activeScan.paymentTypes.size - requiredMissingCount}/
+                  {activeScan.paymentTypes.size}
+                </span>
               )}
+              <ChevronRight size={14} className="cc-map-ar-chevron" />
+            </button>
+            <div className="cc-grid-span-3">
+              <div
+                id="amountMappingStatus"
+                role="status"
+                className={`cc-mapping-status ${requiredMissingCount > 0 ? 'missing' : 'ready'}`}
+              >
+                {activeScan.paymentTypes.size === 0 ? (
+                  <>
+                    <Info size={14} className="cc-flex-shrink-0" />
+                    <span>{t('cc.mapPtEmpty')}</span>
+                  </>
+                ) : requiredMissingCount > 0 ? (
+                  <>
+                    <AlertTriangle size={14} color="var(--rose)" className="cc-flex-shrink-0" />
+                    <span>{t('cc.mapPtFound', { n: activeScan.paymentTypes.size })}</span>
+                    <span className="cc-bullet-divider-missing">·</span>
+                    <span>{t('cc.mapPtPending', { n: requiredMissingCount })}</span>
+                    <Badge variant="error" className="cc-required-badge">
+                      {t('cc.mapPtRequired')}
+                    </Badge>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={14} className="cc-flex-shrink-0" />
+                    <span>{t('cc.mapPtAllMapped', { n: activeScan.paymentTypes.size })}</span>
+                    <span className="cc-ready-subtext">{t('cc.mapReadyJv')}</span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -194,7 +207,7 @@ export default function MainMappingTable({
               : null
 
             return (
-              <React.Fragment key={key}>
+              <div className="cc-mapping-row" key={key}>
                 <div className="mapping-type type-debit cc-mapping-type-debit">
                   {t('cc.mapDebit')}
                 </div>
@@ -206,7 +219,7 @@ export default function MainMappingTable({
                     </span>
                   )}
                 </div>
-                <div>
+                <div className="pm-cell" data-label={t('cc.mapDeptCode')}>
                   <CustomSearchSelect
                     value={mappings[key].dept}
                     onChange={(val: string) => handleMappingChange(key, 'dept', val)}
@@ -217,7 +230,7 @@ export default function MainMappingTable({
                     hasError={!mappings[key].dept}
                   />
                 </div>
-                <div>
+                <div className="pm-cell" data-label={t('cc.mapAccCode')}>
                   <CustomSearchSelect
                     value={mappings[key].acc}
                     onChange={(val: string) => handleMappingChange(key, 'acc', val)}
@@ -254,7 +267,7 @@ export default function MainMappingTable({
                     </>
                   )}
                 </div>
-              </React.Fragment>
+              </div>
             )
           })}
         </div>

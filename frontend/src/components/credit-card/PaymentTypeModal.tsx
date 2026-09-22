@@ -192,6 +192,8 @@ export default function PaymentTypeModal({
                       masterDepartments={masterDepartments}
                       deptPlaceholder={t('cc.ptDeptPh')}
                       accPlaceholder={t('cc.ptAccPh')}
+                      deptLabel={t('cc.mapDeptCode')}
+                      accLabel={t('cc.mapAccCode')}
                       suggestion={paymentSuggestions[type] ?? null}
                       onAccept={() => confirmPaymentSuggestion(type)}
                       onReject={() => rejectPaymentSuggestion(type)}
@@ -226,6 +228,8 @@ export default function PaymentTypeModal({
                       masterDepartments={masterDepartments}
                       deptPlaceholder={t('cc.ptDeptPh')}
                       accPlaceholder={t('cc.ptAccPh')}
+                      deptLabel={t('cc.mapDeptCode')}
+                      accLabel={t('cc.mapAccCode')}
                       suggestion={paymentSuggestions[type] ?? null}
                       onAccept={() => confirmPaymentSuggestion(type)}
                       onReject={() => rejectPaymentSuggestion(type)}

@@ -106,6 +106,8 @@ export default function ARMappingTable({ ctrl }: Props) {
               masterDepartments={ctrl.masterDepartments}
               deptPlaceholder={t('review.jvDeptPlaceholder')}
               accPlaceholder={t('review.jvAccountPlaceholder')}
+              deptLabel={t('ar.colDeptCode')}
+              accLabel={t('ar.colAccCode')}
               suggestion={ctrl.suggestions[row.payment_type_code] ?? null}
               onAccept={() => ctrl.acceptSuggestion(row.payment_type_code)}
               onReject={() => ctrl.rejectSuggestion(row.payment_type_code)}
