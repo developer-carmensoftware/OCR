@@ -55,6 +55,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Any
 
 from sqlalchemy import func, select
@@ -75,7 +76,7 @@ from app.exceptions import (
     PdfPasswordRequired,
     ValidationError,
 )
-from app.models.business import ARReconcileMapping, ARReconcileSetting, CreditCard, OCRTask
+from app.models.business import ARReconcileSetting, CreditCard, OCRTask
 from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument
 from app.models.enums import AlertSeverity, JobStatus
@@ -91,12 +92,6 @@ from app.services.accounting_config_service import (
     description_for,
     get_accounting_config,
 )
-from app.services.ar_reconcile_jv import (
-    build_ar_jv_rows,
-    is_balanced,
-    render_jv_description,
-    unmapped_ar_types,
-)
 from app.services.carmen_service import (
     CarmenAPIError,
     get_account_codes,
@@ -109,8 +104,11 @@ from app.services.cc_input_tax import build_input_tax_payload
 from app.services.cc_jv import (
     build_gljv_payload,
     build_jv_rows,
+    group_key,
+    is_balanced,
     num,
     r2,
+    render_jv_description,
     unmapped_payment_types,
 )
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
@@ -1038,10 +1036,20 @@ async def _run_document(
         # Before any charge: a disguised, locked or corrupt file must not cost anything.
         password = await _open_or_fail(blob, filename, passwords)
 
+        # `module_id` still splits by document type — `daily_usage_summary` reports a
+        # settlement report's cost apart from a fee invoice's, and `ocr_tasks.module_id`
+        # is the only place that answers "how many settlement reports has this tenant
+        # processed" (CLAUDE.md: count with SUM(charged_docs), never COUNT(ocr_tasks),
+        # but the grouping column is this one). The *gate* does not split any more
+        # (decision #1, 2026-09-22): a settlement report is part of the credit-card
+        # module now, not a switchable add-on, so a BU with credit_card_ocr enabled can
+        # process one regardless of whether cc_ar_reconcile's row was ever turned on.
+        # `modules.is_active = false` for cc_ar_reconcile keeps it off
+        # #/admin/quota-modules' switch list while the id keeps meaning something.
         module_id = (
             Module.CC_AR_RECONCILE if doc_type == DocType.AR_RECONCILE else Module.CREDIT_CARD_OCR
         )
-        await assert_module_enabled(module_id)
+        await assert_module_enabled(Module.CREDIT_CARD_OCR)
         charged = await consume_document()
 
         # ── The refund boundary ───────────────────────────────────────────────
@@ -1151,17 +1159,22 @@ async def _run_document(
             config = await get_accounting_config(db, tenant_id)
 
         if doc_type == DocType.AR_RECONCILE:
-            # No AI suggestion on this path, deliberately. The suggestion below is only
-            # useful because the review screen can turn it into the BU's own rule when a
-            # human accepts it, and that write goes to `bu_accounting_mapping_entries` —
-            # the credit-card wizard's table, not this feature's. Suggesting into a table
-            # nobody can confirm into would spend an LLM call to produce a value that
-            # disappears on the next poll. The settings screen has AI Auto-Map, where the
-            # accept button writes to the right place.
+            # No AI suggestion on this path. Until decision #3 (2026-09-22) the reason
+            # was structural: a confirmed suggestion would have written to
+            # ar_reconcile_mappings, this feature's own table, so a guess computed here
+            # (never itself saved) had nothing worth doing ahead of a human. That table
+            # is gone — this bank's credit-side keys live in
+            # bu_accounting_mapping_entries now, the very dict `config.mappings` below
+            # already is — but the actual rule this skips was never about which table:
+            # a suggestion nobody has read must not become a saved rule, and only the
+            # review screen's approve step writes that table. Extending the fee
+            # invoice's guess-then-approve dance to a second document type is a
+            # separate decision from collapsing the storage, not a consequence of it.
             assert ar_setting is not None  # set together with doc_type, above
-            ar_maps = await _ar_mappings(ar_setting.id, ar_setting.post_type)
-            mapping_missing = unmapped_ar_types(
-                extracted.details, ar_maps, ar_setting.post_type, config.mappings or {}
+            mapping_missing = unmapped_payment_types(
+                extracted.details,
+                config.mappings or {},
+                grouping=partial(group_key, post_type=ar_setting.post_type),
             )
         else:
             missing = unmapped_payment_types(extracted.details, config.mappings or {})
@@ -1244,18 +1257,17 @@ async def _run_document(
 
         if doc_type == DocType.AR_RECONCILE:
             assert ar_setting is not None
-            # The debit side reads the BU's existing credit-card mapping (commission/tax/
-            # net) — the same dict `build_jv_rows` reads below for the fee invoice — off
-            # the report's own total row, not derived from the credit rows. `is_balanced`
-            # below is therefore a real check now: it compares that row's own COMM+VAT+NET
+            # One dict now (decision #3): commission/tax/net and this bank's credit-side
+            # keys both live in `config.mappings`. The debit legs still read it off the
+            # report's own total row, not derived from the credit rows — `is_balanced`
+            # below is therefore a real check: it compares that row's own COMM+VAT+NET
             # against Σ THB AMT over the grouped rows, two independent readings of the
-            # same page. See `ar_reconcile_jv.build_ar_jv_rows`.
-            rows = build_ar_jv_rows(
+            # same page. See `cc_jv.build_jv_rows`'s docstring.
+            rows = build_jv_rows(
                 extracted.details,
-                post_type=ar_setting.post_type,
+                config.mappings or {},
                 total_row=extracted.total_row,
-                cc_mappings=config.mappings or {},
-                mappings=ar_maps,
+                grouping=partial(group_key, post_type=ar_setting.post_type),
                 doc_no=extracted.doc_no,
             )
         else:
@@ -1732,26 +1744,6 @@ async def _ar_setting(tenant_id: str, bank_code: str) -> ARReconcileSetting | No
         return res.scalars().first()
 
 
-async def _ar_mappings(setting_id: int, post_type: str) -> dict[str, dict[str, str]]:
-    """The active payment-type mappings for one post type, in cc_jv's `{key: {dept, acc}}` shape."""
-    async with async_session() as db:
-        res = await db.execute(
-            select(ARReconcileMapping).where(
-                ARReconcileMapping.setting_id == setting_id,
-                ARReconcileMapping.post_type == post_type,
-                ARReconcileMapping.deleted_at.is_(None),
-                ARReconcileMapping.is_active.is_(True),
-            )
-        )
-        return {
-            r.payment_type_code: {
-                "dept": r.credit_dept_code or "",
-                "acc": r.credit_account_code or "",
-            }
-            for r in res.scalars().all()
-        }
-
-
 async def _already_pending(
     tenant_id: str, bank_code: str | None, doc_no: str | None, doc_type: str
 ) -> bool:
@@ -1888,7 +1880,7 @@ def _review_flags(
     **The settlement report's lines are not that shape** — it prints THB AMT per payment
     type and leaves VAT AMT and NET AMT as dashes on those rows, so the per-line identity
     above is false for every one of them and cannot be reused here. `ar_unbalanced` is the
-    caller's own `not ar_reconcile_jv.is_balanced(rows)`: since 2026-09-18 the debit side of
+    caller's own `not cc_jv.is_balanced(rows)`: since 2026-09-18 the debit side of
     that JV comes from the report's own total row (independent of the credit rows it is
     compared against), so this is a real check, not the tautology `is_balanced` used to be
     when the debit leg was derived from the very rows it was checked against.
@@ -2205,7 +2197,7 @@ async def approve_document(
             if not built.balanced:
                 # A real check since 2026-09-18: the debit side (commission/VAT/net) comes
                 # from the report's own total row, independent of the credit rows it is
-                # compared against — see `ar_reconcile_jv.is_balanced`. `_review_flags`
+                # compared against — see `cc_jv.is_balanced`. `_review_flags`
                 # already parks a document in this state; this is the belt to that brace
                 # for the direct-approve path, where a stale `built` could theoretically
                 # slip past if the mapping changed between park and approve.

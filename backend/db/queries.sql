@@ -658,3 +658,31 @@ WHERE service = 'carmen'
   AND created_at >= NOW() - INTERVAL '90 days'
 GROUP BY 1
 ORDER BY 1;
+
+-- 26. Settlement-report rows the 2026-09-22 ar_reconcile_mappings backfill skipped.
+--
+-- The migration folds this feature's own credit-side mapping into
+-- bu_accounting_mapping_entries and archives the original table rather than dropping it
+-- (ar_reconcile_mappings_archived), so nothing is lost -- but a row whose (config_id,
+-- field_type) already existed there before the backfill ran was skipped on purpose
+-- (decision #5, one config per tenant is a hard uniqueness constraint the backfill must
+-- not violate). Run this once after `supabase db push` applies
+-- 20260922000000_collapse_ar_reconcile.sql; an empty result is the expected case -- the
+-- feature is two weeks old and KBANK is its only live bank.
+SELECT
+    arm.payment_type_code,
+    arm.post_type,
+    arm.credit_dept_code  AS archived_dept,
+    arm.credit_account_code AS archived_acc,
+    existing.dept_code     AS kept_dept,
+    existing.acc_code      AS kept_acc,
+    existing.source        AS kept_source
+FROM ar_reconcile_mappings_archived arm
+JOIN ar_reconcile_settings ars ON ars.id = arm.setting_id AND ars.deleted_at IS NULL
+JOIN bu_accounting_configs bac ON bac.tenant_id = ars.tenant_id AND bac.deleted_at IS NULL
+JOIN bu_accounting_mapping_entries existing
+     ON existing.config_id = bac.id
+    AND existing.field_type = arm.payment_type_code
+    AND existing.deleted_at IS NULL
+WHERE arm.deleted_at IS NULL
+ORDER BY arm.payment_type_code;

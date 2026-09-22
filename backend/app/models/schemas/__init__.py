@@ -7,7 +7,6 @@ from app.models.schemas.admin_users import (
 )
 from app.models.schemas.ap_invoice import SuggestGLItem, SuggestGLRequest
 from app.models.schemas.ar_reconcile import (
-    ARBankOption,
     ARMappingItem,
     ARPreviewIn,
     ARPreviewOut,
@@ -89,7 +88,6 @@ from app.models.schemas.quotas import ModuleToggleRequest
 
 __all__ = [
     # ar reconcile
-    "ARBankOption",
     "ARMappingItem",
     "ARPreviewIn",
     "ARPreviewOut",

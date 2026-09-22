@@ -70,7 +70,6 @@ const Home = lazy(() => import('./pages/Home'))
 const ManualScan = lazy(() => import('./pages/ManualScan'))
 const ReviewQueue = lazy(() => import('./pages/ReviewQueue'))
 const Mapping = lazy(() => import('./pages/Mapping'))
-const ARReconcileSettings = lazy(() => import('./pages/ARReconcileSettings'))
 const APInvoice = lazy(() => import('./pages/APInvoice'))
 const Pricing = lazy(() => import('./pages/Pricing'))
 const OrderHistory = lazy(() => import('./pages/OrderHistory'))
@@ -142,8 +141,14 @@ function Router() {
     // Carmen's SSO deep-link lands on the bare route, so whatever renders there is the
     // module's first screen — the queue. The wizard is somewhere you go on purpose.
     if (sub === 'mapping') Page = <Mapping />
-    else if (sub === 'ar-settings') Page = <ARReconcileSettings />
-    else if (sub === 'manual') Page = <ManualScan />
+    else if (sub === 'ar-settings') {
+      // Merged into the mapping page 2026-09-22 (decision #3) — redirect rather than
+      // 404 a bookmark or a stale link, preserving `?bank=` so it still lands on the
+      // bank the caller meant. `replace` so Back does not bounce through the old URL.
+      const query = window.location.hash.split('?')[1]
+      window.location.replace(`#/CreditCardOCR/mapping${query ? `?${query}` : ''}`)
+      Page = <Mapping />
+    } else if (sub === 'manual') Page = <ManualScan />
     // `/review?id=…` is the queue with a document open over it. Same component, so
     // opening and closing a document never refetches the list behind it.
     else Page = <ReviewQueue />

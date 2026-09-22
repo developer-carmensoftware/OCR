@@ -784,6 +784,12 @@ const en = {
   'cc.valIllegalMsg': "{pairs}\nPlease pick an account from the department's allowed list.",
   'cc.saveSuccessTitle': 'Save Successful',
   'cc.saveSuccessMsg': 'Account Mapping settings have been saved successfully.',
+  'cc.settlementCardTitle': 'Settlement report',
+  'cc.settlementNoLayoutHint':
+    'This bank has no settlement-report layout yet — nothing to configure here.',
+  'cc.saveSettlementFailedTitle': 'Settlement profile not saved',
+  'cc.saveSettlementFailedMsg':
+    'Your account mapping was saved, but the settlement posting profile was not. {detail}',
 
   // — Shared chrome —
   'common.back': 'Back',
@@ -1803,7 +1809,7 @@ const en = {
 
   // The three controls the review dialog's AR reconciliation settings link sends people here for.
   'ar.postingRules': 'Posting rules',
-  'ar.postType': 'Post type',
+  'ar.postType': 'Credit breakdown',
   'ar.postTypeMapped': '{mapped}/{total} mapped',
   'ar.postTypeHintDetail': 'One credit line per printed payment type, e.g. VS INTER UP PREM.',
   'ar.postTypeHintSummary':
@@ -2610,6 +2616,12 @@ const th: Record<TKey, string> = {
   'cc.valIllegalMsg': '{pairs}\nกรุณาเลือกบัญชีจากรายการที่แผนกนั้นอนุญาต',
   'cc.saveSuccessTitle': 'บันทึกสำเร็จ',
   'cc.saveSuccessMsg': 'บันทึกการตั้งค่าการจับคู่บัญชีเรียบร้อยแล้ว',
+  'cc.settlementCardTitle': 'รายงานเคลียร์ยอด (Settlement)',
+  'cc.settlementNoLayoutHint':
+    'ธนาคารนี้ยังไม่มีรูปแบบรายงานเคลียร์ยอด จึงไม่มีอะไรให้ตั้งค่าตรงนี้',
+  'cc.saveSettlementFailedTitle': 'บันทึกโปรไฟล์การลงบัญชีเคลียร์ยอดไม่สำเร็จ',
+  'cc.saveSettlementFailedMsg':
+    'บันทึกผังบัญชีเรียบร้อยแล้ว แต่โปรไฟล์การลงบัญชีเคลียร์ยอดยังไม่ถูกบันทึก {detail}',
 
   // — Shared chrome —
   'common.back': 'ย้อนกลับ',
@@ -3484,7 +3496,7 @@ const th: Record<TKey, string> = {
   'ar.enabledOffHint': 'ปิดอยู่ — รายงานที่ส่งเข้ามาจะถูกส่งคืนโดยไม่อ่านและไม่มีค่าใช้จ่าย',
 
   'ar.postingRules': 'กติกาการลงบัญชี',
-  'ar.postType': 'รูปแบบการลง',
+  'ar.postType': 'รูปแบบการแบ่งยอดเครดิต',
   'ar.postTypeMapped': 'ผูกแล้ว {mapped}/{total}',
   'ar.postTypeHintDetail': 'ลงเครดิตหนึ่งบรรทัดต่อประเภทบัตรตามที่พิมพ์ เช่น VS INTER UP PREM',
   'ar.postTypeHintSummary':

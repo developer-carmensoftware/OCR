@@ -652,6 +652,72 @@ and parks for review, per the existing validation), so broadening costs nothing 
 been done — recorded here so it is a deliberate choice, not an oversight, until a ticket
 picks it up.
 
+## 29. `cc_ar_reconcile` collapses into the credit-card flow (2026-09-22)
+
+**Decided:** 2026-09-22, following #28. See `CONTEXT.md` for the vocabulary this produced
+(**Settlement report**, **Fee invoice**, **Credit breakdown**) and the v1.2 amendment for
+the FRD-facing note.
+
+**Decision.** The second module, second mapping table and second settings screen that a
+settlement report used to need are gone. `cc_jv.build_jv_rows` gained two optional
+arguments (`total_row`, `grouping`) whose defaults reproduce the fee-invoice builder
+byte-for-byte; `ar_reconcile_jv.py` is deleted and its helpers (`group_key`, `is_balanced`,
+`render_jv_description`) moved into `cc_jv`. `ar_reconcile_mappings` folds into
+`bu_accounting_mapping_entries` via a new nullable `source` column
+(`settlement_detail` / `settlement_summary` / `NULL` = usable on either layout); a new
+nullable `banks.settlement_grouping` replaces the hardcoded `SUPPORTED_BANKS` /
+`RECONCILABLE_BANKS` lists — a bank has a settlement layout iff that column is set.
+`assert_module_enabled` now gates a settlement report on `credit_card_ocr`, the same gate
+every other document in this flow uses; `modules.is_active = false` for `cc_ar_reconcile`,
+whose id survives only as `ocr_tasks.module_id` and `log_llm_usage(module_id=...)` for cost
+continuity. `ar_reconcile_settings` survives unmodified as the per-(tenant, bank) posting
+profile — Detail/Summary is now a setting the credit-card mapping page shows for a
+settlement-capable bank, not a reason to leave that page. `pages/ARReconcileSettings.tsx`
+and `components/ar-reconcile/ARMappingTable.tsx` are deleted; `#/CreditCardOCR/ar-settings`
+redirects to `#/CreditCardOCR/mapping?bank=...`. One save now issues
+`PUT /config/accounting` then `PUT /ar-reconcile/settings`, reporting a partial failure
+without rolling back the first call.
+
+**Why.** #28 made a settlement JV's debit side identical to a fee invoice's — both read the
+BU's commission/tax/net mapping, from the same table, keyed the same way. That left the two
+builders differing in exactly two things: where the debit figures are read from (a
+document-layout fact — a settlement report prints one anchor row, a fee invoice does not)
+and how the credit side groups (a user option — Detail vs Summary). Neither is a reason for
+a second module. The premise that had been true through v1.1 — a settlement report needs a
+second JV to clear against the fee invoice's — stopped being true the day #28 shipped;
+`cc_ar_reconcile` as a module, `ar_reconcile_mappings` as a table, and
+`ARReconcileSettings.tsx` as a screen were left standing on a premise that no longer held,
+each one now a second place to look for what the credit-card flow already answered. Folding
+them back is explicitly *not* the "add a module" framing the pre-#28 design used — it
+removes a module and gives a BU an option (a settlement-capable bank shows a Detail/Summary
+toggle) instead.
+
+**What it costs.** Before: a settlement report needed its own module row
+(`tenant_modules`), its own mapping table keyed by `(config_id, payment_type)` with no
+`source` column, and its own settings screen a BU had to discover independently of the
+credit-card mapping page it otherwise never visited. After: one module gate, one mapping
+table (`source` disambiguates a Detail-only, Summary-only, or either-layout code), one
+settings page. `ar_reconcile_mappings` is not dropped — renamed to
+`ar_reconcile_mappings_archived` — because the backfill is `ON CONFLICT DO NOTHING`
+against `(config_id, field_type)` and a payment-type code mapped under both post types
+before this migration can conflict; the archive is the conflict report future hand-resolution
+reads against, not a rollback path. `ARSettingsIn`/`ARSettingsOut` and
+`ar_reconcile_service`/`ar_reconcile.py`'s identifiers keep the old `ar_reconcile` name
+deliberately — renaming call sites across a money path for a naming preference was judged
+not worth the diff risk; `CONTEXT.md` governs what a human calls this out loud, not what the
+code calls it. `/ar-reconcile/preview` stops calling `get_accounting_config` — the frontend
+already holds the complete live mapping state (`ARPreviewIn.mappings: dict[str,
+FieldMapping]`) needed to render a preview, so the endpoint no longer re-reads the DB it
+would otherwise read a second time in the same save flow. Proof of no regression:
+`tests/unit/test_cc_jv.py`'s original fee-invoice tests and
+`frontend/src/lib/ccJv.contract.test.ts` pass unchanged against
+`contracts/cc-jv.contract.json` — the fee-invoice path's behavior did not move, only its
+neighbor's did.
+
+**Not touched.** Decision #28's known risk (`KB1P554V2` as a report-version substring
+standing in for a bank identifier) is unchanged by this collapse — still open, still
+deliberate, tracked where #28 left it.
+
 **Ticket 02 resolution (2026-09-18).** Built the freshness-check option rather than the
 static-flag-plus-alert one: `_settlement_recently_posted()` requires proof — an
 `email_documents` row for this bank, `status == "posted"`, whose task's `module_id` is

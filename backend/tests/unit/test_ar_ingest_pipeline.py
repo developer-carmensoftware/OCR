@@ -4,11 +4,19 @@ The rule decides which of the two documents arrived, because nothing on the page
 KBANK settlement report and the commission invoice for that same settlement share the
 bank, the date and the tax invoice number. Everything asserted here hangs off that one
 decision, so these tests are mostly about the branch being taken (or not taken) rather
-than about arithmetic, which `test_ar_reconcile_jv.py` pins on its own.
+than about arithmetic, which `test_cc_jv.py`'s settlement-report section pins on its own.
 
 Reuses the harness in `test_email_ingest_pipeline` rather than rebuilding it: the point of
 several of these is that the AR path meets exactly the same gates, charge and ledger as
 the path that was already there.
+
+Updated 2026-09-22 for decision #3: `_ar_mappings` (a query against the now-archived
+`ar_reconcile_mappings` table) is gone from `email_ingest_service.py`, so there is nothing
+left to mock it with. The settlement report's credit-side keys live in
+`bu_accounting_mapping_entries` now, the same dict `config.mappings` already supplied for
+the three fixed debit legs — so every fixture below that used to pass a separate `maps=`
+into a mocked `_ar_mappings` now merges that same dict into `_config(mappings=...)`
+instead.
 """
 
 from contextlib import contextmanager
@@ -22,6 +30,7 @@ from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractedDetailRow
 from app.services import email_ingest_service as ingest
 from tests.unit.test_email_ingest_pipeline import (
+    MAPPINGS,
     _config,
     _extracted,
     _FakeDB,
@@ -101,20 +110,20 @@ def _setting(enabled=True, post_type="Summary"):
         enabled=enabled,
         post_type=post_type,
         jv_description_template="Credit Card AR Reconcile {Settlement_Date}",
-        debit_dept_code="GEN",
-        debit_account_code="1021000",
     )
 
 
 @contextmanager
-def _ar_config(setting, maps=None):
-    with (
-        patch.object(ingest, "_ar_setting", AsyncMock(return_value=setting)),
-        patch.object(
-            ingest, "_ar_mappings", AsyncMock(return_value=AR_MAPS if maps is None else maps)
-        ),
-    ):
+def _ar_config(setting):
+    with patch.object(ingest, "_ar_setting", AsyncMock(return_value=setting)):
         yield
+
+
+def _ar_mappings_dict(maps=None) -> dict:
+    """The merged `config.mappings` dict the AR path now reads for both debit legs and
+    credit groups — commission/tax/net/Visa (`MAPPINGS` from `test_email_ingest_pipeline`)
+    plus whichever credit-side dict a test wants, folded into one (decision #3)."""
+    return {**MAPPINGS, **(AR_MAPS if maps is None else maps)}
 
 
 # The default `_ar_extracted()`'s own merchant id, with a CSV sidecar row that verifies
@@ -127,10 +136,10 @@ AR_TAX_SUMMARY = {
 
 async def _run_ar(db, *, setting=None, maps=None, **kw):
     kw.setdefault("extracted", _ar_extracted())
-    kw.setdefault("config", _config())
+    kw.setdefault("config", _config(mappings=_ar_mappings_dict(maps)))
     kw.setdefault("carmen_result", {"Code": 0, "InternalMessage": "JV-2606-0089"})
     kw.setdefault("tax_summary", AR_TAX_SUMMARY)
-    with _ar_config(_setting() if setting is None else setting, maps):
+    with _ar_config(_setting() if setting is None else setting):
         return await _run(db, filename=AR_FILE, rules=AR_RULE, **kw)
 
 
@@ -550,8 +559,8 @@ async def test_an_unmapped_scheme_parks_instead_of_posting():
     # The review screen needs to know which builder made this document — nothing on the
     # extraction says so.
     assert row.review_payload["doc_type"] == "ar_reconcile"
-    # No AI suggestion on this path: nothing could confirm one into ar_reconcile_mappings,
-    # so asking would spend a call to produce a value that disappears on the next poll.
+    # No AI suggestion on this path, unchanged by decision #3 — see the module-level
+    # docstring and `email_ingest_service.py`'s own comment at this branch.
     p.suggest.assert_not_called()
 
 
@@ -560,9 +569,14 @@ async def test_a_missing_fixed_debit_mapping_parks_instead_of_posting():
     """Decision #28: the three fixed debit legs (commission/tax/net) read the BU's
     existing credit-card mapping, not a mapping table of this feature's own — so a gap
     there is caught by the same `mapping_missing` flag the credit side uses, rather than a
-    bespoke clearing-account flag (removed along with the control-leg concept)."""
+    bespoke clearing-account flag (removed along with the control-leg concept). VS/MC/JCB
+    stay fully mapped (via `AR_MAPS`) so the only gap is the fixed legs this test is
+    about — `config=` is passed directly here rather than through `maps=`, since the
+    debit dict needs an actual value (not `MAPPINGS`'s) for `commission`."""
     db = _FakeDB()
-    outcome, p = await _run_ar(db, config=_config(mappings={"commission": AR_MAPS["VS"]}))
+    outcome, p = await _run_ar(
+        db, config=_config(mappings={"commission": AR_MAPS["VS"], **AR_MAPS})
+    )
 
     assert outcome == "pending_review"
     p.post_gljv.assert_not_called()

@@ -100,6 +100,7 @@ async def save_accounting_config(
                 dept_code=mapping.dept or None,
                 acc_code=mapping.acc or None,
                 is_custom=(field_type not in _FIXED_TYPES),
+                source=mapping.source or None,
             )
         )
 
@@ -381,7 +382,11 @@ def _entries_to_response(
     mappings: dict = {}
     custom_types: list = []
     for e in entries:
-        mappings[e.field_type] = {"dept": e.dept_code or "", "acc": e.acc_code or ""}
+        mappings[e.field_type] = {
+            "dept": e.dept_code or "",
+            "acc": e.acc_code or "",
+            "source": e.source,
+        }
         if e.is_custom:
             custom_types.append(e.field_type)
     return mappings, custom_types

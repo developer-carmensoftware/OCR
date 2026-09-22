@@ -29,7 +29,10 @@ interface Props {
   type: string
   variant: MappingRowVariant
   value: FieldMapping
-  onChange: (field: keyof FieldMapping, value: string) => void
+  // Narrower than `keyof FieldMapping`: this component only ever edits dept/acc.
+  // `source` is set once at creation (which layout a row came from) and never by
+  // hand, so it is never a field this callback names.
+  onChange: (field: 'dept' | 'acc', value: string) => void
   masterAccounts: MasterAccount[]
   masterDepartments: MasterDepartment[]
   suggestion?: Suggestion | null

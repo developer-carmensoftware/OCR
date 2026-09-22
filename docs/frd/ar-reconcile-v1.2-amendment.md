@@ -60,6 +60,19 @@ other unverified document.
 | *(new)* | — | A document whose report total and CSV-reported total disagree parks with a warning naming both figures, rather than posting either. |
 | *(new)* | — | A document with no matching CSV row parks as `tin_unverified` and cannot auto-post. |
 
+## §6.1b — New: the settings screen moves, the JV does not (2026-09-22)
+
+Everything in §6.1 above — the one self-sufficient JV, the Detail/Summary grouping, the
+three fixed debit legs — is unchanged by this note; no figure on this page is affected.
+What changes is *where a BU configures it*: "AR Reconciliation Settings" as a separate menu
+item is retired. Its three settings (enable the mode, choose Detail or Summary, edit the JV
+description) now live on the Credit Card wizard's own mapping screen, appearing only for a
+bank with a settlement-report layout (today: KBANK). A BU that already configured this mode
+sees the same three settings, in the same state, on the page it already uses for the fee
+invoice's own account mapping — nothing to reconfigure. See decision #29
+(`docs/email-automation/06-decision-log.md`) for the technical reasoning; this is a
+navigation change only.
+
 ## Worked example (real data, unchanged from v1.1's sample)
 
 Settlement 21/07/2026, tax invoice `210726E00035291`, Σ THB AMT 25,091.00.

@@ -90,6 +90,10 @@ export interface ExtractedAPInvoiceData {
 export interface FieldMapping {
   dept: string | null
   acc: string | null
+  /** Which layout this key came from — `null` (usable on any layout: the three fixed
+   *  types and every pre-existing fee-invoice payment type), 'settlement_detail' or
+   *  'settlement_summary'. Display-only; the JV builder never reads it. */
+  source?: string | null
 }
 
 export interface CodeOption {

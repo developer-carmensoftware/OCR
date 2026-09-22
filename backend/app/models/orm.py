@@ -34,7 +34,6 @@ from .business import (
     APInvoice,
     APVendorColumnMapping,
     APVendorFieldMappingEntry,
-    ARReconcileMapping,
     ARReconcileSetting,
     BUAccountingConfig,
     BUAccountingMappingEntry,
@@ -116,7 +115,6 @@ __all__ = [
     "BUAccountingMappingEntry",
     "APVendorColumnMapping",
     "ARReconcileSetting",
-    "ARReconcileMapping",
     "APVendorFieldMappingEntry",
     # Observability
     "LLMUsageLog",

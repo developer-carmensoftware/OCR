@@ -1,36 +1,40 @@
-"""Request/response schemas for Detailed Credit Card AR Reconciliation."""
+"""Request/response schemas for a settlement report's per-bank posting profile.
+
+Since decision #3 (2026-09-22, docs/email-automation/06-decision-log.md #29) the
+payment-type mapping is not part of this feature's own schemas any more — it lives in
+`bu_accounting_mapping_entries` alongside commission/tax/net, saved through
+`PUT /api/v1/config/accounting` (see `AccountingConfigRequest`), the same call the
+merged mapping page uses for everything else on it. What is left here is the
+per-(tenant, bank) posting profile: whether it reconciles, how it groups, how it is
+worded — and the JV preview, which still needs the *unsaved* form state to track
+edits live.
+"""
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.constants import PostType
+from app.models.schemas.common import FieldMapping
 
 
 class ARMappingItem(BaseModel):
-    """One payment type → credit-side GL account, within one post type."""
+    """One payment type this tenant's own settlement report has printed, before it has
+    a GL account of its own — `GET /sample-payment-types`' only remaining job. Once a
+    code has an account it is an ordinary entry in `AccountingConfigResponse.mappings`
+    like any other, so this carries no dept/acc of its own to save."""
 
     payment_type_code: str
     payment_type_desc: str | None = None
-    credit_dept_code: str | None = None
-    credit_account_code: str | None = None
-    is_active: bool = True
 
 
 class ARSettingsIn(BaseModel):
-    """Full replace of one (tenant, bank) configuration and both mapping sets.
-
-    `mappings` is keyed by post type, so a save from the Detail view cannot silently
-    delete the Summary rows the BU maintained — the screen sends both back.
-    """
+    """Full replace of one (tenant, bank) posting profile."""
 
     bank_code: str
     enabled: bool = False
     post_type: str = PostType.DETAIL
     jv_description_template: str = "Credit Card AR Reconcile {Settlement_Date}"
-    debit_dept_code: str | None = None
-    debit_account_code: str | None = None
-    mappings: dict[str, list[ARMappingItem]] = Field(default_factory=dict)
 
     @field_validator("post_type")
     @classmethod
@@ -39,34 +43,13 @@ class ARSettingsIn(BaseModel):
             raise ValueError(f"post_type must be one of {', '.join(PostType.ALL)}")
         return v
 
-    @field_validator("mappings")
-    @classmethod
-    def _known_mapping_keys(
-        cls, v: dict[str, list[ARMappingItem]]
-    ) -> dict[str, list[ARMappingItem]]:
-        unknown = sorted(set(v) - set(PostType.ALL))
-        if unknown:
-            raise ValueError(f"unknown post type(s) in mappings: {', '.join(unknown)}")
-        return v
-
-
-class ARBankOption(BaseModel):
-    """One row of the FRD §3.1 bank selector.
-
-    `supported` is what the browser cannot work out for itself: which banks this release
-    can actually read (`SUPPORTED_BANKS`). The unsupported ones are still listed, because
-    Out-of-Scope says SCB, BBL and BAY arrive in Phase 2 and a roadmap the customer cannot
-    see is not a roadmap.
-    """
-
-    code: str
-    name: str
-    supported: bool
-
 
 class ARSettingsOut(ARSettingsIn):
-    # The selector's options, so the screen holds no bank list of its own.
-    banks: list[ARBankOption] = Field(default_factory=list)
+    # Whether this bank has a settlement layout at all (`banks.settlement_grouping is
+    # not null`) — what the merged mapping page reads to decide whether the
+    # Settlement card renders for the currently selected bank. Not saved; the server's
+    # own answer, same role the old dedicated screen's `banks[].supported` played.
+    has_settlement_layout: bool = False
 
 
 class ARPreviewRow(BaseModel):
@@ -75,10 +58,10 @@ class ARPreviewRow(BaseModel):
     desc: str
     debit: float
     credit: float
-    # The group this leg is, as `group_key` resolved it — empty on the debit leg, which is
-    # the counterpart to all of them. Carried so the review screen can put each printed
-    # payment type beside the leg it became without re-deriving the grouping in the
-    # browser or slicing the `Tax Inv.# … - ` prefix back off `desc`.
+    # The group this leg is, as `cc_jv.group_key` resolved it — empty on the debit leg,
+    # which is the counterpart to all of them. Carried so the review screen can put each
+    # printed payment type beside the leg it became without re-deriving the grouping in
+    # the browser or slicing the `Tax Inv.# … - ` prefix back off `desc`.
     key: str = ""
 
 
@@ -107,14 +90,21 @@ class ARPreviewOut(BaseModel):
 
 
 class ARPreviewIn(BaseModel):
-    """The unsaved state of the settings screen, so the preview tracks what is on it."""
+    """The unsaved state of the merged mapping page, so the preview tracks what is on
+    it rather than what was last saved.
+
+    `mappings` is the page's *whole* live mapping dict — commission/tax/net, every
+    fee-invoice payment type, and this bank's settlement credit-side rows, all in the
+    one flat shape `AccountingConfigResponse.mappings` already uses. Sending the same
+    shape the page already holds in memory means no reshaping at the call site; only
+    the keys this bank's grouping actually resolves matter to the arithmetic, so a
+    fee-invoice-only key sent along for the ride is simply never looked up.
+    """
 
     bank_code: str
     post_type: str = PostType.DETAIL
     jv_description_template: str = ""
-    debit_dept_code: str | None = None
-    debit_account_code: str | None = None
-    mappings: list[ARMappingItem] = Field(default_factory=list)
+    mappings: dict[str, FieldMapping] = Field(default_factory=dict)
 
     @field_validator("post_type")
     @classmethod

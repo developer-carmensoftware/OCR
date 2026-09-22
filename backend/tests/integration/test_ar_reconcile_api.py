@@ -3,6 +3,17 @@
 The preview endpoint is the one that matters most here: it is what the settings screen
 renders, and `approve_document` rebuilds the same rows from the same builder, so a preview
 that lies about the line count or the balance is a JV that posts wrong.
+
+Rewritten 2026-09-22 for decision #3 (docs/email-automation/06-decision-log.md #29):
+`ARPreviewIn.mappings` changed shape from `list[ARMappingItem]` (this feature's own
+credit-side rows, keyed by post type, with the three fixed debit legs read separately
+from `get_accounting_config`) to `dict[str, FieldMapping]` — the merged mapping page's
+*whole* live state, commission/tax/net and every credit-side key together, the same shape
+`AccountingConfigResponse.mappings` already is. `/preview` no longer reads the database for
+mapping data at all: the caller sends everything it needs. `ARSettingsIn` lost `mappings`
+entirely (saved through `PUT /api/v1/config/accounting` now) and the bank selector's
+`SUPPORTED_BANKS`/`RECONCILABLE_BANKS` constants are gone, replaced by
+`banks.settlement_grouping` (`get_settlement_grouping`).
 """
 
 from types import SimpleNamespace
@@ -13,71 +24,27 @@ from tests.integration.conftest import make_test_client
 BASE = "/api/v1/ar-reconcile"
 AUTH = {"Authorization": "Bearer dummy"}
 
-DETAIL_MAPPINGS = [
-    {
-        "payment_type_code": "VS INTER NON-PREM",
-        "credit_dept_code": "GEN",
-        "credit_account_code": "1021001",
-        "is_active": True,
-    },
-    {
-        "payment_type_code": "VS INTER PREM",
-        "credit_dept_code": "GEN",
-        "credit_account_code": "1021001",
-        "is_active": True,
-    },
-    {
-        "payment_type_code": "VS INTER UP PREM",
-        "credit_dept_code": "GEN",
-        "credit_account_code": "1021001",
-        "is_active": True,
-    },
-    {
-        "payment_type_code": "MC INTER NON-PREM",
-        "credit_dept_code": "GEN",
-        "credit_account_code": "1021002",
-        "is_active": True,
-    },
-    {
-        "payment_type_code": "MC INTER PREM",
-        "credit_dept_code": "GEN",
-        "credit_account_code": "1021002",
-        "is_active": True,
-    },
-    {
-        "payment_type_code": "MC INTER UP PREM",
-        "credit_dept_code": "GEN",
-        "credit_account_code": "1021002",
-        "is_active": True,
-    },
-    {
-        "payment_type_code": "JCB PREM",
-        "credit_dept_code": "GEN",
-        "credit_account_code": "1021003",
-        "is_active": True,
-    },
-]
+FIXED_MAPPINGS = {
+    "commission": {"dept": "GEN", "acc": "9990"},
+    "tax": {"dept": "GEN", "acc": "9991"},
+    "net": {"dept": "GEN", "acc": "9992"},
+}
 
-SUMMARY_MAPPINGS = [
-    {
-        "payment_type_code": "VS",
-        "credit_dept_code": "GEN",
-        "credit_account_code": "1021001",
-        "is_active": True,
-    },
-    {
-        "payment_type_code": "MC",
-        "credit_dept_code": "GEN",
-        "credit_account_code": "1021002",
-        "is_active": True,
-    },
-    {
-        "payment_type_code": "JCB",
-        "credit_dept_code": "GEN",
-        "credit_account_code": "1021003",
-        "is_active": True,
-    },
-]
+DETAIL_MAPPINGS = {
+    "VS INTER NON-PREM": {"dept": "GEN", "acc": "1021001"},
+    "VS INTER PREM": {"dept": "GEN", "acc": "1021001"},
+    "VS INTER UP PREM": {"dept": "GEN", "acc": "1021001"},
+    "MC INTER NON-PREM": {"dept": "GEN", "acc": "1021002"},
+    "MC INTER PREM": {"dept": "GEN", "acc": "1021002"},
+    "MC INTER UP PREM": {"dept": "GEN", "acc": "1021002"},
+    "JCB PREM": {"dept": "GEN", "acc": "1021003"},
+}
+
+SUMMARY_MAPPINGS = {
+    "VS": {"dept": "GEN", "acc": "1021001"},
+    "MC": {"dept": "GEN", "acc": "1021002"},
+    "JCB": {"dept": "GEN", "acc": "1021003"},
+}
 
 
 def _preview(client, **over):
@@ -85,9 +52,7 @@ def _preview(client, **over):
         "bank_code": "KBANK",
         "post_type": "Detail",
         "jv_description_template": "Credit Card AR Reconcile {Settlement_Date}",
-        "debit_dept_code": "GEN",
-        "debit_account_code": "1021000",
-        "mappings": DETAIL_MAPPINGS,
+        "mappings": {**FIXED_MAPPINGS, **DETAIL_MAPPINGS},
     }
     body.update(over)
     return client.post(f"{BASE}/preview", json=body, headers=AUTH)
@@ -105,16 +70,15 @@ def test_preview_detail_is_three_fixed_debits_and_seven_credits():
         assert len(body["rows"]) == 10, "3 fixed debit legs + 7 credits"
         assert body["total_debit"] == body["total_credit"] == 25091.0
         assert body["balanced"] is True
-        # make_mock_db() with no execute_rows means no BUAccountingConfig is configured
-        # either — the fixed debit keys are as genuinely unmapped as any payment type
-        # would be, which is the correct answer for an unconfigured BU.
-        assert body["unmapped"] == ["commission", "tax", "net"]
+        assert body["unmapped"] == []
         assert body["description"] == "Credit Card AR Reconcile 21/07/2026"
 
 
 def test_preview_summary_collapses_to_three_credits():
     with make_test_client(make_mock_db()) as client:
-        resp = _preview(client, post_type="Summary", mappings=SUMMARY_MAPPINGS)
+        resp = _preview(
+            client, post_type="Summary", mappings={**FIXED_MAPPINGS, **SUMMARY_MAPPINGS}
+        )
         assert resp.status_code == 200
         body = resp.json()
 
@@ -123,14 +87,28 @@ def test_preview_summary_collapses_to_three_credits():
         assert body["balanced"] is True
 
 
+def test_preview_with_nothing_mapped_reports_every_leg_as_unmapped():
+    """No `get_accounting_config` fallback any more (decision #3) — `/preview` takes the
+    caller's word for the whole dict, so an empty one is genuinely nothing mapped."""
+    with make_test_client(make_mock_db()) as client:
+        resp = _preview(client, mappings={})
+        body = resp.json()
+
+        assert sorted(body["unmapped"]) == sorted(
+            ["commission", "tax", "net", *DETAIL_MAPPINGS.keys()]
+        )
+
+
 def test_preview_reports_unmapped_types_rather_than_dropping_them():
     with make_test_client(make_mock_db()) as client:
-        resp = _preview(client, mappings=DETAIL_MAPPINGS[:-1])
+        partial = dict(DETAIL_MAPPINGS)
+        del partial["JCB PREM"]
+        resp = _preview(client, mappings={**FIXED_MAPPINGS, **partial})
         body = resp.json()
 
         # The row still appears — it is what the reviewer has to map — and it still balances.
         assert len(body["rows"]) == 10
-        assert body["unmapped"] == ["JCB PREM", "commission", "tax", "net"]
+        assert body["unmapped"] == ["JCB PREM"]
         assert body["balanced"] is True
 
 
@@ -163,17 +141,30 @@ def test_get_settings_of_a_bank_never_configured_prefills():
         assert body["post_type"] == "Detail"
 
 
-def test_enabling_an_unsupported_bank_is_refused_with_the_supported_list():
+def test_save_settings_rejects_an_unknown_post_type():
+    with make_test_client(make_mock_db()) as client:
+        resp = client.put(
+            f"{BASE}/settings",
+            json={"bank_code": "KBANK", "post_type": "Weekly"},
+            headers=AUTH,
+        )
+        assert resp.status_code == 422
+
+
+def test_enabling_a_bank_with_no_settlement_layout_is_refused():
+    """Replaces `SUPPORTED_BANKS`/`RECONCILABLE_BANKS` (decision #8): `make_mock_db()`
+    with no `execute_rows` answers every query — including `get_settlement_grouping` —
+    with nothing, which is exactly "this bank has no settlement layout on file"."""
     mock_db = make_mock_db()
-    mock_db.execute.return_value.scalars.return_value.first.return_value = None
     with make_test_client(mock_db) as client:
         resp = client.put(
             f"{BASE}/settings",
-            json={"bank_code": "SCB", "enabled": True, "mappings": {}},
+            json={"bank_code": "SCB", "enabled": True},
             headers=AUTH,
         )
         assert resp.status_code == 400
-        assert "KBANK" in resp.json()["detail"]
+        detail = resp.json()["detail"]
+        assert "SCB" in detail and "settlement" in detail.lower()
 
 
 def test_an_unsupported_bank_can_still_be_saved_switched_off():
@@ -183,20 +174,10 @@ def test_an_unsupported_bank_can_still_be_saved_switched_off():
     with make_test_client(mock_db) as client:
         resp = client.put(
             f"{BASE}/settings",
-            json={"bank_code": "SCB", "enabled": False, "mappings": {}},
+            json={"bank_code": "SCB", "enabled": False},
             headers=AUTH,
         )
         assert resp.status_code == 200
-
-
-def test_save_rejects_a_mapping_set_under_an_unknown_post_type():
-    with make_test_client(make_mock_db()) as client:
-        resp = client.put(
-            f"{BASE}/settings",
-            json={"bank_code": "KBANK", "mappings": {"Weekly": []}},
-            headers=AUTH,
-        )
-        assert resp.status_code == 422
 
 
 # ── sample payment types ──────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useT } from '../../i18n/LanguageContext'
 import type { TKey } from '../../i18n/dict'
 import { saveAccountingConfig } from '../../lib/api/config'
+import { saveARSettings, type PostType } from '../../lib/api/arReconcile'
 import { appKey, writeAccountingConfig } from '../../lib/storage'
 import { isAccountAllowed, mergeSuggestion } from '../../lib/deptAccounts'
 import { glFieldLabel } from '../../lib/glFieldLabels'
@@ -234,7 +235,18 @@ export function useMapping() {
   ]
   const missingTopFields = topLevelRequired.filter(f => !f.value?.trim())
 
-  const saveAllSettings = async (shouldClose = false) => {
+  /** What the merged page's Settlement card contributes to a save — omitted entirely
+   *  for a bank with no settlement layout, since there is then nothing to add. */
+  interface SettlementSave {
+    hasSettlementLayout: boolean
+    mappingsToSave: Record<string, FieldMapping>
+    enabled: boolean
+    postType: PostType
+    template: string
+    bankCode: string
+  }
+
+  const saveAllSettings = async (shouldClose = false, settlement?: SettlementSave) => {
     if (saving) return
     const allMissing = [...missingTopFields, ...missingCompanyFields]
     if (allMissing.length > 0) {
@@ -299,6 +311,10 @@ export function useMapping() {
       Object.entries(paymentTypes.paymentAmount).forEach(([type, val]) => {
         if (val.dept || val.acc) allMappings[type] = val
       })
+      // The Settlement card's own rows (both Detail and Summary, source-tagged) — the
+      // same table now (decision #3), so they travel in the one PUT rather than a
+      // mapping payload of their own.
+      if (settlement) Object.assign(allMappings, settlement.mappingsToSave)
 
       try {
         await saveAccountingConfig({
@@ -316,6 +332,33 @@ export function useMapping() {
         localStorage.setItem(appKey('accounting_config_updated'), Date.now().toString())
       } catch {
         /* ignore — localStorage already saved */
+      }
+
+      // Rules first, JV posting profile second — same order and the same reasoning
+      // ReviewDocument.approve() uses for rules-then-JV: a correction is right on its
+      // own regardless of what happens next, so it is not worth losing behind a
+      // partial-save rollback. A bank with no settlement layout has nothing here to
+      // send at all.
+      if (settlement?.hasSettlementLayout) {
+        try {
+          await saveARSettings({
+            bank_code: settlement.bankCode,
+            enabled: settlement.enabled,
+            post_type: settlement.postType,
+            jv_description_template: settlement.template,
+          })
+        } catch (err) {
+          setSaving(false)
+          setModalConfig({
+            show: true,
+            title: t('cc.saveSettlementFailedTitle'),
+            message: t('cc.saveSettlementFailedMsg', {
+              detail: err instanceof Error ? err.message : '',
+            }),
+            type: 'error',
+          })
+          return
+        }
       }
 
       if (shouldClose && window.opener) {
@@ -354,6 +397,9 @@ export function useMapping() {
     bankDescriptions: bankConfig.bankDescriptions,
     setBankDescriptions: bankConfig.setBankDescriptions,
     configLoading: bankConfig.configLoading,
+    // The full merged dict as last loaded from the server (source-tagged), for the
+    // Settlement card to seed its own Detail/Summary rows from without a second fetch.
+    savedMappings: bankConfig.savedMappings,
     company: bankConfig.company,
     setCompany: bankConfig.setCompany,
     handleCompanyChange,

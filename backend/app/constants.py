@@ -27,12 +27,14 @@ class DocType:
 
 
 class PostType:
-    """How finely the AR-reconciliation JV splits its credit side.
+    """How finely a settlement-report JV splits its credit side.
 
-    DETAIL credits one line per printed payment type ("VS INTER UP PREM"); SUMMARY
-    folds them onto the payment type's first token ("VS"). Each keeps its own set of
-    mappings, so switching is a real choice about which accounts the BU maintains,
-    not a display toggle.
+    DETAIL credits one line per printed payment type ("VS INTER UP PREM"); SUMMARY folds
+    them onto the payment type's first token ("VS") — see `cc_jv.group_key`. The two modes
+    produce different key strings for the same scheme, so their GL mappings coexist as
+    ordinary rows in `bu_accounting_mapping_entries` (decision #3, 2026-09-22) rather than
+    needing separate storage: switching modes is a real choice about which accounts the BU
+    maintains, not a display toggle, and it stays one because the keys themselves differ.
     """
 
     DETAIL = "Detail"

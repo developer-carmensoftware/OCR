@@ -357,9 +357,10 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // Every value on that screen is scoped to one bank profile, so the door carries this
   // document's own bank rather than letting the screen open on its hardcoded default.
   // This is the only way in now — the queue's unscoped button is gone (2026-09-16).
+  // Merged into the mapping page 2026-09-22 (decision #3); same `?bank=` contract.
   const arSettingsHref = bankCode
-    ? `#/CreditCardOCR/ar-settings?bank=${encodeURIComponent(bankCode)}`
-    : '#/CreditCardOCR/ar-settings'
+    ? `#/CreditCardOCR/mapping?bank=${encodeURIComponent(bankCode)}`
+    : '#/CreditCardOCR/mapping'
 
   async function approve() {
     if (!doc) return

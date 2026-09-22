@@ -1,14 +1,49 @@
-import { Network, Loader2, CheckCircle2 } from 'lucide-react'
+import {
+  Network,
+  Loader2,
+  CheckCircle2,
+  Scale,
+  Table2,
+  Info,
+  AlertTriangle,
+  XCircle,
+} from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
+import MappingRow from '../components/common/MappingRow'
+import AISuggestBar from '../components/common/AISuggestBar'
+import Badge from '../components/common/Badge'
+import Card from '../components/admin/ui/Card'
+import Switch from '../components/admin/ui/Switch'
+import ARJvPreview from '../components/ar-reconcile/ARJvPreview'
 import '../styles/pages/mapping.css'
+import '../styles/pages/ar-reconcile.css'
+import '../styles/components/mapping-row.css'
+import { useState } from 'react'
 import { useT } from '../i18n/LanguageContext'
 import { useMapping } from '../hooks/mapping'
+import { useSettlementMapping } from '../hooks/mapping/useSettlementMapping'
+import { BANK_CODE_MAP } from '../constants/banks'
+import { POST_TYPES, type PostType } from '../lib/api/arReconcile'
 import TopLevelConfigSection from '../components/credit-card/TopLevelConfigSection'
 import CompanyInfoSection from '../components/credit-card/CompanyInfoSection'
 import MainMappingTable from '../components/credit-card/MainMappingTable'
 import PaymentTypeModal from '../components/credit-card/PaymentTypeModal'
 import SwapLabel from '../components/common/SwapLabel'
 import type { ModalConfig } from '../hooks/useModal'
+import type { BankDisplayName } from '../types/api'
+
+/**
+ * Account Mapping Configuration — and, since 2026-09-22 (decision #3), a bank's
+ * settlement-report posting profile as well. The two used to be separate screens
+ * (`#/CreditCardOCR/ar-settings`) reading and writing separate tables; decision #28
+ * made a settlement JV's debit legs read this page's own commission/tax/net mapping,
+ * and decision #3 finished the collapse by moving the credit-side mapping here too —
+ * so there is exactly one screen and one save for a bank's GL configuration now.
+ *
+ * The Settlement card renders only when the selected bank has a settlement layout
+ * (`hasSettlementLayout`, from `banks.settlement_grouping`) — every other bank sees
+ * exactly the page that existed before this merge.
+ */
 
 function MappingSkeleton() {
   return (
@@ -79,9 +114,20 @@ function MappingSkeleton() {
   )
 }
 
+const TAGS = ['{Settlement_Date}', '{Tax_Invoice_No}', '{Bank_Name}'] as const
+
 export default function Mapping() {
   const { t } = useT()
   const mappingCtrl = useMapping()
+  const [newSettlementType, setNewSettlementType] = useState('')
+
+  const bankCode = mappingCtrl.bank ? BANK_CODE_MAP[mappingCtrl.bank as BankDisplayName] : ''
+  const settlementCtrl = useSettlementMapping(
+    bankCode,
+    mappingCtrl.savedMappings,
+    mappingCtrl.masterAccounts,
+    mappingCtrl.masterDepartments
+  )
 
   if (mappingCtrl.configLoading) return <MappingSkeleton />
 
@@ -95,6 +141,31 @@ export default function Mapping() {
   const amountMappedCount = mappingCtrl.allPaymentTypes.filter(
     t => mappingCtrl.paymentAmount[t]?.dept && mappingCtrl.paymentAmount[t]?.acc
   ).length
+
+  const postTypeLabel = (pt: PostType) =>
+    t(pt === 'Detail' ? 'review.arPostTypeDetail' : 'review.arPostTypeSummary')
+
+  const showSettlement = bankCode && !settlementCtrl.loading && settlementCtrl.hasSettlementLayout
+
+  const handleSave = () =>
+    void mappingCtrl.saveAllSettings(
+      true,
+      showSettlement
+        ? {
+            hasSettlementLayout: true,
+            mappingsToSave: settlementCtrl.mappingsToSave,
+            enabled: settlementCtrl.enabled,
+            postType: settlementCtrl.postType,
+            template: settlementCtrl.template,
+            bankCode,
+          }
+        : undefined
+    )
+
+  const addSettlementType = () => {
+    settlementCtrl.addCustomType(newSettlementType)
+    setNewSettlementType('')
+  }
 
   return (
     <>
@@ -159,11 +230,236 @@ export default function Mapping() {
           openAmountModal={mappingCtrl.openAmountModal}
         />
 
+        {/* Settlement — a settlement report's own posting profile. Only for a bank with
+            a settlement layout (`banks.settlement_grouping`); every other bank's page
+            ends at the section above, exactly as it did before this merge. */}
+        {showSettlement && (
+          <div className="ar-page" style={{ padding: 0, marginTop: '2.5rem' }}>
+            <div className="ar-grid">
+              <div className="ar-col">
+                <Card title={t('cc.settlementCardTitle')} icon={<Scale size={16} />}>
+                  <div className="ar-field" style={{ marginBottom: '1rem' }}>
+                    <Switch
+                      checked={settlementCtrl.enabled}
+                      onChange={settlementCtrl.setEnabled}
+                      label={t('ar.enabled')}
+                    />
+                    {!settlementCtrl.enabled && (
+                      <p className="ar-hint ar-hint-warn">{t('ar.enabledOffHint')}</p>
+                    )}
+                  </div>
+
+                  <fieldset className="ar-field ar-posttype">
+                    <legend>{t('ar.postType')}</legend>
+                    <div
+                      className="segmented-control"
+                      role="radiogroup"
+                      aria-label={t('ar.postType')}
+                    >
+                      {POST_TYPES.map(pt => (
+                        <button
+                          key={pt}
+                          type="button"
+                          role="radio"
+                          aria-checked={settlementCtrl.postType === pt}
+                          className={`segmented-btn ${settlementCtrl.postType === pt ? 'active' : ''}`}
+                          onClick={() => settlementCtrl.setPostType(pt)}
+                        >
+                          <span className="ar-seg-name">{postTypeLabel(pt)}</span>
+                          <span className="ar-seg-count">
+                            {t('ar.postTypeMapped', {
+                              mapped: settlementCtrl.mappedCount(pt),
+                              total: settlementCtrl.rowCount(pt),
+                            })}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="ar-hint">
+                      {settlementCtrl.postType === 'Detail'
+                        ? t('ar.postTypeHintDetail')
+                        : t('ar.postTypeHintSummary')}{' '}
+                      {t('ar.postTypeHintShared')}
+                    </p>
+                  </fieldset>
+
+                  <div className="ar-field">
+                    <label htmlFor="settlement-template">{t('ar.template')}</label>
+                    <input
+                      id="settlement-template"
+                      type="text"
+                      className="admin-form-input ar-mono"
+                      value={settlementCtrl.template}
+                      onChange={e => settlementCtrl.setTemplate(e.target.value)}
+                      onBlur={settlementCtrl.refreshPreview}
+                    />
+                    <div className="ar-tags">
+                      <span className="ar-tags-label">{t('ar.templateTags')}</span>
+                      {TAGS.map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          className="ar-tag"
+                          onClick={() => {
+                            settlementCtrl.setTemplate(`${settlementCtrl.template} ${tag}`.trim())
+                            settlementCtrl.refreshPreview()
+                          }}
+                        >
+                          + {tag}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="ar-example">
+                      <span className="ar-example-label">{t('ar.templateExample')}</span>
+                      <span className="ar-example-value">
+                        {settlementCtrl.preview?.description || t('ar.templateEmpty')}
+                      </span>
+                    </p>
+                  </div>
+                </Card>
+
+                <Card
+                  title={t('ar.mappingTitle')}
+                  icon={<Table2 size={16} />}
+                  actions={
+                    <AISuggestBar
+                      onSuggest={() => void settlementCtrl.runSuggest()}
+                      hasSuggestions={Object.values(settlementCtrl.suggestions).some(s => s)}
+                      loading={settlementCtrl.suggestLoading}
+                      disabled={
+                        mappingCtrl.masterAccounts.length === 0 ||
+                        mappingCtrl.masterDepartments.length === 0 ||
+                        mappingCtrl.loadingOpts
+                      }
+                      onRefresh={mappingCtrl.loadInitialData}
+                      refreshLoading={mappingCtrl.loadingOpts}
+                    />
+                  }
+                >
+                  {(() => {
+                    const total = settlementCtrl.rows.length
+                    const mapped = settlementCtrl.mappedCount(settlementCtrl.postType)
+                    const missing = total - mapped
+                    return (
+                      <div
+                        role="status"
+                        className={`cc-mapping-status ${missing > 0 ? 'missing' : 'ready'}`}
+                      >
+                        {total === 0 ? (
+                          <>
+                            <Info size={14} className="cc-flex-shrink-0" />
+                            <span>{t('ar.mappingEmpty')}</span>
+                          </>
+                        ) : missing > 0 ? (
+                          <>
+                            <AlertTriangle
+                              size={14}
+                              color="var(--rose)"
+                              className="cc-flex-shrink-0"
+                            />
+                            <span>{t('ar.mappingMissing', { missing, total })}</span>
+                            <Badge variant="error" className="cc-required-badge">
+                              {t('ar.mappingBlocks')}
+                            </Badge>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 size={14} className="cc-flex-shrink-0" />
+                            <span>{t('ar.mappingAllMapped', { total })}</span>
+                            <span className="cc-ready-subtext">{t('ar.mappingReady')}</span>
+                          </>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  <div className="table-wrapper ar-table">
+                    <div className="pm-grid-header">
+                      <div>{t('review.arColPaymentType')}</div>
+                      <div>{t('ar.colDeptCode')}</div>
+                      <div>{t('ar.colAccCode')}</div>
+                      <div />
+                    </div>
+
+                    {settlementCtrl.rows.map(row => {
+                      const pending = !row.mapping.dept || !row.mapping.acc
+                      return (
+                        <MappingRow
+                          key={row.code}
+                          type={row.code}
+                          variant={pending ? 'pending' : 'ok'}
+                          value={row.mapping}
+                          onChange={(field, val) =>
+                            settlementCtrl.setRowMapping(row.code, field, val)
+                          }
+                          masterAccounts={mappingCtrl.masterAccounts}
+                          masterDepartments={mappingCtrl.masterDepartments}
+                          deptPlaceholder={t('review.jvDeptPlaceholder')}
+                          accPlaceholder={t('review.jvAccountPlaceholder')}
+                          deptLabel={t('ar.colDeptCode')}
+                          accLabel={t('ar.colAccCode')}
+                          suggestion={settlementCtrl.suggestions[row.code] ?? null}
+                          onAccept={() => settlementCtrl.acceptSuggestion(row.code)}
+                          onReject={() => settlementCtrl.rejectSuggestion(row.code)}
+                          trailing={
+                            <button
+                              type="button"
+                              className="pm-remove-btn"
+                              onClick={() => settlementCtrl.removeType(row.code)}
+                              title={t('ar.removeType', { type: row.code })}
+                            >
+                              <XCircle size={16} />
+                            </button>
+                          }
+                        />
+                      )
+                    })}
+                  </div>
+
+                  <div className="ar-add-row">
+                    <input
+                      type="text"
+                      className="admin-form-input ar-add-input"
+                      value={newSettlementType}
+                      placeholder={t('ar.addPlaceholder')}
+                      aria-label={t('ar.addType')}
+                      onChange={e => setNewSettlementType(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          addSettlementType()
+                        }
+                      }}
+                    />
+                    <button type="button" className="btn btn-outline" onClick={addSettlementType}>
+                      {t('ar.addType')}
+                    </button>
+                    <span className="ar-row-count">
+                      {t('ar.rowCount', {
+                        count: settlementCtrl.rows.length,
+                        postType: postTypeLabel(settlementCtrl.postType),
+                      })}
+                    </span>
+                  </div>
+                </Card>
+              </div>
+
+              <div className="ar-rail">
+                <ARJvPreview
+                  preview={settlementCtrl.preview}
+                  loading={settlementCtrl.previewLoading}
+                  postTypeLabel={postTypeLabel(settlementCtrl.postType)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         <div style={{ marginTop: '2.5rem' }}>
           <button
             type="button"
             className="btn-save-mapping"
-            onClick={() => void mappingCtrl.saveAllSettings(true)}
+            onClick={handleSave}
             disabled={mappingCtrl.saving}
             style={{
               background: mappingCtrl.saving ? '#5eaca3' : 'var(--teal)',

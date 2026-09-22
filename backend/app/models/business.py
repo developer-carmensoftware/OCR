@@ -257,6 +257,15 @@ class BUAccountingMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
     field_type examples: 'commission', 'tax', 'net', 'SALES', 'CASH'
     is_custom=True  → user manually added this payment type
     is_custom=False → fixed type (commission / tax / net)
+
+    Since decision #3 (2026-09-22, docs/email-automation/06-decision-log.md #29) this
+    table also holds a settlement report's credit-side keys — folded in from the
+    now-archived `ar_reconcile_mappings` (Detail keeps a printed label as its
+    `field_type`, e.g. "VS INTER UP PREM"; Summary folds it, e.g. "VS" — the two modes
+    never collide because their key strings differ, so one flat table serves both
+    without `post_type` needing to be part of a uniqueness key here). `source`
+    distinguishes them for display only — `cc_jv.build_jv_rows`/`unmapped_payment_types`
+    resolve a key by plain lookup in the merged dict and never read it.
     """
 
     __tablename__ = "bu_accounting_mapping_entries"
@@ -267,6 +276,11 @@ class BUAccountingMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
     dept_code = Column(String(100), nullable=True, index=True)
     acc_code = Column(String(100), nullable=True, index=True)
     is_custom = Column(Boolean, nullable=False, default=False)
+    # NULL = usable on any layout (the three fixed types, every pre-existing
+    # fee-invoice payment type). 'settlement_detail' / 'settlement_summary' name which
+    # of a settlement report's two credit-side vocabularies wrote this row — see the
+    # class docstring. Informational only.
+    source = Column(String(20), nullable=True)
 
     config = relationship("BUAccountingConfig", back_populates="entries")
 
@@ -282,12 +296,18 @@ class BUAccountingMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
 
 
 class ARReconcileSetting(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
-    """Per-(tenant, bank) configuration for Detailed Credit Card AR Reconciliation.
+    """Per-(tenant, bank) posting profile for a settlement report's JV.
 
     Separate from BUAccountingConfig, which is one row per tenant and describes the
-    credit-card wizard's JV. This describes a different JV built from a different
-    document, and the FRD scopes it per bank profile because a BU can settle with
-    several acquirers on different charts of accounts.
+    credit-card wizard's JV in general — a BU can settle with several acquirers on
+    different charts of accounts, so this scopes per bank. What it does NOT hold any
+    more (since decision #3, 2026-09-22) is a mapping table of its own: the credit-side
+    payment-type mapping lives in `bu_accounting_mapping_entries` alongside
+    commission/tax/net, because a settlement report's debit legs already read that
+    table (decision #28) and Detail/Summary's key strings never collide with each
+    other or with a fee-invoice payment type. What is left here is genuinely
+    per-(tenant, bank): whether this bank's settlement report reconciles at all, which
+    grouping it uses, and how its JV is worded.
     """
 
     __tablename__ = "ar_reconcile_settings"
@@ -302,67 +322,26 @@ class ARReconcileSetting(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
     post_type: Mapped[str] = mapped_column(
         String(10), nullable=False, default=PostType.DETAIL, server_default=PostType.DETAIL
     )
-    # {Settlement_Date} / {Tax_Invoice_No} / {Bank_Name} — ar_reconcile_jv.render_jv_description.
+    # {Settlement_Date} / {Tax_Invoice_No} / {Bank_Name} — cc_jv.render_jv_description.
     jv_description_template: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
         default="Credit Card AR Reconcile {Settlement_Date}",
         server_default="Credit Card AR Reconcile {Settlement_Date}",
     )
-    # The control account this JV clears. Prefilled from the BU's credit-card mapping,
-    # but editable: if the two disagree the control account never reaches zero, which is
-    # why the settings screen warns rather than silently accepting a divergence.
+    # The v1.1 "clearing account" (FRD §6.1 as originally written) — a control account
+    # this JV cleared, before decision #28 replaced it with three fixed debit legs read
+    # from the BU's own credit-card mapping. Left in place, unread by every builder and
+    # unwritten by the settings screen, so the two-JV shape could be restored for a
+    # customer who needs it without a schema change. Do not read or write these.
     debit_dept_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     debit_account_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
-
-    mappings = relationship(
-        "ARReconcileMapping",
-        back_populates="setting",
-        primaryjoin="and_(ARReconcileSetting.id == foreign(ARReconcileMapping.setting_id), "
-        "ARReconcileMapping.deleted_at == None)",
-    )
 
     __table_args__ = (
         Index(
             "uq_ar_reconcile_setting_active",
             "tenant_id",
             "bank_code",
-            unique=True,
-            postgresql_where=text("deleted_at IS NULL"),
-        ),
-    )
-
-
-class ARReconcileMapping(Base, TimestampMixin, SoftDeleteMixin):
-    """Payment type → credit-side GL account, per post type.
-
-    post_type is part of the key because Detail and Summary are different vocabularies
-    over the same document: "VS INTER UP PREM" in one, "VS" in the other. A BU that runs
-    Summary never fills the Detail rows, and switching is meant to be a deliberate act
-    with visible cost, not a silent re-read of the same rows.
-    """
-
-    __tablename__ = "ar_reconcile_mappings"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    setting_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("ar_reconcile_settings.id"), nullable=False, index=True
-    )
-    post_type: Mapped[str] = mapped_column(String(10), nullable=False)
-    payment_type_code: Mapped[str] = mapped_column(String(100), nullable=False)
-    payment_type_desc: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    credit_dept_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
-    credit_account_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-
-    setting = relationship("ARReconcileSetting", back_populates="mappings")
-
-    __table_args__ = (
-        Index(
-            "uq_ar_reconcile_mapping_active",
-            "setting_id",
-            "post_type",
-            "payment_type_code",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
         ),

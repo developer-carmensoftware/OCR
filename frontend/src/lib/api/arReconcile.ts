@@ -1,27 +1,26 @@
 import { apiFetch } from './client'
 import { API } from './endpoints'
+import type { FieldMapping } from '../../types/api'
 
-/** Detailed Credit Card AR Reconciliation — settings, mappings and the JV preview. */
+/** A settlement report's per-bank posting profile, and the JV preview it produces.
+ *
+ * Reshaped 2026-09-22 (decision #3, docs/email-automation/06-decision-log.md #29): the
+ * payment-type mapping this feature used to own moved into
+ * `bu_accounting_mapping_entries`, saved through `PUT /api/v1/config/accounting`
+ * alongside commission/tax/net — not through this module any more. What is left here is
+ * the posting profile itself (enabled / post type / description template) and the JV
+ * preview, which still needs the *unsaved* form state to track edits live.
+ */
 
 export type PostType = 'Detail' | 'Summary'
 export const POST_TYPES: PostType[] = ['Detail', 'Summary']
 
+/** One payment type a settlement report has printed, before it has a GL account of its
+ *  own — `getSamplePaymentTypes`' only remaining shape. Once a code has an account it is
+ *  an ordinary entry in `AccountingConfigResponse.mappings`, like any other. */
 export interface ARMappingItem {
   payment_type_code: string
   payment_type_desc?: string | null
-  credit_dept_code?: string | null
-  credit_account_code?: string | null
-  is_active: boolean
-}
-
-/** One row of the bank selector, as the server lists it. */
-export interface ARBankOption {
-  code: string
-  name: string
-  /** This release can read this bank's settlement report. The rest are listed anyway —
-   *  FRD Out-of-Scope puts SCB, BBL and BAY in Phase 2, and a roadmap the customer cannot
-   *  see is not a roadmap. */
-  supported: boolean
 }
 
 export interface ARSettings {
@@ -29,12 +28,14 @@ export interface ARSettings {
   enabled: boolean
   post_type: PostType
   jv_description_template: string
-  /** Keyed by post type. Both sets travel together so saving from one view cannot
-   *  delete the other's rows. */
-  mappings: Record<string, ARMappingItem[]>
-  /** The selector's options. The screen keeps no bank list of its own — names come from
-   *  the `banks` table and `supported` from the server's own SUPPORTED_BANKS. */
-  banks: ARBankOption[]
+}
+
+/** `ARSettings` plus what only the server can answer: whether this bank has a
+ *  settlement layout at all (`banks.settlement_grouping is not null`) — what decides
+ *  whether the merged mapping page's Settlement card renders for the bank currently
+ *  selected. Not saved. */
+export interface ARSettingsResponse extends ARSettings {
+  has_settlement_layout: boolean
 }
 
 export interface ARPreviewRow {
@@ -66,24 +67,21 @@ export interface ARPreview {
   post_type: PostType
 }
 
-export async function getARSettings(bankCode: string): Promise<ARSettings> {
+export async function getARSettings(bankCode: string): Promise<ARSettingsResponse> {
   const res = await apiFetch(API.arReconcile.settings(bankCode))
   if (!res.ok) throw new Error(`AR settings fetch failed (${res.status})`)
-  return res.json() as Promise<ARSettings>
+  return res.json() as Promise<ARSettingsResponse>
 }
 
-/** `blockers` and `banks` are things the server tells the screen, not things it saves. */
-export async function saveARSettings(
-  payload: Omit<ARSettings, 'blockers' | 'banks'>
-): Promise<void> {
+export async function saveARSettings(payload: ARSettings): Promise<void> {
   const res = await apiFetch(API.arReconcile.save, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
-    // The server refuses an enabled bank it cannot read; that message names which banks
-    // it can, so it is worth showing rather than a status code.
+    // The server refuses an enabled bank it cannot read; that message names why, so it
+    // is worth showing rather than a status code.
     const body = await res.json().catch(() => null)
     throw new Error(body?.detail || `AR settings save failed (${res.status})`)
   }
@@ -93,7 +91,11 @@ export interface ARPreviewRequest {
   bank_code: string
   post_type: PostType
   jv_description_template: string
-  mappings: ARMappingItem[]
+  /** The merged mapping page's *whole* live mapping dict — commission/tax/net, every
+   *  fee-invoice payment type, and this bank's settlement credit-side rows, all in the
+   *  same shape `AccountingConfigResponse.mappings` already is. Sending the same shape
+   *  the page already holds in memory means no reshaping at the call site. */
+  mappings: Record<string, FieldMapping>
 }
 
 export async function previewARJv(payload: ARPreviewRequest): Promise<ARPreview> {

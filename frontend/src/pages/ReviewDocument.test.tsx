@@ -1339,7 +1339,7 @@ describe('a parked settlement report', () => {
 
     await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     const link = screen.getByRole('link', { name: /AR reconciliation settings/i })
-    expect(link).toHaveAttribute('href', '#/CreditCardOCR/ar-settings?bank=KBANK')
+    expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping?bank=KBANK')
   })
 
   it('falls back to the bare door when the document names no bank', async () => {
@@ -1355,6 +1355,6 @@ describe('a parked settlement report', () => {
 
     await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     const link = screen.getByRole('link', { name: /AR reconciliation settings/i })
-    expect(link).toHaveAttribute('href', '#/CreditCardOCR/ar-settings')
+    expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
   })
 })

@@ -1,9 +1,20 @@
-"""Settings, mappings, and the JV a parked settlement report would post.
+"""A settlement report's posting profile, and the JV a parked one would post.
 
 `jv_for_document` is the one to read first. The review screen renders what it returns and
 `approve_document` posts what it returns, so it is the whole of "what reaches the customer's
 books" on the human-approves path — which is the DEFAULT path, since auto_post starts false.
-It had no test at all until this file; the eight ingest tests only cover the unattended one.
+
+Rewritten 2026-09-22 for decision #3 (docs/email-automation/06-decision-log.md #29): the
+credit-side payment-type mapping this feature used to own (`ar_reconcile_mappings`, its own
+table with its own `_get_mappings`/`mappings_dict(list[ARMappingItem])`) folded into
+`bu_accounting_mapping_entries` — the same table `get_accounting_config` already read for
+the three fixed debit legs. `jv_for_document` now makes exactly one query for mapping data
+(`get_accounting_config`, one merged dict) instead of two (its own mapping table, then the
+credit-card one). Everything that assumed two separate stores — `_get_mappings`, the
+`ARSettingsOut.mappings` field, `ARReconcileMapping.is_active`, the clearing-account
+prefill, the bank selector's own `SUPPORTED_BANKS`/`RECONCILABLE_BANKS` — is gone with it;
+tests that only existed to pin those are deleted below rather than adapted, since the thing
+they proved no longer exists to prove.
 """
 
 from types import SimpleNamespace
@@ -12,7 +23,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.constants import PostType
-from app.models.schemas import ARMappingItem
+from app.models.schemas.common import FieldMapping
 from app.services import ar_reconcile_service as svc
 
 TENANT = "11111111-1111-1111-1111-111111111111"
@@ -26,32 +37,20 @@ def _setting(**over):
         enabled=True,
         post_type=PostType.SUMMARY,
         jv_description_template="Credit Card AR Reconcile {Settlement_Date}",
-        debit_dept_code="GEN",
-        debit_account_code="1021000",
     )
     base.update(over)
     return SimpleNamespace(**base)
-
-
-def _mapping(code, dept="GEN", acc="1021001", post_type=PostType.SUMMARY, is_active=True):
-    return SimpleNamespace(
-        post_type=post_type,
-        payment_type_code=code,
-        payment_type_desc=None,
-        credit_dept_code=dept,
-        credit_account_code=acc,
-        is_active=is_active,
-    )
 
 
 def _result(rows):
     r = MagicMock()
     r.scalars.return_value.first.return_value = rows[0] if rows else None
     r.scalars.return_value.all.return_value = list(rows)
-    # Multi-column selects (bank_options) read .all() off the result itself.
+    # Multi-column selects read .all() off the result itself.
     r.all.return_value = list(rows)
-    # accounting_config_service._get_config reads .scalar_one_or_none() directly, not
-    # .scalars().first() — a different access pattern on the same mock result.
+    # accounting_config_service._get_config and get_settlement_grouping both read
+    # .scalar_one_or_none() directly, not .scalars().first() — a different access
+    # pattern on the same mock result.
     r.scalar_one_or_none.return_value = rows[0] if rows else None
     return r
 
@@ -80,34 +79,53 @@ EXTRACTED = {
     "total_row": {"commis_amt": "300.00", "tax_amt": "20.00", "total": "11,376.00"},
 }
 
-SUMMARY_MAPS = [_mapping("VS"), _mapping("MC", acc="1021002"), _mapping("JCB", acc="1021003")]
+
+def _entry(field_type, dept="GEN", acc="9001", is_custom=False, source=None):
+    """One `BUAccountingMappingEntry` row — the single table commission/tax/net and a
+    settlement report's credit-side keys share since decision #3. `source` is carried
+    for completeness; the JV builder never reads it (plain string lookup only)."""
+    return SimpleNamespace(
+        field_type=field_type, dept_code=dept, acc_code=acc, is_custom=is_custom, source=source
+    )
 
 
-def _cc_entry(field_type, dept="GEN", acc="9001"):
-    return SimpleNamespace(field_type=field_type, dept_code=dept, acc_code=acc, is_custom=False)
-
-
-def _cc_full_mapping():
-    """Two more `.execute()` results — a `BUAccountingConfig` row, then its 3 fixed
-    entries — what `get_accounting_config` (`_get_config` then `_get_entries`) reads for
-    the debit side. Unpack after the AR-specific rows in any `_db(...)` call that reaches
-    `jv_for_document`'s commission/tax/net lookup: `_db([_setting()], MAPS, *_cc_full_mapping())`.
-    """
+def _fixed_entries(commission="5001", tax="5002", net="1010"):
     return [
-        SimpleNamespace(
-            id=9,
-            bank_code=None,
-            file_prefix=None,
-            file_source=None,
-            description=None,
-            branch=None,
-            bank_descriptions={},
-        )
-    ], [
-        _cc_entry("commission", acc="5001"),
-        _cc_entry("tax", acc="5002"),
-        _cc_entry("net", acc="1010"),
+        _entry("commission", acc=commission),
+        _entry("tax", acc=tax),
+        _entry("net", acc=net),
     ]
+
+
+def _summary_entries():
+    return [
+        _entry("VS", acc="1021001", is_custom=True, source="settlement_summary"),
+        _entry("MC", acc="1021002", is_custom=True, source="settlement_summary"),
+        _entry("JCB", acc="1021003", is_custom=True, source="settlement_summary"),
+    ]
+
+
+def _config(entries):
+    """Two `.execute()` results — a `BUAccountingConfig` row, then its entries — what
+    `get_accounting_config` (`_get_config` then `_get_entries`) reads. Pass the merged
+    list `_fixed_entries() + _summary_entries()` (or a subset) since both live in the
+    one table now."""
+    cfg = SimpleNamespace(
+        id=9,
+        bank_code=None,
+        file_prefix=None,
+        file_source=None,
+        description=None,
+        branch=None,
+        bank_descriptions={},
+    )
+    return [cfg], list(entries)
+
+
+def _no_config():
+    """No `BUAccountingConfig` row at all — `get_accounting_config` returns an empty
+    response after one query and never reaches `_get_entries`."""
+    return ([],)
 
 
 # ── jv_for_document ───────────────────────────────────────────────────────────
@@ -115,7 +133,7 @@ def _cc_full_mapping():
 
 @pytest.mark.asyncio
 async def test_jv_for_document_builds_the_entry_the_reviewer_approves():
-    db = _db([_setting()], SUMMARY_MAPS, *_cc_full_mapping())
+    db = _db([_setting()], *_config(_fixed_entries() + _summary_entries()))
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
@@ -139,8 +157,9 @@ async def test_jv_for_document_builds_the_entry_the_reviewer_approves():
 async def test_jv_for_document_reports_a_missing_fixed_debit_mapping():
     """A JV missing its commission/tax/net GL mapping still balances and still posts —
     nothing about the arithmetic is wrong, which is why `approve_document` checks
-    `unmapped` separately rather than trusting `balanced` to catch it."""
-    db = _db([_setting()], SUMMARY_MAPS, [])  # no BUAccountingConfig row at all
+    `unmapped` separately rather than trusting `balanced` to catch it. Only the credit
+    side (VS/MC/JCB) is configured; no commission/tax/net rows exist in the same table."""
+    db = _db([_setting()], *_config(_summary_entries()))
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
@@ -153,13 +172,13 @@ async def test_jv_for_document_reports_a_missing_fixed_debit_mapping():
 async def test_jv_for_document_uses_the_settings_post_type_not_the_labels_on_the_page():
     """Detail and Summary are different vocabularies over the same rows. Which one applies
     is the BU's saved choice — the document looks identical either way."""
-    detail_maps = [
-        _mapping("VS INTER NON-PREM", post_type=PostType.DETAIL),
-        _mapping("VS INTER PREM", post_type=PostType.DETAIL),
-        _mapping("MC INTER PREM", acc="1021002", post_type=PostType.DETAIL),
-        _mapping("JCB PREM", acc="1021003", post_type=PostType.DETAIL),
+    detail_entries = _fixed_entries() + [
+        _entry("VS INTER NON-PREM", acc="1021001", is_custom=True, source="settlement_detail"),
+        _entry("VS INTER PREM", acc="1021001", is_custom=True, source="settlement_detail"),
+        _entry("MC INTER PREM", acc="1021002", is_custom=True, source="settlement_detail"),
+        _entry("JCB PREM", acc="1021003", is_custom=True, source="settlement_detail"),
     ]
-    db = _db([_setting(post_type=PostType.DETAIL)], detail_maps, *_cc_full_mapping())
+    db = _db([_setting(post_type=PostType.DETAIL)], *_config(detail_entries))
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
@@ -169,7 +188,10 @@ async def test_jv_for_document_uses_the_settings_post_type_not_the_labels_on_the
 
 @pytest.mark.asyncio
 async def test_jv_for_document_names_the_types_that_would_block_the_post():
-    db = _db([_setting()], [_mapping("VS")], *_cc_full_mapping())
+    entries = _fixed_entries() + [
+        _entry("VS", acc="1021001", is_custom=True, source="settlement_summary")
+    ]
+    db = _db([_setting()], *_config(entries))
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
@@ -178,21 +200,6 @@ async def test_jv_for_document_names_the_types_that_would_block_the_post():
     assert sorted(out.unmapped) == ["JCB", "MC"]
     assert [r.acc for r in out.rows[3:] if not r.acc] != []
     assert out.balanced is True
-
-
-@pytest.mark.asyncio
-async def test_an_inactive_mapping_reads_as_unmapped_not_as_blank():
-    """Inactive means "this payment type is not ours to post", which must not resolve to an
-    empty dept/acc that then posts to nothing."""
-    db = _db(
-        [_setting()],
-        [_mapping("VS"), _mapping("MC", is_active=False), _mapping("JCB")],
-        *_cc_full_mapping(),
-    )
-
-    out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
-
-    assert out.unmapped == ["MC"]
 
 
 @pytest.mark.asyncio
@@ -205,7 +212,7 @@ async def test_jv_for_document_is_none_when_the_bank_was_never_configured():
 
 @pytest.mark.asyncio
 async def test_jv_for_document_survives_a_document_with_no_number():
-    db = _db([_setting()], SUMMARY_MAPS, *_cc_full_mapping())
+    db = _db([_setting()], *_config(_fixed_entries() + _summary_entries()))
     out = await svc.jv_for_document(db, TENANT, "KBANK", {**EXTRACTED, "doc_no": ""})
 
     assert out.doc_no == ""
@@ -213,61 +220,92 @@ async def test_jv_for_document_survives_a_document_with_no_number():
     assert out.rows[3].desc == "VS", "credit legs drop it too, when there is no number"
 
 
+@pytest.mark.asyncio
+async def test_jv_for_document_with_no_accounting_config_row_leaves_everything_unmapped():
+    """The debit legs and the credit groups now come from the same query — if the BU has
+    never saved an accounting config at all, both sides are unmapped, not just one."""
+    db = _db([_setting()], *_no_config())
+
+    out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
+
+    assert sorted(out.unmapped) == ["JCB", "MC", "VS", "commission", "net", "tax"]
+
+
 # ── mappings_dict ─────────────────────────────────────────────────────────────
+#
+# Reshaped 2026-09-22: this used to take `list[ARMappingItem]` (this feature's own
+# mapping rows, with an `is_active` flag `BUAccountingMappingEntry` has no equivalent
+# of). It now takes `dict[str, FieldMapping]` — the same shape
+# `AccountingConfigResponse.mappings` already is — because `/preview` sends the merged
+# mapping page's whole live state through it, not a post-type-scoped list of this
+# feature's own rows.
 
 
-def test_mappings_dict_drops_inactive_rows_rather_than_passing_them_through_blank():
-    items = [
-        ARMappingItem(payment_type_code="VS", credit_dept_code="GEN", credit_account_code="1"),
-        ARMappingItem(
-            payment_type_code="MC",
-            credit_dept_code="GEN",
-            credit_account_code="2",
-            is_active=False,
-        ),
-    ]
-    assert svc.mappings_dict(items) == {"VS": {"dept": "GEN", "acc": "1"}}
+def test_mappings_dict_converts_field_mappings_to_plain_dicts():
+    items = {
+        "VS": FieldMapping(dept="GEN", acc="1021001"),
+        "MC": FieldMapping(dept=None, acc=None, source="settlement_summary"),
+    }
+    assert svc.mappings_dict(items) == {
+        "VS": {"dept": "GEN", "acc": "1021001"},
+        "MC": {"dept": "", "acc": ""},
+    }
 
 
-# ── get_settings on a configured BU ───────────────────────────────────────────
+# ── get_settings ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_get_settings_returns_both_mapping_sets_for_a_configured_bank():
-    rows = [_mapping("VS"), _mapping("VS INTER PREM", post_type=PostType.DETAIL)]
-    # _get_setting, bank_options, _get_mappings.
-    db = _db([_setting()], [], rows)
+async def test_get_settings_returns_the_posting_profile_for_a_configured_bank():
+    # _get_setting, get_settlement_grouping.
+    db = _db([_setting()], ["first_token"])
 
     out = await svc.get_settings(db, TENANT, "KBANK")
 
     assert out.enabled is True
     assert out.post_type == PostType.SUMMARY
-    assert [i.payment_type_code for i in out.mappings[PostType.SUMMARY]] == ["VS"]
-    assert [i.payment_type_code for i in out.mappings[PostType.DETAIL]] == ["VS INTER PREM"]
+    assert out.jv_description_template == "Credit Card AR Reconcile {Settlement_Date}"
+    assert out.has_settlement_layout is True
 
 
 @pytest.mark.asyncio
-async def test_get_settings_prefills_the_clearing_account_from_the_credit_card_mapping():
-    """The lump this JV debits is the one the credit-card JV credited. Two accounts that
-    disagree give an entry that balances and never zeroes the control account."""
-    cfg = SimpleNamespace(id=3)
-    entry = SimpleNamespace(dept_code="GEN", acc_code="1021000")
-    # _get_setting (none) -> bank_options -> BUAccountingConfig -> its 'net' entry.
-    db = _db([], [], [cfg], [entry])
+async def test_get_settings_defaults_for_a_bank_never_saved():
+    db = _db([], ["first_token"])
 
     out = await svc.get_settings(db, TENANT, "KBANK")
 
-    assert (out.debit_dept_code, out.debit_account_code) == ("GEN", "1021000")
-    assert out.enabled is False, "prefilled, but nothing is switched on by reading it"
+    assert out.enabled is False
+    assert out.post_type == PostType.DETAIL
+    assert out.has_settlement_layout is True
 
 
 @pytest.mark.asyncio
-async def test_a_half_filled_credit_card_mapping_prefills_nothing():
-    db = _db([], [], [SimpleNamespace(id=3)], [SimpleNamespace(dept_code="GEN", acc_code=None)])
+async def test_get_settings_reports_no_settlement_layout_for_a_bank_that_has_none():
+    db = _db([_setting(bank_code="SCB")], [])
 
-    out = await svc.get_settings(db, TENANT, "KBANK")
+    out = await svc.get_settings(db, TENANT, "SCB")
 
-    assert out.debit_dept_code is None and out.debit_account_code is None
+    assert out.has_settlement_layout is False
+
+
+# ── get_settlement_grouping ───────────────────────────────────────────────────
+#
+# Replaces the deleted SUPPORTED_BANKS / RECONCILABLE_BANKS constants and the bank
+# selector they fed (decision #8) — the merged mapping page uses its own bank list
+# (constants/banks.ts, the same one the credit-card wizard always had) and reads this
+# only to decide whether its Settlement card renders for the bank currently selected.
+
+
+@pytest.mark.asyncio
+async def test_get_settlement_grouping_reads_the_banks_table():
+    db = _db(["first_token"])
+    assert await svc.get_settlement_grouping(db, "KBANK") == "first_token"
+
+
+@pytest.mark.asyncio
+async def test_get_settlement_grouping_is_none_for_a_bank_with_no_settlement_layout():
+    db = _db([])
+    assert await svc.get_settlement_grouping(db, "SCB") is None
 
 
 # ── save_settings ─────────────────────────────────────────────────────────────
@@ -278,81 +316,34 @@ async def test_saving_over_an_existing_row_updates_it_rather_than_adding_a_secon
     from app.models.schemas import ARSettingsIn
 
     row = _setting(enabled=False, post_type=PostType.DETAIL)
-    db = _db([row], [])
+    db = _db([row])
     req = ARSettingsIn(
         bank_code="KBANK",
         enabled=True,
         post_type=PostType.SUMMARY,
         jv_description_template="AR {Tax_Invoice_No}",
-        debit_dept_code="GEN",
-        debit_account_code="1021000",
-        mappings={PostType.SUMMARY: [ARMappingItem(payment_type_code="VS")]},
     )
 
     await svc.save_settings(db, TENANT, req)
 
     assert row.enabled is True and row.post_type == PostType.SUMMARY
     assert row.jv_description_template == "AR {Tax_Invoice_No}"
-    # One ARReconcileMapping added; the setting row was updated in place, not re-added.
-    added = [type(o).__name__ for o in [c.args[0] for c in db.add.call_args_list]]
-    assert added == ["ARReconcileMapping"]
+    # No mapping table of this feature's own to write to any more (decision #3) — the
+    # row is updated in place and nothing is added.
+    assert db.add.call_args_list == []
     db.commit.assert_awaited()
 
 
 @pytest.mark.asyncio
-async def test_an_empty_payment_type_code_is_not_stored():
+async def test_saving_a_new_bank_adds_one_row():
     from app.models.schemas import ARSettingsIn
 
-    db = _db([_setting()], [])
-    await svc.save_settings(
-        db,
-        TENANT,
-        ARSettingsIn(
-            bank_code="KBANK",
-            mappings={PostType.SUMMARY: [ARMappingItem(payment_type_code="   ")]},
-        ),
-    )
-    assert db.add.call_args_list == []
+    db = _db([])  # no existing setting for this (tenant, bank)
+    req = ARSettingsIn(bank_code="KBANK", enabled=True, post_type=PostType.DETAIL)
 
+    await svc.save_settings(db, TENANT, req)
 
-# ── The bank selector (FRD §3.1 + Out-of-Scope) ───────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_the_selector_lists_the_phase_2_banks_and_marks_which_are_readable():
-    """Both halves of this used to live in the browser, and one of them was deleted.
-
-    FRD §3.1 lists SCB, BBL and BAY beside KBANK, and Out-of-Scope says they arrive in
-    Phase 2 — so they are offered and marked, not hidden. The names come from the `banks`
-    table for the same reason `list_bank_codes` exists, and `supported` comes from
-    SUPPORTED_BANKS, which is the only place that knows.
-    """
-    res = MagicMock()
-    res.all.return_value = [
-        ("KBANK", "Kasikornbank"),
-        ("SCB", "Siam Commercial Bank"),
-        ("BBL", "Bangkok Bank"),
-        ("BAY", "Krungsri"),
-    ]
-    db = AsyncMock()
-    db.execute = AsyncMock(return_value=res)
-
-    out = await svc.bank_options(db)
-
-    assert [(b.code, b.supported) for b in out] == [
-        ("KBANK", True),
-        ("SCB", False),
-        ("BBL", False),
-        ("BAY", False),
-    ]
-    assert out[0].name == "Kasikornbank", "the name is the registry's, not a second list"
-
-
-def test_the_gateways_are_not_on_the_reconciliation_roadmap():
-    """KTC, GHL, PayPal and SiamPay issue processor fee invoices.
-
-    There is no lump control account for this JV to clear, so they are not Phase 2 — they
-    are not on the list at all, and offering them greyed out would promise otherwise.
-    """
-    assert set(svc.RECONCILABLE_BANKS).isdisjoint({"KTC", "GHL", "PAYPAL", "SIAMPAY"})
-    assert set(svc.SUPPORTED_BANKS) <= set(svc.RECONCILABLE_BANKS)
+    assert len(db.add.call_args_list) == 1
+    added = db.add.call_args_list[0].args[0]
+    assert added.bank_code == "KBANK" and added.enabled is True
+    db.commit.assert_awaited()

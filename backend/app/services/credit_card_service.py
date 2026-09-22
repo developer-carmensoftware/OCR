@@ -435,8 +435,8 @@ def _normalize_ar_settlement(
     if anchor is not None and "MERCHANT" not in (anchor.transaction or "").upper():
         anchor = None
 
-    # `ar_reconcile_jv.build_ar_jv_rows` reads its three debit legs (commission / VAT /
-    # net) from this row, not from `details` — a settlement report's per-payment-type
+    # `cc_jv.build_jv_rows`'s grouping branch reads its three debit legs (commission /
+    # VAT /    # net) from this row, not from `details` — a settlement report's per-payment-type
     # rows print those three columns as dashes, so the anchor is the only place they
     # exist. Kept on the payload itself, not just used locally: `review_payload` is what
     # `jv_for_document` rebuilds the JV from when a human approves later.

@@ -75,6 +75,16 @@ class Bank(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     tax_id = Column(String(20), nullable=True)
     address = Column(String(500), nullable=True)
 
+    # Whether — and how — this bank's settlement report (not its fee invoice) folds
+    # payment types when Summary mode is chosen. NULL = no settlement layout at all,
+    # which is what gates the merged mapping page's Settlement card (decision #8,
+    # 2026-09-22 — replaces the old SUPPORTED_BANKS/RECONCILABLE_BANKS constants in
+    # ar_reconcile_service.py). The value names the fold rule for readability
+    # ('first_token', the only one anyone has needed so far — cc_jv.group_key hardcodes
+    # it) but nothing dispatches on its content yet; add that the day a second bank
+    # needs a different rule, not before.
+    settlement_grouping = Column(String(20), nullable=True)
+
 
 class PromptTemplate(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """

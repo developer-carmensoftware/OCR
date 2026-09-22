@@ -66,8 +66,8 @@ def test_clean_report_keeps_its_rows_and_says_nothing():
     assert [d.transaction for d in doc.details] == [t for t, _ in ROWS]
     assert codes(doc) == []
 
-    # Consumed onto its own field, not just dropped — `ar_reconcile_jv.build_ar_jv_rows`
-    # reads its three debit legs from here (decision #28).
+    # Consumed onto its own field, not just dropped — `cc_jv.build_jv_rows`'s grouping
+    # branch reads its three debit legs from here (decision #28).
     assert doc.total_row is not None
     assert doc.total_row.transaction == "TOTAL BY MERCHANT ID"
     assert (doc.total_row.commis_amt, doc.total_row.tax_amt) == ("582.99", "40.81")

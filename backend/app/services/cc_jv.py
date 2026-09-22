@@ -10,15 +10,36 @@ layout changes there, change it here — test_cc_jv.py pins the arithmetic, and
 silently: each side is asserted against that one file, so changing a field here
 reddens THIS suite (and changing ccJv.ts reddens the frontend one). The fix is to
 change both implementations, not to edit the contract to match one of them.
+
+Also the settlement-report builder for Detailed Credit Card AR Reconciliation
+(formerly app/services/ar_reconcile_jv.py, folded in here 2026-09-22). Decision #28
+(docs/email-automation/06-decision-log.md) made a settlement JV's debit side identical
+to a fee invoice's — both read the BU's commission/tax/net mapping, from the same
+dict — which left the two builders differing in exactly two places: where the debit
+figures come from (`total_row`, a single anchor row a settlement report prints, vs
+summed across every `details` row — a document-layout fact, not a feature) and how the
+credit side groups (`group_key`'s Detail/Summary split — a user option). Everything
+else — the payload shape, the balance check, the description template — was already
+one implementation reached from two call sites. `build_jv_rows`'s `total_row=` and
+`grouping=` keyword arguments are that fact and that option, spelled out; their
+defaults reproduce the original fee-invoice behaviour exactly, which is what lets
+`test_contract_fixture` below keep pinning the browser twin unchanged.
+
+The browser twin (ccJv.ts) covers only the default branch. A settlement report has no
+wizard path — email ingest is its only poster (decision #4) — so nothing on the
+frontend ever needs the `grouping` branch to exist, and ccJv.ts stays exactly as it
+was before this merge.
 """
 
 from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from app.constants import PostType
 from app.models.schemas import ExtractedDetailRow
 
 # Bank code → Carmen GL source. Mirrors BANK_SOURCE_MAP in frontend/src/constants/banks.ts.
@@ -33,9 +54,18 @@ BANK_SOURCE_MAP: dict[str, str] = {
     "SIAMPAY": "ACSP",
 }
 
-# Same three fixed field types the accounting-config service uses; everything else
-# in `mappings` is a payment type (splitMappings in useAccountingConfig.ts).
+# Same three fixed field types the accounting-config service uses; everything else in
+# `mappings` is a payment type (splitMappings in useAccountingConfig.ts) — including,
+# since the settlement-report merge, a settlement report's own credit-side keys. They
+# all live in the same dict now (bu_accounting_mapping_entries), distinguished only by
+# an informational `source` column the JV builder never reads.
 _FIXED_TYPES = ("commission", "tax", "net")
+
+# Rounding floor for the double-entry check a settlement JV runs (`is_balanced`). NFR
+# §9.4 says tolerance 0.00, and this is how that is spelled once floats are involved:
+# anything at or under half a satang is the representation, anything above it is a
+# real imbalance.
+BALANCE_EPSILON = 0.005
 
 
 def _fold(text: str) -> str:
@@ -83,57 +113,167 @@ def r2(x: float) -> float:
     return round(x + 0.0, 2)
 
 
-def build_jv_rows(details: list[ExtractedDetailRow], mappings: dict[str, Any]) -> list[dict]:
-    """Consolidated layout — the only one any bank uses (GROUP_DEBIT_BY_TRANSACTION=false).
+def group_key(payment_type: str, post_type: str) -> str:
+    """The mapping key a printed settlement-report payment type resolves to.
 
-    Credit legs stay one per payment type; the debit side collapses to the three
-    canonical buckets, summed. Σdebit == Σcredit as long as every line satisfies
-    pay = commission + tax + net, which the extractor guarantees.
+    Detail keeps the label as printed. Summary takes its first token, which is how KBANK
+    writes the scheme: `VS INTER UP PREM` → `VS`, `MC INTER UP PREM` → `MC`, `JCB PREM`
+    → `JCB`. A scheme nobody has seen before (`AMEX PREM` → `AMEX`) therefore becomes its
+    own unmapped key and parks the document rather than quietly joining another group.
+
+    The one algorithm every settlement layout uses today — `banks.settlement_grouping`
+    marks *whether* a bank has one, not *which* rule, so there is nothing here to
+    dispatch on until a second bank needs a different fold.
+    """
+    label = (payment_type or "").strip()
+    if post_type != PostType.SUMMARY:
+        return label
+    return label.split(" ", 1)[0] if label else label
+
+
+def build_jv_rows(
+    details: list[ExtractedDetailRow],
+    mappings: dict[str, Any],
+    *,
+    total_row: ExtractedDetailRow | None = None,
+    grouping: Callable[[str], str] | None = None,
+    doc_no: str | None = None,
+) -> list[dict]:
+    """Three fixed debit legs (commission / input tax / bank account) + one credit leg
+    per payment type or group.
+
+    Two independent branches, selected by whether a `grouping` function is given:
+
+    **Fee invoice (`grouping=None`, the consolidated layout — the only one any bank
+    uses, GROUP_DEBIT_BY_TRANSACTION=false):** one credit leg per detail row, matched
+    to a saved mapping key via `canonical_payment_type` (fold-tolerant); the three
+    debit legs sum `commis_amt` / `tax_amt` / `total` across every row. Σdebit ==
+    Σcredit as long as every line satisfies pay = commission + tax + net, which the
+    extractor guarantees.
+
+    **Settlement report (`grouping` given, e.g. `lambda label: group_key(label,
+    post_type)`):** one credit leg per *grouped* scheme (Detail keeps each printed
+    label, Summary folds them — see `group_key`), looked up by plain dict key with no
+    fold-matching (a settlement report's vocabulary is small and BU-curated, unlike a
+    fee invoice's free-text transaction description). The three debit legs read
+    `total_row`'s COMM AMT / VAT AMT / NET AMT instead of summing `details` — a
+    settlement report's per-payment-type rows print those three columns as dashes
+    (`_normalize_ar_settlement` in credit_card_service.py is where the anchor is read
+    and kept as `extracted.total_row`). `total_row=None` (the anchor was missing or
+    unreadable) posts zero on all three; `_normalize_ar_settlement` already warned, so
+    the document is parked before this matters, but the arithmetic itself never
+    guesses a figure that was not printed. A group whose total is negative (a refund
+    or chargeback settling on the same report, FRD §8 case 5) swaps sides and posts
+    its absolute value, so the entry stays a reclassification in the right direction
+    instead of a negative credit Carmen would reject. `doc_no`, when given, prefixes
+    every credit leg's description (`Tax Inv.# <doc_no> - <label>`) — the tax invoice
+    number the settlement report and its (former) sibling fee invoice share.
+
+    Every leg carries a `key` — the group it posts under, empty on all three debit
+    legs since none of them is a printed payment type. The review screen joins printed
+    lines back to legs on this rather than re-deriving the grouping or slicing the
+    `Tax Inv.# … - ` prefix back off `desc` (`ARReviewPane.tsx`).
     """
     fixed = {k: mappings.get(k, {}) for k in _FIXED_TYPES}
-    payment = {k: v for k, v in mappings.items() if k not in _FIXED_TYPES}
 
-    def leg(cfg: dict, desc: str, debit: float, credit: float) -> dict:
+    def leg(cfg: dict | None, desc: str, debit: float, credit: float, key: str = "") -> dict:
         return {
             "dept": (cfg or {}).get("dept", "") or "",
             "acc": (cfg or {}).get("acc", "") or "",
             "desc": desc,
             "debit": debit,
             "credit": credit,
+            "key": key,
         }
 
-    rows: list[dict] = []
+    if grouping is None:
+        payment = {k: v for k, v in mappings.items() if k not in _FIXED_TYPES}
+        rows: list[dict] = []
+        for d in details:
+            amt = num(d.pay_amt)
+            if not amt:
+                continue
+            # The canonical key is also the description: it is the wording the BU
+            # curated, so a misread does not reach their books as a typo.
+            pay_type = canonical_payment_type(d.transaction or "UNKNOWN", payment)
+            rows.append(leg(payment.get(pay_type, {}), pay_type, 0.0, amt))
+        if not rows:
+            return rows  # degenerate document — nothing to post
+
+        total = lambda field: r2(sum(num(getattr(d, field)) for d in details))  # noqa: E731
+        rows.append(leg(fixed["commission"], "Credit card commission", total("commis_amt"), 0.0))
+        rows.append(leg(fixed["tax"], "Input Tax", total("tax_amt"), 0.0))
+        rows.append(leg(fixed["net"], "Bank Account", total("total"), 0.0))
+        return rows
+
+    tax_inv = (doc_no or "").strip()
+    prefix = f"Tax Inv.# {tax_inv} - " if tax_inv else ""
+
+    grouped: dict[str, float] = {}
     for d in details:
         amt = num(d.pay_amt)
         if not amt:
             continue
-        # The canonical key is also the description: it is the wording the BU
-        # curated, so a misread does not reach their books as a typo.
-        pay_type = canonical_payment_type(d.transaction or "UNKNOWN", payment)
-        rows.append(leg(payment.get(pay_type, {}), pay_type, 0.0, amt))
-    if not rows:
-        return rows  # degenerate document — nothing to post
+        key = grouping(d.transaction or "UNKNOWN")
+        grouped[key] = grouped.get(key, 0.0) + amt
+    if not grouped:
+        return []
 
-    total = lambda field: r2(sum(num(getattr(d, field)) for d in details))  # noqa: E731
-    rows.append(leg(fixed["commission"], "Credit card commission", total("commis_amt"), 0.0))
-    rows.append(leg(fixed["tax"], "Input Tax", total("tax_amt"), 0.0))
-    rows.append(leg(fixed["net"], "Bank Account", total("total"), 0.0))
+    def anchor_amt(field: str) -> float:
+        # ponytail: posted straight into "debit" with no sign flip for a negative
+        # figure — matches the fee-invoice branch's own commission/tax/net legs above,
+        # which have the same gap today. A settlement day negative enough to print a
+        # negative COMM/VAT/NET would need the same fix in both branches at once; out
+        # of scope here.
+        return r2(num(getattr(total_row, field, None))) if total_row is not None else 0.0
+
+    rows = [
+        leg(fixed["commission"], "Credit card commission", anchor_amt("commis_amt"), 0.0),
+        leg(fixed["tax"], "Input Tax", anchor_amt("tax_amt"), 0.0),
+        leg(fixed["net"], "Bank Account", anchor_amt("total"), 0.0),
+    ]
+    for key, raw in grouped.items():
+        cfg = mappings.get(key) or {}
+        amt = r2(raw)
+        rows.append(
+            leg(
+                cfg,
+                f"{prefix}{key}",
+                abs(amt) if amt < 0 else 0.0,
+                amt if amt >= 0 else 0.0,
+                key,
+            )
+        )
     return rows
 
 
 def unmapped_payment_types(
-    details: list[ExtractedDetailRow], mappings: dict[str, Any]
+    details: list[ExtractedDetailRow],
+    mappings: dict[str, Any],
+    *,
+    grouping: Callable[[str], str] | None = None,
 ) -> list[str]:
-    """Payment types on the document that the BU has never mapped to a GL account.
+    """Payment types or groups on the document that the BU has never mapped to a GL
+    account, plus the three fixed buckets, checked unconditionally.
 
-    An LLM-guessed mapping must never post by itself (CARMEN_INTEGRATION.md §4), so
-    a non-empty result here parks the document instead of posting it.
+    An LLM-guessed mapping must never post by itself (CARMEN_INTEGRATION.md §4), so a
+    non-empty result here parks the document instead of posting it — the same rule for
+    both branches below, which is why one function covers them (merged from
+    `unmapped_ar_types` in the pre-2026-09-22 `ar_reconcile_jv.py`).
+
+    `grouping=None` (fee invoice) resolves each row through `canonical_payment_type`'s
+    fold-tolerant match; a `grouping` function (settlement report) resolves it through
+    plain dict lookup on the grouped key instead — see `build_jv_rows`'s docstring for
+    why the two differ. The three fixed keys are a structural requirement of every JV
+    this builder produces, not something that only matters when a row happens to be
+    non-zero, so both branches check them the same way.
     """
-    missing = []
+    missing: list[str] = []
     for d in details:
         if not num(d.pay_amt):
             continue
-        pay_type = canonical_payment_type(d.transaction or "UNKNOWN", mappings)
+        label = d.transaction or "UNKNOWN"
+        pay_type = grouping(label) if grouping else canonical_payment_type(label, mappings)
         cfg = mappings.get(pay_type) or {}
         if not (cfg.get("dept") and cfg.get("acc")) and pay_type not in missing:
             missing.append(pay_type)
@@ -142,6 +282,46 @@ def unmapped_payment_types(
         if not (cfg.get("dept") and cfg.get("acc")):
             missing.append(key)
     return missing
+
+
+def is_balanced(rows: list[dict]) -> bool:
+    """Σ debit vs Σ credit.
+
+    For a settlement report this is a real check, not a tautology: since decision #28
+    (2026-09-18) the debit side comes from `total_row` — the report's own anchor row —
+    while the credit side comes from grouping the report's per-payment-type rows, two
+    independent readings of the same page that can genuinely disagree. Before that, the
+    debit leg was derived from the sum of the very credit rows it was compared against,
+    which could never return False for this builder's own output. `_review_flags`'
+    `ar_unbalanced` and `approve_document`'s own gate both read this now.
+    """
+    debit = sum(r["debit"] for r in rows)
+    credit = sum(r["credit"] for r in rows)
+    return abs(debit - credit) <= BALANCE_EPSILON
+
+
+def render_jv_description(
+    template: str,
+    *,
+    settlement_date: str | None,
+    tax_invoice_no: str | None,
+    bank_name: str | None,
+) -> str:
+    """Fill the BU's settlement-JV description template.
+
+    An unset tag renders empty, not as itself. The fee-invoice path has no template of
+    its own — `build_gljv_payload`'s `description` falls back to `description_for`
+    instead — so this is settlement-only, called from `ar_reconcile_service.py` and
+    `email_ingest_service.py`.
+    """
+    out = template or ""
+    for tag, value in (
+        ("{Settlement_Date}", settlement_date),
+        ("{Tax_Invoice_No}", tax_invoice_no),
+        ("{Bank_Name}", bank_name),
+    ):
+        out = out.replace(tag, value or "")
+    return " ".join(out.split())
 
 
 def build_gljv_payload(
@@ -154,8 +334,8 @@ def build_gljv_payload(
 ) -> dict:
     """JV rows + accounting config → the exact body useOcrSubmission.ts posts.
 
-    `description` overrides the config-derived wording. AR reconciliation passes its own,
-    rendered from that feature's template (`ar_reconcile_jv.render_jv_description`) — the
+    `description` overrides the config-derived wording. A settlement report passes its
+    own, rendered from that flow's template (`render_jv_description` above) — the
     envelope, source and detail shape are identical, only the sentence differs.
     """
     from app.services.accounting_config_service import description_for
