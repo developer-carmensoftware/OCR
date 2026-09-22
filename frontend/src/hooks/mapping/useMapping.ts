@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
+import { useT } from '../../i18n/LanguageContext'
+import type { TKey } from '../../i18n/dict'
 import { saveAccountingConfig } from '../../lib/api/config'
 import { appKey, writeAccountingConfig } from '../../lib/storage'
 import { isAccountAllowed, mergeSuggestion } from '../../lib/deptAccounts'
+import { glFieldLabel } from '../../lib/glFieldLabels'
 import { parseNum } from '../../lib/format'
 import { BANK_INFO, BANK_CODE_MAP, BANK_SOURCE_MAP } from '../../constants/banks'
 import { useBankConfig } from './useBankConfig'
@@ -15,11 +18,13 @@ import type { MainMappingKey } from './useMappingSuggestions'
 
 export type MainMappings = Record<MainMappingKey, FieldMapping>
 
-const COMPANY_REQUIRED_FIELDS: Array<{ key: keyof CompanyData; label: string }> = [
-  { key: 'name', label: 'Company Name' },
-  { key: 'taxId', label: 'Tax ID' },
-  { key: 'branch', label: 'Branch No' },
-  { key: 'address', label: 'Address' },
+// `labelKey`, not `label`: the same list names the fields in the form and names them again
+// in the "fill these in" modal, so one translated string has to reach both.
+const COMPANY_REQUIRED_FIELDS: Array<{ key: keyof CompanyData; labelKey: TKey }> = [
+  { key: 'name', labelKey: 'cc.companyName' },
+  { key: 'taxId', labelKey: 'cc.companyTaxId' },
+  { key: 'branch', labelKey: 'cc.companyBranch' },
+  { key: 'address', labelKey: 'cc.companyAddress' },
 ]
 
 export interface ActiveScan {
@@ -30,6 +35,7 @@ export interface ActiveScan {
 }
 
 export function useMapping() {
+  const { t } = useT()
   const bankConfig = useBankConfig()
 
   const [mappings, setMappings] = useState<MainMappings>({
@@ -221,10 +227,10 @@ export function useMapping() {
   const missingCompanyFields = COMPANY_REQUIRED_FIELDS.filter(
     f => !bankConfig.company[f.key as keyof typeof bankConfig.company]?.trim()
   )
-  const topLevelRequired = [
-    { key: 'bank', label: 'Bank', value: bankConfig.bank },
-    { key: 'filePrefix', label: 'File Prefix', value: bankConfig.filePrefix },
-    { key: 'fileSource', label: 'File Source', value: bankConfig.fileSource },
+  const topLevelRequired: Array<{ key: string; labelKey: TKey; value: string }> = [
+    { key: 'bank', labelKey: 'cc.cfgBank', value: bankConfig.bank },
+    { key: 'filePrefix', labelKey: 'cc.cfgFilePrefix', value: bankConfig.filePrefix },
+    { key: 'fileSource', labelKey: 'cc.cfgFileSource', value: bankConfig.fileSource },
   ]
   const missingTopFields = topLevelRequired.filter(f => !f.value?.trim())
 
@@ -234,8 +240,10 @@ export function useMapping() {
     if (allMissing.length > 0) {
       setModalConfig({
         show: true,
-        title: 'Please fill in all required fields',
-        message: `Please fill in ${allMissing.map(f => f.label).join(', ')} before saving`,
+        title: t('cc.valRequiredTitle'),
+        message: t('cc.valRequiredMsg', {
+          fields: allMissing.map(f => t(f.labelKey)).join(', '),
+        }),
         type: 'error',
       })
       return
@@ -254,10 +262,20 @@ export function useMapping() {
     if (illegalPairs.length > 0) {
       setModalConfig({
         show: true,
-        title: 'Account not allowed for department',
-        message: `${illegalPairs
-          .map(m => `${m.label}: ${m.acc} is not allowed for department ${m.dept}`)
-          .join('\n')}\nPlease pick an account from the department's allowed list.`,
+        title: t('cc.valIllegalTitle'),
+        // `label` is the config key, so the three fixed ones read as storage names
+        // ('commission') unless they go through the shared display map first.
+        message: t('cc.valIllegalMsg', {
+          pairs: illegalPairs
+            .map(m =>
+              t('cc.valIllegalPair', {
+                label: glFieldLabel(m.label, t),
+                acc: m.acc ?? '',
+                dept: m.dept ?? '',
+              })
+            )
+            .join('\n'),
+        }),
         type: 'error',
       })
       return
@@ -307,8 +325,8 @@ export function useMapping() {
         if (!shouldClose) {
           setModalConfig({
             show: true,
-            title: 'Save Successful',
-            message: 'Account Mapping settings have been saved successfully.',
+            title: t('cc.saveSuccessTitle'),
+            message: t('cc.saveSuccessMsg'),
             type: 'success',
           })
         }

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom'
 import { FileText, AlertCircle, AlertTriangle, XCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import AISuggestBar from '../common/AISuggestBar'
 import MappingRow from '../common/MappingRow'
+import { useT } from '../../i18n/LanguageContext'
 import '../../styles/components/mapping-row.css'
 import { isAccountAllowed } from '../../lib/deptAccounts'
 import '../../styles/components/payment-modal.css'
@@ -54,12 +55,13 @@ export default function PaymentTypeModal({
   cancelAmountSelection,
   setAcceptAllModal,
 }: Props) {
+  const { t } = useT()
   const [showAdditional, setShowAdditional] = useState(false)
   const [attemptedOk, setAttemptedOk] = useState(false)
 
   if (!isAmountModalOpen) return null
 
-  const additionalTypes = allPaymentTypes.filter(t => !activeScan.paymentTypes.has(t))
+  const additionalTypes = allPaymentTypes.filter(pt => !activeScan.paymentTypes.has(pt))
 
   // Pairs the dept's DefaultAccount forbids — recomputed live so the banner
   // clears as the user fixes rows.
@@ -77,7 +79,7 @@ export default function PaymentTypeModal({
     setAttemptedOk(true)
     // The offending row may be inside the collapsed "additional mappings" —
     // expand and scroll to it so the error is visible, not just named.
-    if (illegalTypes.some(t => additionalTypes.includes(t))) setShowAdditional(true)
+    if (illegalTypes.some(pt => additionalTypes.includes(pt))) setShowAdditional(true)
     requestAnimationFrame(() => {
       const el = document.querySelector(`[data-pt="${CSS.escape(illegalTypes[0])}"]`)
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -90,7 +92,7 @@ export default function PaymentTypeModal({
       <button
         type="button"
         className="pm-backdrop"
-        aria-label="Close payment type modal"
+        aria-label={t('cc.ptClose')}
         onClick={cancelAmountSelection}
         onKeyDown={e => {
           if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
@@ -102,10 +104,11 @@ export default function PaymentTypeModal({
       <div className="pm-dialog" onClick={e => e.stopPropagation()}>
         <div className="pm-header">
           <div className="pm-header-top">
-            <span>Map Payment Types</span>
+            <span>{t('cc.ptTitle')}</span>
             {activeScan.paymentTypes.size > 0 && (
               <span className="pm-required-badge">
-                <FileText size={13} /> Required for this scan: {activeScan.paymentTypes.size} items
+                <FileText size={13} />{' '}
+                {t('cc.ptRequiredBadge', { n: activeScan.paymentTypes.size })}
               </span>
             )}
           </div>
@@ -118,7 +121,10 @@ export default function PaymentTypeModal({
               disabled={loadingOpts}
             />
             <span className="pm-map-count">
-              ({amountMappedCount}/{allPaymentTypes.length} mapped)
+              {t('cc.ptMappedCount', {
+                mapped: amountMappedCount,
+                total: allPaymentTypes.length,
+              })}
             </span>
           </div>
         </div>
@@ -143,13 +149,17 @@ export default function PaymentTypeModal({
               >
                 <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
                 <div>
-                  <strong>Account not allowed for department</strong>
+                  <strong>{t('cc.ptIllegalTitle')}</strong>
                   {illegalTypes.map(type => {
                     const m = paymentAmount[type]
                     return (
                       <div key={type}>
-                        {type}: {m?.acc} is not in department {m?.dept}&apos;s allowed list
-                        {additionalTypes.includes(type) ? ' (in additional mappings below)' : ''}
+                        {t('cc.ptIllegalRow', {
+                          type,
+                          acc: m?.acc ?? '',
+                          dept: m?.dept ?? '',
+                        })}
+                        {additionalTypes.includes(type) ? t('cc.ptIllegalBelow') : ''}
                       </div>
                     )
                   })}
@@ -157,16 +167,16 @@ export default function PaymentTypeModal({
               </div>
             )}
             <div className="pm-grid-header">
-              <div>Payment Type</div>
-              <div>Department Code</div>
-              <div>Account Code</div>
+              <div>{t('cc.ptColType')}</div>
+              <div>{t('cc.mapDeptCode')}</div>
+              <div>{t('cc.mapAccCode')}</div>
               <div />
             </div>
 
             {activeScan.paymentTypes.size > 0 && (
               <>
                 <div className="pm-section-label">
-                  <AlertCircle size={13} /> Required for this scan
+                  <AlertCircle size={13} /> {t('cc.mapPtRequired')}
                 </div>
                 {[...activeScan.paymentTypes].map(type => {
                   const pAmt = paymentAmount[type] || { dept: '', acc: '' }
@@ -180,6 +190,8 @@ export default function PaymentTypeModal({
                       onChange={(field, val) => handlePaymentMappingChange(type, field, val)}
                       masterAccounts={masterAccounts}
                       masterDepartments={masterDepartments}
+                      deptPlaceholder={t('cc.ptDeptPh')}
+                      accPlaceholder={t('cc.ptAccPh')}
                       suggestion={paymentSuggestions[type] ?? null}
                       onAccept={() => confirmPaymentSuggestion(type)}
                       onReject={() => rejectPaymentSuggestion(type)}
@@ -198,7 +210,7 @@ export default function PaymentTypeModal({
                   onClick={() => setShowAdditional(p => !p)}
                 >
                   {showAdditional ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                  {showAdditional ? 'Hide' : 'Show'} additional mappings
+                  {showAdditional ? t('cc.ptHideAdditional') : t('cc.ptShowAdditional')}
                   <span className="pm-additional-count">{additionalTypes.length}</span>
                 </button>
 
@@ -212,6 +224,8 @@ export default function PaymentTypeModal({
                       onChange={(field, val) => handlePaymentMappingChange(type, field, val)}
                       masterAccounts={masterAccounts}
                       masterDepartments={masterDepartments}
+                      deptPlaceholder={t('cc.ptDeptPh')}
+                      accPlaceholder={t('cc.ptAccPh')}
                       suggestion={paymentSuggestions[type] ?? null}
                       onAccept={() => confirmPaymentSuggestion(type)}
                       onReject={() => rejectPaymentSuggestion(type)}
@@ -221,7 +235,7 @@ export default function PaymentTypeModal({
                             type="button"
                             className="pm-remove-btn"
                             onClick={() => handleRemoveCustomType(type)}
-                            title="Remove"
+                            title={t('cc.ptRemove')}
                           >
                             <XCircle size={16} />
                           </button>
@@ -236,10 +250,10 @@ export default function PaymentTypeModal({
 
         <div className="pm-footer">
           <button type="button" className="btn btn-outline" onClick={cancelAmountSelection}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button type="button" className="btn btn-confirm" onClick={handleOk}>
-            OK
+            {t('cc.ptOk')}
           </button>
         </div>
       </div>

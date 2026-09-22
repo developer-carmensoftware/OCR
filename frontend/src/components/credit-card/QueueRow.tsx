@@ -233,12 +233,14 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
 
   if (pending) {
     const reason = reasonFor(row)
-    const named = reason.fields.length ? glFieldList(reason.fields) : ''
+    const named = reason.fields.length ? glFieldList(reason.fields, t) : ''
     return (
       <span
         className={`rq-reason rq-reason--${reason.tone}`}
         // The cell ellipsizes, so the full list lives here rather than being lost.
-        title={reason.fields.length ? reason.fields.map(glFieldLabel).join(', ') : undefined}
+        title={
+          reason.fields.length ? reason.fields.map(f => glFieldLabel(f, t)).join(', ') : undefined
+        }
       >
         {named ? `${t(reason.key)}: ${named}` : t(reason.key)}
       </span>

@@ -10,6 +10,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import CustomSearchSelect from '../common/CustomSearchSelect'
+import { useT } from '../../i18n/LanguageContext'
 import { glFieldLabel } from '../../lib/glFieldLabels'
 import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
 import AISuggestBar from '../common/AISuggestBar'
@@ -42,10 +43,6 @@ interface Props {
   openAmountModal: () => void
 }
 
-// Shared with the queue's reason line — two copies of this list is how the two screens
-// end up calling the same rule different things.
-const LABEL_MAP = glFieldLabel
-
 export default function MainMappingTable({
   masterAccounts,
   masterDepartments,
@@ -64,15 +61,16 @@ export default function MainMappingTable({
   requiredMissingCount,
   openAmountModal,
 }: Props) {
+  const { t } = useT()
   return (
     <div className="section">
       <div className="section-title cc-section-title-container">
         <div className="cc-flex-center-gap">
           <span>
-            ACCOUNT CODE MAPPING{' '}
+            {t('cc.mapTitle')}{' '}
             {loadingOpts && (
               <span className="cc-loading-text-primary">
-                <Loader2 size={13} className="animate-spin" /> Loading account codes...
+                <Loader2 size={13} className="animate-spin" /> {t('cc.mapLoadingCodes')}
               </span>
             )}
           </span>
@@ -93,33 +91,30 @@ export default function MainMappingTable({
           <div />
           <div />
           <div className="mapping-header">
-            Department Code
-            <span
-              className="gl-help-tip"
-              title="Department code from Carmen Cloud — e.g. ACC, SALE, MKT"
-            >
+            {t('cc.mapDeptCode')}
+            <span className="gl-help-tip" title={t('cc.mapDeptCodeHelp')}>
               ?
             </span>
           </div>
           <div className="mapping-header">
-            Account Code
-            <span
-              className="gl-help-tip"
-              title="Account code from Carmen Cloud — e.g. 1101-01, 5100-00"
-            >
+            {t('cc.mapAccCode')}
+            <span className="gl-help-tip" title={t('cc.mapAccCodeHelp')}>
               ?
             </span>
           </div>
           <div />
 
           {/* Credit row — Account Receivable */}
-          <div className="mapping-type type-credit cc-mapping-type-credit">Credit</div>
+          <div className="mapping-type type-credit cc-mapping-type-credit">{t('cc.mapCredit')}</div>
           <button type="button" className="cc-map-ar-btn" onClick={openAmountModal}>
-            <span className="cc-map-ar-title">Account Receivable / Bank</span>
+            <span className="cc-map-ar-title">{t('cc.mapArBank')}</span>
             {activeScan.paymentTypes.size > 0 && (
               <span
                 className={`cc-map-ar-count ${requiredMissingCount > 0 ? 'missing' : 'ready'}`}
-                title={`${activeScan.paymentTypes.size - requiredMissingCount} of ${activeScan.paymentTypes.size} payment types mapped`}
+                title={t('cc.mapPtCount', {
+                  mapped: activeScan.paymentTypes.size - requiredMissingCount,
+                  total: activeScan.paymentTypes.size,
+                })}
               >
                 {activeScan.paymentTypes.size - requiredMissingCount}/{activeScan.paymentTypes.size}
               </span>
@@ -135,29 +130,23 @@ export default function MainMappingTable({
               {activeScan.paymentTypes.size === 0 ? (
                 <>
                   <Info size={14} className="cc-flex-shrink-0" />
-                  <span>Payment types appear here after a document scan</span>
+                  <span>{t('cc.mapPtEmpty')}</span>
                 </>
               ) : requiredMissingCount > 0 ? (
                 <>
                   <AlertTriangle size={14} color="var(--rose)" className="cc-flex-shrink-0" />
-                  <span>
-                    Found <strong>{activeScan.paymentTypes.size}</strong> items in document
-                  </span>
+                  <span>{t('cc.mapPtFound', { n: activeScan.paymentTypes.size })}</span>
                   <span className="cc-bullet-divider-missing">·</span>
-                  <span>
-                    <strong>{requiredMissingCount}</strong> pending mapping
-                  </span>
+                  <span>{t('cc.mapPtPending', { n: requiredMissingCount })}</span>
                   <Badge variant="error" className="cc-required-badge">
-                    Required for this scan
+                    {t('cc.mapPtRequired')}
                   </Badge>
                 </>
               ) : (
                 <>
                   <CheckCircle2 size={14} className="cc-flex-shrink-0" />
-                  <span>
-                    All <strong>{activeScan.paymentTypes.size}</strong> items mapped
-                  </span>
-                  <span className="cc-ready-subtext">Ready for JV</span>
+                  <span>{t('cc.mapPtAllMapped', { n: activeScan.paymentTypes.size })}</span>
+                  <span className="cc-ready-subtext">{t('cc.mapReadyJv')}</span>
                 </>
               )}
             </div>
@@ -166,7 +155,7 @@ export default function MainMappingTable({
           {/* Debit rows — commission, tax, net */}
           {(['commission', 'tax', 'net'] as MainMappingKey[]).map(key => {
             const meta = suggestionMeta[key]
-            const badge = meta === 'history' ? { label: 'History' } : null
+            const badge = meta === 'history' ? { label: t('cc.mapHistory') } : null
             const hasSuggestionButtons = meta === 'ai' || meta === 'history'
             const suggestion = mainSuggestions[key] ?? null
 
@@ -176,7 +165,7 @@ export default function MainMappingTable({
             const deptTopChoice = suggestion?.dept
               ? {
                   code: suggestion.dept,
-                  name: deptFromMaster?.name || '(AI/History code)',
+                  name: deptFromMaster?.name || t('cc.mapAiCode'),
                   name2: deptFromMaster?.name2,
                   source: suggestion.source,
                 }
@@ -189,7 +178,7 @@ export default function MainMappingTable({
             )
             const acctNotice =
               acctOptions.length < masterAccounts.length
-                ? `${acctOptions.length} accounts allowed for ${mappings[key].dept}`
+                ? t('cc.mapAllowedAcc', { n: acctOptions.length, dept: mappings[key].dept ?? '' })
                 : undefined
 
             const accFromMaster = suggestion?.acc
@@ -198,7 +187,7 @@ export default function MainMappingTable({
             const accTopChoice = suggestion?.acc
               ? {
                   code: suggestion.acc,
-                  name: accFromMaster?.name || '(AI/History code)',
+                  name: accFromMaster?.name || t('cc.mapAiCode'),
                   name2: accFromMaster?.name2,
                   source: suggestion.source,
                 }
@@ -206,9 +195,11 @@ export default function MainMappingTable({
 
             return (
               <React.Fragment key={key}>
-                <div className="mapping-type type-debit cc-mapping-type-debit">Debit</div>
+                <div className="mapping-type type-debit cc-mapping-type-debit">
+                  {t('cc.mapDebit')}
+                </div>
                 <div className="mapping-label cc-label-flex-container">
-                  <span>{LABEL_MAP(key)}</span>
+                  <span>{glFieldLabel(key, t)}</span>
                   {badge && (
                     <span className="cc-history-badge">
                       <History size={11} /> {badge.label}
@@ -220,7 +211,7 @@ export default function MainMappingTable({
                     value={mappings[key].dept}
                     onChange={(val: string) => handleMappingChange(key, 'dept', val)}
                     options={masterDepartments}
-                    placeholder="Type Dept. Code..."
+                    placeholder={t('cc.mapDeptPh')}
                     topChoice={deptTopChoice?.code ? deptTopChoice : null}
                     suggestedValue={suggestion?.dept ?? null}
                     hasError={!mappings[key].dept}
@@ -232,7 +223,7 @@ export default function MainMappingTable({
                     onChange={(val: string) => handleMappingChange(key, 'acc', val)}
                     options={acctOptions}
                     notice={acctNotice}
-                    placeholder="Type Account Code..."
+                    placeholder={t('cc.mapAccPh')}
                     topChoice={accTopChoice?.code ? accTopChoice : null}
                     suggestedValue={suggestion?.acc ?? null}
                     hasError={
@@ -247,7 +238,7 @@ export default function MainMappingTable({
                       <button
                         type="button"
                         onClick={() => confirmMainSuggestion(key)}
-                        title="Accept suggestion"
+                        title={t('cc.mapAccept')}
                         className="cc-btn-accept"
                       >
                         <Check size={13} />
@@ -255,7 +246,7 @@ export default function MainMappingTable({
                       <button
                         type="button"
                         onClick={() => rejectMainSuggestion(key)}
-                        title="Reject and clear"
+                        title={t('cc.mapReject')}
                         className="cc-btn-reject"
                       >
                         <X size={13} />

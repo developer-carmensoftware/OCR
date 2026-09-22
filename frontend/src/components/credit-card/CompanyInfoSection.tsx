@@ -1,10 +1,12 @@
 import React from 'react'
 import { AlertCircle } from 'lucide-react'
+import { useT } from '../../i18n/LanguageContext'
+import type { TKey } from '../../i18n/dict'
 import type { CompanyData } from '../../lib/bankTransforms'
 
 interface RequiredField {
   key: keyof CompanyData
-  label: string
+  labelKey: TKey
 }
 
 interface Props {
@@ -14,11 +16,11 @@ interface Props {
   missingCompanyFields: RequiredField[]
 }
 
-const PLACEHOLDER_MAP: Record<string, string> = {
-  name: 'Enter company name',
-  taxId: 'Enter TAX ID',
-  branch: 'Enter branch',
-  address: 'Enter address',
+const PLACEHOLDER_KEYS: Record<string, TKey> = {
+  name: 'cc.companyNamePh',
+  taxId: 'cc.companyTaxIdPh',
+  branch: 'cc.companyBranchPh',
+  address: 'cc.companyAddressPh',
 }
 
 export default function CompanyInfoSection({
@@ -27,13 +29,14 @@ export default function CompanyInfoSection({
   companyRequiredFields,
   missingCompanyFields,
 }: Props) {
+  const { t } = useT()
   return (
     <div className="section">
       <div
         className="section-title"
         style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}
       >
-        COMPANY INFORMATION
+        {t('cc.companyTitle')}
         {missingCompanyFields.length > 0 && (
           <span
             style={{
@@ -45,13 +48,14 @@ export default function CompanyInfoSection({
               fontWeight: 'bold',
             }}
           >
-            <AlertCircle size={11} /> {missingCompanyFields.length} missing fields
+            <AlertCircle size={11} /> {t('cc.companyMissing', { n: missingCompanyFields.length })}
           </span>
         )}
       </div>
       <div className="form-grid">
-        {companyRequiredFields.map(({ key, label }) => {
+        {companyRequiredFields.map(({ key, labelKey }) => {
           const missing = !company[key]?.trim()
+          const label = t(labelKey)
           return (
             <React.Fragment key={`frag-${key}`}>
               <label
@@ -66,7 +70,7 @@ export default function CompanyInfoSection({
                 id={`inp-${key}`}
                 type="text"
                 aria-label={label}
-                placeholder={PLACEHOLDER_MAP[key]}
+                placeholder={t(PLACEHOLDER_KEYS[key])}
                 value={company[key]}
                 onChange={e => handleCompanyChange(e, key)}
                 style={
