@@ -1,24 +1,11 @@
-import {
-  Network,
-  Loader2,
-  CheckCircle2,
-  Scale,
-  Table2,
-  Info,
-  AlertTriangle,
-  XCircle,
-} from 'lucide-react'
+import { Network, Loader2, CheckCircle2, Scale } from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
-import MappingRow from '../components/common/MappingRow'
-import AISuggestBar from '../components/common/AISuggestBar'
-import Badge from '../components/common/Badge'
 import Card from '../components/admin/ui/Card'
 import Switch from '../components/admin/ui/Switch'
 import ARJvPreview from '../components/ar-reconcile/ARJvPreview'
 import '../styles/pages/mapping.css'
 import '../styles/pages/ar-reconcile.css'
 import '../styles/components/mapping-row.css'
-import { useState } from 'react'
 import { useT } from '../i18n/LanguageContext'
 import { useMapping } from '../hooks/mapping'
 import { useSettlementMapping } from '../hooks/mapping/useSettlementMapping'
@@ -119,7 +106,6 @@ const TAGS = ['{Settlement_Date}', '{Tax_Invoice_No}', '{Bank_Name}'] as const
 export default function Mapping() {
   const { t } = useT()
   const mappingCtrl = useMapping()
-  const [newSettlementType, setNewSettlementType] = useState('')
 
   const bankCode = mappingCtrl.bank ? BANK_CODE_MAP[mappingCtrl.bank as BankDisplayName] : ''
   const settlementCtrl = useSettlementMapping(
@@ -161,11 +147,6 @@ export default function Mapping() {
           }
         : undefined
     )
-
-  const addSettlementType = () => {
-    settlementCtrl.addCustomType(newSettlementType)
-    setNewSettlementType('')
-  }
 
   return (
     <>
@@ -317,131 +298,6 @@ export default function Mapping() {
                     </p>
                   </div>
                 </Card>
-
-                <Card
-                  title={t('ar.mappingTitle')}
-                  icon={<Table2 size={16} />}
-                  actions={
-                    <AISuggestBar
-                      onSuggest={() => void settlementCtrl.runSuggest()}
-                      hasSuggestions={Object.values(settlementCtrl.suggestions).some(s => s)}
-                      loading={settlementCtrl.suggestLoading}
-                      disabled={
-                        mappingCtrl.masterAccounts.length === 0 ||
-                        mappingCtrl.masterDepartments.length === 0 ||
-                        mappingCtrl.loadingOpts
-                      }
-                      onRefresh={mappingCtrl.loadInitialData}
-                      refreshLoading={mappingCtrl.loadingOpts}
-                    />
-                  }
-                >
-                  {(() => {
-                    const total = settlementCtrl.rows.length
-                    const mapped = settlementCtrl.mappedCount(settlementCtrl.postType)
-                    const missing = total - mapped
-                    return (
-                      <div
-                        role="status"
-                        className={`cc-mapping-status ${missing > 0 ? 'missing' : 'ready'}`}
-                      >
-                        {total === 0 ? (
-                          <>
-                            <Info size={14} className="cc-flex-shrink-0" />
-                            <span>{t('ar.mappingEmpty')}</span>
-                          </>
-                        ) : missing > 0 ? (
-                          <>
-                            <AlertTriangle
-                              size={14}
-                              color="var(--rose)"
-                              className="cc-flex-shrink-0"
-                            />
-                            <span>{t('ar.mappingMissing', { missing, total })}</span>
-                            <Badge variant="error" className="cc-required-badge">
-                              {t('ar.mappingBlocks')}
-                            </Badge>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle2 size={14} className="cc-flex-shrink-0" />
-                            <span>{t('ar.mappingAllMapped', { total })}</span>
-                            <span className="cc-ready-subtext">{t('ar.mappingReady')}</span>
-                          </>
-                        )}
-                      </div>
-                    )
-                  })()}
-
-                  <div className="table-wrapper ar-table">
-                    <div className="pm-grid-header">
-                      <div>{t('review.arColPaymentType')}</div>
-                      <div>{t('ar.colDeptCode')}</div>
-                      <div>{t('ar.colAccCode')}</div>
-                      <div />
-                    </div>
-
-                    {settlementCtrl.rows.map(row => {
-                      const pending = !row.mapping.dept || !row.mapping.acc
-                      return (
-                        <MappingRow
-                          key={row.code}
-                          type={row.code}
-                          variant={pending ? 'pending' : 'ok'}
-                          value={row.mapping}
-                          onChange={(field, val) =>
-                            settlementCtrl.setRowMapping(row.code, field, val)
-                          }
-                          masterAccounts={mappingCtrl.masterAccounts}
-                          masterDepartments={mappingCtrl.masterDepartments}
-                          deptPlaceholder={t('review.jvDeptPlaceholder')}
-                          accPlaceholder={t('review.jvAccountPlaceholder')}
-                          deptLabel={t('ar.colDeptCode')}
-                          accLabel={t('ar.colAccCode')}
-                          suggestion={settlementCtrl.suggestions[row.code] ?? null}
-                          onAccept={() => settlementCtrl.acceptSuggestion(row.code)}
-                          onReject={() => settlementCtrl.rejectSuggestion(row.code)}
-                          trailing={
-                            <button
-                              type="button"
-                              className="pm-remove-btn"
-                              onClick={() => settlementCtrl.removeType(row.code)}
-                              title={t('ar.removeType', { type: row.code })}
-                            >
-                              <XCircle size={16} />
-                            </button>
-                          }
-                        />
-                      )
-                    })}
-                  </div>
-
-                  <div className="ar-add-row">
-                    <input
-                      type="text"
-                      className="admin-form-input ar-add-input"
-                      value={newSettlementType}
-                      placeholder={t('ar.addPlaceholder')}
-                      aria-label={t('ar.addType')}
-                      onChange={e => setNewSettlementType(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          addSettlementType()
-                        }
-                      }}
-                    />
-                    <button type="button" className="btn btn-outline" onClick={addSettlementType}>
-                      {t('ar.addType')}
-                    </button>
-                    <span className="ar-row-count">
-                      {t('ar.rowCount', {
-                        count: settlementCtrl.rows.length,
-                        postType: postTypeLabel(settlementCtrl.postType),
-                      })}
-                    </span>
-                  </div>
-                </Card>
               </div>
 
               <div className="ar-rail">
@@ -496,6 +352,22 @@ export default function Mapping() {
         saveAmountSelection={mappingCtrl.saveAmountSelection}
         cancelAmountSelection={mappingCtrl.cancelAmountSelection}
         setAcceptAllModal={mappingCtrl.setAcceptAllModal}
+        settlement={
+          showSettlement
+            ? {
+                postTypeLabel: postTypeLabel(settlementCtrl.postType),
+                rows: settlementCtrl.rows,
+                setRowMapping: settlementCtrl.setRowMapping,
+                addCustomType: settlementCtrl.addCustomType,
+                removeType: settlementCtrl.removeType,
+                suggestions: settlementCtrl.suggestions,
+                suggestLoading: settlementCtrl.suggestLoading,
+                runSuggest: () => void settlementCtrl.runSuggest(),
+                acceptSuggestion: settlementCtrl.acceptSuggestion,
+                rejectSuggestion: settlementCtrl.rejectSuggestion,
+              }
+            : undefined
+        }
       />
     </>
   )

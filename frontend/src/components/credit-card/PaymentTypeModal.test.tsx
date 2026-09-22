@@ -166,3 +166,84 @@ describe('PaymentTypeModal', () => {
     expect(document.querySelector('.pm-dialog')).toBeNull()
   })
 })
+
+// A settlement-capable bank's own payment types (VS/MC/JCB and friends) fold into this
+// same modal (decision, 2026-09-22) rather than a second "map a payment type to
+// dept/account" surface on the page. `settlement` is omitted entirely for every other
+// bank — the tests above already prove that path is untouched.
+describe('PaymentTypeModal — settlement section', () => {
+  function settlementProps(over: Partial<NonNullable<ModalProps['settlement']>> = {}) {
+    return {
+      postTypeLabel: 'Detail',
+      rows: [
+        { code: 'VS', mapping: { dept: 'GEN', acc: '1021004' } },
+        { code: 'MC', mapping: { dept: '', acc: '' } },
+      ],
+      setRowMapping: vi.fn(),
+      addCustomType: vi.fn(),
+      removeType: vi.fn(),
+      suggestions: {},
+      suggestLoading: false,
+      runSuggest: vi.fn(),
+      acceptSuggestion: vi.fn(),
+      rejectSuggestion: vi.fn(),
+      ...over,
+    }
+  }
+
+  it('is absent for a bank with no settlement layout', () => {
+    renderModal({ settlement: undefined })
+    expect(document.querySelector('[data-pt="VS"]')).toBeNull()
+  })
+
+  it("renders the active post type's rows alongside the fee-invoice ones", () => {
+    renderModal({ settlement: settlementProps() })
+
+    expect(row('VS').className).toContain('pm-row--required-ok')
+    expect(row('MC').className).toContain('pm-row--required-pending')
+    expect(screen.getByText('2 in Detail')).toBeInTheDocument()
+  })
+
+  it('accepts a settlement suggestion through the settlement callback, not the fee-invoice one', () => {
+    const settlement = settlementProps({
+      suggestions: { MC: { dept: 'GEN', acc: '1021005', source: 'ai' } },
+    })
+    const p = renderModal({ settlement })
+
+    fireEvent.click(row('MC').querySelector('.pm-accept-btn') as Element)
+
+    expect(settlement.acceptSuggestion).toHaveBeenCalledWith('MC')
+    expect(p.confirmPaymentSuggestion).not.toHaveBeenCalled()
+  })
+
+  it('removes a settlement type via its own remove button', () => {
+    const settlement = settlementProps()
+    renderModal({ settlement })
+
+    fireEvent.click(row('VS').querySelector('.pm-remove-btn') as Element)
+    expect(settlement.removeType).toHaveBeenCalledWith('VS')
+  })
+
+  it('adds a settlement type from its own add-row input and clears it after', () => {
+    const settlement = settlementProps()
+    renderModal({ settlement })
+
+    const input = screen.getByPlaceholderText(/Add a payment type/i)
+    fireEvent.change(input, { target: { value: 'JCB' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add type' }))
+
+    expect(settlement.addCustomType).toHaveBeenCalledWith('JCB')
+    expect((input as HTMLInputElement).value).toBe('')
+  })
+
+  it('runs the settlement suggestion engine independently of the fee-invoice one', () => {
+    const settlement = settlementProps()
+    const p = renderModal({ settlement })
+
+    const suggestButtons = screen.getAllByText('AI Suggest')
+    fireEvent.click(suggestButtons[1])
+
+    expect(settlement.runSuggest).toHaveBeenCalled()
+    expect(p.autoSuggestPaymentTypes).not.toHaveBeenCalled()
+  })
+})

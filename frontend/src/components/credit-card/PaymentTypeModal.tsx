@@ -1,16 +1,48 @@
 import { useState } from 'react'
 import ReactDOM from 'react-dom'
-import { FileText, AlertCircle, AlertTriangle, XCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+  FileText,
+  AlertCircle,
+  AlertTriangle,
+  XCircle,
+  ChevronDown,
+  ChevronUp,
+  Scale,
+  Info,
+  CheckCircle2,
+} from 'lucide-react'
 import AISuggestBar from '../common/AISuggestBar'
 import MappingRow from '../common/MappingRow'
+import Badge from '../common/Badge'
 import { useT } from '../../i18n/LanguageContext'
 import '../../styles/components/mapping-row.css'
+import '../../styles/pages/ar-reconcile.css'
 import { isAccountAllowed } from '../../lib/deptAccounts'
 import '../../styles/components/payment-modal.css'
 import type { FieldMapping } from '../../types/api'
 import type { MasterAccount, MasterDepartment } from '../../hooks/mapping/useMappingData'
 import type { ActiveScan } from '../../hooks/mapping/useMapping'
 import type { Suggestion } from '../../hooks/mapping/useMappingSuggestions'
+import type { SettlementRow } from '../../hooks/mapping/useSettlementMapping'
+
+/** A settlement-capable bank's own payment-type list (VS/MC/JCB and friends), folded
+ *  into this modal rather than kept as a second "map a payment type to dept/account"
+ *  surface on the page — same job, same UI, the only difference was which JV builder
+ *  reads the result, which does not belong on the screen at all. `postTypeLabel` is
+ *  Detail/Summary already translated, since flipping that toggle on the page swaps
+ *  which set these rows are (the hook re-renders `rows` for whichever is active). */
+export interface SettlementModalSection {
+  postTypeLabel: string
+  rows: SettlementRow[]
+  setRowMapping: (code: string, field: 'dept' | 'acc', value: string) => void
+  addCustomType: (code: string) => void
+  removeType: (code: string) => void
+  suggestions: Record<string, Suggestion | null>
+  suggestLoading: boolean
+  runSuggest: () => void
+  acceptSuggestion: (code: string) => void
+  rejectSuggestion: (code: string) => void
+}
 
 interface Props {
   isAmountModalOpen: boolean
@@ -32,6 +64,9 @@ interface Props {
   saveAmountSelection: () => void
   cancelAmountSelection: () => void
   setAcceptAllModal: (v: boolean) => void
+  /** Omitted for a bank with no settlement layout — every other bank's modal is
+   *  exactly what it was before this merge. */
+  settlement?: SettlementModalSection
 }
 
 export default function PaymentTypeModal({
@@ -54,10 +89,12 @@ export default function PaymentTypeModal({
   saveAmountSelection,
   cancelAmountSelection,
   setAcceptAllModal,
+  settlement,
 }: Props) {
   const { t } = useT()
   const [showAdditional, setShowAdditional] = useState(false)
   const [attemptedOk, setAttemptedOk] = useState(false)
+  const [newSettlementType, setNewSettlementType] = useState('')
 
   if (!isAmountModalOpen) return null
 
@@ -247,6 +284,125 @@ export default function PaymentTypeModal({
                       }
                     />
                   ))}
+              </>
+            )}
+
+            {settlement && (
+              <>
+                <div className="pm-section-label">
+                  <Scale size={13} /> {t('ar.mappingTitle')} — {settlement.postTypeLabel}
+                </div>
+
+                {(() => {
+                  const total = settlement.rows.length
+                  const mapped = settlement.rows.filter(r => r.mapping.dept && r.mapping.acc).length
+                  const missing = total - mapped
+                  return (
+                    <div
+                      role="status"
+                      className={`cc-mapping-status ${missing > 0 ? 'missing' : 'ready'}`}
+                    >
+                      {total === 0 ? (
+                        <>
+                          <Info size={14} className="cc-flex-shrink-0" />
+                          <span>{t('ar.mappingEmpty')}</span>
+                        </>
+                      ) : missing > 0 ? (
+                        <>
+                          <AlertTriangle
+                            size={14}
+                            color="var(--rose)"
+                            className="cc-flex-shrink-0"
+                          />
+                          <span>{t('ar.mappingMissing', { missing, total })}</span>
+                          <Badge variant="error" className="cc-required-badge">
+                            {t('ar.mappingBlocks')}
+                          </Badge>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 size={14} className="cc-flex-shrink-0" />
+                          <span>{t('ar.mappingAllMapped', { total })}</span>
+                          <span className="cc-ready-subtext">{t('ar.mappingReady')}</span>
+                        </>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <AISuggestBar
+                    onSuggest={() => settlement.runSuggest()}
+                    hasSuggestions={Object.values(settlement.suggestions).some(s => s)}
+                    loading={settlement.suggestLoading}
+                  />
+                </div>
+
+                {settlement.rows.map(row => {
+                  const pending = !row.mapping.dept || !row.mapping.acc
+                  return (
+                    <MappingRow
+                      key={`settlement-${row.code}`}
+                      type={row.code}
+                      variant={pending ? 'pending' : 'ok'}
+                      value={row.mapping}
+                      onChange={(field, val) => settlement.setRowMapping(row.code, field, val)}
+                      masterAccounts={masterAccounts}
+                      masterDepartments={masterDepartments}
+                      deptPlaceholder={t('cc.ptDeptPh')}
+                      accPlaceholder={t('cc.ptAccPh')}
+                      deptLabel={t('cc.mapDeptCode')}
+                      accLabel={t('cc.mapAccCode')}
+                      suggestion={settlement.suggestions[row.code] ?? null}
+                      onAccept={() => settlement.acceptSuggestion(row.code)}
+                      onReject={() => settlement.rejectSuggestion(row.code)}
+                      trailing={
+                        <button
+                          type="button"
+                          className="pm-remove-btn"
+                          onClick={() => settlement.removeType(row.code)}
+                          title={t('ar.removeType', { type: row.code })}
+                        >
+                          <XCircle size={16} />
+                        </button>
+                      }
+                    />
+                  )
+                })}
+
+                <div className="ar-add-row">
+                  <input
+                    type="text"
+                    className="admin-form-input ar-add-input"
+                    value={newSettlementType}
+                    placeholder={t('ar.addPlaceholder')}
+                    aria-label={t('ar.addType')}
+                    onChange={e => setNewSettlementType(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        settlement.addCustomType(newSettlementType)
+                        setNewSettlementType('')
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => {
+                      settlement.addCustomType(newSettlementType)
+                      setNewSettlementType('')
+                    }}
+                  >
+                    {t('ar.addType')}
+                  </button>
+                  <span className="ar-row-count">
+                    {t('ar.rowCount', {
+                      count: settlement.rows.length,
+                      postType: settlement.postTypeLabel,
+                    })}
+                  </span>
+                </div>
               </>
             )}
           </div>
