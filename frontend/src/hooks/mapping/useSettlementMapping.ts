@@ -23,7 +23,15 @@ import type { FieldMapping } from '../../types/api'
  * fee-invoice payment type, and this bank's settlement rows, all in one shape) is
  * injected, and `mappingsToSave` is what the page folds back into its own dict right
  * before the one `PUT /config/accounting` call. Only the posting profile itself
- * (enabled / post type / template) and the two payment-type sets are this hook's own.
+ * (enabled / post type) and the two payment-type sets are this hook's own.
+ *
+ * **No `template` state any more (Ticket D, 2026-09-22)** — the JV description is the
+ * same field the fee-invoice path always used (`bank_descriptions[bankCode]`), owned by
+ * `TopLevelConfigSection`/`useBankConfig`, not this hook. `description` is injected the
+ * same way `savedMappings` is, except it is *live*, not a load-once snapshot: a
+ * settlement JV's wording has no save button of its own to wait for, so the preview
+ * (and, once saved, the real post) must track every keystroke the way
+ * `mappingsToSave`'s own dirty-tracking already does for the payment-type rows.
  *
  * **Both post-type sets are held at once**, same reasoning `useARReconcile` always
  * had: Detail and Summary are different vocabularies over the same document, each
@@ -31,7 +39,6 @@ import type { FieldMapping } from '../../types/api'
  * when Save was pressed would be a real loss, not a display quirk.
  */
 
-const DEFAULT_TEMPLATE = 'Credit Card AR Reconcile {Settlement_Date}'
 const SOURCE_BY_POST_TYPE: Record<PostType, string> = {
   Detail: 'settlement_detail',
   Summary: 'settlement_summary',
@@ -46,17 +53,16 @@ export interface SettlementRow {
  *  Spelled out rather than `JSON.stringify` over the state, for the same reason
  *  `useARReconcile`'s original `fingerprint` was: a row the server sent and a row
  *  `addCustomType` built can differ only in key order for the same values, and a
- *  stringify would call that an edit. */
+ *  stringify would call that an edit. No `description` any more — it lives on the
+ *  page's own config, whose own save this card no longer gates. */
 function fingerprint(
   enabled: boolean,
   postType: PostType,
-  template: string,
   sets: Record<PostType, Record<string, FieldMapping>>
 ): string {
   return JSON.stringify([
     enabled,
     postType,
-    template.trim(),
     ...POST_TYPES.map(pt =>
       Object.entries(sets[pt] || {})
         .sort(([a], [b]) => a.localeCompare(b))
@@ -72,8 +78,6 @@ export interface SettlementMappingHook {
   setEnabled: (v: boolean) => void
   postType: PostType
   setPostType: (v: PostType) => void
-  template: string
-  setTemplate: (v: string) => void
   rows: SettlementRow[]
   mappedCount: (pt: PostType) => number
   rowCount: (pt: PostType) => number
@@ -102,7 +106,12 @@ export function useSettlementMapping(
   bankCode: string,
   savedMappings: Record<string, FieldMapping>,
   masterAccounts: MasterAccount[],
-  masterDepartments: MasterDepartment[]
+  masterDepartments: MasterDepartment[],
+  /** The page's *live*, resolved fee-invoice description for this bank
+   *  (`descriptionForBank(description, bankDescriptions, bankCode)`) — what a real post
+   *  would use, tracked keystroke-by-keystroke so the preview stays accurate while the
+   *  BU is still typing (Ticket D, 2026-09-22). */
+  description: string
 ): SettlementMappingHook {
   const { t } = useT()
   const tRef = useRef(t)
@@ -112,7 +121,6 @@ export function useSettlementMapping(
   const [hasSettlementLayout, setHasSettlementLayout] = useState(false)
   const [enabled, setEnabled] = useState(false)
   const [postType, setPostType] = useState<PostType>('Detail')
-  const [template, setTemplate] = useState(DEFAULT_TEMPLATE)
   const [sets, setSets] = useState<Record<PostType, Record<string, FieldMapping>>>({
     Detail: {},
     Summary: {},
@@ -133,8 +141,6 @@ export function useSettlementMapping(
       setHasSettlementLayout(s.has_settlement_layout)
       setEnabled(s.enabled)
       setPostType(s.post_type)
-      const tmpl = s.jv_description_template || DEFAULT_TEMPLATE
-      setTemplate(tmpl)
 
       const bySource = (source: string): Record<string, FieldMapping> => {
         const out: Record<string, FieldMapping> = {}
@@ -166,7 +172,7 @@ export function useSettlementMapping(
             : blankRows(dedupe(sample.map(i => firstToken(i.payment_type_code)))),
       }
       setSets(next)
-      setSavedPrint(fingerprint(s.enabled, s.post_type, tmpl, next))
+      setSavedPrint(fingerprint(s.enabled, s.post_type, next))
     } catch (err) {
       console.error('AR settings load failed:', err)
       toast.error(tRef.current('ar.toastLoadFailed'))
@@ -280,7 +286,7 @@ export function useSettlementMapping(
     previewARJv({
       bank_code: bankCode,
       post_type: postType,
-      jv_description_template: template,
+      jv_description_template: description,
       // The page's whole live dict plus this card's own two sets — the same "send
       // everything, let the server look up only what it needs" contract the merged
       // page's save uses.
@@ -299,7 +305,7 @@ export function useSettlementMapping(
         if (seq === previewSeq.current) setPreviewLoading(false)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bankCode, postType, template, sets])
+  }, [bankCode, postType, description, sets])
 
   useEffect(() => {
     if (loading || !hasSettlementLayout) return
@@ -310,7 +316,7 @@ export function useSettlementMapping(
   const mappedCount = (pt: PostType) =>
     Object.values(sets[pt] || {}).filter(m => m.dept && m.acc).length
 
-  const dirty = savedPrint !== null && fingerprint(enabled, postType, template, sets) !== savedPrint
+  const dirty = savedPrint !== null && fingerprint(enabled, postType, sets) !== savedPrint
 
   const mappingsToSave: Record<string, FieldMapping> = { ...sets.Detail, ...sets.Summary }
 
@@ -321,8 +327,6 @@ export function useSettlementMapping(
     setEnabled,
     postType,
     setPostType,
-    template,
-    setTemplate,
     rows,
     rowCount,
     mappedCount,

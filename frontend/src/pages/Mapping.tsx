@@ -9,6 +9,7 @@ import '../styles/components/mapping-row.css'
 import { useT } from '../i18n/LanguageContext'
 import { useMapping } from '../hooks/mapping'
 import { useSettlementMapping } from '../hooks/mapping/useSettlementMapping'
+import { descriptionForBank } from '../lib/bankTransforms'
 import { BANK_CODE_MAP } from '../constants/banks'
 import { POST_TYPES, type PostType } from '../lib/api/arReconcile'
 import TopLevelConfigSection from '../components/credit-card/TopLevelConfigSection'
@@ -101,18 +102,25 @@ function MappingSkeleton() {
   )
 }
 
-const TAGS = ['{Settlement_Date}', '{Tax_Invoice_No}', '{Bank_Name}'] as const
-
 export default function Mapping() {
   const { t } = useT()
   const mappingCtrl = useMapping()
 
   const bankCode = mappingCtrl.bank ? BANK_CODE_MAP[mappingCtrl.bank as BankDisplayName] : ''
+  // The *effective* description for this bank — own wording if set, else the BU-wide
+  // fallback — same resolution `description_for` applies server-side at posting time.
+  // Ticket D (2026-09-22): this is what a settlement JV's wording is now, too.
+  const resolvedDescription = descriptionForBank(
+    mappingCtrl.description,
+    mappingCtrl.bankDescriptions,
+    bankCode
+  )
   const settlementCtrl = useSettlementMapping(
     bankCode,
     mappingCtrl.savedMappings,
     mappingCtrl.masterAccounts,
-    mappingCtrl.masterDepartments
+    mappingCtrl.masterDepartments,
+    resolvedDescription
   )
 
   if (mappingCtrl.configLoading) return <MappingSkeleton />
@@ -142,7 +150,6 @@ export default function Mapping() {
             mappingsToSave: settlementCtrl.mappingsToSave,
             enabled: settlementCtrl.enabled,
             postType: settlementCtrl.postType,
-            template: settlementCtrl.template,
             bankCode,
           }
         : undefined
@@ -184,6 +191,8 @@ export default function Mapping() {
           bankDescriptions={mappingCtrl.bankDescriptions}
           setBankDescriptions={mappingCtrl.setBankDescriptions}
           masterGLPrefixes={mappingCtrl.masterGLPrefixes}
+          hasSettlementLayout={Boolean(showSettlement)}
+          settlementPreview={settlementCtrl.preview?.description}
         />
 
         <CompanyInfoSection
@@ -264,40 +273,6 @@ export default function Mapping() {
                       {t('ar.postTypeHintShared')}
                     </p>
                   </fieldset>
-
-                  <div className="ar-field">
-                    <label htmlFor="settlement-template">{t('ar.template')}</label>
-                    <input
-                      id="settlement-template"
-                      type="text"
-                      className="admin-form-input ar-mono"
-                      value={settlementCtrl.template}
-                      onChange={e => settlementCtrl.setTemplate(e.target.value)}
-                      onBlur={settlementCtrl.refreshPreview}
-                    />
-                    <div className="ar-tags">
-                      <span className="ar-tags-label">{t('ar.templateTags')}</span>
-                      {TAGS.map(tag => (
-                        <button
-                          key={tag}
-                          type="button"
-                          className="ar-tag"
-                          onClick={() => {
-                            settlementCtrl.setTemplate(`${settlementCtrl.template} ${tag}`.trim())
-                            settlementCtrl.refreshPreview()
-                          }}
-                        >
-                          + {tag}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="ar-example">
-                      <span className="ar-example-label">{t('ar.templateExample')}</span>
-                      <span className="ar-example-value">
-                        {settlementCtrl.preview?.description || t('ar.templateEmpty')}
-                      </span>
-                    </p>
-                  </div>
                 </Card>
               </div>
 

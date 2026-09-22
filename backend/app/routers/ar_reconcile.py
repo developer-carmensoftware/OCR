@@ -30,7 +30,7 @@ from app.models.schemas import (
     ExtractedDetailRow,
 )
 from app.services import ar_reconcile_service as svc
-from app.services.cc_jv import build_jv_rows, group_key, is_balanced, render_jv_description
+from app.services.cc_jv import build_jv_rows, group_key, is_balanced, render_description
 from app.services.cc_jv import unmapped_payment_types as _unmapped
 
 logger = logging.getLogger(__name__)
@@ -97,11 +97,16 @@ async def preview(
     """The JV the current (unsaved) screen state would build, over a worked example.
 
     Takes the screen's state rather than reading the saved row so the panel tracks edits
-    as they are made — seeing Detail collapse into three lines while flipping the toggle
-    is the reason this is a panel and not a modal behind a button. `req.mappings` is the
-    merged mapping page's *whole* live dict (commission/tax/net, every fee-invoice
-    payment type, this bank's settlement rows) — no separate accounting-config read
-    needed, since the page already holds everything this arithmetic needs in memory.
+    as they are made — seeing Detail collapse into three lines while flipping the toggle,
+    or the description update as the BU types, is the reason this is a panel and not a
+    modal behind a button. `req.mappings` is the merged mapping page's *whole* live dict
+    (commission/tax/net, every fee-invoice payment type, this bank's settlement rows) and
+    `req.jv_description_template` is whatever the page's one Description field currently
+    holds (Ticket D, 2026-09-22 — no longer settlement-only) — no separate
+    accounting-config read needed, since the page already holds everything this
+    arithmetic needs in memory. `render_description` applies the same backward-compat
+    rule posting does: a value with no template tag renders as `value - doc_date`, one
+    with a tag is treated as a full template.
 
     The example itself is this tenant's own most recently parked report for this bank
     when it has one (`svc.latest_real_sample`) — real labels, not invented ones, because
@@ -130,10 +135,10 @@ async def preview(
     )
     return ARPreviewOut(
         rows=[ARPreviewRow(**r) for r in rows],
-        description=render_jv_description(
+        description=render_description(
             req.jv_description_template,
-            settlement_date=doc_date or None,
-            tax_invoice_no=doc_no or None,
+            doc_date=doc_date or None,
+            doc_no=doc_no or None,
             bank_name=req.bank_code,
         ),
         doc_no=doc_no,

@@ -236,13 +236,15 @@ export function useMapping() {
   const missingTopFields = topLevelRequired.filter(f => !f.value?.trim())
 
   /** What the merged page's Settlement card contributes to a save — omitted entirely
-   *  for a bank with no settlement layout, since there is then nothing to add. */
+   *  for a bank with no settlement layout, since there is then nothing to add. No
+   *  `template` any more (Ticket D, 2026-09-22) — a settlement JV's wording is
+   *  `bankConfig.description`/`bankDescriptions`, already part of the one
+   *  `saveAccountingConfig` call below. */
   interface SettlementSave {
     hasSettlementLayout: boolean
     mappingsToSave: Record<string, FieldMapping>
     enabled: boolean
     postType: PostType
-    template: string
     bankCode: string
   }
 
@@ -345,7 +347,6 @@ export function useMapping() {
             bank_code: settlement.bankCode,
             enabled: settlement.enabled,
             post_type: settlement.postType,
-            jv_description_template: settlement.template,
           })
         } catch (err) {
           setSaving(false)

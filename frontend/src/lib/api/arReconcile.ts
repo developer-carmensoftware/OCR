@@ -7,9 +7,10 @@ import type { FieldMapping } from '../../types/api'
  * Reshaped 2026-09-22 (decision #3, docs/email-automation/06-decision-log.md #29): the
  * payment-type mapping this feature used to own moved into
  * `bu_accounting_mapping_entries`, saved through `PUT /api/v1/config/accounting`
- * alongside commission/tax/net — not through this module any more. What is left here is
- * the posting profile itself (enabled / post type / description template) and the JV
- * preview, which still needs the *unsaved* form state to track edits live.
+ * alongside commission/tax/net — not through this module any more. Reshaped again the
+ * same day (Ticket D): the JV description template moved there too, so `ARSettings`
+ * carries only `enabled` / `post_type` now. What is left here is that posting profile
+ * and the JV preview, which still needs the *unsaved* form state to track edits live.
  */
 
 export type PostType = 'Detail' | 'Summary'
@@ -27,7 +28,6 @@ export interface ARSettings {
   bank_code: string
   enabled: boolean
   post_type: PostType
-  jv_description_template: string
 }
 
 /** `ARSettings` plus what only the server can answer: whether this bank has a
@@ -90,6 +90,10 @@ export async function saveARSettings(payload: ARSettings): Promise<void> {
 export interface ARPreviewRequest {
   bank_code: string
   post_type: PostType
+  /** Keeps its name for minimal diff (Ticket D, 2026-09-22) but is no longer
+   *  settlement-only wording — it is whatever the merged page's one Description field
+   *  currently resolves to for this bank (`descriptionForBank`), tag or no tag,
+   *  rendered server-side the same way a real post would (`render_description`). */
   jv_description_template: string
   /** The merged mapping page's *whole* live mapping dict — commission/tax/net, every
    *  fee-invoice payment type, and this bank's settlement credit-side rows, all in the

@@ -29,12 +29,17 @@ class ARMappingItem(BaseModel):
 
 
 class ARSettingsIn(BaseModel):
-    """Full replace of one (tenant, bank) posting profile."""
+    """Full replace of one (tenant, bank) posting profile.
+
+    No `jv_description_template` any more (Ticket D, 2026-09-22) — a settlement JV's
+    wording is the same field the fee-invoice path always used
+    (`bu_accounting_mapping_entries`'s config, `description`/`bank_descriptions`, saved
+    through `PUT /api/v1/config/accounting`), not a posting-profile concern of its own.
+    """
 
     bank_code: str
     enabled: bool = False
     post_type: str = PostType.DETAIL
-    jv_description_template: str = "Credit Card AR Reconcile {Settlement_Date}"
 
     @field_validator("post_type")
     @classmethod
@@ -99,6 +104,12 @@ class ARPreviewIn(BaseModel):
     shape the page already holds in memory means no reshaping at the call site; only
     the keys this bank's grouping actually resolves matter to the arithmetic, so a
     fee-invoice-only key sent along for the ride is simply never looked up.
+
+    `jv_description_template` keeps its name for minimal diff (Ticket D, 2026-09-22)
+    but no longer means "the settlement-only template" — it is whatever the page's one
+    merged Description field currently holds, tag or no tag, rendered the same way
+    `resolve_jv_description` would (`render_description` below, directly, since this
+    endpoint deliberately has no DB config read of its own — decision #3).
     """
 
     bank_code: str

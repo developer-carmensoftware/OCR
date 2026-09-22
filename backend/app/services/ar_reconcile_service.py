@@ -3,8 +3,13 @@
 Decision #3 (2026-09-22, docs/email-automation/06-decision-log.md #29) folded this
 feature's own mapping table (`ar_reconcile_mappings`) into `bu_accounting_mapping_entries`
 — the credit-card wizard's table, which the settlement JV's three fixed debit legs were
-already reading (decision #28). What this module owns now is only the posting profile
-itself: enabled / post_type / jv_description_template, one row per (tenant, bank).
+already reading (decision #28). Ticket D (2026-09-22, same day) folded the JV
+description the same way: `jv_description_template` is no longer read or written here —
+a settlement JV's wording now comes from `bu_accounting_mapping_entries`'s config via
+`cc_jv.resolve_jv_description`, the same call the fee-invoice path always used. What
+this module owns now is only `enabled` / `post_type`, one row per (tenant, bank).
+`ar_reconcile_settings.jv_description_template` stays in the schema, unused — same
+precedent as `debit_dept_code`/`debit_account_code` from decision #28.
 """
 
 from __future__ import annotations
@@ -26,12 +31,10 @@ from app.models.schemas import (
 )
 from app.models.schemas.common import FieldMapping
 from app.services.accounting_config_service import get_accounting_config
-from app.services.cc_jv import build_jv_rows, group_key, is_balanced, render_jv_description
+from app.services.cc_jv import build_jv_rows, group_key, is_balanced, resolve_jv_description
 from app.services.cc_jv import unmapped_payment_types as _unmapped
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_TEMPLATE = "Credit Card AR Reconcile {Settlement_Date}"
 
 
 def mappings_dict(items: dict[str, FieldMapping]) -> dict[str, dict[str, str]]:
@@ -136,14 +139,12 @@ async def get_settings(db: AsyncSession, tenant_id: str, bank_code: str) -> ARSe
             bank_code=bank_code,
             enabled=False,
             post_type="Detail",
-            jv_description_template=DEFAULT_TEMPLATE,
             has_settlement_layout=has_layout,
         )
     return ARSettingsOut(
         bank_code=row.bank_code,
         enabled=bool(row.enabled),
         post_type=row.post_type,
-        jv_description_template=row.jv_description_template or DEFAULT_TEMPLATE,
         has_settlement_layout=has_layout,
     )
 
@@ -151,19 +152,18 @@ async def get_settings(db: AsyncSession, tenant_id: str, bank_code: str) -> ARSe
 async def save_settings(db: AsyncSession, tenant_id: str, req: ARSettingsIn) -> None:
     """Full replace of the posting profile. Its payment-type mapping is no longer part
     of this call — it lives in `bu_accounting_mapping_entries`, saved through
-    `PUT /api/v1/config/accounting`, the merged mapping page's other write."""
+    `PUT /api/v1/config/accounting`, the merged mapping page's other write. Its JV
+    description likewise (Ticket D) — that same call's `description` field."""
     row = await _get_setting(db, tenant_id, req.bank_code)
     if row:
         row.enabled = req.enabled
         row.post_type = req.post_type
-        row.jv_description_template = req.jv_description_template or DEFAULT_TEMPLATE
     else:
         row = ARReconcileSetting(
             tenant_id=tenant_id,
             bank_code=req.bank_code,
             enabled=req.enabled,
             post_type=req.post_type,
-            jv_description_template=req.jv_description_template or DEFAULT_TEMPLATE,
         )
         db.add(row)
 
@@ -206,10 +206,11 @@ async def jv_for_document(
     doc_date = extracted.get("doc_date") or ""
     total_row_data = extracted.get("total_row")
     total_row = _detail_row(total_row_data) if total_row_data else None
-    # One dict now: commission/tax/net and this bank's settlement credit-side keys both
-    # live in bu_accounting_mapping_entries (decision #3) — the same dict the fee
-    # invoice reads for its own three fixed legs.
-    mappings = (await get_accounting_config(db, tenant_id)).mappings or {}
+    # One config now (decision #3, and Ticket D for its `description`): commission/tax/
+    # net, this bank's settlement credit-side keys, and its JV wording all live in
+    # bu_accounting_mapping_entries's config — the same one the fee invoice reads.
+    config = await get_accounting_config(db, tenant_id)
+    mappings = config.mappings or {}
 
     def grouping(label: str) -> str:
         return group_key(label, setting.post_type)
@@ -219,11 +220,8 @@ async def jv_for_document(
     )
     return ARPreviewOut(
         rows=[ARPreviewRow(**r) for r in rows],
-        description=render_jv_description(
-            setting.jv_description_template,
-            settlement_date=doc_date or None,
-            tax_invoice_no=doc_no or None,
-            bank_name=bank_code,
+        description=resolve_jv_description(
+            config, bank_code, doc_date=doc_date or None, doc_no=doc_no or None
         ),
         doc_no=doc_no,
         doc_date=doc_date,

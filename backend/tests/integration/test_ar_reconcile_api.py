@@ -151,6 +151,16 @@ def test_preview_renders_every_template_tag():
         assert body["description"] == "KBANK 210726E00035291 21/07/2026"
 
 
+def test_preview_appends_the_date_to_a_plain_description_with_no_tag():
+    """Ticket D (2026-09-22): this field now carries whatever the merged mapping page's
+    one Description input holds, fee-invoice or settlement. A value with no template
+    tag must render exactly as the fee-invoice path always has — `base - doc_date` —
+    or the preview would show different wording than what actually posts."""
+    with make_test_client(make_mock_db()) as client:
+        body = _preview(client, jv_description_template="AR Recon").json()
+        assert body["description"] == "AR Recon - 21/07/2026"
+
+
 # ── settings ──────────────────────────────────────────────────────────────────
 
 

@@ -213,6 +213,44 @@ export function applyJvAmount<T extends Detail>(details: T[], row: JvRow, next: 
   return out
 }
 
+const TEMPLATE_TAGS = ['{Settlement_Date}', '{Tax_Invoice_No}', '{Bank_Name}'] as const
+
+function hasTemplateTags(s: string): boolean {
+  return TEMPLATE_TAGS.some(tag => s.includes(tag))
+}
+
+/** Fill a JV description template's three tags. Twin of `render_jv_description` in
+ *  cc_jv.py — was settlement-only until Ticket D (2026-09-22) gave the fee-invoice
+ *  path a browser-side renderer too, since the wizard is the one place a tagged
+ *  description can now be typed for a bank with no settlement layout at all. */
+function renderJvDescription(
+  template: string,
+  tags: { settlementDate?: string; taxInvoiceNo?: string; bankName?: string }
+): string {
+  let out = template
+  out = out.split('{Settlement_Date}').join(tags.settlementDate || '')
+  out = out.split('{Tax_Invoice_No}').join(tags.taxInvoiceNo || '')
+  out = out.split('{Bank_Name}').join(tags.bankName || '')
+  return out.split(/\s+/).filter(Boolean).join(' ')
+}
+
+/** The one decision point the fee-invoice default and (since Ticket D) a settlement
+ *  JV share: a saved value with a template tag is a full template; one without is
+ *  today's plain `base - docDate` concatenation, unchanged for every BU that has
+ *  never touched the tags. Twin of `render_description` in cc_jv.py. */
+function renderDescription(
+  base: string,
+  docDate: string | undefined,
+  docNo: string | undefined,
+  bankName: string | undefined
+): string {
+  if (!base) return ''
+  if (hasTemplateTags(base)) {
+    return renderJvDescription(base, { settlementDate: docDate, taxInvoiceNo: docNo, bankName })
+  }
+  return docDate ? `${base} - ${docDate}` : base
+}
+
 /**
  * JV rows + accounting config → the exact Carmen `gljv` body the wizard posts.
  *
@@ -227,9 +265,9 @@ export function applyJvAmount<T extends Detail>(details: T[], row: JvRow, next: 
  */
 export function buildGljvPayload(
   rows: JvRow[],
-  opts: { docDate?: string; bankCode?: string; config: GljvConfig }
+  opts: { docDate?: string; docNo?: string; bankCode?: string; config: GljvConfig }
 ): Record<string, unknown> {
-  const { docDate, bankCode, config } = opts
+  const { docDate, docNo, bankCode, config } = opts
   // Per-bank wording when the BU set one, else the BU's single description — the
   // input-tax record built from the same statement resolves it the same way, so the
   // two documents never disagree about what they are.
@@ -244,7 +282,7 @@ export function buildGljvPayload(
     // fall back to stored config only when the bank is unknown.
     JvhSource: (bankCode && codeToSource(bankCode)) || config.fileSource || '',
     Status: 'Draft',
-    Description: base ? `${base}${docDate ? ` - ${docDate}` : ''}` : '',
+    Description: renderDescription(base, docDate, docNo, bankCode),
     // Drop display-only zero legs (e.g. gateway net=0.00 shown in Step 3 for a
     // standard layout) — never post empty GL lines to Carmen.
     Detail: rows

@@ -728,3 +728,53 @@ building a new alerting surface (no admin-dashboard chip, no notification type) 
 that a self-correcting check removes outright — if `KB1P554V2` ever breaks, the fee invoice
 resumes carrying the commission by itself within `_SETTLEMENT_FRESHNESS`'s window rather
 than needing anyone to notice an alert first.
+
+## 30. One JV-description mechanism, not two (2026-09-22)
+
+**Decided:** 2026-09-22, reopening decision #7 from #29's own list ("Two JV-description
+mechanisms stay — out of scope") on purpose, the same day, after the merged mapping
+page made the redundancy visible: `TopLevelConfigSection`'s per-bank `Description`
+field (fee invoice) and the Settlement card's `JV description template` field
+(settlement) are both "the JV's wording," one plain, one templated.
+
+**Decision.** `bu_accounting_configs.bank_descriptions[bank_code]` — the field the
+fee-invoice path always read — becomes the single source for both. `cc_jv.py` gained
+`render_description()` (a saved value containing `{Settlement_Date}` /
+`{Tax_Invoice_No}` / `{Bank_Name}` is treated as a full template via the pre-existing
+`render_jv_description()`; one without a tag keeps the fee-invoice path's original
+`base - doc_date` concatenation verbatim) and `resolve_jv_description()` (the same
+decision starting from a config object via `description_for()`). `build_gljv_payload`'s
+description fallback and `ar_reconcile_service.jv_for_document`'s settlement-JV
+description both now call these instead of each maintaining its own copy of "compute
+the wording" — `email_ingest_service._ar_description()`, which used to be that copy for
+the auto-post path, is deleted outright. `ar_reconcile_settings.jv_description_template`
+stops being read or written anywhere; the column stays in the schema, unused, same
+precedent as `debit_dept_code`/`debit_account_code` from decision #28.
+`ARSettingsIn`/`Out` drop the field entirely, matching how `mappings` was already
+dropped from that schema in #29. The frontend gained the same split: `ccJv.ts`'s
+browser twin (`buildGljvPayload`, the wizard's own JV builder) gets tag rendering for
+the first time — it never needed it before, since the wizard has no settlement document
+type (decision #4) — and `TopLevelConfigSection`'s Description field grows the
+tag-insert buttons and a live preview line, but only for a bank with a settlement layout
+(`hasSettlementLayout`); every other bank's box is unchanged.
+
+**Why.** Once the merged mapping page (#29) put both fields on screen at once for a
+settlement-capable bank, "two boxes, one concept" was no longer a design that needed
+explaining — it was the exact redundancy the earlier collapse work had just spent a
+session removing everywhere else. The two mechanisms differed only in whether the saved
+string had template tags in it, which is a property of the *value*, not a reason for a
+second *field*.
+
+**What it costs.** `build_gljv_payload` (email ingest) and `buildGljvPayload` (the
+wizard) both run for every tenant's JVs, fee invoice or settlement — a careless merge
+would have silently changed wording on documents already posting correctly. The
+backward-compatibility rule is the whole answer to that: a saved description with no
+tag in it is byte-identical in behaviour to before this decision, for every BU that
+never touches `{Settlement_Date}`/`{Tax_Invoice_No}`/`{Bank_Name}`. Migration
+`20260922010000_fold_jv_description.sql` backfills a bank's customized settlement
+template into `bank_descriptions[bank_code]` only where that slot was empty (same
+non-clobbering shape #29's own migration used); a bank with both already set and
+disagreeing is left for a human, per `db/queries.sql` item 27's conflict report — empty
+against dev at the time this shipped, since KBANK is still the only live settlement
+bank and neither of its two dev tenants had a customized settlement template that
+disagreed with their own fee-invoice wording.

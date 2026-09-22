@@ -686,3 +686,28 @@ JOIN bu_accounting_mapping_entries existing
     AND existing.deleted_at IS NULL
 WHERE arm.deleted_at IS NULL
 ORDER BY arm.payment_type_code;
+
+-- 27. JV-description conflicts the 2026-09-22 (Ticket D) fold-in skipped.
+--
+-- ar_reconcile_settings.jv_description_template folds into
+-- bu_accounting_configs.bank_descriptions[bank_code] -- the field the fee-invoice path
+-- already reads -- only when that slot is empty (20260922010000_fold_jv_description.sql).
+-- A bank whose BU had already typed a fee-invoice description AND customized the
+-- settlement template gets neither overwritten; this lists those pairs so someone can
+-- decide by hand which wording a bank's JVs should actually carry. Run before applying
+-- the migration; an empty result (expected today -- KBANK is the only live settlement
+-- bank and has not set a separate fee-invoice description) means nothing needs a
+-- decision.
+SELECT
+    s.tenant_id,
+    s.bank_code,
+    s.jv_description_template AS settlement_template,
+    c.bank_descriptions ->> s.bank_code AS existing_fee_invoice_description
+FROM ar_reconcile_settings s
+JOIN bu_accounting_configs c ON c.tenant_id = s.tenant_id AND c.deleted_at IS NULL
+WHERE s.deleted_at IS NULL
+  AND COALESCE(TRIM(s.jv_description_template), '') <> ''
+  AND TRIM(s.jv_description_template) <> 'Credit Card AR Reconcile {Settlement_Date}'
+  AND COALESCE(TRIM(c.bank_descriptions ->> s.bank_code), '') <> ''
+  AND TRIM(c.bank_descriptions ->> s.bank_code) <> TRIM(s.jv_description_template)
+ORDER BY s.tenant_id, s.bank_code;

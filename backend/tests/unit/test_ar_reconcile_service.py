@@ -105,11 +105,12 @@ def _summary_entries():
     ]
 
 
-def _config(entries):
+def _config(entries, bank_descriptions=None):
     """Two `.execute()` results — a `BUAccountingConfig` row, then its entries — what
     `get_accounting_config` (`_get_config` then `_get_entries`) reads. Pass the merged
     list `_fixed_entries() + _summary_entries()` (or a subset) since both live in the
-    one table now."""
+    one table now. `bank_descriptions` is this same row's JV-wording field (Ticket D,
+    2026-09-22) — a settlement JV's description now resolves from here too."""
     cfg = SimpleNamespace(
         id=9,
         bank_code=None,
@@ -117,7 +118,7 @@ def _config(entries):
         file_source=None,
         description=None,
         branch=None,
-        bank_descriptions={},
+        bank_descriptions=bank_descriptions or {},
     )
     return [cfg], list(entries)
 
@@ -133,7 +134,15 @@ def _no_config():
 
 @pytest.mark.asyncio
 async def test_jv_for_document_builds_the_entry_the_reviewer_approves():
-    db = _db([_setting()], *_config(_fixed_entries() + _summary_entries()))
+    # The description now resolves from the same bank_descriptions field the
+    # fee-invoice path reads (Ticket D, 2026-09-22) — not a settlement-only template.
+    db = _db(
+        [_setting()],
+        *_config(
+            _fixed_entries() + _summary_entries(),
+            bank_descriptions={"KBANK": "Credit Card AR Reconcile {Settlement_Date}"},
+        ),
+    )
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
@@ -151,6 +160,33 @@ async def test_jv_for_document_builds_the_entry_the_reviewer_approves():
     assert out.unmapped == []
     assert out.description == "Credit Card AR Reconcile 21/07/2026"
     assert out.rows[3].desc.startswith("Tax Inv.# 210726E00035291 - ")
+
+
+@pytest.mark.asyncio
+async def test_jv_for_document_description_falls_back_to_plain_concatenation():
+    """A saved description with no template tag renders exactly as the fee-invoice
+    path always has — `base - doc_date` — not the bare wording. Backward compatibility
+    is the whole point of Ticket D's merge: a BU that never touches the new tags sees
+    no change to their settlement JV's wording either."""
+    db = _db(
+        [_setting()],
+        *_config(_fixed_entries() + _summary_entries(), bank_descriptions={"KBANK": "AR Recon"}),
+    )
+
+    out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
+
+    assert out is not None
+    assert out.description == "AR Recon - 21/07/2026"
+
+
+@pytest.mark.asyncio
+async def test_jv_for_document_description_is_empty_when_nothing_is_saved():
+    db = _db([_setting()], *_config(_fixed_entries() + _summary_entries()))
+
+    out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
+
+    assert out is not None
+    assert out.description == ""
 
 
 @pytest.mark.asyncio
@@ -264,7 +300,6 @@ async def test_get_settings_returns_the_posting_profile_for_a_configured_bank():
 
     assert out.enabled is True
     assert out.post_type == PostType.SUMMARY
-    assert out.jv_description_template == "Credit Card AR Reconcile {Settlement_Date}"
     assert out.has_settlement_layout is True
 
 
@@ -317,17 +352,11 @@ async def test_saving_over_an_existing_row_updates_it_rather_than_adding_a_secon
 
     row = _setting(enabled=False, post_type=PostType.DETAIL)
     db = _db([row])
-    req = ARSettingsIn(
-        bank_code="KBANK",
-        enabled=True,
-        post_type=PostType.SUMMARY,
-        jv_description_template="AR {Tax_Invoice_No}",
-    )
+    req = ARSettingsIn(bank_code="KBANK", enabled=True, post_type=PostType.SUMMARY)
 
     await svc.save_settings(db, TENANT, req)
 
     assert row.enabled is True and row.post_type == PostType.SUMMARY
-    assert row.jv_description_template == "AR {Tax_Invoice_No}"
     # No mapping table of this feature's own to write to any more (decision #3) — the
     # row is updated in place and nothing is added.
     assert db.add.call_args_list == []

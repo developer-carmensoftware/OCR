@@ -108,7 +108,6 @@ from app.services.cc_jv import (
     is_balanced,
     num,
     r2,
-    render_jv_description,
     unmapped_payment_types,
 )
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
@@ -1343,9 +1342,9 @@ async def _run_document(
         payload = build_gljv_payload(
             rows,
             doc_date=extracted.doc_date,
+            doc_no=extracted.doc_no,
             bank_code=bank_code,
             config=config,
-            description=_ar_description(ar_setting, extracted, bank_code),
         )
         result = await post_gljv(payload, carmen_token)
         if not result or result.get("Code", -1) != 0:
@@ -1677,26 +1676,6 @@ async def _claim(
         await db.rollback()
         return None
     return row
-
-
-def _ar_description(
-    setting: ARReconcileSetting | None,
-    extracted: ExtractedCreditCardData,
-    bank_code: str | None,
-) -> str | None:
-    """The JV description for an AR document, or None to keep the config-derived one.
-
-    Returning None rather than an empty string matters: `build_gljv_payload` treats None
-    as "you did not ask", which is what every credit-card document needs.
-    """
-    if setting is None:
-        return None
-    return render_jv_description(
-        setting.jv_description_template,
-        settlement_date=extracted.doc_date,
-        tax_invoice_no=extracted.doc_no,
-        bank_name=bank_code,
-    )
 
 
 async def _settlement_recently_posted(tenant_id: str, bank_code: str) -> bool:
@@ -2211,6 +2190,7 @@ async def approve_document(
         payload = build_gljv_payload(
             rows,
             doc_date=extracted.doc_date,
+            doc_no=doc_no,
             bank_code=bank_code,
             config=config,
             description=description,

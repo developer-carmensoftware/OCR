@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildJvRows } from './ccJv'
+import { buildJvRows, buildGljvPayload } from './ccJv'
 
 // Shared debit accounts + per-payment-type credit accounts, mirroring accountingConfig.
 const config = {
@@ -105,5 +105,58 @@ describe('buildJvRows', () => {
     expect(rows).toHaveLength(8)
     expect(rows.filter(r => r.desc === 'Credit card commission')).toHaveLength(2)
     expect(sum(rows, 'debit')).toBeCloseTo(sum(rows, 'credit'), 2)
+  })
+})
+
+// Ticket D (2026-09-22): one description mechanism, not two. The fee-invoice path's
+// plain `base - docDate` concatenation and a settlement JV's template both go through
+// the same decision now — twin of cc_jv.py's render_description/build_gljv_payload
+// tests, so a change to one side without the other shows up here.
+describe('buildGljvPayload — Description', () => {
+  it('falls back to plain concatenation when the saved value has no template tag', () => {
+    const payload = buildGljvPayload([], {
+      docDate: '15/06/2026',
+      docNo: 'DOC-1',
+      bankCode: 'BAY',
+      config: { filePrefix: 'IC', fileSource: 'ACBY', description: 'Credit Card Commission' },
+    })
+    expect(payload.Description).toBe('Credit Card Commission - 15/06/2026')
+  })
+
+  it('treats a value with a tag as a full template, and does not also append the date', () => {
+    const payload = buildGljvPayload([], {
+      docDate: '21/07/2026',
+      docNo: '210726E00035291',
+      bankCode: 'KBANK',
+      config: {
+        filePrefix: 'IC',
+        fileSource: 'ACKB',
+        bankDescriptions: { KBANK: 'Credit Card AR Reconcile {Settlement_Date}' },
+      },
+    })
+    expect(payload.Description).toBe('Credit Card AR Reconcile 21/07/2026')
+  })
+
+  it('renders every tag, and collapses an unset one rather than printing it literally', () => {
+    const payload = buildGljvPayload([], {
+      docDate: '21/07/2026',
+      docNo: '210726E00035291',
+      bankCode: 'KBANK',
+      config: {
+        filePrefix: 'IC',
+        fileSource: 'ACKB',
+        bankDescriptions: { KBANK: '{Bank_Name} {Tax_Invoice_No} {Settlement_Date}' },
+      },
+    })
+    expect(payload.Description).toBe('KBANK 210726E00035291 21/07/2026')
+  })
+
+  it('is empty when nothing is saved for this bank', () => {
+    const payload = buildGljvPayload([], {
+      docDate: '21/07/2026',
+      bankCode: 'KBANK',
+      config: { filePrefix: 'IC', fileSource: 'ACKB' },
+    })
+    expect(payload.Description).toBe('')
   })
 })

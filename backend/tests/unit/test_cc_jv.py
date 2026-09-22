@@ -20,7 +20,9 @@ from app.services.cc_jv import (
     canonical_payment_type,
     group_key,
     is_balanced,
+    render_description,
     render_jv_description,
+    resolve_jv_description,
     unmapped_payment_types,
 )
 
@@ -600,6 +602,116 @@ def test_settlement_every_tag_is_supported_and_unset_ones_collapse():
         )
         == "AR Reconcile"
     )
+
+
+# -- Ticket D (2026-09-22): one description mechanism, not two ---------------------
+#
+# `render_jv_description` used to be settlement-only; the fee-invoice path did its own
+# plain `base - doc_date` concatenation inside `build_gljv_payload`. Both now go
+# through `render_description`, which decides between the two by whether the saved
+# value contains a template tag -- backward-compatible by construction, since every
+# description saved before this ticket has no tag in it.
+
+
+def test_render_description_with_no_tag_falls_back_to_plain_concatenation():
+    assert (
+        render_description("AR Recon", doc_date="21/07/2026", doc_no=AR_DOC_NO, bank_name="KBANK")
+        == "AR Recon - 21/07/2026"
+    )
+
+
+def test_render_description_with_no_tag_and_no_date_is_just_the_base():
+    assert render_description("AR Recon", doc_date=None, doc_no=None, bank_name=None) == "AR Recon"
+
+
+def test_render_description_with_a_tag_is_treated_as_a_full_template():
+    """The date is not additionally appended once a tag is present -- the tag is the
+    BU's own opt-in to say exactly where it lands."""
+    out = render_description(
+        "Credit Card AR Reconcile {Settlement_Date}",
+        doc_date="21/07/2026",
+        doc_no=AR_DOC_NO,
+        bank_name="KBANK",
+    )
+    assert out == "Credit Card AR Reconcile 21/07/2026"
+
+
+def test_render_description_empty_base_is_empty():
+    assert (
+        render_description(None, doc_date="21/07/2026", doc_no=AR_DOC_NO, bank_name="KBANK") == ""
+    )
+    assert render_description("", doc_date="21/07/2026", doc_no=AR_DOC_NO, bank_name="KBANK") == ""
+
+
+def test_resolve_jv_description_reads_the_bank_scoped_config_entry():
+    config = SimpleNamespace(description=None, bank_descriptions={"KBANK": "AR Recon"})
+    assert (
+        resolve_jv_description(config, "KBANK", doc_date="21/07/2026", doc_no=AR_DOC_NO)
+        == "AR Recon - 21/07/2026"
+    )
+
+
+def test_build_gljv_payload_default_description_is_tag_aware():
+    """The exact fallback `_ar_description` used to compute by hand before it was
+    deleted (Ticket D) -- proof the merge did not change what a settlement JV posts,
+    only where the wording comes from."""
+    config = SimpleNamespace(
+        file_prefix="IC",
+        file_source="ACKB",
+        description=None,
+        bank_descriptions={"KBANK": "Credit Card AR Reconcile {Settlement_Date}"},
+    )
+    payload = build_gljv_payload(
+        [
+            {
+                "dept": "GEN",
+                "acc": "1021001",
+                "desc": "VS",
+                "debit": 0.0,
+                "credit": 100.0,
+                "key": "VS",
+            }
+        ],
+        doc_date="21/07/2026",
+        doc_no=AR_DOC_NO,
+        bank_code="KBANK",
+        config=config,
+    )
+    assert payload["Description"] == "Credit Card AR Reconcile 21/07/2026"
+
+
+def test_build_gljv_payload_default_description_without_a_tag_still_appends_the_date():
+    """The fee-invoice behaviour every other BU's saved description still gets,
+    unchanged by the merge."""
+    config = SimpleNamespace(
+        file_prefix="IC",
+        file_source="ACBY",
+        description="Credit Card Commission",
+        bank_descriptions={},
+    )
+    payload = build_gljv_payload(
+        [{"dept": "GEN", "acc": "1130V", "desc": "Visa", "debit": 0.0, "credit": 100.0, "key": ""}],
+        doc_date="15/06/2026",
+        doc_no="DOC-1",
+        bank_code="BAY",
+        config=config,
+    )
+    assert payload["Description"] == "Credit Card Commission - 15/06/2026"
+
+
+def test_build_gljv_payload_an_explicit_description_overrides_the_default():
+    config = SimpleNamespace(
+        file_prefix="IC", file_source="ACKB", description=None, bank_descriptions={}
+    )
+    payload = build_gljv_payload(
+        [],
+        doc_date="21/07/2026",
+        doc_no=AR_DOC_NO,
+        bank_code="KBANK",
+        config=config,
+        description="Already rendered",
+    )
+    assert payload["Description"] == "Already rendered"
 
 
 def test_settlement_document_without_a_tax_invoice_number_drops_the_comment_prefix():

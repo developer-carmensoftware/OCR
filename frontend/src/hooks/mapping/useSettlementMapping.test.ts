@@ -28,7 +28,6 @@ function settingsResponse(over: Partial<Awaited<ReturnType<typeof realGetARSetti
     bank_code: 'KBANK',
     enabled: false,
     post_type: 'Detail' as const,
-    jv_description_template: 'Credit Card AR Reconcile {Settlement_Date}',
     has_settlement_layout: true,
     ...over,
   }
@@ -56,7 +55,7 @@ describe('useSettlementMapping', () => {
   it('a bank with no settlement layout loads without seeding or previewing', async () => {
     getARSettings.mockResolvedValue(settingsResponse({ has_settlement_layout: false }))
 
-    const { result } = renderHook(() => useSettlementMapping('SCB', {}, [], []))
+    const { result } = renderHook(() => useSettlementMapping('SCB', {}, [], [], ''))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.hasSettlementLayout).toBe(false)
@@ -72,7 +71,7 @@ describe('useSettlementMapping', () => {
       VS: { dept: 'GEN', acc: '1021001', source: 'settlement_summary' },
     }
 
-    const { result } = renderHook(() => useSettlementMapping('KBANK', saved, [], []))
+    const { result } = renderHook(() => useSettlementMapping('KBANK', saved, [], [], ''))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     // Summary is the loaded post type, so `rows` (the currently-displayed set) is VS —
@@ -87,7 +86,7 @@ describe('useSettlementMapping', () => {
       { payment_type_code: 'JCB PREM' },
     ])
 
-    const { result } = renderHook(() => useSettlementMapping('KBANK', {}, [], []))
+    const { result } = renderHook(() => useSettlementMapping('KBANK', {}, [], [], ''))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.rows.map(r => r.code).sort()).toEqual(['JCB PREM', 'VS INTER UP PREM'])
@@ -102,7 +101,7 @@ describe('useSettlementMapping', () => {
       { payment_type_code: 'JCB PREM' },
     ])
 
-    const { result } = renderHook(() => useSettlementMapping('KBANK', {}, [], []))
+    const { result } = renderHook(() => useSettlementMapping('KBANK', {}, [], [], ''))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.rows.map(r => r.code).sort()).toEqual(['JCB', 'VS'])
@@ -112,7 +111,7 @@ describe('useSettlementMapping', () => {
     getARSettings.mockResolvedValue(settingsResponse())
     getSamplePaymentTypes.mockResolvedValue([{ payment_type_code: 'VS' }])
 
-    const { result } = renderHook(() => useSettlementMapping('KBANK', {}, [], []))
+    const { result } = renderHook(() => useSettlementMapping('KBANK', {}, [], [], ''))
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.dirty).toBe(false)
 
@@ -124,7 +123,7 @@ describe('useSettlementMapping', () => {
     getARSettings.mockResolvedValue(settingsResponse({ post_type: 'Detail' }))
     getSamplePaymentTypes.mockResolvedValue([])
 
-    const { result } = renderHook(() => useSettlementMapping('KBANK', {}, [], []))
+    const { result } = renderHook(() => useSettlementMapping('KBANK', {}, [], [], ''))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     act(() => result.current.addCustomType('AMEX PREM'))
@@ -141,7 +140,7 @@ describe('useSettlementMapping', () => {
     getARSettings.mockResolvedValue(settingsResponse())
     getSamplePaymentTypes.mockResolvedValue([])
 
-    const { result } = renderHook(() => useSettlementMapping('KBANK', {}, [], []))
+    const { result } = renderHook(() => useSettlementMapping('KBANK', {}, [], [], ''))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     act(() => result.current.addCustomType('AMEX'))
@@ -150,5 +149,37 @@ describe('useSettlementMapping', () => {
 
     expect(result.current.rows).toHaveLength(1)
     expect(result.current.rows[0].mapping.dept).toBe('GEN')
+  })
+
+  // Ticket D (2026-09-22): `description` is now injected live from the page's own
+  // Description field (`descriptionForBank`), not a `template` this hook owns — the
+  // preview has to track it the same way it already tracks `postType` and the rows.
+  it('previews using the description the page passed in', async () => {
+    getARSettings.mockResolvedValue(settingsResponse())
+    getSamplePaymentTypes.mockResolvedValue([])
+
+    renderHook(() => useSettlementMapping('KBANK', {}, [], [], 'AR Recon {Settlement_Date}'))
+    await waitFor(() => expect(previewARJv).toHaveBeenCalled())
+
+    expect(previewARJv).toHaveBeenCalledWith(
+      expect.objectContaining({ jv_description_template: 'AR Recon {Settlement_Date}' })
+    )
+  })
+
+  it('refreshes the preview when the page edits the description', async () => {
+    getARSettings.mockResolvedValue(settingsResponse())
+    getSamplePaymentTypes.mockResolvedValue([])
+
+    const { rerender } = renderHook(
+      ({ description }) => useSettlementMapping('KBANK', {}, [], [], description),
+      { initialProps: { description: 'AR Recon' } }
+    )
+    await waitFor(() => expect(previewARJv).toHaveBeenCalledTimes(1))
+
+    rerender({ description: 'AR Recon v2' })
+    await waitFor(() => expect(previewARJv).toHaveBeenCalledTimes(2))
+    expect(previewARJv).toHaveBeenLastCalledWith(
+      expect.objectContaining({ jv_description_template: 'AR Recon v2' })
+    )
   })
 })

@@ -231,8 +231,16 @@ async def test_a_row_parked_before_doc_type_existed_defaults_to_fee_invoice():
 async def test_ar_posts_three_fixed_debit_legs_and_one_credit_per_scheme():
     """The debit side reads the BU's existing credit-card mapping (MAPPINGS in
     test_email_ingest_pipeline.py, patched in via `_config()`/`get_accounting_config`) —
-    not a mapping table of this feature's own — off the report's own total row."""
-    _, p = await _run_ar(_FakeDB())
+    not a mapping table of this feature's own — off the report's own total row. The
+    description now resolves from that same config's `bank_descriptions` too (Ticket D,
+    2026-09-22) — not a settlement-only template."""
+    _, p = await _run_ar(
+        _FakeDB(),
+        config=_config(
+            mappings=_ar_mappings_dict(),
+            bank_descriptions={"KBANK": "Credit Card AR Reconcile {Settlement_Date}"},
+        ),
+    )
 
     payload = p.post_gljv.call_args[0][0]
     detail = payload["Detail"]

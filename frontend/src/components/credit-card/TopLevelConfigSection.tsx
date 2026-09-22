@@ -3,6 +3,7 @@ import { BANK_CODE_MAP } from '../../constants/banks'
 import { codeToDisplayName } from '../../lib/bankTransforms'
 import { useT } from '../../i18n/LanguageContext'
 import CustomSearchSelect from '../common/CustomSearchSelect'
+import '../../styles/pages/ar-reconcile.css'
 import type { BankDisplayName } from '../../types/api'
 import type { MasterGLPrefix } from '../../hooks/mapping/useMappingData'
 
@@ -17,9 +18,19 @@ interface Props {
   bankDescriptions: Record<string, string>
   setBankDescriptions: (v: Record<string, string>) => void
   masterGLPrefixes: MasterGLPrefix[]
+  /** Whether the selected bank has a settlement layout (`banks.settlement_grouping`) —
+   *  gates the tag-insert buttons and live preview below, since a settlement JV is the
+   *  only reason `description` needs to be a template rather than a plain label
+   *  (Ticket D, 2026-09-22 — this field now also feeds a settlement JV's wording, the
+   *  same one `ar_reconcile_service.resolve_jv_description` reads at posting time). */
+  hasSettlementLayout?: boolean
+  /** The live "renders as" example for the currently-selected bank's settlement JV,
+   *  from `useSettlementMapping`'s own preview call. */
+  settlementPreview?: string
 }
 
 const BANK_OPTIONS = BANKS.map(b => ({ code: b.value, name: b.label }))
+const TEMPLATE_TAGS = ['{Settlement_Date}', '{Tax_Invoice_No}', '{Bank_Name}'] as const
 
 export default function TopLevelConfigSection({
   bank,
@@ -32,6 +43,8 @@ export default function TopLevelConfigSection({
   bankDescriptions,
   setBankDescriptions,
   masterGLPrefixes,
+  hasSettlementLayout = false,
+  settlementPreview,
 }: Props) {
   const { t } = useT()
   const bankCode = bank ? BANK_CODE_MAP[bank] : ''
@@ -42,6 +55,12 @@ export default function TopLevelConfigSection({
   // says what will be used without pretending to be what you typed.
   const ownDescription = (bankCode && bankDescriptions[bankCode]) || ''
   const fallback = description || ''
+  const appendTag = (tag: string) => {
+    const current = bankCode ? ownDescription : fallback
+    const next = `${current} ${tag}`.trim()
+    if (bankCode) setBankDescriptions({ ...bankDescriptions, [bankCode]: next })
+    else setDescription(next)
+  }
   return (
     <div className="section">
       <div className="form-grid">
@@ -137,6 +156,24 @@ export default function TopLevelConfigSection({
                 ? t('cc.cfgDescEmpty', { bank: bankCode, fallback })
                 : t('cc.cfgDescApplies', { bank: bankCode })}
           </small>
+          {hasSettlementLayout && (
+            <>
+              <div className="ar-tags">
+                <span className="ar-tags-label">{t('ar.templateTags')}</span>
+                {TEMPLATE_TAGS.map(tag => (
+                  <button key={tag} type="button" className="ar-tag" onClick={() => appendTag(tag)}>
+                    + {tag}
+                  </button>
+                ))}
+              </div>
+              <p className="ar-example">
+                <span className="ar-example-label">{t('ar.templateExample')}</span>
+                <span className="ar-example-value">
+                  {settlementPreview || t('ar.templateEmpty')}
+                </span>
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>
