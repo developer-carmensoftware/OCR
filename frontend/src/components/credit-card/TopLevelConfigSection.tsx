@@ -1,7 +1,10 @@
 import { BANKS } from '../../constants'
 import { BANK_CODE_MAP } from '../../constants/banks'
+import { codeToDisplayName } from '../../lib/bankTransforms'
 import { useT } from '../../i18n/LanguageContext'
+import CustomSearchSelect from '../common/CustomSearchSelect'
 import type { BankDisplayName } from '../../types/api'
+import type { MasterGLPrefix } from '../../hooks/mapping/useMappingData'
 
 interface Props {
   bank: BankDisplayName | ''
@@ -13,7 +16,10 @@ interface Props {
   setDescription: (v: string) => void
   bankDescriptions: Record<string, string>
   setBankDescriptions: (v: Record<string, string>) => void
+  masterGLPrefixes: MasterGLPrefix[]
 }
+
+const BANK_OPTIONS = BANKS.map(b => ({ code: b.value, name: b.label }))
 
 export default function TopLevelConfigSection({
   bank,
@@ -25,6 +31,7 @@ export default function TopLevelConfigSection({
   setDescription,
   bankDescriptions,
   setBankDescriptions,
+  masterGLPrefixes,
 }: Props) {
   const { t } = useT()
   const bankCode = bank ? BANK_CODE_MAP[bank] : ''
@@ -38,50 +45,31 @@ export default function TopLevelConfigSection({
   return (
     <div className="section">
       <div className="form-grid">
-        <label htmlFor="bankSelect" style={!bank ? { color: '#dc2626', fontWeight: 600 } : {}}>
+        <label style={!bank ? { color: '#dc2626', fontWeight: 600 } : {}}>
           {t('cc.cfgBank')} {!bank && <span style={{ color: '#dc2626' }}>*</span>}
         </label>
-        <select
-          id="bankSelect"
-          value={bank}
-          onChange={e => handleBankChange(e.target.value as BankDisplayName | '')}
-          className="search-select-trigger"
-          style={{
-            width: '100%',
-            ...(!bank
-              ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' }
-              : {}),
-          }}
-        >
-          <option value="">{t('cc.cfgBankPlaceholder')}</option>
-          {BANKS.map(b => (
-            <option key={b.value} value={b.full}>
-              {b.full}
-            </option>
-          ))}
-        </select>
+        <CustomSearchSelect
+          value={bank ? BANK_CODE_MAP[bank] : ''}
+          onChange={code => handleBankChange(codeToDisplayName(code))}
+          options={BANK_OPTIONS}
+          placeholder={t('cc.cfgBankPlaceholder')}
+          aria-label={t('cc.cfgBank')}
+          hasError={!bank}
+        />
 
-        <label
-          htmlFor="filePrefix"
-          style={!filePrefix ? { color: '#dc2626', fontWeight: 600 } : {}}
-        >
+        <label style={!filePrefix ? { color: '#dc2626', fontWeight: 600 } : {}}>
           {t('cc.cfgFilePrefix')} {!filePrefix && <span style={{ color: '#dc2626' }}>*</span>}
           <span className="gl-help-tip" title={t('cc.cfgFilePrefixHelp')}>
             ?
           </span>
         </label>
-        <input
-          id="filePrefix"
-          type="text"
-          aria-label={t('cc.cfgFilePrefix')}
-          placeholder="IC"
+        <CustomSearchSelect
           value={filePrefix}
-          onChange={e => setFilePrefix(e.target.value.toUpperCase())}
-          style={
-            !filePrefix
-              ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' }
-              : {}
-          }
+          onChange={setFilePrefix}
+          options={masterGLPrefixes}
+          placeholder="IC"
+          aria-label={t('cc.cfgFilePrefix')}
+          hasError={!filePrefix}
         />
 
         <label

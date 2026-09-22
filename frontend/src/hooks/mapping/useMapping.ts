@@ -409,6 +409,7 @@ export function useMapping() {
     handleMappingChange,
     masterAccounts: masterData.masterAccounts,
     masterDepartments: masterData.masterDepartments,
+    masterGLPrefixes: masterData.masterGLPrefixes,
     loadingOpts: masterData.loadingOpts,
     loadInitialData: masterData.loadInitialData,
     paymentAmount: paymentTypes.paymentAmount,

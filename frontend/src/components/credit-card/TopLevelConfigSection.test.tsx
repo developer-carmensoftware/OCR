@@ -23,6 +23,7 @@ function setup(over: Partial<React.ComponentProps<typeof TopLevelConfigSection>>
     setDescription,
     bankDescriptions: {} as Record<string, string>,
     setBankDescriptions,
+    masterGLPrefixes: [],
     ...over,
   }
   render(<TopLevelConfigSection {...props} />)
@@ -94,6 +95,7 @@ function Harness({ initial = {} as Record<string, string> }) {
       setDescription={setDescription}
       bankDescriptions={bankDescriptions}
       setBankDescriptions={setBankDescriptions}
+      masterGLPrefixes={[]}
     />
   )
 }

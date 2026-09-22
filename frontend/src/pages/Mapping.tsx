@@ -183,6 +183,7 @@ export default function Mapping() {
           setDescription={mappingCtrl.setDescription}
           bankDescriptions={mappingCtrl.bankDescriptions}
           setBankDescriptions={mappingCtrl.setBankDescriptions}
+          masterGLPrefixes={mappingCtrl.masterGLPrefixes}
         />
 
         <CompanyInfoSection
