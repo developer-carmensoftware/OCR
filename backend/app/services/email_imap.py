@@ -246,6 +246,37 @@ def _recipients(msg: Message) -> list[str]:
     return out
 
 
+def auth_verdict(msg: Message) -> str | None:
+    """`"dmarc=pass dkim=pass spf=softfail"` as our own MX judged this mail, or None.
+
+    **Only the topmost `Authentication-Results`, and only if our MX wrote it.** Each
+    receiving hop prepends its own, so the first one is the last server — ours. Anything
+    below it came with the mail and the sender could have typed it, which is exactly the
+    header a spoofer would add. A top header from any other authserv-id means the chain
+    is not what we think, and "no verdict" is the honest answer to that.
+
+    Measurement only (`email_documents.auth_verdict`): no gate reads it until real
+    auto-forwards have been seen to pass, because a forward can break a bank's DKIM and a
+    rule chosen before the data would refuse real documents.
+    """
+    top = next(iter(msg.get_all("Authentication-Results") or []), None)
+    if top is None:
+        return None
+    authserv, _, results = " ".join(top.split()).partition(";")
+    if authserv.strip().lower() != _TRUSTED_AUTHSERV:
+        return None
+    seen: dict[str, str] = {}
+    for method, verdict in _AUTH_METHOD.findall(results):
+        seen.setdefault(method.lower(), verdict.lower())
+    return " ".join(f"{m}={seen[m]}" for m in ("dmarc", "dkim", "spf") if m in seen) or None
+
+
+# The authserv-id Google Workspace stamps on inbound mail. ponytail: one constant, because
+# the ingest mailbox is Google-hosted; a config var the day it moves.
+_TRUSTED_AUTHSERV = "mx.google.com"
+_AUTH_METHOD = re.compile(r"\b(dmarc|dkim|spf)=(\w+)", re.IGNORECASE)
+
+
 def _quoted_folder(name: str) -> str:
     """The mailbox name as an IMAP quoted-string.
 
@@ -446,6 +477,7 @@ def fetch_unseen(limit: int) -> tuple[list[dict[str, Any]], int]:
                     # Empty for everything that is not a Gmail confirmation — the only
                     # message whose body we have any use for.
                     "body": _confirmation_body(msg),
+                    "auth": auth_verdict(msg),
                 }
             )
         return messages, beyond_window

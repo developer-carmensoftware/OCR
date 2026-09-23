@@ -57,7 +57,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -280,6 +280,7 @@ async def run_ingest(limit: int | None = None) -> dict:
             summary["beyond_window"] = beyond
             for msg in messages:
                 outcomes = await _process_message(msg, exhausted, parked)
+                await _record_auth(msg["message_id"], msg.get("auth"))
                 # `retry_later` is the one verdict that is not about the mail — the BU has
                 # nothing to spend or is switched off — so that message stays unread and
                 # replays for as long as `since_arg` allows.
@@ -1474,6 +1475,32 @@ async def _claim(
         await db.rollback()
         return None
     return row
+
+
+async def _record_auth(message_id: str, verdict: str | None) -> None:
+    """Stamp `auth_verdict` on every ledger row this message produced. Never raises.
+
+    Once per message, after `_process_message`, rather than threaded through `_claim`:
+    the verdict is a fact about the mail, not about any one attachment or gate, and this
+    reaches every row the message wrote whichever path wrote it. Keyed on `message_id`
+    alone because the tenant is not known here; the same mail delivered to two tags got
+    one verdict from our MX anyway. Measurement only, so a failure is a log line.
+
+    ponytail: no index on `message_id` alone — the table is retention-bounded
+    (`fn_purge_email_documents`) and this runs at most `imap_batch_size` times a poll.
+    """
+    if not verdict:
+        return
+    try:
+        async with async_session() as db:
+            await db.execute(
+                update(EmailDocument)
+                .where(EmailDocument.message_id == message_id, EmailDocument.auth_verdict.is_(None))
+                .values(auth_verdict=verdict[:100])
+            )
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001 — a measurement must not fail a poll
+        logger.warning("[email] Could not record auth verdict for %s: %s", message_id, exc)
 
 
 async def _already_pending(tenant_id: str, bank_code: str | None, doc_no: str | None) -> bool:
