@@ -648,9 +648,11 @@ _CONFIRM_USER_AGENT = (
 def sender_allowed(owner_emails: list[str], people: str) -> bool:
     """Does this message involve one of the BU's own addresses? Empty list = yes.
 
-    `people` is `From` + `To` + `Cc` concatenated, matched as a case-insensitive
-    substring so the `"Accounting" <a@b.com>` display form needs no parsing — the same
-    way `bank_sender_email` is matched.
+    `people` is `From` + `To` + `Cc` comma-joined, parsed into bare addresses by
+    `people_addresses` and compared whole. It used to be a substring test, which let a
+    registered `a@b.com` match `xa@b.com`, `a@b.com.evil.io`, or a display name the sender
+    typed as `"a@b.com" <x@evil.io>` (CA-102 M-009). A header with no readable address
+    fails closed once a list is set.
 
     All three headers, because the two arrival modes put the customer somewhere
     different: an auto-forward has them in `To:`/`Cc:` (the mailbox the bank wrote to),
@@ -668,8 +670,8 @@ def sender_allowed(owner_emails: list[str], people: str) -> bool:
     """
     if not owner_emails:
         return True
-    haystack = people.lower()
-    return any(addr in haystack for addr in owner_emails if addr)
+    owners = {a.strip().lower() for a in owner_emails if a and a.strip()}
+    return not owners.isdisjoint(people_addresses(people))
 
 
 def people_addresses(people: str) -> list[str]:
