@@ -64,6 +64,9 @@ trail for every outcome, `reason_code` taxonomy included.
 | `reviewed_by_name` | `varchar(100)`, nullable | Their username, from the same session claims. Stored because an opaque uuid answers nobody's question about who posted a JV |
 | `reviewed_at` | `timestamptz`, nullable | When they did |
 | `dismissed_at` | `timestamptz`, nullable | **Read-only since §18** — nothing writes it any more. It survives because the 2026-09-03 migration back-dated every historical `failed`/`rejected`/`skipped` row as dismissed, and `_attention` subtracts them so that pile does not light the queue's dot for ever. The gesture it was added for is gone: dismissal existed to stop `review` filling with rows it could never clear (§13 #54), and `review` holds only `pending_review` now. Not a soft delete, and this table has no `deleted_at` for it to be confused with |
+| `auth_verdict` | `varchar(100)`, nullable | Our own MX's verdict on the sender, from the topmost `Authentication-Results` header only if its authserv-id is `mx.google.com` (`email_imap.auth_verdict`), e.g. `dmarc=pass dkim=pass spf=softfail`. Stamped per message by `_record_auth` after `_process_message`. **Measurement only** — no gate reads it until real auto-forwards have been seen to pass (item 26 in `backend/db/queries.sql`) |
+
+**Retention** (`fn_purge_email_documents`, pg_cron `email-documents-purge` daily 03:50 UTC): `skipped` rows are deleted at 90 days; every other status except `pending_review` is scrubbed at 90 days (`review_payload`, `reviewed_by`, `reviewed_by_name`, `error_message` nulled, `attachment` → `scrubbed:<id>` because it is part of the unique key — screens read `shown_attachment()`) and deleted at 2 years. `pending_review` never expires: it was charged and only a human retires it, and it is capped at 50 per BU. A deliberate exception to "soft delete everywhere": this is a processing ledger, Carmen holds the JV. Safe for dedupe because 90 days ≫ `IMAP_HOLD_DAYS`. `job_runs` rows go at 90 days in the same job.
 
 **Indexes:** `uq_email_documents_message` — unique on `(tenant_id, message_id, attachment)`,
 **this index is the dedupe**, not a constraint that happens to also prevent duplicates.
@@ -227,6 +230,7 @@ how the design changed (full narrative in [06-decision-log.md](06-decision-log.m
 | `20260807020000_email_gmail_auto_confirm.sql` | `gmail_confirmed_at` — the real completion signal, once it was found Google no longer prints a code |
 | `20260829000000_email_review_queue.sql` | Human-in-the-loop: `review_payload`, `reviewed_by`, `reviewed_at`, the partial pending index, and `auto_post` on the settings table |
 | `20260829010000_email_review_reviewer_name.sql` | `reviewed_by_name` — added a day later, as its own migration, because `20260829000000` had already been applied |
+| `20260923000000_email_documents_retention.sql` | `fn_purge_email_documents` + its daily schedule (scrub 90 d, delete 2 y, `skipped` at 90 d, `job_runs` at 90 d), and `auth_verdict` for measuring DMARC before any gate uses it |
 
 ## Deliberately not stored
 
