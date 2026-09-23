@@ -126,6 +126,7 @@ export default function Mapping() {
           handleBankChange={mappingCtrl.handleBankChange}
           filePrefix={mappingCtrl.filePrefix}
           setFilePrefix={mappingCtrl.setFilePrefix}
+          prefixes={mappingCtrl.masterGLPrefixes}
           fileSource={mappingCtrl.fileSource}
           description={mappingCtrl.description}
           setDescription={mappingCtrl.setDescription}

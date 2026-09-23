@@ -1,12 +1,20 @@
 import { BANKS } from '../../constants'
 import { BANK_CODE_MAP } from '../../constants/banks'
 import type { BankDisplayName } from '../../types/api'
+import CustomSearchSelect, { type SelectOption } from '../common/CustomSearchSelect'
+
+const BANK_OPTIONS: SelectOption[] = BANKS.map(b => ({
+  code: b.full,
+  name: b.kind === 'gateway' ? 'Payment gateway' : 'Bank',
+}))
 
 interface Props {
   bank: BankDisplayName | ''
   handleBankChange: (bank: BankDisplayName | '') => void
   filePrefix: string
   setFilePrefix: (v: string) => void
+  /** Carmen's GL prefixes (`GET /carmen/gl-prefix`). */
+  prefixes: SelectOption[]
   fileSource: string
   description: string
   setDescription: (v: string) => void
@@ -19,6 +27,7 @@ export default function TopLevelConfigSection({
   handleBankChange,
   filePrefix,
   setFilePrefix,
+  prefixes,
   fileSource,
   description,
   setDescription,
@@ -36,33 +45,19 @@ export default function TopLevelConfigSection({
   return (
     <div className="section">
       <div className="form-grid">
-        <label htmlFor="bankSelect" style={!bank ? { color: '#dc2626', fontWeight: 600 } : {}}>
+        <label style={!bank ? { color: '#dc2626', fontWeight: 600 } : {}}>
           Bank {!bank && <span style={{ color: '#dc2626' }}>*</span>}
         </label>
-        <select
-          id="bankSelect"
-          value={bank}
-          onChange={e => handleBankChange(e.target.value as BankDisplayName | '')}
-          className="search-select-trigger"
-          style={{
-            width: '100%',
-            ...(!bank
-              ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' }
-              : {}),
-          }}
-        >
-          <option value="">Select bank...</option>
-          {BANKS.map(b => (
-            <option key={b.value} value={b.full}>
-              {b.full}
-            </option>
-          ))}
-        </select>
+        <CustomSearchSelect
+          value={bank || null}
+          onChange={v => handleBankChange(v as BankDisplayName)}
+          options={BANK_OPTIONS}
+          placeholder="Select bank..."
+          hasError={!bank}
+          aria-label="Bank"
+        />
 
-        <label
-          htmlFor="filePrefix"
-          style={!filePrefix ? { color: '#dc2626', fontWeight: 600 } : {}}
-        >
+        <label style={!filePrefix ? { color: '#dc2626', fontWeight: 600 } : {}}>
           File Prefix {!filePrefix && <span style={{ color: '#dc2626' }}>*</span>}
           <span
             className="gl-help-tip"
@@ -71,18 +66,14 @@ export default function TopLevelConfigSection({
             ?
           </span>
         </label>
-        <input
-          id="filePrefix"
-          type="text"
+        {/* Carmen's own journal books (gl-prefix), same picker as the review queue's JV header. */}
+        <CustomSearchSelect
+          value={filePrefix || null}
+          onChange={setFilePrefix}
+          options={prefixes}
+          placeholder="Select prefix..."
+          hasError={!filePrefix}
           aria-label="File Prefix"
-          placeholder="IC"
-          value={filePrefix}
-          onChange={e => setFilePrefix(e.target.value.toUpperCase())}
-          style={
-            !filePrefix
-              ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' }
-              : {}
-          }
         />
 
         <label
