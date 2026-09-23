@@ -556,6 +556,10 @@ async def test_a_second_copy_of_something_already_in_the_queue_does_not_park():
     assert db.added[0].reason_code == "duplicate_document"
     assert db.added[0].review_payload is None
     p.refund_document.assert_not_called()
+    # Nothing for the customer to do: the copy they can act on is already in the queue,
+    # and the queue has its own bell. A `document_failed` here reads as a lost document
+    # (CA-102 M-027).
+    assert not [o for o in db.added if isinstance(o, UserNotification)]
 
 
 @pytest.mark.asyncio
