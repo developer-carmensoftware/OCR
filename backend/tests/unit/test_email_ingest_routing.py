@@ -280,9 +280,9 @@ def test_missing_sender_or_subject_is_not_a_crash():
 
 # ── sender_allowed — the optional owner-address layer ─────────────────────────
 
-# From + To + Cc as the poll concatenates them, for each arrival mode.
-_AUTO = 'From: "KTC" <no-reply@ktc.co.th> To: accounting@hotelgroup.com'
-_MANUAL = "From: Somchai <somchai@hotelgroup.com> To: AIAGENT+a1b2c3d4@carmensoftware.com"
+# From + To + Cc comma-joined, exactly as `fetch_unseen` builds `people`, per arrival mode.
+_AUTO = '"KTC" <no-reply@ktc.co.th>, accounting@hotelgroup.com'
+_MANUAL = "Somchai <somchai@hotelgroup.com>, AIAGENT+a1b2c3d4@carmensoftware.com"
 
 
 @pytest.mark.parametrize(
@@ -304,6 +304,13 @@ _MANUAL = "From: Somchai <somchai@hotelgroup.com> To: AIAGENT+a1b2c3d4@carmensof
         (["accounting@other.com"], _AUTO, False),
         # Case-insensitive, and the display-name form needs no parsing.
         (["SOMCHAI@hotelgroup.com".lower()], _MANUAL.upper(), True),
+        # Whole addresses, not substrings (CA-102 M-009): a registered address that merely
+        # occurs inside another one, or inside a display name the sender wrote, is no match.
+        (["accounting@hotelgroup.com"], "ap.accounting@hotelgroup.com", False),
+        (["accounting@hotelgroup.com"], "accounting@hotelgroup.com.evil.io", False),
+        (["accounting@hotelgroup.com"], '"accounting@hotelgroup.com" <x@evil.io>', False),
+        # No readable address at all fails closed once a list is set.
+        (["accounting@hotelgroup.com"], "", False),
     ],
 )
 def test_sender_allowed(owners, people, allowed):
