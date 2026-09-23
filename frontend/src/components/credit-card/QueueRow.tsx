@@ -70,6 +70,10 @@ const STATUS_META: Record<string, { key: TKey; tone: string }> = {
   // picked up and never finished. Wearing the calm grey of "your filename rule threw this
   // out" made a crashed run and a deliberate filter look identical.
   received: { key: 'review.statusStuck', tone: 'warn' },
+  // A manual scan that was charged and never posted. Not a ledger status — the activity
+  // endpoint synthesises it from `credit_cards.submitted_at IS NULL`. The chip's own word,
+  // in the chip's own red: it did not become a JV, and nothing can resume it.
+  scanned: { key: 'review.filterUnposted', tone: 'bad' },
 }
 
 interface Props {
@@ -97,11 +101,9 @@ export default function QueueRow({ row, onOpen }: Props) {
         {/* Mono on everything the reviewer has to verify — DESIGN.md's Mono Signal Rule. */}
         <span className="rq-docno text-mono">{row.doc_no || '—'}</span>
         {/* No provenance marker here. It was a 6.5rem "Source" column, then a 12px envelope
-            on this line, and both said the same one word on every row of two chips out of
-            three — manual scans only exist as `posted` (MANUAL_FILTERS). On the one chip
-            where the two do mix, the Detail column already says which in a sentence
-            ("scanned and posted by hand" vs "posted automatically"), so the glyph was
-            unreadable where it was needed and constant where it was not. */}
+            on this line. The Detail column already says which in a sentence ("scanned and
+            posted by hand", "scanned by … — not posted", "posted automatically"), so the
+            glyph repeated what the row already said. */}
         {/* The filename, and nothing appended to it. The gross used to ride here on pending
             rows; it is on the second line of a cell that already holds a bank, a document
             number and a filename, and the figure a reviewer actually decides on is the one
@@ -259,6 +261,18 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
         {/* The JV posted but its VAT record did not — the document is done either way,
             so this is a note, not a failure. */}
         {row.error_message ? ` · ${row.error_message}` : ''}
+      </span>
+    )
+  }
+
+  // Scanned by hand, charged, never posted. Whose it was is the whole story — there is no
+  // reason code, because nothing went wrong that anybody recorded.
+  if (row.status === 'scanned') {
+    return (
+      <span className="rq-reason rq-reason--bad">
+        {row.posted_by_name
+          ? t('review.scannedNotPostedBy', { name: row.posted_by_name })
+          : t('review.scannedNotPosted')}
       </span>
     )
   }

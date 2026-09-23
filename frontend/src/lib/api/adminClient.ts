@@ -295,6 +295,8 @@ export interface EmailDocumentRow {
   doc_no: string | null
   jv_no: string | null
   error_message: string | null
+  /** Our MX's dmarc/dkim/spf verdict, e.g. "dmarc=pass dkim=pass spf=softfail". Measurement only. */
+  auth_verdict: string | null
   task_id: string | null
   /** null when the row never reached `consume_document` — i.e. nothing was spent. */
   charged_docs: number | null

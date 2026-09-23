@@ -75,7 +75,7 @@ $$);
 processed serially, so a full `IMAP_BATCH_SIZE` batch costs roughly
 `batch × (one vision call + two Carmen posts)` ≈ 3–5 minutes. Some banks send commission
 daily, which across ~100 BUs is ~300 messages a day arriving mostly in one overnight
-window — comfortably inside a 10-minute poll's ~2,880/day capacity, without polls routinely
+window — comfortably inside a 10-minute poll's ~1,440/day capacity (144 polls × `IMAP_BATCH_SIZE` 10), without polls routinely
 overlapping on a small instance.
 
 **Use `value #>> '{}'`, never `trim(both '"' from value)`.** This exact substitution
@@ -96,6 +96,7 @@ call directly from the Supabase SQL Editor.
 | `#/admin/anomalies` | `email_ingest_unrouted` — WARN, tenant `"system"`, raised when a single poll has ≥5 messages with no resolvable tag |
 | `#/admin/anomalies` | `email_ingest_beyond_window` — WARN, tenant `"system"`, raised when any unseen mail is already older than `IMAP_HOLD_DAYS`. Deduped while the alert is open, so a standing backlog raises one alert, not one per poll. This is the only signal that a poller outage longer than the window ate real mail |
 | `GET /api/v1/carmen/settings` | Per-BU `status.documents_total` / `status.last_received_at` (an aggregate `COUNT`/`MAX` over `email_documents`) |
+| `cron.job_run_details` (`email-documents-purge`) | Daily 03:50 UTC retention: `skipped` deleted at 90 d, other terminal rows scrubbed at 90 d and deleted at 2 y, `pending_review` untouched, `job_runs` at 90 d — see [04-data-model.md](04-data-model.md#email_documents) |
 
 **`#/admin/email` reads `email_documents`** — list, filter by `status` / `reason_code` /
 tenant / date, per-row detail (error, Message-ID, bank, task), and the two manual buttons
@@ -219,8 +220,11 @@ by surprise.
 - **Nothing notifies a BU that documents are waiting for them.** See *Running with review
   on* above — the reason the 50-document cap exists is that a queue nobody reads would
   otherwise keep charging for documents nobody has looked at.
-- **No retention or soft delete on `email_documents`**, against the project's convention
-  for business tables. It grows for ever.
+- **Sender authentication is measured, not enforced.** `email_documents.auth_verdict`
+  records our MX's dmarc/dkim/spf verdict (since 2026-09-23). After ~2 weeks, run
+  `backend/db/queries.sql` item 26: if real auto-forwards pass DMARC, the next step is
+  refusing `dmarc!=pass` for BUs that set `owner_emails`. Until then `sender_allowed`
+  reads spoofable headers only.
 - **The admin-JWT auth path is unreachable from any UI.** `_caller()` accepts
   `Bearer <admin JWT>` specifically so operators can fix a customer's settings without a
   Carmen token, but `EmailSettings.tsx` only ever sends the raw Carmen token — there's no

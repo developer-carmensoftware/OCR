@@ -138,7 +138,8 @@ class EmailDocument(Base, TenantFKMixin, TimestampMixin):
     reviewed_by = Column(String(36), nullable=True)
     # Their display name at decision time. Denormalised because the usual route
     # (tenant_lookup.username_map -> ocr_sessions) decays to a raw UUID once the session
-    # is 90 days scrubbed, and "who approved this JV" must still read as a name in a year.
+    # is 90 days scrubbed. Retention (`fn_purge_email_documents`) nulls it at 90 days as
+    # well — past that, "who approved this JV" is Carmen's audit trail, not ours.
     reviewed_by_name = Column(String(100), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     # Somebody put this row away. Only ever set on a row with no `review_payload`: a parked
@@ -147,7 +148,19 @@ class EmailDocument(Base, TenantFKMixin, TimestampMixin):
     # visible under Not posted and Today — this is not a soft delete, and this table has
     # no `deleted_at` for it to be confused with.
     dismissed_at = Column(DateTime(timezone=True), nullable=True)
+    # What our own MX concluded about the sender — `email_imap.auth_verdict`. Measurement
+    # only: nothing gates on it until real auto-forwards have been seen to pass.
+    auth_verdict = Column(String(100), nullable=True)
 
     __table_args__ = (
         Index("uq_email_documents_message", "tenant_id", "message_id", "attachment", unique=True),
     )
+
+
+def shown_attachment(name: str | None) -> str:
+    """An `email_documents.attachment` for a screen — "" once retention has scrubbed it.
+
+    `fn_purge_email_documents` writes `scrubbed:<id>` rather than "" because the column is
+    part of the unique key; that placeholder is storage, not something to show.
+    """
+    return "" if not name or name.startswith("scrubbed:") else name

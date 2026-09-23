@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import SessionInfo, get_current_session
 from app.database import get_db
 from app.exceptions import NotFoundError
-from app.models.email_automation import EmailDocument
+from app.models.email_automation import EmailDocument, shown_attachment
 from app.models.identity import Tenant
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.common import Page
@@ -94,7 +94,7 @@ def to_review_row(row: EmailDocument) -> ReviewDocument:
     return ReviewDocument(
         id=str(row.id),
         created_at=row.created_at,
-        attachment=row.attachment,
+        attachment=shown_attachment(row.attachment),
         status=row.status,
         bank_code=row.bank_code,
         doc_no=row.doc_no,

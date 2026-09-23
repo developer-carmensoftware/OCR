@@ -658,3 +658,19 @@ WHERE service = 'carmen'
   AND created_at >= NOW() - INTERVAL '90 days'
 GROUP BY 1
 ORDER BY 1;
+
+
+-- 26. Would a DMARC gate refuse real mail? (email_documents.auth_verdict)
+-- Measurement for the sender-authentication decision (docs/email-automation/05-operations.md
+-- Known gaps). Per BU, how the last two weeks of mail scored at our own MX. A BU whose
+-- real auto-forwards show dmarc=fail would lose documents to a gate — decide from this,
+-- not from theory. NULL = no trusted Authentication-Results header on the message.
+SELECT
+    tenant_id,
+    COALESCE(SPLIT_PART(auth_verdict, ' ', 1), '(none)') AS dmarc,
+    COUNT(*)                                             AS rows,
+    COUNT(*) FILTER (WHERE status = 'posted')            AS posted
+FROM email_documents
+WHERE created_at >= NOW() - INTERVAL '14 days'
+GROUP BY 1, 2
+ORDER BY 1, 2;
