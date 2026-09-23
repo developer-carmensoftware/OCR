@@ -178,6 +178,40 @@ def test_a_delivery_header_wins_over_a_received_clause():
     assert tag_from_recipients(imap._recipients(msg)) == "a1b2c3d4"
 
 
+# ── auth_verdict — measurement of who really sent the mail ─────────────────────
+
+
+def test_the_verdict_is_read_from_our_own_mx_header():
+    msg = _msg(
+        "Authentication-Results: mx.google.com;\n"
+        "       dkim=pass header.i=@ktc.co.th header.s=s1 header.b=abc;\n"
+        "       spf=softfail (google.com: domain of x@ktc.co.th) smtp.mailfrom=x@ktc.co.th;\n"
+        "       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=ktc.co.th\n"
+    )
+    assert imap.auth_verdict(msg) == "dmarc=pass dkim=pass spf=softfail"
+
+
+def test_a_forged_pass_below_a_foreign_top_header_is_not_trusted():
+    """Only the topmost header is ours; anything under it came with the mail."""
+    msg = _msg(
+        "Authentication-Results: relay.evil.example; dmarc=fail\n"
+        "Authentication-Results: mx.google.com; dkim=pass; spf=pass; dmarc=pass\n"
+    )
+    assert imap.auth_verdict(msg) is None
+
+
+def test_a_forged_pass_under_our_top_header_is_ignored():
+    msg = _msg(
+        "Authentication-Results: mx.google.com; dkim=none; spf=fail; dmarc=fail\n"
+        "Authentication-Results: mx.google.com; dkim=pass; spf=pass; dmarc=pass\n"
+    )
+    assert imap.auth_verdict(msg) == "dmarc=fail dkim=none spf=fail"
+
+
+def test_no_header_is_no_verdict():
+    assert imap.auth_verdict(_msg("From: a@b.com\n")) is None
+
+
 # ── resolve_by_tag ─────────────────────────────────────────────────────────────
 
 

@@ -525,6 +525,8 @@ export default function EmailAutomationPage() {
                     <dd>{row.bank_code ?? '—'}</dd>
                     <dt>{t('admin.email.detail.task')}</dt>
                     <dd className="admin-mono">{row.task_id ?? '—'}</dd>
+                    <dt>{t('admin.email.detail.auth')}</dt>
+                    <dd className="admin-mono">{row.auth_verdict ?? '—'}</dd>
                   </dl>
                 )
               }}

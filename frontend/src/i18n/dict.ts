@@ -1347,6 +1347,7 @@ const en = {
   'admin.email.detail.messageId': 'Message ID',
   'admin.email.detail.bank': 'Bank',
   'admin.email.detail.task': 'Task',
+  'admin.email.detail.auth': 'Sender auth',
   'admin.email.empty.title': 'No documents in this window',
   'admin.email.empty.description':
     'Mail that reaches the mailbox is logged here whether it posts or not. Widen the date range, or run a poll.',
@@ -2848,6 +2849,7 @@ const th: Record<TKey, string> = {
   'admin.email.detail.messageId': 'Message ID',
   'admin.email.detail.bank': 'ธนาคาร',
   'admin.email.detail.task': 'Task',
+  'admin.email.detail.auth': 'การยืนยันผู้ส่ง',
   'admin.email.empty.title': 'ไม่มีเอกสารในช่วงเวลานี้',
   'admin.email.empty.description':
     'เมลที่เข้ากล่องจะถูกบันทึกไว้ที่นี่ ไม่ว่าจะโพสต์สำเร็จหรือไม่ ลองขยายช่วงวันที่ หรือกดดึงเอกสารเดี๋ยวนี้',
