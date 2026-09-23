@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { suggestMapping, suggestPaymentTypes } from '../../lib/api/mapping'
-import { mergeSuggestion } from '../../lib/deptAccounts'
+import { accountName, mergeSuggestion } from '../../lib/deptAccounts'
 import type { FieldMapping } from '../../types/api'
 import type { MasterAccount, MasterDepartment } from './useMappingData'
 import type { ModalConfig } from '../useModal'
@@ -102,7 +102,7 @@ export function useMappingSuggestions({
       const aiResult = await suggestMapping({
         bank_code: bankCode,
         source: source || null,
-        accounts: masterAccounts.map(a => ({ code: a.code, name: a.name, type: a.type })),
+        accounts: masterAccounts.map(a => ({ code: a.code, name: accountName(a), type: a.type })),
         departments: masterDepartments.map(d => ({
           code: d.code,
           name: d.name,
@@ -201,7 +201,7 @@ export function useMappingSuggestions({
         bank_code: bankCode,
         source: source || null,
         payment_types: needsAI,
-        accounts: masterAccounts.map(a => ({ code: a.code, name: a.name, type: a.type })),
+        accounts: masterAccounts.map(a => ({ code: a.code, name: accountName(a), type: a.type })),
         departments: masterDepartments.map(d => ({
           code: d.code,
           name: d.name,

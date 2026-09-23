@@ -1381,7 +1381,8 @@ async def _suggest_missing_mappings(
     accounts = [
         {
             "code": a["AccCode"],
-            "name": a.get("Description") or "",
+            # Both names: the suggester's Thai keywords (ลูกหนี้, บัตร, วีซ่า) live in Description2.
+            "name": " · ".join(filter(None, (a.get("Description"), a.get("Description2")))),
             "type": (a.get("Type") or "").lower(),
         }
         for a in (accounts_raw.get("Data") or [])
