@@ -134,7 +134,7 @@ every raise site in `_run_document()` / `_open_or_fail()` and the three `except`
 | `wrong_pdf_password` | `_open_or_fail()` — every password tried, none worked | No | — | `skipped` |
 | `unreadable_document` | `create_task` / `extract_stateless` / `finalize_extraction` threw — **inside the refund boundary** | Yes | **Yes** — the only refund left in the pipeline | `failed` |
 | `unreadable_document` | anything else unhandled — the generic `except` | Yes | No | `failed` |
-| `duplicate_document` | `_already_pending()` — an identical document is already in the queue (review mode only) | Yes | No | `failed` |
+| `duplicate_document` | `_already_pending()` — an identical document is already in the queue. Raises no notification: the queued copy is the one to act on (CA-102 M-027) | Yes | No | `failed` |
 | `tax_id_mismatch` | `foreign_tax_id()` finds a conflict | Yes | No | **`pending_review`** |
 | `duplicate_document` | `extracted.is_duplicate` | Yes | No | **`pending_review`** |
 | `mapping_incomplete` | GL mapping still missing after the AI-fill attempt (auto-post only — with review on it parks with the gap named) | Yes | No | **`pending_review`** |

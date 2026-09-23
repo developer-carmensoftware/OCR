@@ -914,6 +914,10 @@ async def _run_document(
             doc_no=doc_no,
             reason_code=reason_code,
             error=error,
+            # `reviewable=False` is a second copy of something already in the queue. Failed,
+            # because it was charged (`skipped` means free), but silent: the copy the
+            # customer can act on is waiting in the queue, whose own bell already rang.
+            notify=reviewable,
         )
         logger.warning("[email] %s: %s (%s)", reason_code, error, filename)
         return status
