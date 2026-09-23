@@ -74,3 +74,25 @@ else once a subscription order reached that code path. Fixed by branching on
 `isSubscriptionCode(code)` (`constants/billing.ts`) to pick `plan.docsPerMonthSuffix`
 vs `pack.creditsUnit` per pack kind. Same bug species as the order-status badge,
 in the purchase flow's line-item copy instead of a status badge.
+
+### Email automation
+
+**Skipped** _(email document status)_:
+The document stopped **before** a document was charged — the BU's own configuration
+answered "not this file" (no matching rule, wrong PDF password, sender not registered,
+unsupported attachment). Skipped always means free.
+_Avoid_: using Skipped for anything that stopped after the charge, however harmless it
+looks to the customer — that is **Failed** or **Pending review**.
+
+**Failed** _(email document status)_:
+The document was charged and then stopped for good — including a second copy of a
+document already waiting in the review queue. A charged document that a human can still
+act on is **Pending review**, not Failed.
+
+**Owner emails**:
+A BU's optional list of its own mailboxes. A message must carry one of them in From, To or
+Cc, or its attachments are **Skipped**. It guards against misdirected mail, not against
+someone who knows the ingest address — a forward always carries the BU's mailbox in To.
+The secret ingest tag is what keeps strangers out. Empty accepts every sender.
+_Avoid_: sender allow-list, sender verification — both imply an identity check it does not
+perform.
