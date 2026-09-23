@@ -161,7 +161,12 @@ REVIEW_BACKLOG_CAP = 50
 # summary PDF inside every bank zip, and `ingest_paused`/`duplicate_document` describe
 # something the customer already did. A bell that cries every morning is a bell nobody
 # reads on the morning it matters.
-NOTIFIABLE_SKIPS = ("wrong_pdf_password", "sender_not_allowed", "unsupported_attachment")
+#
+# `sender_not_allowed` left this list 2026-09-23: anyone who learns the BU's +tag address
+# can make it fire, for a document the customer never sent and cannot fix by looking at
+# it. It still writes its ledger row (`#/admin/email` and the settings page can see it),
+# it just does not cost the customer's attention.
+NOTIFIABLE_SKIPS = ("wrong_pdf_password", "unsupported_attachment")
 
 
 class _Skip(Exception):
@@ -390,19 +395,18 @@ async def _notify_pending(parked: dict[str, int]) -> None:
     """The bell for a poll that parked something: "N documents need review", and — when any
     of the waiting rows stopped on a problem — "M of them are blocked".
 
-    Per poll and not per document, because a bank sending a twenty-attachment zip would
-    otherwise bury every other notification the customer has. That rule is why the blocked
-    count is raised here rather than in `_park_for_review`, where the obvious place for it
-    is: a dead credential fails *every* document of the BU, which is precisely the case
-    that would ring twenty times.
+    One row per BU, kept current rather than one row per poll: this folds into the BU's
+    existing *unread* `document_pending_review` row if one is there (`notify_collapsed`),
+    so a customer who hasn't opened the bell in three polls sees one row with today's true
+    count, not three rows to scroll past. The moment they read it, the next poll that parks
+    anything starts a fresh row — the bell still rings again, just not before they've had a
+    chance to see the last one.
 
-    Per BU and not per person because `user_notifications` has no user column — there is no
-    users table to point at, and any Carmen session for the business unit may approve.
-
-    The blocked figure is read from the queue rather than counted through this poll, because
-    the queue is what the customer is about to open: a document that stopped yesterday and
-    is still stopped is part of "what is waiting for me", and a bell that only ever reported
-    the last few minutes would undercount it.
+    Both figures are counted fresh off the queue rather than off this poll's own `parked`
+    dict, because the queue is what the customer is about to open: a document that stopped
+    yesterday and is still stopped is part of "what is waiting for me", and a number that
+    only ever reflected the last few minutes would undercount it. `parked` still decides
+    *which* tenants get looked at — a BU nothing happened for is not touched at all.
 
     Never raises. A missing bell row is a customer who finds the queue on their next
     login; an exception here would fail a poll whose documents are already safely parked.
@@ -411,27 +415,17 @@ async def _notify_pending(parked: dict[str, int]) -> None:
         return
     try:
         async with async_session() as db:
-            for tenant_id, count in parked.items():
-                notification_service.notify(
+            for tenant_id in parked:
+                pending = await _pending_count(db, tenant_id)
+                blocked = await _pending_count(db, tenant_id, blocked_only=True)
+                payload = {"pending": pending, **({"blocked": blocked} if blocked else {})}
+                await notification_service.notify_collapsed(
                     db,
                     tenant_id=uuid.UUID(tenant_id),
-                    order_id=None,
                     type_="document_pending_review",
-                    payload={"pending": count},
+                    key="queue",
+                    build_payload=lambda _old, p=payload: p,
                 )
-                blocked = await _pending_count(db, tenant_id, blocked_only=True)
-                if blocked:
-                    # `document_blocked` already means "something stopped and wants you",
-                    # so it needs no new TYPE_META, switch case or locale keys.
-                    # `document_failed` would be a lie now: the document is waiting in the
-                    # queue, editable and postable, not finished.
-                    notification_service.notify(
-                        db,
-                        tenant_id=uuid.UUID(tenant_id),
-                        order_id=None,
-                        type_="document_blocked",
-                        payload={"blocked": blocked},
-                    )
             await db.commit()
     except Exception:  # noqa: BLE001 — the documents are parked either way
         logger.exception("[email] Could not raise the review notification")
@@ -1734,7 +1728,9 @@ async def _finish(
             if reason_code in NOTIFIABLE_SKIPS
             else None
         )
-        if notify_type and notify:
+        if notify_type == "document_posted" and notify:
+            # A receipt per document, deliberately not collapsed — unlike blocked/failed
+            # below, the customer wants *this* document's JV number, not a running count.
             notification_service.notify(
                 db,
                 tenant_id=row.tenant_id,  # type: ignore[arg-type]
@@ -1742,18 +1738,37 @@ async def _finish(
                 type_=notify_type,
                 payload={
                     "document_id": str(row.id),
-                    # The attachment filename is the only identity the customer
-                    # recognises when the document never got far enough to have a
-                    # bank_code or doc_no — which is exactly the failure case.
                     "attachment": row.attachment,
                     "bank_code": bank_code,
                     "doc_no": doc_no,
-                    **(
-                        {"jv_no": jv_no}
-                        if status == "posted"
-                        else {"reason_code": reason_code, "message": (error or "")[:500]}
-                    ),
+                    "jv_no": jv_no,
                 },
+            )
+        elif notify_type and notify:
+            # Blocked/failed collapse per reason: a bad PDF password or a dead extractor
+            # repeats across a batch the same way a busy poll does, so this folds into one
+            # unread "N files: <reason>" row instead of one dialog per attachment. The
+            # payload carries no document_id — the row opens the queue's `unposted` chip
+            # (NotificationBell.tsx), not a per-document detail, so there is nowhere for
+            # one to point.
+            key = reason_code or "unknown"
+            attachment = row.attachment
+            message = (error or "")[:500]
+
+            def _bump(prev: dict[str, Any] | None) -> dict[str, Any]:
+                return {
+                    "reason_code": reason_code,
+                    "count": (prev.get("count", 0) if prev else 0) + 1,
+                    "attachment": attachment,
+                    "message": message,
+                }
+
+            await notification_service.notify_collapsed(
+                db,
+                tenant_id=row.tenant_id,  # type: ignore[arg-type]
+                type_=notify_type,
+                key=key,
+                build_payload=_bump,
             )
         await db.commit()
 

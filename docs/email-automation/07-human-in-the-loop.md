@@ -1587,3 +1587,57 @@ now, and it is what a support conversation reads.
 - **Removing `auto_post` from `ReviewStatus`.** `build_settings_response` computes it
   anyway, and "is this BU on auto-post" is the first question of every support thread about
   a document that did or did not wait.
+
+---
+
+## §22 — The bell is kept current, not appended to (2026-09-23)
+
+§52 batched the bell to one row per BU per poll. It stayed one row per *poll* — a BU that
+did not open the app for three polls in a row got three `document_pending_review` rows and
+a separate `document_blocked` row riding beside each one, which is what "too many
+notifications" actually meant: not that any single row was wrong, but that nothing ever
+stopped adding rows for a queue the customer had not looked at yet.
+
+A grilling session with the user (2026-09-23) settled the bell's role first — an **action
+inbox**, not an activity feed — and every decision below follows from that: an outcome the
+queue already shows on its own (posted, a per-document detail) does not need a bell row
+that says the same thing again, and a row that is still true does not need a second copy.
+
+### The decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 102 | **`notification_service.notify_collapsed(db, tenant_id, type_, key, build_payload)`.** Finds the tenant's newest *unread* row of that `type_`; if its payload's `key` matches, replaces the payload and bumps `created_at` (the row moves to the top and re-counts as new); otherwise behaves like `notify`. Once the customer reads a row, the next call starts a fresh one. | The one mechanism both call sites below need — a live gauge (queue size) and a running counter (occurrences of a reason) both want "fold into what's already unread, start over once it's read". Two copies of that fold, one per call site, is the drift `notify_collapsed` exists to rule out. |
+| 103 | **`_notify_pending` folds `document_blocked` into `document_pending_review`.** One row, `{"pending": N, "blocked": M}` — `M` only present when non-zero. Both figures are recounted from the queue on every poll (`_pending_count`), not carried over from what this poll alone parked, so a customer who skipped three polls sees today's true total, not the last poll's delta. | §52's `document_blocked` was a second row saying "something in the queue you already know about is still blocked" — read as noise the moment it repeated. Folding it into the row that already says "N waiting" costs nothing extra to read and never announces the same blocked document twice. |
+| 104 | **`sender_not_allowed` leaves `NOTIFIABLE_SKIPS`.** The ledger row (`#/admin/email`, the settings page) is unchanged; only the bell stops ringing for it. | Anyone who learns a BU's `AIAGENT+<tag>@` address can make this fire, for mail the customer never sent and cannot act on by looking at it — the one `NOTIFIABLE_SKIPS` reason that was not the customer's own document. `ATTENTION_REASONS` in `credit_card_activity.py` is untouched: the queue's dot on the `unposted` chip is a different question (is this row worth a reviewer's attention while they're already looking at the chip) from the bell's (is this worth interrupting them for), and only the second one changed. |
+| 105 | **`document_blocked` / `document_failed` collapse per `reason_code`, with a running `count`, not per document.** `_finish` builds `{"reason_code", "count": prev+1, "attachment": <last one>, "message"}` — the payload carries no `document_id`. `document_posted` is the deliberate exception and keeps `notify()` per document: the customer asked, in the same session, for a receipt with *that* document's JV number, not a running count. | A bad PDF password or a dead extractor repeats across a whole batch exactly like a busy poll does — §52's fix for one was never applied to the other. `wrong_pdf_password` and `unsupported_attachment` are the only reasons `document_blocked` carries (§104 removed the third); `document_failed` is `unreadable_document` in practice (every other post-charge refusal parks reviewable under §13/#22 instead of finishing). |
+| 106 | **A collapsed blocked/failed row opens the `unposted` chip (`#/CreditCardOCR?filter=unposted`), not a per-document dialog.** `useReviewQueue` takes an optional `initialFilter` that skips its own today→review→success fall-through when the caller already named a chip. `NotificationBell.tsx`'s `isCollapsed(payload)` (`typeof payload.count === 'number'`) is what tells a new collapsed row from an old per-document one still sitting in a customer's unread list — the old shape still opens `NotificationDetailModal` exactly as before. | There is no single document left to show once the row means "N of them" — `_chip_expr` puts both a skipped `wrong_pdf_password`/`unsupported_attachment` and a failed `unreadable_document` under `unposted`, so one destination covers both collapsed types. The old-shape branch is not a migration path; `user_notifications` gets no backfill, so rows written before this section simply keep reading as they always did until they age out (`UserNotification`'s own 30-day-retention docstring, `models/billing.py`). |
+
+### What a BU will notice
+
+Fewer bell rows for the same events, not different ones. A poll that used to add up to two
+rows (`document_pending_review` + `document_blocked`) now touches at most one, and it is the
+*same* row across polls until it is read. A batch of documents failing on the same PDF
+password used to be one row per file; it is one row with a count now, and clicking it opens
+the `Not posted` chip instead of one dialog per file. A stranger's mail to the BU's `+tag`
+address no longer rings the bell at all (it is still on `#/admin/email` if anyone goes
+looking). `document_posted` is unchanged — still one receipt per document.
+
+### Considered and not done
+
+- **A digest / scheduled summary.** Solves a different problem (batching *time*, not
+  *repetition*) and adds a scheduler for something `notify_collapsed` already fixes without
+  one.
+- **A unique partial index on `(tenant_id, type, key) WHERE read_at IS NULL`, upserted in
+  one statement.** Would remove the SELECT-then-mutate round trip, at the cost of a
+  migration and a constraint every future notification type has to satisfy. Revisit if the
+  bell ever needs to survive concurrent writers racing the same row — today's writers
+  (`_notify_pending` inside `_poll_lock`, `_finish` per document) don't.
+- **Recomputing the blocked/failed count from the ledger instead of incrementing it.** Would
+  match `document_pending_review`'s "always the live truth" rule, but `wrong_pdf_password`/
+  `unsupported_attachment`/`unreadable_document` rows are terminal — a live COUNT(*) would
+  read the BU's entire history, not "how many since you last looked". The two call sites
+  want different arithmetic, which is why `build_payload` takes the previous payload instead
+  of `notify_collapsed` deciding for them.
+- **Migrating or marking-read the rows already in the database.** Nothing reads `key` on an
+  old row, so it simply never folds and behaves exactly as it always has until it ages out.

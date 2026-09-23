@@ -56,15 +56,23 @@ export interface ReviewQueueController {
  * that has twenty documents waiting. `loading` stays true until status has landed, which
  * is what forbids that.
  */
-export function useReviewQueue(limit: number): ReviewQueueController {
+export function useReviewQueue(
+  limit: number,
+  /** Skips the fall-through below and opens straight on this chip — how the bell's
+   *  blocked/failed rows land on `unposted` (`ReviewQueue.tsx`'s `filterFromHash`).
+   *  Read once, on mount, same as every other opening-chip decision here. */
+  initialFilter?: ActivityFilter | null
+): ReviewQueueController {
   const [status, setStatus] = useState<ReviewStatus | null>(null)
   // The page opens on the day: "what has happened today" is the question somebody arrives
   // with. It no longer waits for `auto_post` to name a chip — the fall-through below covers
   // what that rule was for, and covers more besides.
-  const [filter, setFilterState] = useState<ActivityFilter>(TODAY)
+  const [filter, setFilterState] = useState<ActivityFilter>(initialFilter || TODAY)
   // Whether the opening chip has been settled. The fall-through runs once, so a refresh
   // never throws the reader back to the top and neither does working a chip down to zero.
-  const landed = useRef(false)
+  // Already settled when the caller named a chip explicitly — the fall-through exists to
+  // guess one, and there is nothing to guess.
+  const landed = useRef(!!initialFilter)
   const [rows, setRows] = useState<ReviewDocument[]>([])
   const [total, setTotal] = useState(0)
   const [counts, setCounts] = useState<Record<string, number>>({})

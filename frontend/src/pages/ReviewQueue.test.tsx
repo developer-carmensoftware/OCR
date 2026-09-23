@@ -469,6 +469,63 @@ describe('the status filter chips', () => {
     expect(screen.getByRole('tab', { name: /Review/ })).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('opens straight on the chip a bell row named, skipping the fall-through', async () => {
+    // A collapsed `document_blocked`/`document_failed` bell row (NotificationBell.tsx)
+    // links here with `?filter=unposted` — even on a day that would otherwise fall
+    // through to Today or Review, that is not a guess to make.
+    window.location.hash = '#/CreditCardOCR?filter=unposted'
+    try {
+      mount(status(), [doc()], { ...ZERO, all: 113, today: 4, review: 12, unposted: 101 })
+      await screen.findByText('KTC')
+      expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('unposted')
+      expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(1)
+      expect(screen.getByRole('tab', { name: /Not posted/ })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+    } finally {
+      window.location.hash = '#/CreditCardOCR'
+    }
+  })
+
+  it('moves to the named chip on a hashchange, not only on mount', async () => {
+    // main.tsx keys pages by path, not the full hash — clicking a bell row while already
+    // sitting on `#/CreditCardOCR` does not remount ReviewQueue, so `filterFromHash()`
+    // passed to `useReviewQueue` (mount-time only) would silently miss it. Regression for
+    // that: found via Playwright MCP against the real backend, 2026-09-23.
+    try {
+      mount(status(), [doc()], { ...ZERO, all: 113, today: 0, review: 12, unposted: 101 })
+      await screen.findByText('KTC')
+      expect(screen.getByRole('tab', { name: /Review/ })).toHaveAttribute('aria-selected', 'true')
+
+      window.location.hash = '#/CreditCardOCR?filter=unposted'
+      await waitFor(() =>
+        expect(screen.getByRole('tab', { name: /Not posted/ })).toHaveAttribute(
+          'aria-selected',
+          'true'
+        )
+      )
+    } finally {
+      window.location.hash = '#/CreditCardOCR'
+    }
+  })
+
+  it('leaves the chip alone on a hashchange with no filter, e.g. opening a document', async () => {
+    try {
+      mount(status(), [doc()], { ...ZERO, all: 113, today: 0, review: 12, unposted: 101 })
+      await screen.findByText('KTC')
+      await waitFor(() =>
+        expect(screen.getByRole('tab', { name: /Review/ })).toHaveAttribute('aria-selected', 'true')
+      )
+
+      window.location.hash = '#/CreditCardOCR/review?id=d1'
+      await new Promise(r => setTimeout(r, 0))
+      expect(screen.getByRole('tab', { name: /Review/ })).toHaveAttribute('aria-selected', 'true')
+    } finally {
+      window.location.hash = '#/CreditCardOCR'
+    }
+  })
+
   it('shows no empty table on the way through', async () => {
     // The fall-through happens behind `loading`: painting today's nothing and then the
     // work a moment later is the flash this exists to avoid.

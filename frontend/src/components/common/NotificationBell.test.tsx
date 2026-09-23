@@ -175,6 +175,91 @@ describe('NotificationBell — email automation rows', () => {
   })
 })
 
+// Blocked/failed rows collapse per reason since 2026-09-23 (notify_collapsed in
+// email_ingest_service.py): a `count` and no `document_id`, so there is no single
+// document left to open a dialog for.
+describe('NotificationBell — collapsed blocked/failed rows', () => {
+  const blockedRow: BellItem = {
+    id: 'uuid-4',
+    order_id: null,
+    type: 'document_blocked',
+    payload: { reason_code: 'wrong_pdf_password', count: 3, key: 'wrong_pdf_password' },
+    read_at: null,
+    created_at: new Date().toISOString(),
+  }
+
+  beforeEach(() => {
+    items = [blockedRow]
+    unreadCount = 1
+  })
+
+  it('shows a count and the reason instead of one filename', () => {
+    openPanel()
+    expect(screen.getByText('3 files: wrong PDF password')).toBeInTheDocument()
+  })
+
+  it('opens the queue on the unposted chip instead of a detail dialog', () => {
+    openPanel()
+    fireEvent.click(screen.getByText('3 files: wrong PDF password'))
+    expect(window.location.hash).toBe('#/CreditCardOCR?filter=unposted')
+    expect(markRead).toHaveBeenCalledWith(['uuid-4'])
+    expect(screen.queryByRole('dialog', { name: /Could not/i })).not.toBeInTheDocument()
+  })
+})
+
+// The other shape `document_blocked` carries in existing data: a bare `{blocked: N}`
+// queue-level count from before 2026-09-23, written by the `_notify_pending` this session
+// deleted. No document_id, so — unlike the collapsed-per-reason shape above — there was
+// never a document to show, and the old code opened an empty detail dialog for it (found
+// via Playwright MCP against real dev data: Document —, Bank —, Doc no. —, "The document
+// could not be processed.").
+describe('NotificationBell — orphaned {blocked: N} rows (pre-2026-09-23 shape)', () => {
+  const orphanRow: BellItem = {
+    id: 'uuid-6',
+    order_id: null,
+    type: 'document_blocked',
+    payload: { blocked: 7 },
+    read_at: null,
+    created_at: new Date().toISOString(),
+  }
+
+  beforeEach(() => {
+    items = [orphanRow]
+    unreadCount = 1
+  })
+
+  it('shows a count instead of an empty document label', () => {
+    openPanel()
+    expect(screen.getByText('7 documents need attention')).toBeInTheDocument()
+  })
+
+  it('opens the queue on the unposted chip instead of the empty detail dialog', () => {
+    openPanel()
+    fireEvent.click(screen.getByText('7 documents need attention'))
+    expect(window.location.hash).toBe('#/CreditCardOCR?filter=unposted')
+    expect(markRead).toHaveBeenCalledWith(['uuid-6'])
+    expect(screen.queryByText('Could not read this document')).not.toBeInTheDocument()
+  })
+})
+
+describe('NotificationBell — pending review carrying a blocked count', () => {
+  it('folds the blocked count into the same row', () => {
+    items = [
+      {
+        id: 'uuid-5',
+        order_id: null,
+        type: 'document_pending_review',
+        payload: { pending: 12, blocked: 4 },
+        read_at: null,
+        created_at: new Date().toISOString(),
+      },
+    ]
+    unreadCount = 1
+    openPanel()
+    expect(screen.getByText('12 waiting for your review — 4 blocked')).toBeInTheDocument()
+  })
+})
+
 // Inline styles beat media queries, so the phone layout in notification-bell.css
 // only works if the component stops setting `right` below 480px.
 describe('NotificationBell — panel anchoring', () => {

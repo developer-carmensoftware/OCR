@@ -53,17 +53,21 @@ class _FakeDB:
         self._fail_commit_on_call = fail_commit_on_call
         self._commit_calls = 0
         self.rollback = AsyncMock()
-        # Whatever the next `db.scalar()` answers. `None` is the only safe default: two
-        # callers read it, and they read it differently. `_pending_count` treats it as a
-        # number (`or 0`), while `_already_pending` treats it as a row and asks
-        # `hit is not None` — so a default of 0 would tell every parking document that an
-        # identical one is already in the queue.
+        # Whatever `db.scalar()` answers. `None` is the only safe default: several callers
+        # read it, and they read it differently — `_pending_count` treats it as a number
+        # (`or 0`), `_already_pending` treats it as a row and asks `hit is not None`, and
+        # `notify_collapsed` treats it as an existing notification row or its absence. A
+        # list is consumed one call at a time (a poll doing several scalar reads per
+        # tenant, in call order); a single value repeats for every call, unchanged from
+        # before this had callers that needed more than one answer.
         self._scalar = scalar
 
     def add(self, obj):
         self.added.append(obj)
 
     async def scalar(self, *_a, **_kw):
+        if isinstance(self._scalar, list):
+            return self._scalar.pop(0) if self._scalar else None
         return self._scalar
 
     async def commit(self):
@@ -322,10 +326,11 @@ async def test_a_file_no_rule_wanted_does_not_notify():
 
 
 @pytest.mark.asyncio
-async def test_a_document_the_customer_can_unblock_notifies():
-    """The silence this closes: a document addressed to us, matching their rules, that
-    never arrived — and no queue row, no bell, nothing to distinguish it from a poll that
-    never ran. Only the customer can fix the three reasons in `NOTIFIABLE_SKIPS`."""
+async def test_a_stranger_emailing_the_tag_rings_no_bell():
+    """`sender_not_allowed` left `NOTIFIABLE_SKIPS` 2026-09-23: anyone who learns the +tag
+    address could make it fire, for a document the customer never sent and cannot act on.
+    The ledger row still exists (`#/admin/email`, the settings page) — only the bell is
+    silent now."""
     db = _FakeDB()
     outcome, _ = await _run(
         db,
@@ -337,13 +342,8 @@ async def test_a_document_the_customer_can_unblock_notifies():
         carmen_result={"Code": 0},
     )
     assert outcome == "skipped"
-    notifications = [o for o in db.added if isinstance(o, UserNotification)]
-    assert len(notifications) == 1
-    assert notifications[0].type == "document_blocked"
-    assert notifications[0].payload["reason_code"] == "sender_not_allowed"
-    # The filename is the only identity the customer recognises — it never got as far as
-    # a bank code or a document number.
-    assert notifications[0].payload["attachment"] == "statement.jpg"
+    assert db.added[0].reason_code == "sender_not_allowed"
+    assert [o for o in db.added if isinstance(o, UserNotification)] == []
 
 
 @pytest.mark.asyncio
@@ -1361,6 +1361,12 @@ async def test_an_unsupported_attachment_leaves_a_row_instead_of_vanishing():
     notifications = [o for o in db.added if isinstance(o, UserNotification)]
     assert [n.type for n in notifications] == ["document_blocked"]
     assert notifications[0].payload["reason_code"] == "unsupported_attachment"
+    # Collapsed shape: a running count and the key `notify_collapsed` folds future
+    # `unsupported_attachment` rows into, not a per-document id — see
+    # `test_notify_collapsed_*` in test_notifications.py for the folding itself.
+    assert notifications[0].payload["count"] == 1
+    assert notifications[0].payload["key"] == "unsupported_attachment"
+    assert "document_id" not in notifications[0].payload
 
 
 @pytest.mark.asyncio
@@ -3026,14 +3032,14 @@ async def test_reject_without_a_reason_stores_none_not_an_empty_string():
     assert row.error_message is None
 
 
-# ── One bell row per poll, not per document ───────────────────────────────────
+# ── One bell row per BU, kept current rather than duplicated ──────────────────
 
 
 @pytest.mark.asyncio
 async def test_a_batch_of_parked_documents_raises_one_notification():
     """A bank sending a twenty-attachment zip would otherwise bury every other
-    notification the customer has. One row per BU per poll, carrying the count."""
-    db = _FakeDB()
+    notification the customer has. One row per BU, carrying the queue's true count."""
+    db = _FakeDB(scalar=[20, 0, None])  # pending, blocked, no existing unread row
     tenant = str(uuid4())
     with patch.object(ingest, "async_session", _session_factory(db)):
         await ingest._notify_pending({tenant: 20})
@@ -3041,14 +3047,14 @@ async def test_a_batch_of_parked_documents_raises_one_notification():
     assert len(db.added) == 1
     row = db.added[0]
     assert row.type == "document_pending_review"
-    assert row.payload == {"pending": 20}
+    assert row.payload == {"pending": 20, "key": "queue"}
     assert str(row.tenant_id) == tenant
 
 
 @pytest.mark.asyncio
 async def test_each_bu_in_one_poll_is_told_separately():
     """The mailbox is shared; the queues are not."""
-    db = _FakeDB()
+    db = _FakeDB(scalar=[2, 0, None, 1, 0, None])
     a, b = str(uuid4()), str(uuid4())
     with patch.object(ingest, "async_session", _session_factory(db)):
         await ingest._notify_pending({a: 2, b: 1})
@@ -3056,27 +3062,49 @@ async def test_each_bu_in_one_poll_is_told_separately():
 
 
 @pytest.mark.asyncio
-async def test_a_queue_holding_blocked_documents_says_so_once():
-    """A parked failure must not go silent — but a dead credential fails EVERY document of
-    the BU, so notifying per document is exactly the twenty-row burial the batching rule
-    above exists to prevent. One extra row per BU per poll, whatever the pile."""
-    db = _FakeDB(scalar=7)
+async def test_a_queue_holding_blocked_documents_says_so_in_the_same_row():
+    """A parked failure must not go silent — but it no longer gets a row of its own. It
+    rides in the same "waiting for review" row the count already carries, so a dead
+    credential failing every document of the BU still shows as one line, not two."""
+    db = _FakeDB(scalar=[20, 7, None])
     tenant = str(uuid4())
     with patch.object(ingest, "async_session", _session_factory(db)):
         await ingest._notify_pending({tenant: 20})
 
-    assert [r.type for r in db.added] == ["document_pending_review", "document_blocked"]
-    assert db.added[1].payload == {"blocked": 7}
+    assert [r.type for r in db.added] == ["document_pending_review"]
+    assert db.added[0].payload == {"pending": 20, "blocked": 7, "key": "queue"}
 
 
 @pytest.mark.asyncio
 async def test_a_queue_of_ordinary_parked_documents_is_not_blocked():
     """`reason_code IS NOT NULL` is the whole distinction. Twenty statements waiting for an
     OK are not a problem, and calling them blocked would make the word worthless."""
-    db = _FakeDB(scalar=0)
+    db = _FakeDB(scalar=[20, 0, None])
     with patch.object(ingest, "async_session", _session_factory(db)):
         await ingest._notify_pending({str(uuid4()): 20})
-    assert [r.type for r in db.added] == ["document_pending_review"]
+    assert "blocked" not in db.added[0].payload
+
+
+@pytest.mark.asyncio
+async def test_an_unread_row_is_updated_in_place_not_duplicated():
+    """A customer who hasn't opened the bell across two polls sees one row with the
+    current total, not two rows they have to add up themselves."""
+    tenant = uuid4()
+    existing = UserNotification(
+        id=uuid4(),
+        tenant_id=tenant,
+        type="document_pending_review",
+        payload={"pending": 5, "key": "queue"},
+        read_at=None,
+        created_at=datetime(2020, 1, 1, tzinfo=UTC),
+    )
+    db = _FakeDB(scalar=[8, 0, existing])
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        await ingest._notify_pending({str(tenant): 3})
+
+    assert db.added == []  # folded into `existing`, not a new row
+    assert existing.payload == {"pending": 8, "key": "queue"}
+    assert existing.created_at > datetime(2020, 1, 1, tzinfo=UTC)
 
 
 @pytest.mark.asyncio
