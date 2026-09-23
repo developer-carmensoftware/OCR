@@ -1,7 +1,9 @@
+import { Plus, Check } from 'lucide-react'
 import { BANKS } from '../../constants'
 import { BANK_CODE_MAP } from '../../constants/banks'
 import { codeToDisplayName } from '../../lib/bankTransforms'
 import { useT } from '../../i18n/LanguageContext'
+import type { TKey } from '../../i18n/dict'
 import CustomSearchSelect from '../common/CustomSearchSelect'
 import '../../styles/pages/ar-reconcile.css'
 import type { BankDisplayName } from '../../types/api'
@@ -30,7 +32,14 @@ interface Props {
 }
 
 const BANK_OPTIONS = BANKS.map(b => ({ code: b.value, name: b.label }))
-const TEMPLATE_TAGS = ['{Settlement_Date}', '{Tax_Invoice_No}', '{Bank_Name}'] as const
+
+// A tag can only be in the description once — see `ar-desc-extras`'s CSS comment for
+// why availability is read off the current text rather than tracked separately.
+const TEMPLATE_TAGS: Array<{ tag: string; labelKey: TKey }> = [
+  { tag: '{Settlement_Date}', labelKey: 'ar.tagSettlementDate' },
+  { tag: '{Tax_Invoice_No}', labelKey: 'ar.tagTaxInvoiceNo' },
+  { tag: '{Bank_Name}', labelKey: 'ar.tagBankName' },
+]
 
 export default function TopLevelConfigSection({
   bank,
@@ -55,8 +64,8 @@ export default function TopLevelConfigSection({
   // says what will be used without pretending to be what you typed.
   const ownDescription = (bankCode && bankDescriptions[bankCode]) || ''
   const fallback = description || ''
+  const current = bankCode ? ownDescription : fallback
   const appendTag = (tag: string) => {
-    const current = bankCode ? ownDescription : fallback
     const next = `${current} ${tag}`.trim()
     if (bankCode) setBankDescriptions({ ...bankDescriptions, [bankCode]: next })
     else setDescription(next)
@@ -156,25 +165,39 @@ export default function TopLevelConfigSection({
                 ? t('cc.cfgDescEmpty', { bank: bankCode, fallback })
                 : t('cc.cfgDescApplies', { bank: bankCode })}
           </small>
-          {hasSettlementLayout && (
-            <>
-              <div className="ar-tags">
-                <span className="ar-tags-label">{t('ar.templateTags')}</span>
-                {TEMPLATE_TAGS.map(tag => (
-                  <button key={tag} type="button" className="ar-tag" onClick={() => appendTag(tag)}>
-                    + {tag}
-                  </button>
-                ))}
-              </div>
-              <p className="ar-example">
-                <span className="ar-example-label">{t('ar.templateExample')}</span>
-                <span className="ar-example-value">
-                  {settlementPreview || t('ar.templateEmpty')}
-                </span>
-              </p>
-            </>
-          )}
         </div>
+
+        {hasSettlementLayout && (
+          <div className="ar-desc-extras" style={{ gridColumn: '1 / -1' }}>
+            <div className="ar-tags" role="group">
+              {TEMPLATE_TAGS.map(({ tag, labelKey }) => {
+                const label = t(labelKey)
+                const added = current.includes(tag)
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    className="ar-tag"
+                    disabled={added}
+                    onClick={() => appendTag(tag)}
+                    title={
+                      added
+                        ? t('ar.tagAdded', { field: label })
+                        : t('ar.tagInsert', { field: label })
+                    }
+                  >
+                    {added ? <Check size={12} /> : <Plus size={12} />}
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="ar-example">
+              <span aria-hidden="true">→</span>
+              <span className="ar-example-value">{settlementPreview || t('ar.templateEmpty')}</span>
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

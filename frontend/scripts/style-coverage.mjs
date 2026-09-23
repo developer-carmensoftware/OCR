@@ -75,8 +75,6 @@ const STATE_WORDS = new Set(['active', 'ok', 'todo', 'missing', 'ready', 'bad', 
  * separate job. Add a file here when you touch it.
  */
 const SURFACE = [
-  'pages/ARReconcileSettings.tsx',
-  'components/ar-reconcile/ARMappingTable.tsx',
   'components/ar-reconcile/ARJvPreview.tsx',
   'components/ar-reconcile/ARReviewPane.tsx',
   'components/credit-card/JvHeaderCard.tsx',

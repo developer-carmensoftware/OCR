@@ -103,17 +103,20 @@ function Harness({ initial = {} as Record<string, string> }) {
 // Ticket D (2026-09-22): a settlement JV's wording is this same field now, so a bank
 // with a settlement layout grows tag-insert buttons and a live preview beneath it —
 // every other bank sees exactly the box the tests above already pin.
+// Ticket E (2026-09-23): the buttons read in plain language (not literal `{Tag}`
+// syntax) and each one disables itself once its tag is already in the description —
+// inserting the same tag five times was never a real state to allow.
 describe('TopLevelConfigSection — settlement tag extras', () => {
   it('is absent for a bank with no settlement layout', () => {
     setup({ hasSettlementLayout: false })
-    expect(screen.queryByText('+ {Settlement_Date}')).not.toBeInTheDocument()
+    expect(screen.queryByText('Settlement date')).not.toBeInTheDocument()
   })
 
   it('offers all three tags and shows the live preview for a settlement-capable bank', () => {
     setup({ hasSettlementLayout: true, settlementPreview: 'AR Recon 21/07/2026' })
-    expect(screen.getByText('+ {Settlement_Date}')).toBeInTheDocument()
-    expect(screen.getByText('+ {Tax_Invoice_No}')).toBeInTheDocument()
-    expect(screen.getByText('+ {Bank_Name}')).toBeInTheDocument()
+    expect(screen.getByText('Settlement date')).toBeInTheDocument()
+    expect(screen.getByText('Tax invoice no.')).toBeInTheDocument()
+    expect(screen.getByText('Bank name')).toBeInTheDocument()
     expect(screen.getByText('AR Recon 21/07/2026')).toBeInTheDocument()
   })
 
@@ -122,14 +125,62 @@ describe('TopLevelConfigSection — settlement tag extras', () => {
       hasSettlementLayout: true,
       bankDescriptions: { SCB: 'AR Recon' },
     })
-    fireEvent.click(screen.getByText('+ {Settlement_Date}'))
+    fireEvent.click(screen.getByText('Settlement date'))
     expect(setBankDescriptions).toHaveBeenCalledWith({ SCB: 'AR Recon {Settlement_Date}' })
   })
 
   it('appends a tag to the BU-wide fallback when no bank is selected', () => {
     const { setDescription } = setup({ hasSettlementLayout: true, bank: '', fileSource: '' })
-    fireEvent.click(screen.getByText('+ {Bank_Name}'))
+    fireEvent.click(screen.getByText('Bank name'))
     expect(setDescription).toHaveBeenCalledWith('Generic settlement {Bank_Name}')
+  })
+
+  it('disables a tag already present in the description, so it cannot be inserted twice', () => {
+    const { setBankDescriptions } = setup({
+      hasSettlementLayout: true,
+      bankDescriptions: { SCB: 'AR Recon {Settlement_Date}' },
+    })
+    const addedButton = screen.getByText('Settlement date').closest('button')
+    expect(addedButton).toBeDisabled()
+
+    fireEvent.click(addedButton as HTMLElement)
+    expect(setBankDescriptions).not.toHaveBeenCalled()
+
+    // The other two tags are still fresh and stay clickable.
+    const freshButton = screen.getByText('Bank name').closest('button')
+    expect(freshButton).not.toBeDisabled()
+  })
+
+  it('re-enables a tag once it is removed from the text by hand', () => {
+    // Availability is derived from the current text on every render, not a separate
+    // "used" flag — a real stateful parent proves the round trip a mock setter cannot.
+    function StatefulHarness() {
+      const [bankDescriptions, setBankDescriptions] = useState<Record<string, string>>({
+        SCB: 'AR Recon',
+      })
+      return (
+        <TopLevelConfigSection
+          bank={'Siam Commercial Bank (SCB)' as BankDisplayName}
+          handleBankChange={() => {}}
+          filePrefix="IC"
+          setFilePrefix={() => {}}
+          fileSource="ACSC"
+          description=""
+          setDescription={() => {}}
+          bankDescriptions={bankDescriptions}
+          setBankDescriptions={setBankDescriptions}
+          masterGLPrefixes={[]}
+          hasSettlementLayout
+        />
+      )
+    }
+    render(<StatefulHarness />)
+
+    fireEvent.click(screen.getByText('Settlement date'))
+    expect(screen.getByText('Settlement date').closest('button')).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'AR Recon' } })
+    expect(screen.getByText('Settlement date').closest('button')).not.toBeDisabled()
   })
 })
 
