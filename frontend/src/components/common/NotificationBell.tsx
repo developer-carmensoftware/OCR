@@ -67,6 +67,31 @@ function docLabel(p: Record<string, unknown>): string {
   return String(p.attachment || '') || [p.bank_code, p.doc_no].filter(Boolean).join(' ') || '—'
 }
 
+// `document_blocked`/`document_failed` collapse per reason since 2026-09-23 — see
+// `notify_collapsed` in email_ingest_service.py. A collapsed row carries `count` and no
+// `document_id`; a row from before that change (or `document_posted`, never collapsed)
+// still has one, and `isCollapsed` is what tells the two apart everywhere below.
+function isCollapsed(p: Record<string, unknown>): boolean {
+  return typeof p.count === 'number'
+}
+
+// The one other shape `document_blocked` carries in existing data: a bare `{blocked: N}`
+// queue-level summary, written by the pre-2026-09-23 `_notify_pending` (deleted today, so
+// nothing writes this shape any more — 53 rows in dev, all before today). It was never
+// about a single document — there is no `document_id` to open a dialog for and nothing to
+// backfill — so it gets the same routing as a collapsed row, not the empty-dialog fallback.
+function isOrphanBlockedCount(p: Record<string, unknown>): boolean {
+  return typeof p.blocked === 'number' && !p.document_id && !isCollapsed(p)
+}
+
+// Short label for a collapsed row's reason — the queue's own `notif.reason.*` sentences
+// are written for the detail dialog, not a one-line bell row.
+const REASON_SHORT: Record<string, TKey> = {
+  wrong_pdf_password: 'notif.reasonShort.wrongPdfPassword',
+  unsupported_attachment: 'notif.reasonShort.unsupportedAttachment',
+  unreadable_document: 'notif.reasonShort.unreadableDocument',
+}
+
 function notifText(n: BellItem, t: TFn): string {
   const p = n.payload as Record<string, unknown>
   switch (n.type) {
@@ -81,13 +106,26 @@ function notifText(n: BellItem, t: TFn): string {
     case 'document_posted':
       return t('notif.docPosted', { doc: docLabel(p) })
     case 'document_failed':
-      return t('notif.docFailed', { doc: docLabel(p) })
     case 'document_blocked':
-      return t('notif.docBlocked', { doc: docLabel(p) })
-    // Counts documents, not one of them: the poll raises a single row per BU per run,
-    // so a twenty-attachment zip does not bury every other notification.
+      if (isCollapsed(p)) {
+        const reasonKey = REASON_SHORT[String(p.reason_code ?? '')] ?? 'notif.reasonShort.unknown'
+        return t('notif.docsBlockedCount', { count: p.count as number, reason: t(reasonKey) })
+      }
+      if (isOrphanBlockedCount(p)) {
+        return t('notif.docsBlockedOrphan', { blocked: String(p.blocked) })
+      }
+      return t(n.type === 'document_failed' ? 'notif.docFailed' : 'notif.docBlocked', {
+        doc: docLabel(p),
+      })
+    // `pending` is the queue's true current count, not just this poll's delta — the row
+    // is kept up to date in place rather than duplicated (see `_notify_pending`).
     case 'document_pending_review':
-      return t('notif.docPendingReview', { count: String(p.pending ?? 1) })
+      return typeof p.blocked === 'number' && p.blocked > 0
+        ? t('notif.docPendingReviewBlocked', {
+            count: String(p.pending ?? 1),
+            blocked: String(p.blocked),
+          })
+        : t('notif.docPendingReview', { count: String(p.pending ?? 1) })
     default:
       return n.type
   }
@@ -152,12 +190,19 @@ export default function NotificationBell() {
     // Email-automation rows open in place. They carry no order_id, so the order
     // history below would be the wrong page, and there is no right page to send
     // them to — the payload is already the whole story.
-    if (
-      n.type === 'document_posted' ||
-      n.type === 'document_failed' ||
-      n.type === 'document_blocked'
-    ) {
+    const p = n.payload as Record<string, unknown>
+    const isBlockedOrFailed = n.type === 'document_failed' || n.type === 'document_blocked'
+    const noDocument = isBlockedOrFailed && (isCollapsed(p) || isOrphanBlockedCount(p))
+    if (n.type === 'document_posted' || (isBlockedOrFailed && !noDocument)) {
+      // A single document, and its own detail dialog is the only place its payload
+      // (JV number, or the one reason it stopped) means anything.
       setDetail(n)
+    } else if (noDocument) {
+      // No one document to open — land on the chip that holds all of them
+      // (`unposted`: `_chip_expr` in credit_card_activity.py puts both a skipped
+      // `wrong_pdf_password`/`unsupported_attachment` and a failed
+      // `unreadable_document` there).
+      window.location.hash = '#/CreditCardOCR?filter=unposted'
     } else if (n.type === 'document_pending_review') {
       // The only actionable row in the bell, and the queue is where the action is —
       // a detail modal here would be a dead end with a count in it.

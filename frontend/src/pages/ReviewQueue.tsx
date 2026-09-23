@@ -119,6 +119,16 @@ function docIdFromHash(): string | null {
   return query ? new URLSearchParams(query).get('id') : null
 }
 
+/** The chip the URL asked to open on, if any — how the bell's blocked/failed rows land
+ *  on `unposted` instead of wherever `useReviewQueue`'s own fall-through would pick.
+ *  Read once at mount, same as `docIdFromHash`; the page does not track it afterwards,
+ *  so switching chips by hand does not fight this. */
+function filterFromHash(): ActivityFilter | null {
+  const query = window.location.hash.split('?')[1]
+  const f = query ? new URLSearchParams(query).get('filter') : null
+  return (ACTIVITY_FILTERS as string[]).includes(f || '') ? (f as ActivityFilter) : null
+}
+
 /** The skeleton is the real row with its content hidden, so the list does not jolt when
  *  data lands. A guessed height is what made OrderHistory jump; same lesson, same fix. */
 function RowSkeleton() {
@@ -272,7 +282,7 @@ export default function ReviewQueue() {
     loading,
     error,
     reload,
-  } = useReviewQueue(limit)
+  } = useReviewQueue(limit, filterFromHash())
   const [reloading, setReloading] = useState(false)
   const [openId, setOpenId] = useState(docIdFromHash)
 
@@ -283,6 +293,19 @@ export default function ReviewQueue() {
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
+
+  // Same non-remount problem as above, for a bell link fired while already sitting on
+  // this page: `filterFromHash()` passed to `useReviewQueue` above only catches a fresh
+  // mount. A hash with no `filter` (opening a document, or any other in-page navigation)
+  // leaves the chip alone — only a link that actually names one moves it.
+  useEffect(() => {
+    const onHash = () => {
+      const f = filterFromHash()
+      if (f) setFilter(f)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [setFilter])
 
   // Carmen's chart of accounts is the slow half of opening a document, and it is the same
   // three lists whichever row is clicked. Fetched here, while the queue is being read, the

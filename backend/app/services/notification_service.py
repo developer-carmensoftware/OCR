@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid as _uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -31,6 +32,49 @@ def notify(
             created_at=datetime.now(UTC),
         )
     )
+
+
+async def notify_collapsed(
+    db: AsyncSession,
+    *,
+    tenant_id: _uuid.UUID,
+    type_: str,
+    key: str,
+    build_payload: Callable[[dict[str, Any] | None], dict[str, Any]],
+) -> None:
+    """Like `notify`, but folds into the tenant's existing *unread* row of this
+    `(type_, key)` instead of adding a new one: replaces its payload and bumps
+    `created_at` back to the top of the bell. Once the customer reads that row, the
+    next call starts a fresh one — so the bell rings again on new activity but never
+    piles up rows for a queue nobody has looked at yet.
+
+    `key` lives inside `payload`, not as a column — email-ingest folds the review
+    queue's count under `key="queue"` and each blocked/failed reason under
+    `key=reason_code`, without a schema change.
+
+    `build_payload(existing_payload_or_None)` computes the new payload from what was
+    there before — a running "N since you last looked" count for an event, or just the
+    latest live figure for a gauge like queue size, which ignores it. Caller owns the
+    commit, same as `notify`.
+    """
+    existing = await db.scalar(
+        select(UserNotification)
+        .where(
+            UserNotification.tenant_id == tenant_id,
+            UserNotification.type == type_,
+            UserNotification.read_at.is_(None),
+        )
+        .order_by(UserNotification.created_at.desc())
+    )
+    if existing is not None and existing.payload.get("key") != key:
+        existing = None
+    payload = build_payload(existing.payload if existing else None)  # type: ignore[arg-type]
+    payload["key"] = key
+    if existing is not None:
+        existing.payload = payload  # type: ignore[assignment]
+        existing.created_at = datetime.now(UTC)  # type: ignore[assignment]
+    else:
+        notify(db, tenant_id=tenant_id, order_id=None, type_=type_, payload=payload)
 
 
 async def list_notifications(

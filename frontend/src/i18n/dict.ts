@@ -746,7 +746,21 @@ const en = {
   'notif.docPosted': 'Posted to Carmen · {doc}',
   'notif.docFailed': 'Could not post · {doc}',
   'notif.docPendingReview': '{count} waiting for your review',
+  // The merged form: the queue count already carries the blocked ones, so this is the
+  // same row, not a second one (2026-09-23 — see NotificationBell.tsx).
+  'notif.docPendingReviewBlocked': '{count} waiting for your review — {blocked} blocked',
   'notif.docBlocked': 'Could not read · {doc}',
+  // Collapsed blocked/failed rows: "N files: <short reason>", one row per reason rather
+  // than one per document. `reason` is one of `notif.reasonShort.*` below.
+  'notif.docsBlockedCount': '{count} files: {reason}',
+  // The one older `document_blocked` shape that names no document at all — a queue-level
+  // count written before 2026-09-23's collapsing landed. Nothing left to name per file, so
+  // this reads as a request rather than an outcome, same as docPendingReview.
+  'notif.docsBlockedOrphan': '{blocked} documents need attention',
+  'notif.reasonShort.wrongPdfPassword': 'wrong PDF password',
+  'notif.reasonShort.unsupportedAttachment': 'unsupported file type',
+  'notif.reasonShort.unreadableDocument': 'could not be read',
+  'notif.reasonShort.unknown': 'a problem',
   // -- Review queue: the automation landing page (#/CreditCardOCR) -------------
   // One name for the module, on the queue and on the wizard alike. The page has no heading
   // of its own — the chip strip is it — so this is the only place either page is named.
@@ -2375,7 +2389,14 @@ const th: Record<TKey, string> = {
   'notif.docPosted': 'ส่งเข้า Carmen แล้ว · {doc}',
   'notif.docFailed': 'ส่งเข้า Carmen ไม่สำเร็จ · {doc}',
   'notif.docPendingReview': 'มี {count} รายการรอคุณตรวจสอบ',
+  'notif.docPendingReviewBlocked': 'มี {count} รายการรอคุณตรวจสอบ — {blocked} รายการติดปัญหา',
   'notif.docBlocked': 'อ่านเอกสารไม่ได้ · {doc}',
+  'notif.docsBlockedCount': '{count} ไฟล์: {reason}',
+  'notif.docsBlockedOrphan': 'มี {blocked} เอกสารที่ต้องดำเนินการ',
+  'notif.reasonShort.wrongPdfPassword': 'รหัสผ่าน PDF ไม่ถูกต้อง',
+  'notif.reasonShort.unsupportedAttachment': 'ไฟล์แนบไม่รองรับ',
+  'notif.reasonShort.unreadableDocument': 'อ่านเอกสารไม่ได้',
+  'notif.reasonShort.unknown': 'มีปัญหา',
   'review.title': 'AI JV Automation',
   'review.back': 'ย้อนกลับ',
   'review.refresh': 'รีเฟรช',

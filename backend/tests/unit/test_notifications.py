@@ -47,6 +47,108 @@ def test_notify_empty_payload_defaults():
     assert row.payload == {}
 
 
+# ── notify_collapsed() ──────────────────────────────────────────────────────
+
+
+def _scalar_db(value):
+    """AsyncSession stand-in whose `db.scalar(...)` answers a fixed value once.
+
+    `MagicMock`, not `AsyncMock`, as the base — `db.add` is sync in the real
+    `AsyncSession` (see `test_notify_adds_row_to_session` above), and an `AsyncMock`
+    would mock it as a coroutine and leave it unawaited."""
+    db = MagicMock()
+    db.scalar = AsyncMock(return_value=value)
+    return db
+
+
+@pytest.mark.asyncio
+async def test_notify_collapsed_with_no_existing_row_creates_one():
+    db = _scalar_db(None)
+    tid = uuid.uuid4()
+    await notification_service.notify_collapsed(
+        db,
+        tenant_id=tid,
+        type_="document_pending_review",
+        key="queue",
+        build_payload=lambda prev: {"pending": 5},
+    )
+    db.add.assert_called_once()
+    row = db.add.call_args[0][0]
+    assert row.tenant_id == tid
+    assert row.type == "document_pending_review"
+    assert row.payload == {"pending": 5, "key": "queue"}
+
+
+@pytest.mark.asyncio
+async def test_notify_collapsed_updates_the_matching_unread_row_in_place():
+    """A second poll before the first row is read must not add a row — it replaces the
+    payload and moves the row back to the top of the bell."""
+    existing = _notif(uuid.uuid4(), type_="document_pending_review")
+    existing.payload = {"pending": 5, "key": "queue"}
+    existing.created_at = datetime(2020, 1, 1, tzinfo=UTC)
+    db = _scalar_db(existing)
+
+    await notification_service.notify_collapsed(
+        db,
+        tenant_id=existing.tenant_id,
+        type_="document_pending_review",
+        key="queue",
+        build_payload=lambda prev: {"pending": 8},
+    )
+
+    db.add.assert_not_called()
+    assert existing.payload == {"pending": 8, "key": "queue"}
+    assert existing.created_at > datetime(2020, 1, 1, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_notify_collapsed_passes_the_previous_payload_to_the_builder():
+    """The running-count case (blocked/failed reasons): the builder reads what was there
+    to increment it, rather than the caller having to fetch it separately."""
+    existing = _notif(uuid.uuid4(), type_="document_blocked")
+    existing.payload = {"count": 2, "key": "wrong_pdf_password"}
+    db = _scalar_db(existing)
+    seen = {}
+
+    def build(prev):
+        seen["prev"] = prev
+        return {"count": (prev.get("count", 0) if prev else 0) + 1}
+
+    await notification_service.notify_collapsed(
+        db,
+        tenant_id=existing.tenant_id,
+        type_="document_blocked",
+        key="wrong_pdf_password",
+        build_payload=build,
+    )
+    assert seen["prev"] == {"count": 2, "key": "wrong_pdf_password"}
+    assert existing.payload["count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_notify_collapsed_does_not_fold_into_a_different_reasons_row():
+    """The query picks the tenant's newest unread row of this *type*, which may belong to
+    a different key (two reasons unread at once). Folding into it would silently discard
+    the other reason's count."""
+    existing = _notif(uuid.uuid4(), type_="document_blocked")
+    existing.payload = {"count": 4, "key": "unsupported_attachment"}
+    db = _scalar_db(existing)
+
+    await notification_service.notify_collapsed(
+        db,
+        tenant_id=existing.tenant_id,
+        type_="document_blocked",
+        key="wrong_pdf_password",
+        build_payload=lambda prev: {"count": (prev.get("count", 0) if prev else 0) + 1},
+    )
+
+    db.add.assert_called_once()
+    new_row = db.add.call_args[0][0]
+    assert new_row.payload == {"count": 1, "key": "wrong_pdf_password"}
+    # The other reason's row is untouched.
+    assert existing.payload == {"count": 4, "key": "unsupported_attachment"}
+
+
 # ── list_notifications() ─────────────────────────────────────────────────────
 
 
