@@ -5,7 +5,7 @@ import NumericInput from '../common/NumericInput'
 import { useT } from '../../i18n/LanguageContext'
 import { fmt, parseNum, round2 } from '../../lib/format'
 import { buildJvRows, type JvRow } from '../../lib/ccJv'
-import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
+import { accountName, allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
 import { GROUP_DEBIT_BY_TRANSACTION } from '../../constants/banks'
 import { useGlMasters } from '../../hooks/mapping/useGlMasters'
 import { suggestPaymentTypes } from '../../lib/api/mapping'
@@ -191,7 +191,7 @@ export default function JvEditor({
     let alive = true
     void suggestPaymentTypes({
       payment_types: fresh,
-      accounts: accounts.map(a => ({ code: a.code, name: a.name })),
+      accounts: accounts.map(a => ({ code: a.code, name: accountName(a), type: a.type })),
       departments: departments.map(d => ({
         code: d.code,
         name: d.name,

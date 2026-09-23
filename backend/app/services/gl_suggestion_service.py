@@ -9,6 +9,7 @@ Both return ToolResult with output = {suggestions: {field_type: {dept, acc}}, so
 """
 
 import logging
+import re
 import traceback
 from dataclasses import dataclass, field
 from typing import Any
@@ -90,6 +91,29 @@ def _filter_by_keywords(
     accounts: list[dict], keywords: list[str], limit: int, fallback_limit: int = 30
 ) -> list[dict]:
     return score_and_pad(accounts, keywords, limit, pad_threshold=fallback_limit)
+
+
+# Card brand → (payment-type tokens, account-name words). A BU that keeps one
+# receivable per brand needs these to survive the 40-account cut and to be
+# matched by brand; generic "bank" keywords rank its savings accounts higher.
+_BRANDS: dict[str, tuple[set[str], tuple[str, ...]]] = {
+    "visa": ({"VSA", "VISA", "VS"}, ("visa", "วีซ่า")),
+    "master": ({"MCA", "MC", "MASTER", "MASTERCARD"}, ("master", "มาสเตอร์")),
+    "jcb": ({"JCB"}, ("jcb",)),
+    "amex": ({"AMX", "AMEX", "AX"}, ("amex", "american express", "อเมริกัน")),
+    "unionpay": ({"UPI", "CUP", "UNIONPAY"}, ("unionpay", "union pay", "ยูเนี่ยน")),
+    "qr": ({"QR", "PROMPTPAY"}, ("qr", "promptpay", "พร้อมเพย์")),
+}
+
+
+def _account_brand(name: str) -> str | None:
+    n = name.lower()
+    return next((b for b, (_, words) in _BRANDS.items() if any(w in n for w in words)), None)
+
+
+def _payment_type_brand(pay_type: str) -> str | None:
+    tokens = set(re.split(r"[^A-Z0-9]+", pay_type.upper()))
+    return next((b for b, (codes, _) in _BRANDS.items() if tokens & codes), None)
 
 
 def _dept_allowed_map(departments: list[dict]) -> dict[str, set[str]]:
@@ -299,8 +323,12 @@ async def suggest_payment_types(
         accounts, departments = _by_code(accounts), _by_code(departments)
         b_accounts = _filter_by_type(accounts, "balancesheet")
 
-        b_filtered = _filter_by_keywords(
-            b_accounts,
+        # Brand-named accounts first and never cut: sorted by code, a chart with many
+        # "Bank n Saving" accounts otherwise pushed the Visa/Master receivables past 40.
+        branded = [a for a in b_accounts if _account_brand(a.get("name") or "")]
+        branded_codes = {a["code"] for a in branded}
+        b_filtered = branded + _filter_by_keywords(
+            [a for a in b_accounts if a["code"] not in branded_codes],
             [
                 "bank",
                 "ธนาคาร",
@@ -308,13 +336,15 @@ async def suggest_payment_types(
                 "ลูกหนี้",
                 "credit card",
                 "เครดิตการ์ด",
+                "บัตร",
+                "card",
                 "settlement",
                 "c/a",
                 "s/a",
                 "กระแสรายวัน",
                 "ออมทรัพย์",
             ],
-            limit=40,
+            limit=max(40 - len(branded), 10),
         )
 
         dept_lines = "\n".join(f"  {d['code']} {d['name']}" for d in departments[:50])
@@ -343,15 +373,21 @@ async def suggest_payment_types(
         dept_allowed = _dept_allowed_map(departments)
         suggestions = _validate_codes(data, payment_types, valid_acc, valid_dept, dept_allowed)
 
-        fallback_pool = b_filtered or b_accounts or accounts
-        fallback_acc = fallback_pool[0]["code"] if fallback_pool else None
-        if fallback_acc and fallback_acc in valid_acc:
-            for key in payment_types:
-                entry = suggestions.get(key) or {}
-                if not entry.get("acc"):
-                    dept = "GEN" if "GEN" in valid_dept else entry.get("dept")
-                    if _pair_ok(dept, fallback_acc, dept_allowed):
-                        suggestions[key] = {"acc": fallback_acc, "dept": dept}
+        # A type the model left empty gets its brand's account only when exactly one
+        # exists. No generic fallback: "first bank account" for a Visa line looked like
+        # an answer and was accepted with Accept All — an empty picker asks instead.
+        by_brand: dict[str, list[str]] = {}
+        for a in branded:
+            by_brand.setdefault(_account_brand(a["name"]) or "", []).append(a["code"])
+        for key in payment_types:
+            entry = suggestions.get(key) or {}
+            if entry.get("acc"):
+                continue
+            hits = by_brand.get(_payment_type_brand(key) or "", [])
+            if len(hits) == 1:
+                dept = entry.get("dept") or ("GEN" if "GEN" in valid_dept else None)
+                if _pair_ok(dept, hits[0], dept_allowed):
+                    suggestions[key] = {"acc": hits[0], "dept": dept}
 
         logger.info(
             f"[{TOOL_PAYMENT}] completed — {len(suggestions)}/{len(payment_types)} types suggested (group={group})"

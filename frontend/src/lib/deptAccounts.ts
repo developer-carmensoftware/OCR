@@ -68,3 +68,8 @@ export function isAccountAllowed(
   if (!allowed || allowed.length === 0) return true
   return allowed.includes(accCode)
 }
+
+/** English + Thai account name for the suggester: its Thai keywords (ลูกหนี้, บัตร, วีซ่า)
+ *  only ever match Carmen's Description2. */
+export const accountName = (a: { name: string; name2?: string }): string =>
+  [a.name, a.name2].filter(Boolean).join(' · ')

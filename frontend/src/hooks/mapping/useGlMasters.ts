@@ -51,6 +51,7 @@ export function prefetchGlMasters(): Promise<void> {
             code: a.AccCode as string,
             name: (a.Description as string) || '',
             name2: a.Description2 as string | undefined,
+            type: a.Type as string | undefined,
           })),
         departments: dept
           .filter(d => d.DeptCode && d.DeptCode !== 'CodeDep')
