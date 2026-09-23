@@ -868,9 +868,8 @@ const en = {
   // review off, the exact thing it stopped doing. None of these names forwarding or
   // approval, so none of them can go stale that way.
   //
-  // The ingest address is deliberately absent. It was printed mid-sentence here, unspaced
-  // and unbreakable, while the not-set-up screen two branches away gives the same string a
-  // mono field and a copy button. One of those is a product; the other is a debug line.
+  // The ingest address is deliberately absent — it belongs to Carmen's settings screen,
+  // not to a line in an empty state.
   'review.emptyReviewTitle': 'Nothing needs review',
   'review.emptyReviewBody': 'Documents that need a decision appear here.',
   'review.emptyTodayTitle': 'No activity today',
@@ -885,23 +884,6 @@ const en = {
   // The only route the page does not already offer. Since `all` became a chip, a BU can be
   // told "nothing here" while holding a hundred rows it has no way to reach.
   'review.viewAllActivity': 'View all activity',
-  'review.introTitle': 'Let statements post themselves',
-  'review.introBody':
-    'Forward a bank statement to this address. We read it, map it to your GL, and queue it here. Nothing reaches Carmen until you approve it.',
-  // Named, not described as "forwarding". Step 3 of the settings screen uses that word for
-  // the rule the customer sets up in their *own* mailbox, so "Forwarding is switched off"
-  // read as "go and look in Outlook" — a different switch in a different system.
-  'review.introSwitchedOff': 'AI JV Automation is switched off right now.',
-  'review.introNotEntitled': 'An active package is needed before an address can be issued.',
-  'review.copyAddress': 'Copy address',
-  'review.addressCopied': 'Address copied',
-  'review.addressCopyFailed': 'Could not copy the address',
-  'review.step1': 'Forward it',
-  'review.step2': 'We read it',
-  'review.step3': 'You approve',
-  // The destination is titled AI JV Automation, and the gear beside this one already says
-  // "Automation settings". "Open email settings" was a third name for one screen.
-  'review.openSettings': 'Open automation settings',
   'review.errorTitle': 'Could not load the queue',
   'review.errorBody': 'The list could not be fetched. Nothing has been lost - try again.',
   'review.retry': 'Try again',
@@ -971,6 +953,15 @@ const en = {
   // column, so it is genuinely gone once that session is scrubbed. Vaguer than a name and
   // far better than a raw user id.
   'review.postedManually': 'Scanned and posted by hand',
+  // A manual scan charged and never posted. The row exists so a BU can see what its
+  // credits went on, and nothing can resume it — so it says what happened, not what to do.
+  'review.scannedNotPostedBy': 'Scanned by {name} — not posted',
+  'review.scannedNotPosted': 'Scanned by hand — not posted',
+  // The landing page for a BU that has never scanned anything. No word about email: most
+  // BUs scan by hand, and the automation is introduced by Carmen's own settings screen.
+  'review.noScansTitle': 'No scans yet',
+  'review.noScansBody':
+    'Every statement you scan appears here, posted or not, so you can see what each credit went on.',
   // Two forms, because the reason is optional and the one-form version printed the word
   // twice: `{reason}` was fed the `rejected_by_reviewer` phrase rather than what the
   // reviewer typed, so every rejection read "rejected by somchai - rejected" and the words
@@ -2487,18 +2478,6 @@ const th: Record<TKey, string> = {
   'review.emptyAllTitle': 'ยังไม่มีเอกสาร',
   'review.emptyAllBody': 'เอกสารทุกฉบับที่ผ่านเข้าโมดูลนี้จะมาปรากฏที่นี่',
   'review.viewAllActivity': 'ดูประวัติทั้งหมด',
-  'review.introTitle': 'ให้ใบแจ้งหนี้ลงบัญชีเอง',
-  'review.introBody':
-    'ส่งต่อใบแจ้งหนี้ธนาคารมาที่อีเมลนี้ ระบบจะอ่าน จับคู่ผังบัญชี แล้วนำมารอที่นี่ ไม่มีอะไรถูกส่งเข้า Carmen จนกว่าคุณจะอนุมัติ',
-  'review.introSwitchedOff': 'ตอนนี้ AI JV Automation ถูกปิดอยู่',
-  'review.introNotEntitled': 'ต้องมีแพ็กเกจที่ใช้งานอยู่ก่อน จึงจะออกอีเมลให้ได้',
-  'review.copyAddress': 'คัดลอกอีเมล',
-  'review.addressCopied': 'คัดลอกอีเมลแล้ว',
-  'review.addressCopyFailed': 'คัดลอกไม่สำเร็จ',
-  'review.step1': 'ส่งต่อมา',
-  'review.step2': 'ระบบอ่าน',
-  'review.step3': 'คุณอนุมัติ',
-  'review.openSettings': 'เปิดตั้งค่าระบบอัตโนมัติ',
   'review.errorTitle': 'โหลดรายการไม่สำเร็จ',
   'review.errorBody': 'ดึงรายการไม่ได้ ข้อมูลไม่หาย ลองอีกครั้ง',
   'review.retry': 'ลองอีกครั้ง',
@@ -2530,6 +2509,11 @@ const th: Record<TKey, string> = {
   'review.postedAutomatically': 'โพสต์อัตโนมัติ',
   'review.postedManuallyBy': 'สแกนและลงบัญชีโดย {name}',
   'review.postedManually': 'สแกนและโพสต์เอง',
+  'review.scannedNotPostedBy': 'สแกนโดย {name} — ยังไม่ได้ลงบัญชี',
+  'review.scannedNotPosted': 'สแกนเอง — ยังไม่ได้ลงบัญชี',
+  'review.noScansTitle': 'ยังไม่มีการสแกน',
+  'review.noScansBody':
+    'ใบแจ้งยอดทุกใบที่สแกนจะมาปรากฏที่นี่ ทั้งที่ลงบัญชีแล้วและยังไม่ได้ลงบัญชี เพื่อให้เห็นว่าเครดิตแต่ละหน่วยใช้ไปกับอะไร',
   'review.rejectedBy': 'ตรวจสอบและปฏิเสธโดย {name}',
   'review.rejectedByWith': 'ตรวจสอบและปฏิเสธโดย {name}: {reason}',
   // Same rule as EN: each names the field on the settings screen its Fix button opens.

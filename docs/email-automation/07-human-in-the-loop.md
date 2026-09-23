@@ -1641,3 +1641,31 @@ looking). `document_posted` is unchanged — still one receipt per document.
   of `notify_collapsed` deciding for them.
 - **Migrating or marking-read the rows already in the database.** Nothing reads `key` on an
   old row, so it simply never folds and behaves exactly as it always has until it ages out.
+
+## §23 — The landing page is a log of what credits went on, not an email pitch (2026-09-23)
+
+`#/CreditCardOCR` showed a full-page pitch for email forwarding (`NotSetUp`) to every BU
+that had not switched it on and had no rows. Most BUs scan by hand and will keep doing so,
+and for them the pitch was the whole page. Worse, it could not go away on its own for a BU
+that scanned but never posted: manual scans were listed only once `submitted_at` was set,
+so a scan charged at extraction and abandoned at step 3 left no trace. The page could not
+answer the question a manual-only BU actually brings to it: *what did my credits go on?*
+
+A grilling session with the user (2026-09-23) settled the page's role first: an **activity
+log** over both sources, with email as one way in. Everything below follows from that.
+
+### The decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 107 | **`NotSetUp` is deleted, and so is the in-app pitch.** A BU with no rows at all gets `NoScansYet`: one sentence and **Upload documents**. Carmen's own settings screen introduces the automation. With it go `getReviewStatus` (its only reader), the `review.intro*`/`step*`/`copyAddress` strings and the `.rq-address`/`.rq-steps` CSS. `GET /api/v1/email/status` stays on the backend. It has no caller in this app now. | An ad on the landing page told a manual-only BU it was using the product wrong. A dismissible banner and a secondary button were both considered. The user chose no in-app pitch at all. |
+| 108 | **A manual scan that was charged and never posted is listed.** `credit_cards.submitted_at IS NULL` → `status: "scanned"`, timestamped by `created_at`, under `unposted`, `today` and `all` (`MANUAL_CHIPS`). "Has a `credit_cards` row" already means "was charged": a failed extraction is refunded before `finalize_extraction` writes one. This reverses `_manual_row`'s old "drafts are excluded". | Once extraction returns the document is charged, whatever happens next (Key Design Decisions, *charge before the LLM*). Hiding those rows made the log disagree with the balance. |
+| 109 | **View-only, red "Not posted", no dot.** No Review/Resume/Rescan action. The pill is the chip's own word in its own red, and `_anomalies` never sees these rows. | Line items are never persisted, so there is nothing to resume, and keeping them would reverse *Credit card line items are NOT persisted*. Stopping halfway is the scanner's choice, not a machine fault, so the dot would cry wolf. |
+| 110 | **No per-row credit figure.** | Asked and declined: the row being *there* is what answers "what did the credit go on". |
+
+### What a BU will notice
+
+A BU that has never scanned sees "No scans yet" and an upload button, not an email pitch.
+Every manual scan now appears as soon as it is read. It sits under Not posted, with the
+scanner's name, until it posts, and then under Posted. The Not posted chip's count grows
+with abandoned scans. Its dot does not light for them.

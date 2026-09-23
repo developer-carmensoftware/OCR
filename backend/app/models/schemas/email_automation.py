@@ -145,8 +145,8 @@ class ActivityRow(ReviewDocument):
     thing that differs, and it is what the Source column shows.
 
     A manual row's pending-only fields (`doc_date`, `total`, `line_count`, `flags`) stay at
-    their defaults — a manual scan is only ever listed once it has posted, so there is
-    nothing waiting on a human and no payload to summarise.
+    their defaults — a manual scan is either posted or `scanned` (charged, never posted, and
+    not resumable), so there is nothing waiting on a human and no payload to summarise.
     """
 
     source: str  # "email" | "manual"
