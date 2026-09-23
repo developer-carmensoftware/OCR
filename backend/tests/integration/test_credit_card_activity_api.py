@@ -23,6 +23,7 @@ from app.routers.credit_card_activity import (
     _chip_expr,
     _counts_stmt,
     _email_stmt,
+    _manual_counts_stmt,
     _manual_stmt,
 )
 from tests.conftest import make_mock_db
@@ -69,6 +70,7 @@ def _email(**overrides):
 def _manual(**overrides):
     card = SimpleNamespace(
         id=uuid.uuid4(),
+        created_at=NOW - timedelta(hours=2),
         submitted_at=NOW - timedelta(hours=1),
         bank_code="KBANK",
         doc_no="MAN-001",
@@ -92,16 +94,17 @@ def _db(
     manuals,
     seen=None,
     manual_today=0,
+    manual_unposted=0,
     usernames=None,
 ):
-    """Drive the six `db.execute` calls the handler makes, in order.
+    """Drive the five `db.execute` calls the handler makes, in order.
 
     1. GROUP BY status, reason_code over email_documents → .all()
-    2. count_rows(manual_stmt)                           → .scalar_one()
-    3. count_rows(manual_stmt, since=midnight ICT)       → .scalar_one()
-    4. the email window                                  → .scalars().all()
-    5. the manual window (only when the filter admits manual rows) → .all()
-    6. username_map over those manual rows (only when one carries a user id)
+    2. _manual_counts_stmt → .one(); `manual_count` is the posted scans, `manual_unposted`
+       the charged-but-never-posted ones, `manual_today` both kinds since midnight ICT
+    3. the email window                                  → .scalars().all()
+    4. the manual window (only when the filter admits manual rows) → .all()
+    5. username_map over those manual rows (only when one carries a user id)
        → .mappings().all(); `usernames` is {carmen_user_id: username}
 
     `statuses` is the shorthand most tests want: {status: n}, no reason code, nothing
@@ -121,9 +124,9 @@ def _db(
         g for s, n in (statuses or {}).items() for g in _group(s, None, (n, 0, 0))
     ] + [g for (s, rc), v in (pairs or {}).items() for g in _group(s, rc, v)]
     counted = MagicMock()
-    counted.scalar_one.return_value = manual_count
-    counted_today = MagicMock()
-    counted_today.scalar_one.return_value = manual_today
+    counted.one.return_value = SimpleNamespace(
+        posted=manual_count, unposted=manual_unposted, today=manual_today
+    )
     email_window = MagicMock()
     # The same `_visible()` the GROUP BY above gets, on the window this time — a test hands
     # `emails` the rows the table holds, and the real query would not return the hidden ones.
@@ -133,7 +136,7 @@ def _db(
     manual_window = MagicMock()
     manual_window.all.return_value = manuals
 
-    # Sixth and last: `username_map`, resolving the scanners of whatever manual rows came
+    # Fifth and last: `username_map`, resolving the scanners of whatever manual rows came
     # back. Always supplied, never always consumed — the handler only asks when a manual row
     # actually carries a `carmen_user_id`, and an unconsumed side_effect entry is harmless.
     names = MagicMock()
@@ -144,7 +147,6 @@ def _db(
     db.execute.side_effect = [
         grouped,
         counted,
-        counted_today,
         email_window,
         manual_window,
         names,
@@ -227,8 +229,55 @@ def test_manual_rows_exclude_anything_email_ingest_already_owns():
     sql = str(_manual_stmt(uuid.uuid4()).compile(compile_kwargs={"literal_binds": True}))
     assert "NOT (EXISTS" in sql
     assert "email_documents" in sql
-    # Drafts are not notifications — the user was sitting right there.
-    assert "credit_cards.submitted_at IS NOT NULL" in sql
+    # The counts carry the same anti-join, or the chips would count a forwarded statement
+    # the list does not show.
+    counts_sql = str(
+        _manual_counts_stmt(uuid.uuid4(), NOW).compile(compile_kwargs={"literal_binds": True})
+    )
+    assert "NOT (EXISTS" in counts_sql
+
+
+def test_each_chip_asks_for_the_manual_scans_it_holds():
+    """Posted ones under Posted, charged-but-never-posted ones under Not posted, both under
+    All and Today. Compiled, because the mock DB cannot run the predicate."""
+
+    def sql(posted):
+        return str(_manual_stmt(uuid.uuid4(), None, posted).compile())
+
+    assert "credit_cards.submitted_at IS NOT NULL" in sql(True)
+    assert "credit_cards.submitted_at IS NULL" in sql(False)
+    assert "submitted_at IS" not in sql(None)
+
+
+# ── Charged but never posted ────────────────────────────────────────────────
+
+
+def test_an_unposted_manual_scan_is_listed_under_not_posted():
+    """A BU that only scans by hand reads this page for what its credits went on, and a
+    scan abandoned at step 3 was charged all the same."""
+    card = _manual(submitted_at=None, jv_no=None)
+    db = _db(statuses={}, manual_count=0, manual_unposted=1, emails=[], manuals=[card])
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(f"{BASE}?filter=unposted", headers=AUTH).json()
+
+    row = body["data"][0]
+    assert row["status"] == "scanned"
+    assert row["source"] == "manual"
+    assert row["jv_no"] is None
+    # Timestamped by when it was scanned — there is no other moment it has.
+    assert row["created_at"].startswith((NOW - timedelta(hours=2)).isoformat()[:19])
+    assert body["counts"]["unposted"] == 1
+    assert body["counts"]["all"] == 1
+
+
+def test_an_unposted_manual_scan_lights_no_dot():
+    """Stopping halfway is the scanner's own choice, not something wrong with the machine."""
+    db = _db(statuses={}, manual_count=0, manual_unposted=3, emails=[], manuals=[])
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(BASE, headers=AUTH).json()
+
+    assert body["attention"]["unposted"] == 0
+    assert body["unseen"]["unposted"] is False
 
 
 # ── The merged list ──────────────────────────────────────────────────────────
@@ -636,7 +685,7 @@ def test_today_carries_no_dot():
 
 
 def test_today_asks_for_manual_rows_too():
-    """`MANUAL_FILTERS` admits it, so the fifth `db.execute` is consumed and a scan done by
+    """`MANUAL_CHIPS` admits it, so the fourth `db.execute` is consumed and a scan done by
     hand this morning appears in the day's list beside the forwarded ones."""
     db = _db(
         pairs={("posted", None): (1, 0, 0, 1)},
@@ -654,8 +703,8 @@ def test_today_asks_for_manual_rows_too():
 
 def test_today_windows_both_sources_on_the_same_midnight():
     """Compiled, not executed. The email side filters `created_at` and the manual side
-    `submitted_at` — the moment each row is timestamped by — and both must carry a bound at
-    all, or the chip silently lists the BU's whole history."""
+    `coalesce(submitted_at, created_at)` — the moment each row is timestamped by — and both
+    must carry a bound at all, or the chip silently lists the BU's whole history."""
     day = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
     email_sql = str(
         _email_stmt(uuid.uuid4(), None, day).compile(compile_kwargs={"literal_binds": True})
@@ -664,7 +713,7 @@ def test_today_windows_both_sources_on_the_same_midnight():
         _manual_stmt(uuid.uuid4(), day).compile(compile_kwargs={"literal_binds": True})
     )
     assert "email_documents.created_at >=" in email_sql
-    assert "credit_cards.submitted_at >=" in manual_sql
+    assert "coalesce(credit_cards.submitted_at, credit_cards.created_at) >=" in manual_sql
     # And nothing is windowed when nothing asked for it.
     assert ">=" not in str(_email_stmt(uuid.uuid4(), None).compile())
 

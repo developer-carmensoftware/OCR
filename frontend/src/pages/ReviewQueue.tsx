@@ -3,12 +3,10 @@ import {
   AlertTriangle,
   Archive,
   CheckCircle2,
-  Copy,
-  ExternalLink,
   FileCheck2,
   FileX2,
-  Mail,
   RefreshCw,
+  ScanLine,
   Upload,
   type LucideIcon,
 } from 'lucide-react'
@@ -21,9 +19,7 @@ import { useReviewQueue } from '../hooks/credit-card/useReviewQueue'
 import { prefetchGlMasters } from '../hooks/mapping/useGlMasters'
 import { ACTIVITY_FILTERS, type ActivityFilter } from '../lib/api/emailReview'
 import { useRowsPerPage } from '../hooks/useRowsPerPage'
-import { carmenSettingsUrl } from '../lib/url'
 import { useT } from '../i18n/LanguageContext'
-import { showToast } from '../lib/toast'
 import type { TKey } from '../i18n/dict'
 
 // Five chips, and only three of them are about state. `today` cuts across those three on
@@ -92,10 +88,9 @@ const EMPTY: Record<ActivityFilter, { Icon: LucideIcon; tone: string; title: TKe
 // all six columns rendered at an equal 1/6. Document and Detail were not narrow by design;
 // they were starved by a class that was never on the cell the browser measures.
 //
-// Source is no longer a column: `MANUAL_FILTERS` means a manual scan only ever appears
-// under Posted, so the column read "Email" on every row of the other two — the same
-// argument §9 #19 used to delete it as a concept. On Posted, the Detail column says which
-// it was in words, which is why the icon that briefly replaced the column is gone too.
+// Source is not a column: the Detail column says which it was in words ("scanned by …",
+// "posted automatically"), which is why the icon that briefly replaced the column is gone
+// too (§9 #19).
 const COLUMNS: { key: TKey; cls: string }[] = [
   { key: 'review.colStatus', cls: 'rq-c-status' },
   { key: 'review.colDocument', cls: 'rq-c-doc' },
@@ -147,19 +142,11 @@ function RowSkeleton() {
  *
  *  `DESIGN.md` requires an empty state to *teach the next step*, and the one this replaces
  *  taught none — it printed the ingest address mid-sentence and stopped. The address is gone
- *  from here entirely: `NotSetUp` gives it a proper mono field with a copy button, and a BU
- *  that is already receiving mail knows it. What earns the space instead is the one link
+ *  from here entirely; a BU that is receiving mail already knows it. What earns the space
+ *  instead is the one link
  *  that leads somewhere — the log — because since `all` became a chip a BU can be told
  *  "nothing here" while holding a hundred rows it cannot reach. */
-function QueueEmpty({
-  filter,
-  hasHistory,
-  onShowAll,
-}: {
-  filter: ActivityFilter
-  hasHistory: boolean
-  onShowAll: () => void
-}) {
+function QueueEmpty({ filter, onShowAll }: { filter: ActivityFilter; onShowAll: () => void }) {
   const { t } = useT()
   const { Icon, tone, title, body } = EMPTY[filter]
   return (
@@ -173,8 +160,9 @@ function QueueEmpty({
       <p className="rq-empty-body">{t(body)}</p>
       {/* Not a second "Upload documents": that button is primary in the bar directly above,
           and repeating it here is the thing that reads as filler. This is the only route
-          the page does not already offer. */}
-      {filter !== 'all' && hasHistory && (
+          the page does not already offer. Always something to see: a BU with no rows at all
+          gets `NoScansYet` instead of this card. */}
+      {filter !== 'all' && (
         <button type="button" className="btn btn-outline" onClick={onShowAll}>
           {t('review.viewAllActivity')}
         </button>
@@ -184,79 +172,24 @@ function QueueEmpty({
 }
 
 /**
- * Every BU that has not switched forwarding on lands here, which today is nearly all of
- * them. It is the only place the automation can be discovered, so it is the one screen on
- * this page allowed to make a case for itself.
+ * A BU that has never scanned anything. The page is this module's activity log — email is
+ * one way in, not the point — so the only next step is the first scan, and the bar's
+ * primary Upload button directly above already offers it. A second one here was the same
+ * button twice on an otherwise empty page, so this card is a sentence, like `QueueEmpty`.
+ *
+ * There used to be a full-page pitch for email forwarding here (`NotSetUp`). Most BUs scan
+ * by hand and always will, and an ad on the landing page told them they were using the
+ * product wrong. Carmen's own settings screen introduces the automation.
  */
-function NotSetUp({
-  address,
-  blockers,
-  entitled,
-}: {
-  address: string | null
-  blockers: string[]
-  entitled: boolean
-}) {
+function NoScansYet() {
   const { t } = useT()
-  const disabled = blockers.includes('disabled')
-
-  const copy = () => {
-    if (!address) return
-    void navigator.clipboard
-      .writeText(address)
-      .then(() => showToast(t('review.addressCopied'), 'success'))
-      .catch(() => showToast(t('review.addressCopyFailed'), 'error'))
-  }
-
   return (
-    <div className="rq-intro">
-      <Mail size={36} className="rq-intro-icon" aria-hidden="true" />
-      <h2 className="rq-intro-title">{t('review.introTitle')}</h2>
-      <p className="rq-intro-body">{t('review.introBody')}</p>
-
-      {/* An address that cannot receive mail is worse than no address, so an unentitled
-          BU is told about the package instead of being handed one. */}
-      {entitled && address ? (
-        <>
-          <div className="rq-address">
-            <code className="text-mono">{address}</code>
-            <button
-              type="button"
-              className="btn-icon"
-              onClick={copy}
-              aria-label={t('review.copyAddress')}
-              title={t('review.copyAddress')}
-            >
-              <Copy size={14} />
-            </button>
-          </div>
-          {disabled && <p className="rq-intro-note">{t('review.introSwitchedOff')}</p>}
-        </>
-      ) : (
-        <p className="rq-intro-note">{t('review.introNotEntitled')}</p>
-      )}
-
-      <ol className="rq-steps">
-        <li>{t('review.step1')}</li>
-        <li>{t('review.step2')}</li>
-        <li>{t('review.step3')}</li>
-      </ol>
-
-      {/* Carmen's screen, not ours. Everything this button is about — the tax IDs, the bank
-          rule, the switch — is written there (CARMEN_INTEGRATION.md §0); `#/email-settings`
-          is the copy we keep for support, and sending a customer to it was sending them to
-          edit a value on the screen that does not own it. New tab, like Open JV: setting the
-          feature up is a trip into another application, and the queue should still be here
-          when they come back. */}
-      <a
-        className="btn btn-outline"
-        href={carmenSettingsUrl()}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        {t('review.openSettings')}
-        <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
-      </a>
+    <div className="rq-empty">
+      <span className="rq-empty-icon rq-empty-icon--calm" aria-hidden="true">
+        <ScanLine size={22} strokeWidth={1.75} />
+      </span>
+      <h2 className="rq-empty-title">{t('review.noScansTitle')}</h2>
+      <p className="rq-empty-body">{t('review.noScansBody')}</p>
     </div>
   )
 }
@@ -269,7 +202,6 @@ export default function ReviewQueue() {
   // reviewer should see the whole first page without scrolling. A stored choice still wins.
   const [limit, setLimit] = useRowsPerPage(10)
   const {
-    status,
     filter,
     setFilter,
     rows,
@@ -326,10 +258,8 @@ export default function ReviewQueue() {
     window.location.hash = `${QUEUE}/review?id=${id}`
   }
 
-  const configured = !!status?.enabled && !!status?.entitled
   const hasWork = rows.length > 0
-  // A BU with manual scans has rows even with forwarding off, so the sales pitch is gated
-  // on having nothing at all rather than on the current filter being empty.
+  // Nothing at all, from either source — not merely an empty chip.
   const nothingEver = (counts.all ?? 0) === 0
 
   return (
@@ -347,11 +277,10 @@ export default function ReviewQueue() {
           the Needs review chip prints two rows below it, and had nothing true to say to a
           BU that posts without review — so it is gone and the strip moved up into its row.
 
-          Hidden until the BU has mail at all: three zeroes above an explanation of what the
-          feature is would be scaffolding, not navigation. A BU with only manual scans still
-          gets them — it has rows to filter. */}
+          Hidden until the BU has a single row, from either source: five chips above "no
+          scans yet" would be scaffolding, not navigation. */}
       <div className="rq-bar">
-        {(configured || !nothingEver) && (
+        {!nothingEver && (
           <div className="rq-tabs" role="tablist" aria-label={t('review.tabsLabel')}>
             {ACTIVITY_FILTERS.map(id => {
               // Whether this chip is holding something nobody here has looked at, and how
@@ -468,25 +397,15 @@ export default function ReviewQueue() {
             </table>
           )}
 
-          {/* Two screens, and the sales pitch is the special case. Everything else is one
-              card whose words come from `EMPTY` — including the states that used to fall to
-              a bare grey paragraph, which was the only thing on this page that looked
-              unfinished. An empty Not posted still does not borrow the tick; that rule now
-              lives in the map rather than in a condition here. */}
+          {/* Two screens, and a BU with no scans at all is the special case. Everything else
+              is one card whose words come from `EMPTY`. An empty Not posted still does not
+              borrow the tick; that rule lives in the map rather than in a condition here. */}
           {!loading &&
             !hasWork &&
-            (nothingEver && !configured ? (
-              <NotSetUp
-                address={status?.ingest_address ?? null}
-                blockers={status?.blockers ?? []}
-                entitled={!!status?.entitled}
-              />
+            (nothingEver ? (
+              <NoScansYet />
             ) : (
-              <QueueEmpty
-                filter={filter}
-                hasHistory={(counts.all ?? 0) > 0}
-                onShowAll={() => setFilter('all')}
-              />
+              <QueueEmpty filter={filter} onShowAll={() => setFilter('all')} />
             ))}
 
           {hasWork && (

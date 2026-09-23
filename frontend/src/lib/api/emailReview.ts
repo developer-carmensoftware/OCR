@@ -42,7 +42,8 @@ export const ACTIVITY_FILTERS: ActivityFilter[] = ['today', 'review', 'success',
 export interface ReviewDocument {
   id: string
   /** Where the document came in from. `manual` rows are scans someone ran through the
-   *  wizard; they only ever appear once posted, so they are always `status: 'posted'`. */
+   *  wizard: `status: 'posted'` once they became a JV, `'scanned'` if they were charged
+   *  and never posted. */
   source: 'email' | 'manual'
   created_at: string | null
   attachment: string
@@ -93,21 +94,6 @@ export interface ReviewDocumentDetail extends ReviewDocument {
    *  BU's accounting config — a human approving is what does that — so the live config
    *  this screen derives its JV rows from will not have them, and this is the only copy. */
   suggested: Record<string, { dept?: string; acc?: string }>
-}
-
-/** Which of the automation page's four states to render, in one call. `blockers` comes
- *  from the settings service unchanged, so this screen and #/email-settings cannot
- *  disagree about whether a BU is set up. */
-export interface ReviewStatus {
-  enabled: boolean
-  /** Read-only here. The switch is a field of the BU's settings and is written by
-   *  `PUT /api/v1/carmen/settings` — Carmen's own screen — not from this app. */
-  auto_post: boolean
-  entitled: boolean
-  ingest_address: string | null
-  blockers: string[]
-  // The endpoint also returns per-tab `counts`, deliberately not typed here: the chips are
-  // fed by `listActivity`, which is the only source that also knows about manual scans.
 }
 
 /** The activity window plus the counts behind the filter chips. Counts span every row, not
@@ -164,12 +150,6 @@ export async function getPending(id: string): Promise<ReviewDocumentDetail> {
   const res = await apiFetch(API.emailReview.document(id))
   if (!res.ok) throw new Error(`Document fetch failed (${res.status})`)
   return res.json() as Promise<ReviewDocumentDetail>
-}
-
-export async function getReviewStatus(): Promise<ReviewStatus> {
-  const res = await apiFetch(API.emailReview.status)
-  if (!res.ok) throw new Error(`Review status fetch failed (${res.status})`)
-  return res.json() as Promise<ReviewStatus>
 }
 
 export interface ApproveResult {

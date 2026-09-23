@@ -15,7 +15,7 @@ Design: docs/email-automation/07-human-in-the-loop.md §6 (the screen), §9 (fou
 into one filtered table), §11 (the column order, and `attention`), §12 (three chips, and
 what the dot means now), §13 (the chips re-keyed on who can act, plus `today`), §14 (`all`
 back on the strip, and Posted/Not posted narrowed to what a credit was spent on). Where a row
-came from is no longer a column of its own — `MANUAL_FILTERS` below is why.
+came from is no longer a column of its own — `MANUAL_CHIPS` below is why.
 """
 
 from __future__ import annotations
@@ -40,7 +40,6 @@ from app.models.schemas.email_automation import (
 )
 from app.routers.email_review import to_review_row
 from app.services.tenant_lookup import username_map
-from app.utils.pagination import count_rows
 
 router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card Activity"])
 
@@ -48,8 +47,7 @@ router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card Activity"])
 # vocabulary:
 #
 #   review    a document waiting for somebody's decision
-#   success   reached Carmen. Manual scans land here too; they are only ever listed
-#             once they have posted.
+#   success   reached Carmen. Manual scans land here too once they have posted.
 #   unposted  it did not become a JV — every failure, rejection and clearable refusal,
 #             one row per attachment.
 #
@@ -123,10 +121,20 @@ CHIPS = (TODAY, *STATUS_CHIPS, "all")
 # on. Same +07 the daily rollups are cut on — see backend/db/queries.sql.
 ICT = timezone(timedelta(hours=7))
 
-# A manual scan is only ever "posted", so among the status chips it belongs to `success`
-# alone — but it is still something that happened today, and a queue that hid the BU's own
-# scans from its day view would be answering a different question than the one it asks.
-MANUAL_FILTERS = ("all", "success", TODAY)
+# Which manual scans each chip lists: `True` = posted, `False` = charged but never posted,
+# `None` = both. A chip missing from the map lists none (`review` — nothing manual waits on
+# anyone).
+#
+# The unposted ones are here so this page can answer "what did my credits go on" for a BU
+# that only ever scans by hand. A scan is charged the moment the vision call returns, so one
+# abandoned at step 3 cost a document all the same, and it used to leave no trace at all.
+# They light no dot: stopping halfway is the scanner's own choice, not an anomaly.
+MANUAL_CHIPS: dict[str, bool | None] = {
+    "all": None,
+    TODAY: None,
+    "success": True,
+    "unposted": False,
+}
 
 # The `skipped` reasons that fire per *attachment* on mail that was legitimately this BU's.
 # One legitimate statement mail carries a summary PDF beside the statement, so this pile grows
@@ -326,11 +334,12 @@ def _attention(g) -> int:
 
 
 def _manual_row(card: CreditCard, task: OCRTask, name: str | None) -> ActivityRow:
-    """A submitted manual scan, as a row of the same shape an email document produces.
+    """A manual scan, as a row of the same shape an email document produces.
 
-    Timestamped by `submitted_at`, not `created_at`: the moment it became a JV is the only
-    one this table is reporting. Drafts (`submitted_at IS NULL`) are excluded entirely —
-    an upload someone abandoned mid-wizard is not a notification, they were sitting there.
+    A posted scan is timestamped by `submitted_at`, the moment it became a JV. One that never
+    posted (`submitted_at IS NULL`) is timestamped by when it was scanned — which is when it
+    was charged — and wears `status="scanned"`: it did not post, and nothing can resume it,
+    because line items are never persisted. `_manual_when` is the same rule in SQL.
 
     The pending-only fields stay at their defaults. There is no payload to summarise and
     nothing waiting on a human, so `total: 0.00` would be a wrong number rather than a
@@ -338,12 +347,13 @@ def _manual_row(card: CreditCard, task: OCRTask, name: str | None) -> ActivityRo
 
     `name` is the scanner, already resolved in bulk by the caller — see `posted_by_name`.
     """
+    posted = card.submitted_at is not None
     return ActivityRow(
         id=str(card.id),
         source="manual",
-        created_at=card.submitted_at,
+        created_at=card.submitted_at if posted else card.created_at,
         attachment=task.original_filename,
-        status="posted",
+        status="posted" if posted else "scanned",
         bank_code=card.bank_code,
         doc_no=card.doc_no,
         jv_no=card.jv_no,
@@ -472,29 +482,53 @@ def _email_stmt(
     return stmt.order_by(EmailDocument.created_at.desc())
 
 
-def _manual_stmt(tenant_id: uuid.UUID, since: datetime | None = None):
+# When a manual row happened, as `_manual_row` timestamps it: posted → when it became a JV,
+# never posted → when it was scanned (and charged).
+_manual_when = func.coalesce(CreditCard.submitted_at, CreditCard.created_at)
+
+
+def _manual_where(tenant_id: uuid.UUID):
     """Manual scans only — the anti-join is what makes that true.
 
     Email ingestion calls the same `finalize_extraction` the wizard does, so every ingested
     document ALSO has a `credit_cards` row. Without the NOT EXISTS below, one forwarded
     statement appears twice: once as Email and once as Manual.
+
+    No charge predicate is needed: a scan whose extraction failed is refunded before
+    `finalize_extraction` runs, so it never gets a `credit_cards` row. Having one means it
+    was charged.
     """
     ingested = select(EmailDocument.id).where(EmailDocument.task_id == CreditCard.task_id).exists()
+    return (
+        CreditCard.tenant_id == tenant_id,
+        CreditCard.deleted_at.is_(None),
+        ~ingested,
+    )
+
+
+def _manual_stmt(tenant_id: uuid.UUID, since: datetime | None = None, posted: bool | None = None):
+    """The manual window. `posted` narrows it — see `MANUAL_CHIPS`."""
     stmt = (
         select(CreditCard, OCRTask)
         .join(OCRTask, OCRTask.id == CreditCard.task_id)
-        .where(
-            CreditCard.tenant_id == tenant_id,
-            CreditCard.deleted_at.is_(None),
-            CreditCard.submitted_at.is_not(None),
-            ~ingested,
-        )
+        .where(*_manual_where(tenant_id))
     )
+    if posted is True:
+        stmt = stmt.where(CreditCard.submitted_at.is_not(None))
+    elif posted is False:
+        stmt = stmt.where(CreditCard.submitted_at.is_(None))
     if since is not None:
-        # `submitted_at`, not `created_at`: the row is timestamped by the moment it became a
-        # JV (see `_manual_row`), so that is the moment Today has to be asking about.
-        stmt = stmt.where(CreditCard.submitted_at >= since)
-    return stmt.order_by(CreditCard.submitted_at.desc())
+        stmt = stmt.where(_manual_when >= since)
+    return stmt.order_by(_manual_when.desc())
+
+
+def _manual_counts_stmt(tenant_id: uuid.UUID, day_start: datetime):
+    """Posted, never-posted and today's manual scans, in one round trip."""
+    return select(
+        func.count().filter(CreditCard.submitted_at.is_not(None)).label("posted"),
+        func.count().filter(CreditCard.submitted_at.is_(None)).label("unposted"),
+        func.count().filter(_manual_when >= day_start).label("today"),
+    ).where(*_manual_where(tenant_id))
 
 
 @router.get("/activity", response_model=ActivityPage)
@@ -537,23 +571,23 @@ async def list_activity(
     since = day_start if filter == TODAY else None
 
     email_stmt = _email_stmt(tenant_id, chip, since)
-    manual_stmt = _manual_stmt(tenant_id, since)
-    wants_manual = filter in MANUAL_FILTERS
+    wants_manual = filter in MANUAL_CHIPS
+    manual_stmt = _manual_stmt(tenant_id, since, MANUAL_CHIPS.get(filter))
 
-    # Counts span every row, not the page: one GROUP BY for email plus two counts for
+    # Counts span every row, not the page: one GROUP BY for email plus one aggregate for
     # manual, rather than a round trip per chip. Grouped by chip AND (status, reason_code),
     # because `_attention` needs the reason — same single round trip.
     groups = await _groups(db, tenant_id)
-    manual_total = await count_rows(db, _manual_stmt(tenant_id))
-    manual_today = await count_rows(db, _manual_stmt(tenant_id, day_start))
+    manual = (await db.execute(_manual_counts_stmt(tenant_id, day_start))).one()
     counts = dict.fromkeys(LEDGER_BUCKETS, 0)
     for g in groups:
         counts[g.chip] += g.n
-    counts["success"] += manual_total
+    counts["success"] += manual.posted
+    counts["unposted"] += manual.unposted
     counts["all"] = sum(counts.values())
     # After `all`, deliberately — see the docstring. Today is a window over the three chips
     # above it, not a fourth pile beside them.
-    counts[TODAY] = sum(g.today for g in groups) + manual_today
+    counts[TODAY] = sum(g.today for g in groups) + manual.today
 
     # How many rows under each chip are wrong in some way — see `_attention` for what that
     # covers, and why it is neither "what a person can fix" nor "how much work is here".
