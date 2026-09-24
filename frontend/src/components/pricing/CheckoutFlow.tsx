@@ -3,6 +3,7 @@ import { m } from 'framer-motion'
 import { ArrowLeft, CheckCircle2, ShieldCheck, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import StepWizard from '../common/StepWizard'
+import CustomModal from '../common/CustomModal'
 import ProformaDocument from './ProformaDocument'
 import SlipUpload from './SlipUpload'
 import { useCheckout, type CheckoutSession } from '../../hooks/credits'
@@ -52,6 +53,7 @@ export default function CheckoutFlow({
   const { t } = useT()
   const c = useCheckout(pack, resume, period)
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
+  const [confirmingContinue, setConfirmingContinue] = useState(false)
 
   useEffect(() => {
     getPaymentInfo()
@@ -89,12 +91,18 @@ export default function CheckoutFlow({
   const buyerComplete = REQUIRED_BUYER_KEYS.every(k => c.buyer[k].trim())
 
   const handleConfirm = async () => {
+    setConfirmingContinue(false)
     try {
       await c.confirmBuyer()
     } catch {
       toast.error(c.error || t('checkout.createError'))
     }
   }
+
+  // The order is only created here — this is the last click before it exists — so a
+  // downgrade's consequence must be confirmed now, not left to the slip step where the
+  // order (and its lost allowance) is already a done deal.
+  const handleContinue = () => (slipWarning ? setConfirmingContinue(true) : handleConfirm())
 
   const handleSlip = async (file: File) => {
     try {
@@ -252,7 +260,7 @@ export default function CheckoutFlow({
               <button
                 type="button"
                 className="btn btn-primary checkout-confirm"
-                onClick={handleConfirm}
+                onClick={handleContinue}
                 disabled={c.creating || c.loadingProfile || !buyerComplete}
               >
                 {c.creating ? (
@@ -268,6 +276,17 @@ export default function CheckoutFlow({
               ) : (
                 <p className="checkout-hint">{t('checkout.verifyHint')}</p>
               )}
+              <CustomModal
+                show={confirmingContinue}
+                type="warning"
+                title={t('slip.changeTitle')}
+                message={slipWarning}
+                confirmText={t('checkout.continueToPayment')}
+                cancelText={t('modal.cancel')}
+                confirmVariant="danger"
+                onConfirm={handleConfirm}
+                onCancel={() => setConfirmingContinue(false)}
+              />
             </aside>
           </div>
         )}
