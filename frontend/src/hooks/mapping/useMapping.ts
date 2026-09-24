@@ -67,26 +67,26 @@ export function useMapping() {
     setModalConfig,
   })
 
-  const configAppliedRef = useRef(false)
-  const { initFromData } = paymentTypes
+  // Which bank's data was last applied to `mappings`/`paymentAmount` — not a one-shot
+  // latch, because switching the bank dropdown fetches and must apply a *different*
+  // bank's mappings. Keyed off `mappingsBankCode` rather than `bank`: that field only
+  // ever changes in the same batch as `savedMappings`/`savedCustomTypes` (see
+  // useBankConfig), so there is no window where this fires on a bank whose mappings
+  // have not actually landed yet.
+  const appliedBankCodeRef = useRef<string | null | undefined>(undefined)
+  const { initFromData, resetPaymentTypes } = paymentTypes
 
   useEffect(() => {
-    if (bankConfig.configLoading || !bankConfig.bank) return
-    if (configAppliedRef.current) return
-
-    // Latch only once there is something to apply: `bank` and `savedMappings` land in the
-    // same React batch today, but if that ever reorders, latching first would burn the
-    // guard on an empty config and the mappings would never restore.
-    if (
-      Object.keys(bankConfig.savedMappings).length === 0 &&
-      bankConfig.savedCustomTypes.length === 0
-    )
-      return
-
-    configAppliedRef.current = true
+    if (bankConfig.configLoading) return
+    if (appliedBankCodeRef.current === bankConfig.mappingsBankCode) return
+    appliedBankCodeRef.current = bankConfig.mappingsBankCode
 
     const MAIN_KEYS = new Set<MainMappingKey>(['commission', 'tax', 'net'])
-    const mainMappings: Partial<MainMappings> = {}
+    const mainMappings: MainMappings = {
+      commission: { dept: '', acc: '' },
+      tax: { dept: '', acc: '' },
+      net: { dept: '', acc: '' },
+    }
     const paymentMappings: Record<string, FieldMapping> = {}
 
     Object.entries(bankConfig.savedMappings).forEach(([field, val]) => {
@@ -98,18 +98,21 @@ export function useMapping() {
       }
     })
 
-    if (Object.keys(mainMappings).length > 0) {
-      setMappings(prev => ({ ...prev, ...mainMappings }))
-    }
-    if (Object.keys(paymentMappings).length > 0 || bankConfig.savedCustomTypes.length > 0) {
-      initFromData(paymentMappings, bankConfig.savedCustomTypes)
-    }
+    // Full replace, not merge: a bank switch must not carry the previous bank's fixed
+    // fields or payment types forward. `initFromData` merges on purpose — it preserves
+    // edits nobody has saved yet (usePaymentTypes.test.ts pins that) — so the
+    // payment-type side is cleared first and initFromData then seeds it from a blank
+    // slate. The bootstrap case (nothing to clear yet) behaves exactly as before.
+    setMappings(mainMappings)
+    resetPaymentTypes()
+    initFromData(paymentMappings, bankConfig.savedCustomTypes)
   }, [
     bankConfig.configLoading,
-    bankConfig.bank,
+    bankConfig.mappingsBankCode,
     bankConfig.savedMappings,
     bankConfig.savedCustomTypes,
     initFromData,
+    resetPaymentTypes,
   ])
 
   useEffect(() => {

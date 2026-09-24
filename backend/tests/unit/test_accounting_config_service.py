@@ -50,7 +50,9 @@ async def test_never_overwrites_a_mapping_the_customer_set():
     mine = _entry("commission", "OPS", "5199")
     db = _db(SimpleNamespace(id=1), [mine])
 
-    await fill_missing_mappings(db, TENANT_ID, {"commission": {"dept": "GEN", "acc": "5100"}})
+    await fill_missing_mappings(
+        db, TENANT_ID, {"commission": {"dept": "GEN", "acc": "5100"}}, bank_code="SCB"
+    )
 
     assert (mine.dept_code, mine.acc_code) == ("OPS", "5199")  # untouched
     db.add.assert_not_called()
@@ -62,7 +64,9 @@ async def test_fills_a_custom_type_row_that_exists_but_is_empty():
     blank = _entry("Visa")
     db = _db(SimpleNamespace(id=1), [blank])
 
-    await fill_missing_mappings(db, TENANT_ID, {"Visa": {"dept": "GEN", "acc": "1130V"}})
+    await fill_missing_mappings(
+        db, TENANT_ID, {"Visa": {"dept": "GEN", "acc": "1130V"}}, bank_code="SCB"
+    )
 
     assert (blank.dept_code, blank.acc_code) == ("GEN", "1130V")
     db.commit.assert_awaited_once()
@@ -72,12 +76,17 @@ async def test_fills_a_custom_type_row_that_exists_but_is_empty():
 async def test_inserts_a_type_that_has_no_row_at_all():
     db = _db(SimpleNamespace(id=7), [])
 
-    await fill_missing_mappings(db, TENANT_ID, {"MCA": {"dept": "GEN", "acc": "1130M"}})
+    await fill_missing_mappings(
+        db, TENANT_ID, {"MCA": {"dept": "GEN", "acc": "1130M"}}, bank_code="SCB"
+    )
 
     added = db.add.call_args[0][0]
     assert isinstance(added, BUAccountingMappingEntry)
     assert (added.field_type, added.dept_code, added.acc_code) == ("MCA", "GEN", "1130M")
     assert added.is_custom is True  # not one of commission/tax/net
+    # Scoped to the bank it was filled for, not left null — a second bank must not
+    # inherit this guess (the bug 20260924000000 fixes).
+    assert added.bank_code == "SCB"
 
 
 @pytest.mark.asyncio
@@ -85,7 +94,7 @@ async def test_a_half_filled_suggestion_is_dropped_not_written():
     """A JV line with a blank account posts garbage — better to park the document."""
     db = _db(SimpleNamespace(id=1), [])
 
-    await fill_missing_mappings(db, TENANT_ID, {"tax": {"dept": "GEN", "acc": ""}})
+    await fill_missing_mappings(db, TENANT_ID, {"tax": {"dept": "GEN", "acc": ""}}, bank_code="SCB")
 
     db.execute.assert_not_awaited()  # returns before touching the DB
     db.commit.assert_not_awaited()
@@ -139,7 +148,7 @@ async def test_a_correction_replaces_what_was_already_there():
     """`fill_missing_mappings` deliberately refuses this, which is why it cannot be reused:
     a reviewer fixing a wrong GL account is overwriting by definition."""
     wrong = _entry("tax", "GEN", "511200")
-    db = _db(SimpleNamespace(id=1), [wrong])
+    db = _db(SimpleNamespace(id=1, bank_code=None), [wrong])
 
     await patch_config(db, TENANT_ID, mappings={"tax": {"dept": "GEN", "acc": "511300"}})
 
@@ -156,7 +165,7 @@ async def test_it_leaves_every_mapping_it_was_not_given_alone():
     commission = _entry("commission", "OPS", "510300")
     net = _entry("net", "OPS", "110200")
     tax = _entry("tax", "OPS", "511200")
-    db = _db(SimpleNamespace(id=1), [commission, net, tax])
+    db = _db(SimpleNamespace(id=1, bank_code=None), [commission, net, tax])
 
     await patch_config(db, TENANT_ID, mappings={"tax": {"dept": "OPS", "acc": "511300"}})
 
@@ -169,12 +178,32 @@ async def test_it_leaves_every_mapping_it_was_not_given_alone():
 async def test_a_payment_type_with_no_entry_yet_is_created_as_custom():
     db = _db(SimpleNamespace(id=1), [])
 
-    await patch_config(db, TENANT_ID, mappings={"VISA": {"dept": "OPS", "acc": "110300"}})
+    await patch_config(
+        db, TENANT_ID, mappings={"VISA": {"dept": "OPS", "acc": "110300"}}, bank_code="KBANK"
+    )
 
     (added,) = [c.args[0] for c in db.add.call_args_list]
     assert isinstance(added, BUAccountingMappingEntry)
     assert (added.field_type, added.dept_code, added.acc_code) == ("VISA", "OPS", "110300")
     assert added.is_custom is True  # not one of commission/tax/net
+    assert added.bank_code == "KBANK"  # the bank this correction was made about
+
+
+@pytest.mark.asyncio
+async def test_a_correction_for_one_bank_leaves_another_banks_entry_alone():
+    """The row `_get_entries` returns belongs to KBANK; a correction made about SCB must
+    create SCB's own row rather than overwriting KBANK's, even though both use `tax`."""
+    kbank_tax = _entry("tax", "OPS", "511200")
+    kbank_tax.bank_code = "KBANK"
+    db = _db(SimpleNamespace(id=1, bank_code="KBANK"), [])  # SCB has no entries of its own yet
+
+    await patch_config(
+        db, TENANT_ID, mappings={"tax": {"dept": "OPS", "acc": "999999"}}, bank_code="SCB"
+    )
+
+    (added,) = [c.args[0] for c in db.add.call_args_list]
+    assert (added.field_type, added.bank_code) == ("tax", "SCB")
+    assert (kbank_tax.dept_code, kbank_tax.acc_code) == ("OPS", "511200")  # untouched
 
 
 @pytest.mark.asyncio

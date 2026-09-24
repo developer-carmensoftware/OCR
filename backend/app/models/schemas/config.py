@@ -27,8 +27,10 @@ class ConfigPatchRequest(BaseModel):
     it changes. See `accounting_config_service.patch_config`.
 
     Every field is optional and `None` means "not mentioned", never "clear it".
-    `bank_code` is not written — it says which bank's wording `description` belongs to,
-    because `description_for` prefers a per-bank entry over the BU-wide one.
+    `bank_code` is not written by itself — it scopes the other two: which bank's wording
+    `description` belongs to (`description_for` prefers a per-bank entry over the BU-wide
+    one) and which bank's entries `mappings` reads and writes (a BU handling more than one
+    bank has a separate GL mapping per bank — see 20260924000000_bank_scoped_mapping_entries).
     """
 
     mappings: dict[str, FieldMapping] | None = None

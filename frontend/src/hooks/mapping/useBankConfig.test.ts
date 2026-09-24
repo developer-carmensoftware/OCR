@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { renderHook, waitFor, act } from '@testing-library/react'
 import { useBankConfig } from './useBankConfig'
 
 vi.mock('../../lib/api/config', () => ({ getAccountingConfig: vi.fn() }))
@@ -111,5 +111,65 @@ describe('useBankConfig — savedMappings', () => {
     await waitFor(() => expect(result.current.configLoading).toBe(false))
 
     expect(result.current.savedMappings).toEqual({})
+  })
+})
+
+// GL mappings are per-bank (20260924000000_bank_scoped_mapping_entries): a BU handling
+// more than one bank must never show one bank's dept/acc pairs while another is selected.
+describe('useBankConfig — bank scoping', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  it('scopes the initial fetch to the wizard-detected bank, not the config default', async () => {
+    localStorage.setItem(appKey('ocr_wizard_state'), JSON.stringify({ bank: 'GHL' }))
+    getAccountingConfig.mockResolvedValue(apiConfig() as never)
+
+    renderHook(() => useBankConfig())
+    await waitFor(() => expect(getAccountingConfig).toHaveBeenCalled())
+
+    expect(getAccountingConfig).toHaveBeenCalledWith('GHL')
+  })
+
+  it('re-fetches and replaces savedMappings when the bank dropdown changes', async () => {
+    getAccountingConfig.mockResolvedValueOnce(
+      apiConfig({
+        bank_code: 'GHL',
+        mappings: { commission: { dept: '307', acc: '6080008' } },
+        custom_types: ['GHL-FEE'],
+      }) as never
+    )
+    const { result } = renderHook(() => useBankConfig())
+    await waitFor(() => expect(result.current.configLoading).toBe(false))
+    expect(result.current.savedMappings.commission.acc).toBe('6080008')
+
+    getAccountingConfig.mockResolvedValueOnce(
+      apiConfig({
+        bank_code: 'SCB',
+        mappings: { commission: { dept: '999', acc: '1112223' } },
+        custom_types: ['SCB-FEE'],
+      }) as never
+    )
+    act(() => result.current.setBank('Siam Commercial Bank (SCB)'))
+
+    await waitFor(() => expect(getAccountingConfig).toHaveBeenLastCalledWith('SCB'))
+    await waitFor(() => expect(result.current.savedCustomTypes).toEqual(['SCB-FEE']))
+    // GHL's mapping must not linger once SCB's has landed.
+    expect(result.current.savedMappings.commission.acc).toBe('1112223')
+  })
+
+  it('clears savedMappings without fetching when the bank is cleared', async () => {
+    getAccountingConfig.mockResolvedValueOnce(
+      apiConfig({ mappings: { commission: { dept: '307', acc: '6080008' } } }) as never
+    )
+    const { result } = renderHook(() => useBankConfig())
+    await waitFor(() => expect(result.current.configLoading).toBe(false))
+    getAccountingConfig.mockClear()
+
+    act(() => result.current.setBank(''))
+
+    await waitFor(() => expect(result.current.savedMappings).toEqual({}))
+    expect(getAccountingConfig).not.toHaveBeenCalled()
   })
 })

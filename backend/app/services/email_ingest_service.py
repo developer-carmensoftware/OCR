@@ -1040,7 +1040,7 @@ async def _run_document(
             )
 
         async with async_session() as db:
-            config = await get_accounting_config(db, tenant_id)
+            config = await get_accounting_config(db, tenant_id, bank_code)
         missing = unmapped_payment_types(extracted.details, config.mappings or {})
         if missing:
             # Parking every document of a BU that never opened the mapping page, with
@@ -1899,7 +1899,7 @@ async def approve_document(
                 db, CreditCard, tenant_id=uuid.UUID(tenant_id), doc_no=doc_no
             ):
                 raise ConflictError(f"Document {doc_no} has already been posted to Carmen")
-            config = await get_accounting_config(db, tenant_id)
+            config = await get_accounting_config(db, tenant_id, bank_code)
 
         payload = build_gljv_payload(
             rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
