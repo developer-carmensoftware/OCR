@@ -7,7 +7,7 @@ Encapsulates all ORM queries that were previously inline in routers/config.py.
 import logging
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -23,15 +23,27 @@ logger = logging.getLogger(__name__)
 _FIXED_TYPES = {"commission", "tax", "net"}
 
 
+class _Unscoped:
+    """Sentinel: 'every bank', distinct from `bank_code=None` ('no bank set')."""
+
+
+_UNSCOPED = _Unscoped()
+
+
 # ── Accounting config ──────────────────────────────────────────────────────────
 
 
-async def get_accounting_config(db: AsyncSession, tenant_id: str) -> AccountingConfigResponse:
+async def get_accounting_config(
+    db: AsyncSession, tenant_id: str, bank_code: str | None = None
+) -> AccountingConfigResponse:
     row = await _get_config(db, tenant_id)
     if not row:
         return AccountingConfigResponse()
 
-    entries = await _get_entries(db, row.id)
+    # Unscoped caller = "this tenant's own bank" — keeps a single-bank tenant's mappings
+    # showing up exactly as before now that entries can vary per bank (see
+    # 20260924000000_bank_scoped_mapping_entries.sql).
+    entries = await _get_entries(db, row.id, bank_code or row.bank_code)
     mappings, custom_types = _entries_to_response(entries)
 
     return AccountingConfigResponse(
@@ -86,9 +98,14 @@ async def save_accounting_config(
         db.add(row)
         await db.flush()
 
-    # Replace all mapping entries (delete + re-insert)
+    # Replace this bank's mapping entries only (delete + re-insert). Scoped by bank_code,
+    # not config_id alone — otherwise saving bank B's payment types would delete bank A's
+    # already-confirmed ones out from under it (the bug 20260924000000 fixes).
     await db.execute(
-        delete(BUAccountingMappingEntry).where(BUAccountingMappingEntry.config_id == row.id)
+        delete(BUAccountingMappingEntry).where(
+            BUAccountingMappingEntry.config_id == row.id,
+            BUAccountingMappingEntry.bank_code == req.bank_code,
+        )
     )
 
     custom_set = set(req.custom_types or [])
@@ -100,6 +117,7 @@ async def save_accounting_config(
                 dept_code=mapping.dept or None,
                 acc_code=mapping.acc or None,
                 is_custom=(field_type not in _FIXED_TYPES),
+                bank_code=req.bank_code,
             )
         )
 
@@ -113,6 +131,7 @@ async def save_accounting_config(
                     dept_code=None,
                     acc_code=None,
                     is_custom=True,
+                    bank_code=req.bank_code,
                 )
             )
 
@@ -121,7 +140,7 @@ async def save_accounting_config(
 
 
 async def fill_missing_mappings(
-    db: AsyncSession, tenant_id: str, mappings: dict[str, dict[str, str]]
+    db: AsyncSession, tenant_id: str, mappings: dict[str, dict[str, str]], bank_code: str | None
 ) -> None:
     """Write dept/acc only where the BU has none. Never overwrites what it set.
 
@@ -140,8 +159,9 @@ async def fill_missing_mappings(
         await db.flush()
 
     # A custom type can already have a row with empty dept/acc — that is a gap to
-    # fill, not a value to protect.
-    existing = {str(e.field_type): e for e in await _get_entries(db, row.id)}
+    # fill, not a value to protect. Scoped to this bank, same reasoning as
+    # save_accounting_config: filling bank B's gap must not read bank A's entry.
+    existing = {str(e.field_type): e for e in await _get_entries(db, row.id, bank_code)}
     for field_type, mapping in fillable.items():
         entry = existing.get(field_type)
         if entry is None:
@@ -152,6 +172,7 @@ async def fill_missing_mappings(
                     dept_code=mapping["dept"],
                     acc_code=mapping["acc"],
                     is_custom=(field_type not in _FIXED_TYPES),
+                    bank_code=bank_code,
                 )
             )
         elif not (entry.dept_code and entry.acc_code):
@@ -228,7 +249,10 @@ async def patch_config(
         logger.info("Patched accounting header for tenant=%s", tenant_id)
         return
 
-    existing = {str(e.field_type): e for e in await _get_entries(db, row.id)}
+    # Same bank the description branch above just resolved against — a correction made
+    # about one bank's document must not read or write another bank's entry.
+    entry_bank = bank_code or row.bank_code
+    existing = {str(e.field_type): e for e in await _get_entries(db, row.id, entry_bank)}
     for field_type, mapping in usable.items():
         entry = existing.get(field_type)
         if entry is None:
@@ -239,6 +263,7 @@ async def patch_config(
                     dept_code=mapping["dept"],
                     acc_code=mapping["acc"],
                     is_custom=(field_type not in _FIXED_TYPES),
+                    bank_code=entry_bank,
                 )
             )
         else:
@@ -334,7 +359,12 @@ async def get_account_usage(
             BUAccountingMappingEntry.dept_code,
             BUAccountingMappingEntry.acc_code,
             BUAccountingConfig.tenant_id,
-            BUAccountingConfig.bank_code,
+            # The entry's own bank first — that's the bank it actually applies to since
+            # 20260924000000. Falls back to the config's bank for pre-migration rows that
+            # were never re-saved.
+            func.coalesce(BUAccountingMappingEntry.bank_code, BUAccountingConfig.bank_code).label(
+                "bank_code"
+            ),
         )
         .join(BUAccountingConfig, BUAccountingConfig.id == BUAccountingMappingEntry.config_id)
         .where(BUAccountingConfig.deleted_at.is_(None), *conditions)
@@ -365,13 +395,22 @@ async def _get_config(db: AsyncSession, tenant_id: str) -> BUAccountingConfig | 
     return result.scalar_one_or_none()
 
 
-async def _get_entries(db: AsyncSession, config_id: int) -> list[BUAccountingMappingEntry]:
-    result = await db.execute(
-        select(BUAccountingMappingEntry).where(
-            BUAccountingMappingEntry.config_id == config_id,
-            BUAccountingMappingEntry.deleted_at.is_(None),
-        )
-    )
+async def _get_entries(
+    db: AsyncSession, config_id: int, bank_code: str | None | _Unscoped = _UNSCOPED
+) -> list[BUAccountingMappingEntry]:
+    """Entries for a config, scoped to `bank_code` unless the caller passes `_UNSCOPED`.
+
+    `bank_code=None` is a real, meaningful filter (matches pre-migration rows with no bank
+    of their own — `IS NULL`), so "give me every entry regardless of bank" needs its own
+    sentinel rather than overloading `None` for both.
+    """
+    conditions = [
+        BUAccountingMappingEntry.config_id == config_id,
+        BUAccountingMappingEntry.deleted_at.is_(None),
+    ]
+    if bank_code is not _UNSCOPED:
+        conditions.append(BUAccountingMappingEntry.bank_code == bank_code)
+    result = await db.execute(select(BUAccountingMappingEntry).where(*conditions))
     return list(result.scalars().all())
 
 

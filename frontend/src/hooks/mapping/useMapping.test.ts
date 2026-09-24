@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { renderHook, waitFor, act } from '@testing-library/react'
 import { useMapping } from './useMapping'
 
 vi.mock('../../lib/api/config', () => ({
@@ -73,5 +73,45 @@ describe('useMapping — restoring saved mappings', () => {
     await waitFor(() => expect(result.current.paymentAmount[AR]?.acc).toBe('1021009'))
 
     expect(result.current.mappings.commission.acc).toBe('6080008')
+  })
+})
+
+// A BU handling more than one bank has a separate GL mapping per bank
+// (20260924000000_bank_scoped_mapping_entries) — switching the dropdown must show that
+// bank's own dept/acc pairs, never the previous bank's carried forward.
+describe('useMapping — switching banks', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  it('replaces commission/tax/net and payment types with the new bank’s own, dropping the old', async () => {
+    getAccountingConfig.mockResolvedValueOnce({
+      bank_code: 'GHL',
+      file_prefix: 'IC',
+      mappings: {
+        commission: { dept: '307', acc: '6080008' },
+        [AR]: { dept: 'GEN', acc: '1021009' },
+      },
+      custom_types: [AR],
+    } as never)
+
+    const { result } = renderHook(() => useMapping())
+    await waitFor(() => expect(result.current.mappings.commission.acc).toBe('6080008'))
+    expect(result.current.paymentAmount[AR]).toEqual({ dept: 'GEN', acc: '1021009' })
+
+    getAccountingConfig.mockResolvedValueOnce({
+      bank_code: 'SCB',
+      file_prefix: 'IC',
+      mappings: { tax: { dept: '999', acc: '1112223' } },
+      custom_types: [],
+    } as never)
+    act(() => result.current.setBank('Siam Commercial Bank (SCB)'))
+
+    await waitFor(() => expect(result.current.mappings.tax.acc).toBe('1112223'))
+    // GHL's commission mapping and its custom payment type must not survive the switch.
+    expect(result.current.mappings.commission).toEqual({ dept: '', acc: '' })
+    expect(result.current.paymentAmount[AR]).toBeUndefined()
+    expect(result.current.customPaymentTypes).toEqual([])
   })
 })

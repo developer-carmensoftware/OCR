@@ -11,6 +11,11 @@ export interface PaymentTypesHook {
   isAmountModalOpen: boolean
   setIsAmountModalOpen: React.Dispatch<React.SetStateAction<boolean>>
   initFromData: (mappings?: Record<string, FieldMapping>, customTypes?: string[]) => void
+  /** Clears payment-type state outright — the bank switched, so the previous bank's
+   *  mappings and custom types must not bleed into the new one. `initFromData` merges
+   *  on purpose (it preserves unsaved edits), so a caller that needs a clean slate first
+   *  calls this, then `initFromData` with the new bank's saved data. */
+  resetPaymentTypes: () => void
   handlePaymentMappingChange: (type: string, field: keyof FieldMapping, value: string) => void
   handleAddCustomType: (
     activeScanPaymentTypes: Set<string>,
@@ -72,6 +77,11 @@ export function usePaymentTypes(): PaymentTypesHook {
     if (onSuggest) onSuggest([trimmed])
   }
 
+  const resetPaymentTypes = () => {
+    setPaymentAmount({})
+    setCustomPaymentTypes([])
+  }
+
   const handleRemoveCustomType = (type: string) => {
     setCustomPaymentTypes(prev => prev.filter(t => t !== type))
     setPaymentAmount(prev => {
@@ -120,6 +130,7 @@ export function usePaymentTypes(): PaymentTypesHook {
     isAmountModalOpen,
     setIsAmountModalOpen,
     initFromData,
+    resetPaymentTypes,
     handlePaymentMappingChange,
     handleAddCustomType,
     handleRemoveCustomType,

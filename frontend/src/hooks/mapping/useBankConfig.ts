@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react'
 import { getAccountingConfig } from '../../lib/api/config'
-import { detectBankFromCompanyName, BANK_INFO, BANK_SOURCE_MAP } from '../../constants/banks'
+import {
+  detectBankFromCompanyName,
+  BANK_INFO,
+  BANK_CODE_MAP,
+  BANK_SOURCE_MAP,
+} from '../../constants/banks'
 import { normalizeConfigShape, codeToDisplayName } from '../../lib/bankTransforms'
 import { appKey, readAccountingConfig } from '../../lib/storage'
 import type { BankDisplayName, FieldMapping } from '../../types/api'
@@ -23,6 +28,11 @@ export interface BankConfigHook {
   configLoading: boolean
   savedMappings: Record<string, FieldMapping>
   savedCustomTypes: string[]
+  /** Which bank_code `savedMappings`/`savedCustomTypes` belong to — always updated in the
+   *  same batch as those two, so a consumer can key a "new bank's data just landed" effect
+   *  off this instead of off `bank` (which changes one render before the fetch for it
+   *  resolves). Null before anything has loaded or when no bank is selected. */
+  mappingsBankCode: string | null
 }
 
 import type React from 'react'
@@ -42,6 +52,7 @@ export function useBankConfig(): BankConfigHook {
   })
   const [savedMappings, setSavedMappings] = useState<Record<string, FieldMapping>>({})
   const [savedCustomTypes, setSavedCustomTypes] = useState<string[]>([])
+  const [mappingsBankCode, setMappingsBankCode] = useState<string | null>(null)
 
   useEffect(() => {
     let ocrBank: BankDisplayName | '' = ''
@@ -57,6 +68,10 @@ export function useBankConfig(): BankConfigHook {
     // Branch comes off the document (useOcrExtraction writes it here); the saved
     // accounting config has no branch of its own, so it must not blank this out.
     ocrBranch = readAccountingConfig().company?.branch || ''
+    // The wizard's own bank wins over the config's stored default (normalizeConfigShape
+    // below does the same), so the mappings this fetches must be scoped to it — otherwise
+    // the dropdown would show `ocrBank` while displaying a different bank's GL mappings.
+    const ocrBankCode = ocrBank ? BANK_CODE_MAP[ocrBank] : undefined
 
     const applyConfig = (source: Record<string, unknown>) => {
       const normalized = normalizeConfigShape(source, ocrBank, detectBankFromCompanyName)
@@ -75,7 +90,7 @@ export function useBankConfig(): BankConfigHook {
       })
     }
 
-    getAccountingConfig()
+    getAccountingConfig(ocrBankCode)
       .then(apiData => {
         const hasData =
           apiData &&
@@ -84,6 +99,7 @@ export function useBankConfig(): BankConfigHook {
           applyConfig(apiData as unknown as Record<string, unknown>)
           setSavedMappings(apiData.mappings || {})
           setSavedCustomTypes(apiData.custom_types || [])
+          setMappingsBankCode(ocrBankCode ?? apiData.bank_code ?? null)
         } else {
           throw new Error('empty')
         }
@@ -120,9 +136,50 @@ export function useBankConfig(): BankConfigHook {
         } else {
           setFilePrefix('IC')
         }
+        // The server fetch failed outright (no authoritative bank-scoped answer either
+        // way), but a later bank switch must still be able to trigger a real fetch rather
+        // than staying stuck thinking nothing has loaded yet.
+        setMappingsBankCode(ocrBankCode ?? null)
       })
       .finally(() => setConfigLoading(false))
   }, [])
+
+  // Re-fetch this bank's own GL mappings when the dropdown changes to one the initial
+  // load didn't already cover. Header fields (file_prefix, description, company) stay
+  // BU-wide and are deliberately left alone here.
+  //
+  // Keyed off `mappingsBankCode`, not `bank`: `bank` commits a render before the fetch
+  // for it resolves, so latching an "applied" ref off `bank` in a consumer (useMapping)
+  // would mark the switch handled before `savedMappings` actually caught up, and the
+  // real update would then be silently skipped. `mappingsBankCode` only ever changes in
+  // the same batch as `savedMappings`/`savedCustomTypes`, so it's safe to key off.
+  useEffect(() => {
+    if (configLoading) return
+    const bankCode = bank ? (BANK_CODE_MAP[bank] ?? null) : null
+    if (bankCode === mappingsBankCode) return
+    if (!bankCode) {
+      // Cleared the bank field — nothing to map to yet.
+      setMappingsBankCode(null)
+      setSavedMappings({})
+      setSavedCustomTypes([])
+      return
+    }
+    let cancelled = false
+    getAccountingConfig(bankCode)
+      .then(apiData => {
+        if (cancelled) return
+        setSavedMappings(apiData.mappings || {})
+        setSavedCustomTypes(apiData.custom_types || [])
+        setMappingsBankCode(bankCode)
+      })
+      .catch(() => {
+        /* Keep whatever mappings are already on screen rather than blanking a bank
+           switch out from under an in-progress edit over a transient network error. */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [bank, configLoading, mappingsBankCode])
 
   return {
     bank,
@@ -140,5 +197,6 @@ export function useBankConfig(): BankConfigHook {
     configLoading,
     savedMappings,
     savedCustomTypes,
+    mappingsBankCode,
   }
 }

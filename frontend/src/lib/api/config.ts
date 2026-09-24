@@ -10,8 +10,17 @@ export interface APVendorMappingResponse {
   mapping: APVendorMapping
 }
 
-export async function getAccountingConfig(): Promise<AccountingConfigResponse> {
-  const res = await apiFetch(API.config.accounting)
+/**
+ * @param bankCode Which bank's GL mappings to read — a BU handling more than one bank has a
+ * separate set per bank. Omit for the tenant's own (single-bank) default.
+ */
+export async function getAccountingConfig(
+  bankCode?: string | null
+): Promise<AccountingConfigResponse> {
+  const url = bankCode
+    ? `${API.config.accounting}?bank_code=${encodeURIComponent(bankCode)}`
+    : API.config.accounting
+  const res = await apiFetch(url)
   if (!res.ok) throw new Error(`Config fetch failed (${res.status})`)
   return res.json() as Promise<AccountingConfigResponse>
 }

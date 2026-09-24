@@ -7,6 +7,7 @@ import {
   FileX2,
   RefreshCw,
   ScanLine,
+  Settings,
   Upload,
   type LucideIcon,
 } from 'lucide-react'
@@ -346,6 +347,15 @@ export default function ReviewQueue() {
             title={t('review.refresh')}
           >
             <RefreshCw size={14} className={reloading || loading ? 'animate-spin' : ''} />
+          </button>
+          <button
+            type="button"
+            className="btn-icon"
+            onClick={() => window.open('#/CreditCardOCR/mapping', '_blank')}
+            aria-label={t('cc.mappingSettings')}
+            title={t('cc.mappingSettings')}
+          >
+            <Settings size={14} />
           </button>
           {/* No auto-post switch here any more. It is one field of the BU's settings and
               has one writer, `PUT /api/v1/carmen/settings` — Carmen's own settings screen.
