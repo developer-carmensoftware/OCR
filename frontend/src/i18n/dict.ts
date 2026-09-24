@@ -42,8 +42,7 @@ const en = {
   'pricing.plansHint': 'Choose by how many documents you post each month.',
   'pricing.freeNote': 'Every account starts with 30 free documents, no card required.',
   'pricing.topupTitle': 'Top-Up Credits',
-  'pricing.topupSub': 'Credits you can use anytime',
-  'pricing.topupSub2': 'Buy once, never expire.',
+  'pricing.topupSub': 'Used once your monthly allowance runs out. Credits never expire.',
   'pricing.topupNote': '1 credit = 1 document page',
   'pricing.loadError': 'Failed to load plans: {error}',
 
@@ -1709,8 +1708,7 @@ const th: Record<TKey, string> = {
   'pricing.plansHint': 'เลือกแพ็กเกจตามจำนวนเอกสารที่ลงบัญชีต่อเดือน',
   'pricing.freeNote': 'ทุกบัญชีเริ่มต้นด้วย 30 เอกสารฟรี ไม่ต้องผูกบัตร',
   'pricing.topupTitle': 'เติมเครดิต',
-  'pricing.topupSub': 'เครดิตที่ใช้ได้ทุกเมื่อ',
-  'pricing.topupSub2': 'ซื้อครั้งเดียว ไม่มีวันหมดอายุ',
+  'pricing.topupSub': 'ใช้ต่อเมื่อโควตารายเดือนหมด เครดิตไม่มีวันหมดอายุ',
   'pricing.topupNote': '1 เครดิต = 1 หน้าเอกสาร',
   'pricing.loadError': 'โหลดแพ็กเกจไม่สำเร็จ: {error}',
 
