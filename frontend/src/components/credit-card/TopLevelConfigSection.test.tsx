@@ -18,6 +18,7 @@ function setup(over: Partial<React.ComponentProps<typeof TopLevelConfigSection>>
     handleBankChange: vi.fn(),
     filePrefix: 'IC',
     setFilePrefix: vi.fn(),
+    prefixes: [] as { code: string; name: string }[],
     fileSource: 'ACSC',
     description: 'Generic settlement',
     setDescription,
@@ -75,6 +76,33 @@ describe('TopLevelConfigSection — Description', () => {
   })
 })
 
+describe('TopLevelConfigSection — Bank', () => {
+  it('hands the display name to handleBankChange, as the old <select> did', () => {
+    const handleBankChange = vi.fn()
+    setup({ bank: '', fileSource: '', handleBankChange })
+    fireEvent.focus(screen.getByLabelText('Bank'))
+    fireEvent.mouseDown(screen.getByText('Krungthai Card (KTC)'))
+    expect(handleBankChange).toHaveBeenCalledWith('Krungthai Card (KTC)')
+  })
+})
+
+describe('TopLevelConfigSection — File Prefix', () => {
+  it("picks from Carmen's GL prefixes instead of free text", () => {
+    const setFilePrefix = vi.fn()
+    setup({
+      filePrefix: '',
+      setFilePrefix,
+      prefixes: [
+        { code: 'JV', name: 'General Journal' },
+        { code: 'AR', name: 'Receivables' },
+      ],
+    })
+    fireEvent.focus(screen.getByLabelText('File Prefix'))
+    fireEvent.mouseDown(screen.getByText('AR'))
+    expect(setFilePrefix).toHaveBeenCalledWith('AR')
+  })
+})
+
 /** A real parent, because the bug only shows on re-render.
  *
  * The field once took the *resolved* value, so deleting the last character emptied
@@ -89,6 +117,7 @@ function Harness({ initial = {} as Record<string, string> }) {
       handleBankChange={() => {}}
       filePrefix="IC"
       setFilePrefix={() => {}}
+      prefixes={[]}
       fileSource="ACSC"
       description={description}
       setDescription={setDescription}
