@@ -14,6 +14,13 @@
 
 That said, **this run found real, unrelated defects — some higher-severity than anything the isolation matrix was designed to catch** — including one that goes to the heart of "can a customer's document silently vanish." See Findings.
 
+> **Corrected 2026-09-24, after root-cause analysis** (same day, before this branch was pushed).
+> The first version of this report called F-1 a bug in `fetch_unseen`, framed F-6 as "wrong
+> order", and didn't know where F-5's field came from. All three were wrong or incomplete and
+> are rewritten below; F-4 is added. Also: every mailbox number quoted during the run
+> (296–334) was an IMAP **sequence number** — the diagnostics used `search`/`fetch`, not
+> `uid` — the real UIDs were 366–404. No conclusion depended on the difference.
+
 | | |
 |---|---|
 | BUs | 6 (`carmen`, `carmencloud` real; `S3`–`S6` scratch) |
@@ -21,22 +28,35 @@ That said, **this run found real, unrelated defects — some higher-severity tha
 | Confirmed cross-BU leaks | **0** |
 | Confirmed exploitable routing/security holes | 1 (tag-domain-suffix, see F-3) |
 | Code-level defects (found reading the code, reproduced live) | 2 (DEF-1, DEF-2) |
-| New defects found only by running this | 3 (F-3 real & confirmed, F-4 silent loss, F-5 field-drop) |
+| New defects found only by running this | 4 (F-1 `\Seen`-as-queue design, F-3 tag boundary, F-5 field-drop, F-6 verdict precedence) + F-4 from code reading |
 | Real JVs posted to dev Carmen | **0** — the one approve in this run posted to a scratch BU's dry-run dispatcher (`QA-DRY-1`), nothing to clean up in Carmen |
 
 ---
 
 ## Findings, ranked
 
-### F-1 (HIGH) — Silent message loss in `fetch_unseen`/`run_ingest`
+### F-1 (HIGH) — `\Seen` is the ingest queue's only "not yet processed" marker, and anyone can set it
 
-**Confirmed twice, independently, at different batch sizes.** A message can be marked `\Seen` — meaning the poll considers it handled — while producing **zero** `email_documents` row, **zero** mention in the poll's own summary dict, and **zero** log line. `job_runs` still records the poll as `status='success'`. There is no error anywhere.
+**What was observed, twice:** messages sitting in the mailbox became `\Seen` without the poller ever having returned them — so they got no `email_documents` row, no line in any poll summary, no log line, and `job_runs` still read `success`.
 
-- Incident 1: a 22-message burst (several attachments 2–2.4 MB) produced only 15 outcomes on the first poll. The missing 7 were confirmed `\Seen` via direct IMAP inspection, with no matching row in `email_documents`, `ocr_tasks`, or `job_runs`. A second poll of the same mailbox found 0 unseen messages — they were gone, not delayed.
-- Incident 2: independently, in an unrelated 6-message batch, one message (`s6-now-expired`, resent after re-entitling S6) vanished the same way — `\Seen`, no row, no log line.
-- Ruled out: an overlapping poll (`job_runs` shows exactly one `email-ingest` execution in the relevant window — this harness's own `_poll_lock`/`cron.alter_job(active:=false)` pause held); a raised-and-caught exception (none logged, `job_runs.status='success'`); a parse failure (that path *does* log and *does* flag `\Seen` — `email_imap.py:446-449` — and produces neither symptom seen here).
-- **Impact:** `run_ingest`/`fetch_unseen` is the exact code path the production `email-ingest` cron calls every 10 minutes. A customer's bank statement can be consumed by a poll and never charged, never logged, never shown anywhere — not `#/admin/email`, not `#/CreditCardOCR`, not `ocr_tasks.error_message` (Extractions page's own caveat about "post-charge failures only" doesn't even cover this — there's no charge and no task). The customer's only symptom is "I forwarded it and nothing happened," with nothing in any admin screen to investigate.
-- **Not root-caused.** Both incidents point at `email_imap.fetch_unseen` (`for uid in found[-limit:]: box.uid("FETCH", uid, "(INTERNALDATE BODY.PEEK[])")` — email_imap.py:434-450), but neither of that loop's two failure branches (unparseable-message, `continue`-without-append) matches the observed evidence, and reproducing it on demand wasn't achieved in the time available. **Recommend:** add a mismatch counter/log (`len(found) after slicing` vs `len(messages) returned`) so the *next* occurrence — in this harness or in production — leaves a trail, then correlate.
+- Incident 1: of a 22-message burst, the 7 oldest (the first ~2 minutes of sending) were already `\Seen` when the first poll ran; the poll returned the other 15.
+- Incident 2: one message (`s6-now-expired`), correctly held unread across three earlier polls, was `\Seen` by the next poll five minutes later.
+
+**The poller is ruled out** (this was re-checked after the first version of this report blamed `fetch_unseen`):
+- `mark_seen` stores `\Seen` per UID, only for messages the poll returned and reached a verdict on (`email_imap.py:530-555`). The lost messages were never returned, so no call ever named their UIDs.
+- The only branch that flags without a verdict is the parse-failure branch (`email_imap.py:442-450`), which logs a warning. None was logged, and the same PDFs parsed fine on resend.
+- No second poller ran: `cron.alter_job(active:=false)` took effect at 07:12 UTC (`cron.job_run_details` has no `email-ingest`/`email-confirm` dispatch after it), and `job_runs` holds only this run's own polls for the window.
+- The confirmation sweep (which *does* set `\Seen` as a side effect — F-4) searches `FROM forwarding-noreply@google.com`, and Gmail's `FROM` search was checked to be exact: 17 hits, all genuinely from Google. It cannot have matched these bank-sender fixtures, and it was paused anyway.
+
+**So something outside the code marked them read** — a person with the `AR Agent` label open in Gmail, a mail client syncing `project@`, or another deployment reading the same mailbox. Which one was not determined; nobody is known to have had it open.
+
+**Why that is still a HIGH finding:** the pipeline decides what to look at by `SEARCH UNSEEN`, so `\Seen` is its only record of "decided". Any reader other than the poller therefore makes mail vanish silently and permanently — nothing is charged, nothing is logged, nothing appears in `#/admin/email`, `#/CreditCardOCR`, or the Extractions page. In production that includes the most likely reader of all: someone from support opening `AIAGENT@` to find out why a customer's document didn't arrive, which would erase exactly the mail they came to look for. (The original POC had ruled this out explicitly — "don't rely on `\Seen`, a human opening the mailbox breaks it"; the production design reintroduced it for the "what to fetch" decision.)
+
+**Recommend:** a processed-marker only this system writes (an IMAP keyword such as `$OcrDone`), searched as `NOT KEYWORD $OcrDone` instead of `UNSEEN`, so reading the mailbox has no effect on ingestion.
+
+### F-4 (LOW) — The confirmation sweep marks mail read despite saying it doesn't
+
+Code reading, confirmed: `fetch_confirmations` fetches with `(RFC822)` (`email_imap.py:509`), which on Gmail sets `\Seen` as a side effect. Its docstring says "nothing is marked seen here", and `sweep_confirmations` (`email_ingest_service.py:369-371`) relies on confirmations for other tags being "left unseen so the document poll picks it up". They aren't: a confirmation for a BU outside the 24-hour waiting window is consumed and never recorded. Fix alongside F-1 (`BODY.PEEK[]`).
 
 ### DEF-1 (HIGH) — Two concurrent approvals can both post
 
@@ -55,12 +75,18 @@ Confirmed present in the code, reproduced live: `ApproveIn.extracted` is an ordi
 
 ### F-5 (MEDIUM) — Settings writes silently drop unknown fields on a rule
 
-**Confirmed live, and it damaged real (non-QA) data during this run.** `_merge_rule` (`email_settings_service.py:575-590`) rebuilds every rule from only the 5 keys `RuleIn` knows. `carmencloud`'s real KBANK rule carried `"doc_type": "ar_reconcile"` — not part of the documented schema. This run's settings write (flipping `auto_post` on, going through the real `save_settings`) silently deleted that field. Caught and restored by hand mid-run (not by the harness, and not by the product). **Any future settings write to any BU whose rule carries a field outside the schema will lose it the same way** — worth checking whether `doc_type` is load-bearing anywhere (the name suggests an in-progress AR-reconcile feature) before the next such write happens for real. Teardown was changed to a raw column update specifically to avoid re-triggering this.
+**Confirmed live, and it damaged real (non-QA) data during this run.** `_merge_rule` (`email_settings_service.py:575-590`) rebuilds every rule from only the 5 keys `RuleIn` knows. `carmencloud`'s real KBANK rule carried `"doc_type": "ar_reconcile"` — not part of the documented schema. This run's settings write (flipping `auto_post` on, going through the real `save_settings`) silently deleted that field. Caught and restored by hand mid-run (not by the harness, and not by the product). **Any future settings write to any BU whose rule carries a field outside the schema will lose it the same way.** Teardown was changed to a raw column update specifically to avoid re-triggering this.
 
-### F-6 (MEDIUM) — GL-mapping suggestion calls Carmen before the tax-ID conflict check, contradicting the documented order
+**Origin (found afterwards):** `doc_type` is written by the unmerged `feat/detailed-cc-ar-reconciliation` branch, which makes it a first-class `RuleIn` field; that branch's code ran against the shared dev DB. So on `main` the root is version skew — code that doesn't know a field destroys it on the next save. The same will happen after that branch merges on any rollback: a settings save from older code would silently turn an AR-settlement rule back into a fee-invoice rule. **Recommend:** `_merge_rule` keeps the previous rule's keys it doesn't own.
 
-The module's own docstring pipeline is `extract → tax ID vs register → GL mapping → …` (`email_ingest_service.py:3-12`). The actual code computes `unmapped_payment_types` and calls `_suggest_missing_mappings` (a real Carmen account/department-master read) at `email_ingest_service.py:237-250` — **before** `foreign_tax_id` at line 277. Caught live: `r2-foreign-ktc` carried a TIN genuinely registered to another BU (confirmed: the extracted `tax_ids` list included S4's exact registered value), so it should have parked as `tax_id_mismatch` immediately. Instead it reached the GL-suggestion step, which called carmencloud's real (separately expired) Carmen credential and failed with `carmen_unauthorized`/`SecurityToken has Expired` — masking the true reason. Two consequences: (a) a wasted Carmen API call for a document about to be rejected anyway, whenever the payment type is new; (b) a misleading reason code shown to the reviewer — `carmen_unauthorized` reads as "your own credential is broken," sending the customer to reconnect a token that was never the problem, when the true story is "this document belongs to someone else."
-**Recommend:** move the `foreign_tax_id` check before the GL-suggestion block, matching the documented order.
+### F-6 (MEDIUM) — A dead-token failure in GL suggestion masks the document's own verdict
+
+Caught live: `r2-foreign-ktc` carried a TIN genuinely registered to another BU (the extracted `tax_ids` included S4's exact registered value), so it should have parked as `tax_id_mismatch`. It parked as `carmen_unauthorized` instead — `carmencloud`'s stored credential is separately expired.
+
+**The ordering itself is deliberate** (corrected from the first version of this report, which called it a bug): the GL suggestion runs ahead of the tax-ID and duplicate checks so that a parked document still gets suggested mappings (`email_ingest_service.py:1052-1056`). The module docstring's pipeline order (`:3-12`) is simply stale.
+
+**The real bug is verdict precedence.** The suggester re-raises Carmen 401/403 on purpose, so a dead token isn't mistaken for "mapping missing" (`:1367-1377`); the handler then parks the document as `carmen_unauthorized` (`:1212-1243`). The document-level verdicts (`tax_id_mismatch`, and `duplicate_document` / "Already posted") are never reached. The handler's own comment says why that's wrong: "401/403 is not a verdict on this document at all" (`:1224`). The reviewer is sent to reconnect a credential when the actual story is "this document belongs to someone else".
+**Recommend:** decide the document-level verdict before the suggester runs; if the suggester then hits 401/403, still flag the token (BU-level), but park the document under its own verdict.
 
 ### Environment conditions found, not caused by this run
 
@@ -92,7 +118,7 @@ The appendix's checker does an exact string match against a status/reason predic
 
 | Case(s) | What the table shows | Why it's not a defect |
 |---|---|---|
-| `R1-own`, `cross-kimberly-s5`, `s3-own-kbank`, `s3-bay-inactive`, `s4-own-ktc`, `s4-own-paypal`, `s5-own-ghl` | "NO ROW FOUND" | These are the F-1 silent-loss incident. Real anomaly (see F-1) — but the *fixture prediction itself* isn't what's wrong; each was re-sent (`-r2`/`-r3`) and the resend's real outcome is what should be read. |
+| `R1-own`, `cross-kimberly-s5`, `s3-own-kbank`, `s3-bay-inactive`, `s4-own-ktc`, `s4-own-paypal`, `s5-own-ghl` | "NO ROW FOUND" | These are F-1 incident 1 (marked read by something other than the poller before it ran). Real anomaly (see F-1) — but the *fixture prediction itself* isn't what's wrong; each was re-sent (`-r2`/`-r3`) and the resend's real outcome is what should be read. |
 | `R1-own-r2`, `s3-own-kbank-r2`, `s1-forged-header-v2` | `failed/duplicate_document` | `carmen` and `S3` already had genuine history for these exact documents by the time these resends ran (carmen's own pre-existing 9 pending/9 posted rows for its shared fixture set; S3's own earlier successful `s3-right-password`). Correctly detected as duplicates — proves the dedupe guard works across repeated test runs, not a bug. |
 | `r2-foreign-ktc` | `carmen_unauthorized` instead of `tax_id_mismatch` | This **is** a real finding — F-6 above — not a fixture error. |
 | `s6-held` | `pending_review` instead of `retry_later` | Harness setup bug: every scratch BU, including `S6`, was accidentally given an active subscription at creation. Fixed mid-run (expired it directly), and the corrected case (`s6-now-expired`) shows the real, correct `retry_later` behavior. |
@@ -111,7 +137,7 @@ The appendix's checker does an exact string match against a status/reason predic
 - **No real JV was posted to `carmen` or `carmencloud`'s actual Carmen instance this run.** `carmen`'s real sample documents (BBL/SCB/SCB2, all "Kimberly Co., Ltd.") already exist in its history from prior, non-QA use — every attempt correctly hit `duplicate_document`. `carmencloud`'s stored credential is separately expired. The Q-03 approve mechanics were proven end-to-end against the real HTTP router with a scratch BU's dry-run dispatcher instead — same code path, not a real network call. **Recommend, if a live JV proof is wanted:** either refresh `carmencloud`'s Carmen token, or supply one fresh (never-submitted) BBL- or KBANK-formatted document for `carmen`.
 - **E-06 (out of credits)** and **Q-09 (50-row backlog cap)** were not exercised — time-budget call, not a blocker. Both are already covered by the existing `tests/tenancy` suite at the service level; this run's contribution was specifically the live, cross-BU, real-mailbox angle those tests can't reach.
 - **S-07 (settings-API auth boundaries — 401/400/429, scoped-admin cross-tenant refusal)** was verified by reading `_caller`/`_resolve`/`_assert_in_scope` (straightforward, unambiguous code), not exercised live, for the same reason.
-- Root cause of F-1 (silent loss) — see that finding.
+- Who or what marked the F-1 messages read — the poller is ruled out, the external reader is not identified (see that finding).
 
 ---
 
