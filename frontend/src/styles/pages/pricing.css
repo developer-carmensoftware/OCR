@@ -1250,16 +1250,19 @@
   }
 }
 
-/* ─── Top-up packs: compact clickable cards ─── */
+/* ─── Top-up packs: compact clickable cards ───
+   4 fixed columns, not auto-fit: with exactly 4 cards in an 860px section,
+   auto-fit would only fit 3 and orphan the 4th on a row by itself (same
+   failure mode .plan-grid--4 above documents and fixes for the plan cards). */
 .pack-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1rem;
 }
 
 @media (max-width: 860px) {
   .pack-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
