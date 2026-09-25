@@ -687,6 +687,37 @@ async def test_a_dead_credential_found_reading_the_gl_master_says_so():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("conflict", "is_duplicate", "reason", "error"),
+    [
+        ("0994000165676", False, "tax_id_mismatch", "Tax ID 0994000165676"),
+        (None, True, "duplicate_document", "Already posted to Carmen"),
+    ],
+)
+async def test_the_documents_own_verdict_outranks_a_dead_credential(
+    conflict, is_duplicate, reason, error
+):
+    """F-6 (2026-09-24 QA): a foreign-TIN document sent to a BU whose token had died was
+    parked as `carmen_unauthorized` — the suggester's 401 pre-empted the tax-ID check, so
+    the reviewer was sent to fix a credential and never told the document was not theirs.
+    The document keeps its own reason; the credential is still flagged for the BU."""
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        extracted=_extracted(is_duplicate=is_duplicate),
+        config=_config(mappings={}),  # forces the suggester to run
+        carmen_result={"Code": 0},
+        conflict=conflict,
+        suggest_side_effect=CarmenAPIError(401, "HTTP 401: Authorization has been denied"),
+    )
+    assert outcome == "pending_review"
+    assert db.added[0].reason_code == reason
+    assert error in db.added[0].error_message
+    p.post_gljv.assert_not_awaited()
+    p.mark_token_unverified.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("status", [401, 403])
 async def test_the_suggester_hands_a_dead_credential_up_rather_than_swallowing_it(status):
     with patch.object(

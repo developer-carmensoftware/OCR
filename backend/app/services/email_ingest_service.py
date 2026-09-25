@@ -7,7 +7,8 @@
                       ├─ charge a credit, create the task
                       ├─ extract                          ← first money spent
                       ├─ tax ID vs this BU's register     ← verification, not routing
-                      ├─ GL mapping
+                      ├─ GL mapping (AI fills the gaps)   ← runs even when the line above
+                      │                                     parks; cannot outrank it
                       ├─ anything to say about it?        ← park for a human if so
                       └─ post the JV (+ the input-tax record) with this BU's token
 
@@ -1051,6 +1052,31 @@ async def _run_document(
 
         async with async_session() as db:
             config = await get_accounting_config(db, tenant_id, bank_code)
+            # The second factor. The envelope said who owns this mail; if the document
+            # carries a number registered to someone else, the two disagree and that stops
+            # the post rather than picking a winner.
+            conflict = await es.foreign_tax_id(db, list(extracted.tax_ids or []), tenant_id)
+
+        # The document's own verdict, decided here and raised after the GL suggestion
+        # below. Decided first so that nothing about *this BU's credential* can outrank
+        # it: a dead token used to make the suggester's 401 park a foreign-TIN document
+        # as `carmen_unauthorized`, and the reviewer never learned the tax ID was wrong
+        # (F-6, 2026-09-24 QA).
+        if conflict:
+            # Support's copy, not the reviewer's — the queue prints the phrase alone for
+            # this code. "Registered to another BU" is dropped: a BU's register holds an
+            # array of tax IDs, so one missing from it has failed to match and nothing
+            # stronger than that has been established.
+            verdict = _Skip("tax_id_mismatch", f"Tax ID {conflict} is not in this BU's register")
+        elif extracted.is_duplicate:
+            # This *is* the queue's cell, not a tail on one (WITH_DETAIL in
+            # lib/reviewReasons), so it is capitalised and stands alone. The two duplicate
+            # kinds share one reason_code and are told apart here: this copy is redundant
+            # because the document is in Carmen already, which is nothing for anyone to do.
+            verdict = _Skip("duplicate_document", "Already posted to Carmen")
+        else:
+            verdict = None
+
         missing = unmapped_payment_types(extracted.details, config.mappings or {})
         if missing:
             # Parking every document of a BU that never opened the mapping page, with
@@ -1059,12 +1085,20 @@ async def _run_document(
             # form — which is the whole of what this call buys. It does not decide
             # anything: `mapping_guessed` below parks the document either way.
             #
-            # Runs ahead of the tax-ID and duplicate checks below, deliberately: both of
-            # those still park the document for review (see `_Skip.reviewable`), and a
-            # parked document with an unmapped payment type deserves the same suggestion a
-            # clean one gets, instead of the blank pickers a `raise` upstream used to leave
-            # it with.
-            suggested = await _suggest_missing_mappings(missing, bank_code, carmen_token)
+            # Runs ahead of raising the verdict, deliberately: both verdicts still park the
+            # document for review (see `_Skip.reviewable`), and a parked document with an
+            # unmapped payment type deserves the same suggestion a clean one gets, instead
+            # of the blank pickers a `raise` upstream used to leave it with.
+            try:
+                suggested = await _suggest_missing_mappings(missing, bank_code, carmen_token)
+            except CarmenAPIError:
+                # Only a dead credential escapes the suggester. With no verdict it is the
+                # honest reason and the handler below parks on it; with one, the credential
+                # is still flagged for the BU but the document keeps its own reason.
+                if verdict is None:
+                    raise
+                await _flag_dead_token(tenant_id)
+                suggested = {}
             if suggested:
                 # In memory only. Saving it here made the guess the BU's own rule before
                 # anyone had looked at it, so the *second* document carrying that payment
@@ -1087,24 +1121,8 @@ async def _run_document(
             # the plainest case of a document that is not one. Before that, the whole BU's
             # odd payment types died here and someone had to find the mapping page.
 
-        # The second factor. The envelope said who owns this mail; if the document
-        # carries a number registered to someone else, the two disagree and that stops
-        # the post rather than picking a winner.
-        async with async_session() as db:
-            conflict = await es.foreign_tax_id(db, list(extracted.tax_ids or []), tenant_id)
-        if conflict:
-            # Support's copy, not the reviewer's — the queue prints the phrase alone for
-            # this code. "Registered to another BU" is dropped: a BU's register holds an
-            # array of tax IDs, so one missing from it has failed to match and nothing
-            # stronger than that has been established.
-            raise _Skip("tax_id_mismatch", f"Tax ID {conflict} is not in this BU's register")
-
-        if extracted.is_duplicate:
-            # This *is* the queue's cell, not a tail on one (WITH_DETAIL in
-            # lib/reviewReasons), so it is capitalised and stands alone. The two duplicate
-            # kinds share one reason_code and are told apart here: this copy is redundant
-            # because the document is in Carmen already, which is nothing for anyone to do.
-            raise _Skip("duplicate_document", "Already posted to Carmen")
+        if verdict:
+            raise verdict
 
         rows = build_jv_rows(extracted.details, config.mappings or {})
         if not rows or not any(r["credit"] for r in rows):
@@ -1238,11 +1256,7 @@ async def _run_document(
         # postable the moment it is replaced, instead of a day of scanning burnt.
         unauthorized = exc.status_code in (401, 403)
         if unauthorized:
-            try:
-                async with async_session() as db:
-                    await es.mark_token_unverified(db, tenant_id)
-            except Exception:  # never let the flag cost us the ledger row
-                logger.exception("[email] Could not flag the credential for tenant %s", tenant_id)
+            await _flag_dead_token(tenant_id)
         note = (
             str(exc)
             if unauthorized
@@ -1360,6 +1374,15 @@ _FIXED_LABEL = {
 }
 
 
+async def _flag_dead_token(tenant_id: str) -> None:
+    """Mark this BU's posting credential unproven after Carmen refused it (401/403)."""
+    try:
+        async with async_session() as db:
+            await es.mark_token_unverified(db, tenant_id)
+    except Exception:  # never let the flag cost us the ledger row
+        logger.exception("[email] Could not flag the credential for tenant %s", tenant_id)
+
+
 async def _suggest_missing_mappings(
     missing: list[str], bank_code: str | None, carmen_token: str
 ) -> dict[str, dict[str, str]]:
@@ -1380,9 +1403,9 @@ async def _suggest_missing_mappings(
         # someone re-pastes it. Swallowed, it surfaced as one row reading *mapping missing*,
         # which sends the reader to the mapping page instead of to the credential, while
         # `mark_token_unverified` never ran and the bell said nothing (seen on carmencloud,
-        # 2026-09-04). Re-raised, the handler in `_run_document` flags the token and parks
-        # the document with the honest reason; it would have raised there at post time
-        # anyway, one Carmen call later.
+        # 2026-09-04). Re-raised, `_run_document` flags the token and parks the document
+        # with the honest reason — the credential, unless the document already has a verdict
+        # of its own (foreign tax ID, already posted), which outranks it.
         if exc.status_code in (401, 403):
             raise
         logger.warning("[email] Could not read Carmen GL master for suggestions: %s", exc)
