@@ -144,6 +144,7 @@ class _Patches:
         conflict: str | None = None,
         tax_note: str | None = None,
         extract_side_effect=None,
+        possibly_posted: str | None = None,
     ):
         self.extracted = extracted
         self.config = config
@@ -156,6 +157,7 @@ class _Patches:
         self.extract = AsyncMock(return_value=extracted, side_effect=extract_side_effect)
         self.open_or_fail = AsyncMock(return_value=None)
         self.foreign_tax_id = AsyncMock(return_value=conflict)
+        self.possibly_posted = AsyncMock(return_value=possibly_posted)
         self.mark_token_unverified = AsyncMock()
         self.post_input_tax = AsyncMock(return_value=tax_note)
         # Exposed like every other collaborator so a test can assert the JV was *not*
@@ -173,6 +175,7 @@ class _Patches:
             patch.object(ingest.ocr_service, "extract_stateless", self.extract),
             patch.object(ingest, "_open_or_fail", self.open_or_fail),
             patch.object(ingest.es, "foreign_tax_id", self.foreign_tax_id),
+            patch.object(ingest, "_possibly_posted", self.possibly_posted),
             patch.object(ingest.es, "mark_token_unverified", self.mark_token_unverified),
             patch.object(ingest, "_post_input_tax", self.post_input_tax),
             patch.object(ingest, "finalize_extraction", AsyncMock(return_value=self.extracted)),
@@ -1084,6 +1087,48 @@ async def test_a_resent_copy_of_a_tax_mismatched_document_does_not_queue_twice()
     assert db.added[0].reason_code == "duplicate_document"
     assert db.added[0].review_payload is None  # its twin already holds the reading
     p.post_gljv.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_near_duplicate_of_a_posted_document_parks_instead_of_posting():
+    """F-7 (2026-09-25 QA): a KBank receipt was posted once as `041125E00023869767` — the
+    printed `041125E00023869` plus a misread `767`. Both duplicate checks compare doc_no
+    exactly, so a correct reading of the same receipt would have posted a second JV. It
+    now parks — not refused: nothing proves they are the same statement — with the other
+    number named, and it never auto-posts."""
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 0},
+        possibly_posted="041125E00023869767",
+    )
+    assert outcome == "pending_review"
+    assert db.added[0].reason_code == "duplicate_document"
+    assert "041125E00023869767" in db.added[0].error_message
+    p.post_gljv.assert_not_awaited()
+    p.refund_document.assert_not_called()  # the reading was made; the charge stands
+
+
+@pytest.mark.parametrize(
+    ("doc_no", "posted", "expected"),
+    [
+        # the F-7 misread, both ways round
+        ("041125E00023869", ["041125E00023869767"], "041125E00023869767"),
+        ("041125E00023869767", ["041125E00023869"], "041125E00023869"),
+        # sequential numbers on one day are ordinary, not duplicates
+        ("269110800001", ["269110800003", "269110800004"], None),
+        # exact equality is the other guard's job
+        ("269110800001", ["269110800001"], None),
+        # too short for "contains" to mean anything
+        ("1234", ["0412345678901"], None),
+        ("0412345678901", ["1234"], None),
+        ("041125E00023869", [], None),
+    ],
+)
+def test_which_numbers_count_as_overlapping(doc_no, posted, expected):
+    assert ingest._overlapping_doc_no(doc_no, posted) == expected
 
 
 @pytest.mark.asyncio

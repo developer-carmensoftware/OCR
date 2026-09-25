@@ -125,6 +125,7 @@ from app.services.email_imap import (
 from app.services.module_gate import assert_module_enabled
 from app.services.task_service import create_task
 from app.utils.bank_detect import detect_bank_code
+from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
 from app.utils.gl_filter import parse_default_account
 from app.utils.image_processing import validate_magic_bytes
@@ -1074,6 +1075,13 @@ async def _run_document(
             # kinds share one reason_code and are told apart here: this copy is redundant
             # because the document is in Carmen already, which is nothing for anyone to do.
             verdict = _Skip("duplicate_document", "Already posted to Carmen")
+        elif near := await _possibly_posted(tenant_id, doc_no, extracted.doc_date):
+            # Same cell as the two above (WITH_DETAIL), so it stands alone and names the
+            # number the reviewer has to look up in Carmen before approving.
+            verdict = _Skip(
+                "duplicate_document",
+                f"Possibly already posted to Carmen as {near} — same date, overlapping number",
+            )
         else:
             verdict = None
 
@@ -1535,6 +1543,57 @@ async def _record_auth(message_id: str, verdict: str | None) -> None:
             await db.commit()
     except Exception as exc:  # noqa: BLE001 — a measurement must not fail a poll
         logger.warning("[email] Could not record auth verdict for %s: %s", message_id, exc)
+
+
+# Shorter than this, one number sitting inside another says nothing (every "12" is in
+# some "0412…"). Real statement numbers are 12+ characters.
+_MIN_OVERLAP = 8
+
+
+def _overlapping_doc_no(doc_no: str, candidates: list[str]) -> str | None:
+    """The first candidate one of whose numbers contains the other — the shape of a misread
+    that added or dropped characters (F-7: `041125E00023869` was once posted as
+    `041125E00023869767`). Exact equality is the other guard's job, and a one-digit
+    substitution is deliberately not matched: sequential numbers on the same day
+    (`269110800001`, `…003`) are the ordinary case, not a duplicate."""
+    for other in candidates:
+        if other == doc_no or min(len(other), len(doc_no)) < _MIN_OVERLAP:
+            continue
+        if doc_no in other or other in doc_no:
+            return other
+    return None
+
+
+async def _possibly_posted(tenant_id: str, doc_no: str | None, doc_date: Any) -> str | None:
+    """A document this BU already posted on the same date whose number overlaps this one.
+
+    `has_submitted_doc` and `_already_pending` both key on `doc_no` by exact equality, so
+    one misread character let a document post twice (F-7, 2026-09-25 QA). This does not
+    block — nothing here can prove the two are the same statement — it gives the reviewer
+    the number to compare, and keeps the document out of auto-post. No amount in the key:
+    `credit_cards` stores none, and rows posted before a new column would have none either.
+    """
+    parsed = parse_doc_date(doc_date)
+    if not doc_no or parsed is None:
+        return None
+    try:
+        async with async_session() as db:
+            posted = (
+                await db.scalars(
+                    select(CreditCard.doc_no).where(
+                        CreditCard.tenant_id == uuid.UUID(tenant_id),
+                        CreditCard.doc_date == parsed,
+                        CreditCard.submitted_at.isnot(None),
+                        CreditCard.deleted_at.is_(None),
+                        CreditCard.doc_no.isnot(None),
+                    )
+                )
+            ).all()
+    except Exception as exc:  # noqa: BLE001
+        # Fail open like `_already_pending`: this is a second opinion, not the gate.
+        logger.error("[email] Could not check for near-duplicate documents: %s", exc)
+        return None
+    return _overlapping_doc_no(doc_no, list(posted))
 
 
 async def _already_pending(tenant_id: str, bank_code: str | None, doc_no: str | None) -> bool:

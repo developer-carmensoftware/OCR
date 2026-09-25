@@ -141,6 +141,7 @@ every raise site in `_run_document()` / `_open_or_fail()` and the three `except`
 | `duplicate_document` | `_already_pending()` — an identical document is already in the queue. Raises no notification: the queued copy is the one to act on (CA-102 M-027) | Yes | No | `failed` |
 | `tax_id_mismatch` | `foreign_tax_id()` finds a conflict | Yes | No | **`pending_review`** |
 | `duplicate_document` | `extracted.is_duplicate` | Yes | No | **`pending_review`** |
+| `duplicate_document` | `_possibly_posted()` — a document this BU posted **on the same date** has a number that contains this one or is contained in it (a misread that added or dropped characters; F-7, 2026-09-25). "Possibly already posted to Carmen as `<number>`": not refused, because nothing proves they are the same statement, but never auto-posted | Yes | No | **`pending_review`** |
 | `mapping_incomplete` | GL mapping still missing after the AI-fill attempt (auto-post only — with review on it parks with the gap named) | Yes | No | **`pending_review`** |
 | `unreadable_document` | `build_jv_rows()` produces no postable amount | Yes | No | **`pending_review`** |
 | `carmen_unauthorized` | No posting credential, or no Carmen host known for the BU | Yes | No | **`pending_review`** |
