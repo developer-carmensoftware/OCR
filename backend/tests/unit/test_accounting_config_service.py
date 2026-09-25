@@ -285,3 +285,67 @@ async def test_naming_nothing_writes_nothing():
     await patch_config(db, TENANT_ID)
 
     db.commit.assert_not_awaited()
+
+
+# ── get_accounting_config: pre-bank-scoping entries still answer (F-8) ─────────
+
+
+def _config_row(bank_code=None):
+    return SimpleNamespace(
+        id=1,
+        bank_code=bank_code,
+        file_prefix="JV",
+        file_source=None,
+        description=None,
+        branch=None,
+        bank_descriptions={},
+    )
+
+
+def _typed(field_type, dept, acc, *, custom=False):
+    return SimpleNamespace(field_type=field_type, dept_code=dept, acc_code=acc, is_custom=custom)
+
+
+def _reads(config_row, *entry_batches):
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[_exec(scalar_one_or_none=config_row)]
+        + [_exec(scalars=batch) for batch in entry_batches]
+    )
+    return db
+
+
+@pytest.mark.asyncio
+async def test_a_bank_read_falls_back_to_the_bus_pre_scoping_entries():
+    """F-8 (2026-09-25 QA): #248's backfill could only give an entry a bank where the config
+    row named one, so carmencloud's 29 entries stayed bank-less and a KBANK read saw none of
+    them — every document parked `mapping_missing` and an auto-post BU stopped posting. A
+    bank-less entry was the BU's answer for every bank; the bank's own entry still wins."""
+    from app.services.accounting_config_service import get_accounting_config
+
+    kbank_own = [_typed("commission", "OPS", "5199")]
+    bankless = [
+        _typed("commission", "GEN", "6080008"),
+        _typed("บัตรเครดิต/เดบิต", "GEN", "1021009", custom=True),
+    ]
+    db = _reads(_config_row(), kbank_own, bankless)
+
+    cfg = await get_accounting_config(db, TENANT_ID, "KBANK")
+
+    assert cfg.mappings["commission"] == {"dept": "OPS", "acc": "5199"}  # the bank wins
+    assert cfg.mappings["บัตรเครดิต/เดบิต"] == {"dept": "GEN", "acc": "1021009"}  # restored
+    assert cfg.custom_types == ["บัตรเครดิต/เดบิต"]
+
+
+@pytest.mark.asyncio
+async def test_an_unscoped_read_asks_for_the_bankless_entries_once():
+    """No bank named and none on the row: the bank-less entries are the whole answer, read
+    once — the fallback is only for a read scoped to a bank."""
+    from app.services.accounting_config_service import get_accounting_config
+
+    db = _reads(_config_row(), [_typed("tax", "GEN", "1022005")])
+
+    cfg = await get_accounting_config(db, TENANT_ID)
+
+    assert cfg.mappings == {"tax": {"dept": "GEN", "acc": "1022005"}}
+    assert db.execute.await_count == 2  # config row + one entries read
