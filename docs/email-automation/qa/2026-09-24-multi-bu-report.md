@@ -228,13 +228,15 @@ suggester stopped at Carmen's 401 before reaching any model.
 | **F-4** confirmation sweep | Code plus unit tests (agreed as sufficient; a live test needs a real Gmail forwarding-confirmation mail). | `fetch_confirmations` searches `NOT KEYWORD $OcrDone … FROM`, fetches `BODY.PEEK[]` and never STOREs. All 10 confirmation unit tests pass. | PASS |
 | **R-JV** real JV into Carmen | carmencloud (see F-7 for why not carmen), approved through the real router with `post_input_tax: true` | Waiting for carmencloud's Carmen token to be refreshed: the stored fingerprint is unchanged and `verified_at` is NULL | **NOT RUN YET** |
 
-### F-7 (MEDIUM, observation — not fixed): one misread digit defeats the duplicate guard
+### F-7 (MEDIUM, fixed in #256): one misread digit defeats the duplicate guard
 
 The KBank receipt used for R-JV (printed doc no. `041125E00023869`, 04/11/2025) **had already been posted by carmen** on 2026-08-25, under doc_no `041125E00023869767`: the printed number with an extra "767". Both duplicate checks key on doc_no with exact equality:
 - `has_submitted_doc` (`utils/db_helpers.py`, `==` per field), used by approve and by `is_duplicate` at extraction
 - `_already_pending`
 
-So if the LLM reads the number correctly the next time, the same real document posts a second JV. It needs a misread plus a re-send, but the money path has no second line of defence. **Next step (a decision, not a patch):** also match on something the LLM can't misread in the same way, such as `doc_date` + total amount + bank, or normalise doc_no before comparing.
+So if the LLM reads the number correctly the next time, the same real document posts a second JV. It needs a misread plus a re-send, but the money path has no second line of defence.
+
+**Decision and fix (2026-09-25): park, don't block — #256.** `_possibly_posted()` looks for a document this BU already submitted **on the same date** whose number contains the new one or is contained in it (shorter side at least 8 characters). A match parks the new document as `duplicate_document`, "Possibly already posted to Carmen as `<number>`". The reviewer can still approve it, and it never auto-posts. The amount isn't part of the key because `credit_cards` stores none, and rows posted before a new column, like the F-7 row, would have none either. One-digit substitutions are not matched on purpose: same-day sequential numbers are the normal case.
 
 ### S-07: the ownership boundary is the host, not the BU — confirmed live, matches the design
 
