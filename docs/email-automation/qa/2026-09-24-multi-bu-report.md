@@ -21,6 +21,11 @@ That said, **this run found real, unrelated defects — some higher-severity tha
 > (296–334) was an IMAP **sequence number** — the diagnostics used `search`/`fetch`, not
 > `uid` — the real UIDs were 366–404. No conclusion depended on the difference.
 
+> **Status 2026-09-25: all fixed and re-tested live.** DEF-1/DEF-2 (#251), F-3 (#252),
+> F-1/F-4 (#253), F-6/F-5 (#254) are merged; F-1, F-3, F-6, DEF-1 and DEF-2 were re-run
+> against real Gmail, a real LLM and the real router — **5/5 pass**. See
+> [Re-test after fixes](#re-test-after-fixes-2026-09-25) at the end.
+
 | | |
 |---|---|
 | BUs | 6 (`carmen`, `carmencloud` real; `S3`–`S6` scratch) |
@@ -146,7 +151,7 @@ The appendix's checker does an exact string match against a status/reason predic
 ```bash
 # DEF-1 / DEF-2
 cd backend && TENANCY_DB_TESTS=1 venv\Scripts\python -m pytest tests\tenancy\test_email_approve_integrity.py -v
-# -> 2 xfailed (both live in the code today)
+# -> 2 xfailed on 2026-09-24; since #251 the xfails are gone and all 7 pass
 
 # Full harness (creates scratch tenants, sends real mail, real LLM, real dev DB — see
 # scripts/email_multibu_qa.py's own docstring for the phase order and safety rails)
@@ -167,3 +172,43 @@ python scripts\email_multibu_qa.py preflight
 **Teardown itself had two bugs, found by verifying rather than trusting it — worth disclosing the same as any other finding:**
 1. First attempt crashed with a `ForeignKeyViolationError`: it deleted `ocr_tasks` before `email_documents` (which FKs to it) for `carmen`/`carmencloud`'s QA-tagged rows. This **left cron paused** after the crash — a real BU's automation would have stayed off for other people using `dev.carmen4.com` until caught. Fixed (delete order reversed) and re-run.
 2. The mailbox purge searched `HEADER Message-ID` for the run's tag — the same Gmail IMAP substring-search unreliability already documented in `email_multibu_loadtest.py`. It reported "0 fixture(s) expunged" while all 39 QA messages were still sitting in `AR Agent`. Fixed (switched to `SUBJECT` search, confirmed reliable throughout this run) and re-run; all 39 confirmed expunged afterward.
+
+---
+
+## Re-test after fixes (2026-09-25)
+
+**Run:** `0925035135` · `main` at `6268ef8` (#251–#254 merged) · same harness, new phases
+`fixcheck-setup` → `send --wave fixcheck` → `poll` → `fixcheck` → `teardown`. The test used real
+Gmail (`project@` / `AR Agent`), a real LLM and the real dev DB. The approve race went through the
+real FastAPI router (`httpx.ASGITransport`). Every verdict below was read back from rows and IMAP
+flags after the fact, never from a phase's printed summary.
+
+**Result: 5/5 pass.**
+
+| Case | Set-up that used to fail | Evidence after the fix | Result |
+|---|---|---|---|
+| **F-1** | Fixture APPENDed **already `\Seen`**, as if a person had opened it before the poll. `SEARCH UNSEEN` would have skipped it (the other three fixtures were unread). | `email_documents` row `pending_review`; the message now carries `$OcrDone \Seen` (UID 405) | PASS |
+| **F-3** | `aragent+<S4 tag>@carmensoftware.com.evil.test` (the 09-24 attack) and `xaragent+<S4 tag>@carmensoftware.com` | Both logged "No ingest tag … dropped"; **0 rows**; poll `unrouted=2`; both flagged `$OcrDone` | PASS |
+| **F-6** | KTC.pdf carrying S4's TIN, sent to `carmencloud`, whose Carmen token is dead. This is the same shape as 09-24's `r2-foreign-ktc`, which parked as `carmen_unauthorized`. | `pending_review / tax_id_mismatch` "Tax ID 0105556117534 is not in this BU's register". carmencloud's `carmen_token_verified_at` was set to a placeholder beforehand and came back **NULL**, so the suggester really met Carmen's 401 and still flagged the token. `email-token-health` was paused, so nothing else could have cleared it. | PASS |
+| **DEF-1** | Two `POST …/approve` for the F-1 document fired with `asyncio.gather` through the real router. The dry-run Carmen post held 2 s, so both requests were in flight together. | HTTP `[200, 409]`. The 409 read "Another reviewer is posting this document right now" and came back while the winner was still posting. **1** `post_gljv` call. Row `posted`, `posting_started_at` NULL. | PASS |
+| **DEF-2** | Both approve bodies carried `extracted.id` = **carmencloud's** card (the F-6 document). | S4's own card (by `task_id`) stamped; carmencloud's card `submitted_at` still NULL | PASS |
+
+**Switch-over tool, exercised live.** Before the send, `scripts/imap_mark_done_backfill.py
+--apply --seen-as-done` flagged 295 dev-mailbox messages (209 older than the window, 86 in-window
+`\Seen`). A second dry run then reported 0 left, so it is idempotent. Only this run's 4 fixtures were
+pending when the poll ran.
+
+**Cost:** 2 vision calls (`gemini-2.5-flash-lite`), 12,650 tokens, **$0.0015**. The carmencloud
+suggester stopped at Carmen's 401 before reaching any model.
+
+**Isolation and cleanup, independently re-queried after teardown:**
+- 0 QA rows, tasks, cards or LLM logs, and 0 scratch tenants.
+- `carmencloud`: `verified_at` back to NULL, `auto_post=false`, and `docs_used` back to 18. Teardown now returns what the run charged a real BU.
+- `carmen` untouched: its token was verified that morning and the run never used it.
+- All 4 cron jobs active again.
+- 0 fixtures left in `AR Agent`, and 0 messages pending in the folder.
+
+**Limits, same as 09-24:**
+- The JV post in DEF-1 went to S4's dry-run dispatcher. No real Carmen post was possible: carmen's fixtures collide with its own history, and carmencloud's token is dead.
+- The *deployed* dev backend still runs pre-fix code. CD has been failing since at least 09-23 on an empty `SUPABASE_DB_URL` secret, so this proves the code on `main`, not what dev or prod currently serve.
+- F-4 (confirmation sweep) was not re-run live. It needs a real Gmail forwarding-confirmation mail; the unit test covers it.
