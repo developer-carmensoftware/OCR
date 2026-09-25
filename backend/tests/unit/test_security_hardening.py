@@ -220,6 +220,10 @@ class TestCORSHardening:
         with (
             patch.object(settings, "allowed_origins", origins),
             patch.object(settings, "allowed_origin_regex", regex),
+            # Same reason as every other TestClient in this suite: entering the context
+            # manager runs the real ASGI lifespan, and ensure_db() would otherwise open a
+            # real DB connection on startup.
+            patch("app.lifecycle.ensure_db", new_callable=AsyncMock),
         ):
             yield create_app()
 

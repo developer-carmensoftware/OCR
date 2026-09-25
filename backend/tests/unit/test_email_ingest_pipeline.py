@@ -1742,7 +1742,12 @@ async def test_log_llm_usage_writes_the_row_with_the_tenant_in_context():
     db = _FakeDB()
     tctx = current_tenant_id.set(TENANT_ID)
     try:
-        with patch.object(lu, "async_session", _session_factory(db)):
+        with (
+            patch.object(lu, "async_session", _session_factory(db)),
+            # log_llm_usage also prices the call via pricing_cache_service.get_pricing,
+            # which has its own un-mocked async_session — not what this test is about.
+            patch.object(lu, "get_pricing", AsyncMock(return_value=None)),
+        ):
             await lu.log_llm_usage("m", 10, 5, 15, module_id="credit_card_ocr")
     finally:
         current_tenant_id.reset(tctx)

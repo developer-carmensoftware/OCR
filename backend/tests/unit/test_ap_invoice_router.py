@@ -17,6 +17,18 @@ BASE_URL = "/api/v1/ap-invoice"
 AUTH_HEADERS = {"Authorization": "Bearer dummy"}
 
 
+@pytest.fixture(autouse=True)
+def _module_enabled():
+    """None of these tests are about module gating — they exercise extraction and
+    per-page charging. Without this, `assert_module_enabled` (called ahead of
+    `consume_document` in the router) reaches its own un-mocked `async_session` and
+    makes a real DB call that only "passes" today because it fails open and the dev
+    DB happens to be reachable — see module_gate.py's own docstring on that behavior.
+    """
+    with patch("app.routers.ap_invoice.assert_module_enabled", new_callable=AsyncMock):
+        yield
+
+
 def _valid_pdf_bytes(pages: int = 1) -> bytes:
     """A real PDF — the /extract pre-check opens the file before consuming a credit, so
     the fixture must be a genuinely openable PDF (not just a %PDF header). `pages` matters
