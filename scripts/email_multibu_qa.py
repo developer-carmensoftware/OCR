@@ -13,6 +13,10 @@ way to disprove that honestly is to look at the rows.
     python scripts/email_multibu_qa.py report
     python scripts/email_multibu_qa.py teardown
 
+Re-test of the 2026-09-24 fixes (F-1, F-3, F-6, DEF-1/DEF-2), with a fresh state file:
+
+    preflight -> fixcheck-setup -> send --wave fixcheck -> poll -> fixcheck -> teardown
+
 Every phase is a separate process (state persists to a JSON file between phases — see
 `--state`). Two real BUs (`dev.carmen4.com/carmen`, `/carmencloud`) already exist and
 already have other people's rows in their queues; every fixture this script creates or
@@ -166,6 +170,13 @@ async def phase_preflight(_args) -> None:
             " where version = '20260924000000'"
         )
         out["migration_ok"] = row is not None
+        # DEF-1's claim column — applied to dev by hand, so not in schema_migrations.
+        out["posting_claim_column"] = bool(
+            await conn.fetchval(
+                "select 1 from information_schema.columns where table_name='email_documents'"
+                " and column_name='posting_started_at'"
+            )
+        )
         cron = await conn.fetch(
             "select jobname, active from cron.job where jobname like 'email%' order by 1"
         )
@@ -225,6 +236,103 @@ async def phase_preflight(_args) -> None:
 # ── phase: setup ─────────────────────────────────────────────────────────────
 
 
+SCRATCH_SPECS = [
+    {
+        "code": "S3",
+        "role": "S3",
+        "enabled": True,
+        "auto_post": True,
+        "tax_ids": [S3_TIN],
+        "rules": [
+            {
+                "bank_code": "KBANK",
+                "bank_sender_email": None,
+                "filename_patterns": ["KBANK"],
+                "is_active": True,
+                "pdf_password_enc": None,
+            },
+            {
+                "bank_code": "BAY",
+                "bank_sender_email": None,
+                "filename_patterns": ["BAY"],
+                "is_active": False,
+                "pdf_password_enc": None,
+            },
+            {
+                "bank_code": "SIAMPAY",
+                "bank_sender_email": None,
+                "filename_patterns": ["SIAMPAY"],
+                "is_active": True,
+                "pdf_password_enc": None,
+            },
+        ],
+    },
+    {
+        "code": "S4",
+        "role": "S4",
+        "enabled": True,
+        "auto_post": False,
+        "tax_ids": [S4_TIN],
+        "rules": [
+            {
+                "bank_code": "GHL",
+                "bank_sender_email": None,
+                "filename_patterns": ["GHL"],
+                "is_active": True,
+                "pdf_password_enc": None,
+            },
+            {
+                "bank_code": "PAYPAL",
+                "bank_sender_email": None,
+                "filename_patterns": ["PAYPAL"],
+                "is_active": True,
+                "pdf_password_enc": None,
+            },
+            {
+                "bank_code": "KTC",
+                "bank_sender_email": None,
+                "filename_patterns": ["KTC"],
+                "is_active": True,
+                "pdf_password_enc": None,
+            },
+        ],
+    },
+    {
+        "code": "S5",
+        "role": "S5",
+        "enabled": True,
+        "auto_post": False,
+        "tax_ids": [S5_TIN],
+        "owner_emails": ["accounting@s5-example.local"],
+        "rules": [
+            {
+                "bank_code": None,
+                "bank_sender_email": None,
+                "filename_patterns": [".pdf"],
+                "is_active": True,
+                "pdf_password_enc": None,
+            },
+        ],
+    },
+    {
+        "code": "S6",
+        "role": "S6",
+        "enabled": True,
+        "auto_post": False,
+        "tax_ids": [],
+        "rules": [
+            {
+                "bank_code": None,
+                "bank_sender_email": None,
+                "filename_patterns": [".pdf"],
+                "is_active": True,
+                "pdf_password_enc": None,
+            },
+        ],
+    },
+]
+
+
 async def phase_setup(_args) -> None:
     guard()
     state = load_state()
@@ -232,104 +340,65 @@ async def phase_setup(_args) -> None:
         print("[abort] run `preflight` first")
         sys.exit(2)
 
+    await _create_scratch(state, SCRATCH_SPECS)
+    save_state(state)
+
+    # carmen (R1): temporary subscription so it is entitled for the run. Remembered by
+    # its own id so teardown deletes exactly this row and nothing that predates it.
+    carmen_id = state["bus"]["carmen"]["tenant_id"]
+    existing = await sql(
+        "select id::text as id from tenant_subscriptions where tenant_id=$1::uuid"
+        " and status='active'",
+        carmen_id,
+    )
+    if existing:
+        print(
+            f"  carmen already has an active subscription ({existing[0]['id']}) — leaving it"
+        )
+        state["carmen_temp_subscription_id"] = None
+    else:
+        pack = await sql(
+            "select code from credit_packs where kind='subscription' and is_active"
+            " order by sort_order limit 1"
+        )
+        sub_id = str(uuid.uuid4())
+        await sql(
+            "insert into tenant_subscriptions (id, tenant_id, plan_code, doc_allowance,"
+            " docs_used, period_start, period_end, billing_period, cycle_start, status)"
+            " values ($1::uuid, $2::uuid, $3, 10, 0, now() - interval '1 hour',"
+            " now() + interval '7 days', 'monthly', now() - interval '1 hour', 'active')",
+            sub_id,
+            carmen_id,
+            pack[0]["code"],
+        )
+        state["carmen_temp_subscription_id"] = sub_id
+        print(
+            f"  granted carmen a temporary subscription {sub_id} (revert in teardown)"
+        )
+    save_state(state)
+
+    # carmencloud (R2): auto_post -> true, everything else resent unchanged from the
+    # snapshot so nothing this script does not own gets reset.
+    await _toggle_carmencloud_auto_post(state, True)
+    state["carmencloud_auto_post_toggled"] = True
+    save_state(state)
+
+    # pause both cron jobs — the pooled app role has no UPDATE on cron.job directly
+    # (InsufficientPrivilegeError), but cron.alter_job() is SECURITY DEFINER and granted.
+    await sql(
+        "select cron.alter_job(jobid, active:=false) from cron.job"
+        " where jobname in ('email-ingest','email-confirm')"
+    )
+    print("  paused cron: email-ingest, email-confirm")
+
+    save_state(state)
+    print(f"\nsetup complete. state file: {STATE_FILE}")
+
+
+async def _create_scratch(state: dict, scratch: list[dict]) -> None:
+    """Insert scratch BUs (tenant, subscription, credits, email settings) into `state`."""
     from app.auth.session import encrypt_carmen_token
     from app.config import settings as app_settings
-
-    scratch = [
-        {
-            "code": "S3",
-            "role": "S3",
-            "enabled": True,
-            "auto_post": True,
-            "tax_ids": [S3_TIN],
-            "rules": [
-                {
-                    "bank_code": "KBANK",
-                    "bank_sender_email": None,
-                    "filename_patterns": ["KBANK"],
-                    "is_active": True,
-                    "pdf_password_enc": None,
-                },
-                {
-                    "bank_code": "BAY",
-                    "bank_sender_email": None,
-                    "filename_patterns": ["BAY"],
-                    "is_active": False,
-                    "pdf_password_enc": None,
-                },
-                {
-                    "bank_code": "SIAMPAY",
-                    "bank_sender_email": None,
-                    "filename_patterns": ["SIAMPAY"],
-                    "is_active": True,
-                    "pdf_password_enc": None,
-                },
-            ],
-        },
-        {
-            "code": "S4",
-            "role": "S4",
-            "enabled": True,
-            "auto_post": False,
-            "tax_ids": [S4_TIN],
-            "rules": [
-                {
-                    "bank_code": "GHL",
-                    "bank_sender_email": None,
-                    "filename_patterns": ["GHL"],
-                    "is_active": True,
-                    "pdf_password_enc": None,
-                },
-                {
-                    "bank_code": "PAYPAL",
-                    "bank_sender_email": None,
-                    "filename_patterns": ["PAYPAL"],
-                    "is_active": True,
-                    "pdf_password_enc": None,
-                },
-                {
-                    "bank_code": "KTC",
-                    "bank_sender_email": None,
-                    "filename_patterns": ["KTC"],
-                    "is_active": True,
-                    "pdf_password_enc": None,
-                },
-            ],
-        },
-        {
-            "code": "S5",
-            "role": "S5",
-            "enabled": True,
-            "auto_post": False,
-            "tax_ids": [S5_TIN],
-            "owner_emails": ["accounting@s5-example.local"],
-            "rules": [
-                {
-                    "bank_code": None,
-                    "bank_sender_email": None,
-                    "filename_patterns": [".pdf"],
-                    "is_active": True,
-                    "pdf_password_enc": None,
-                },
-            ],
-        },
-        {
-            "code": "S6",
-            "role": "S6",
-            "enabled": True,
-            "auto_post": False,
-            "tax_ids": [],
-            "rules": [
-                {
-                    "bank_code": None,
-                    "bank_sender_email": None,
-                    "filename_patterns": [".pdf"],
-                    "is_active": True,
-                    "pdf_password_enc": None,
-                },
-            ],
-        },
-    ]
 
     for spec in scratch:
         tenant_id = str(uuid.uuid4())
@@ -393,59 +462,6 @@ async def phase_setup(_args) -> None:
             "tax_ids": spec["tax_ids"],
         }
         print(f"  created {spec['code']}  tenant={tenant_id}  tag={tag}  host={host}")
-
-    save_state(state)
-
-    # carmen (R1): temporary subscription so it is entitled for the run. Remembered by
-    # its own id so teardown deletes exactly this row and nothing that predates it.
-    carmen_id = state["bus"]["carmen"]["tenant_id"]
-    existing = await sql(
-        "select id::text as id from tenant_subscriptions where tenant_id=$1::uuid"
-        " and status='active'",
-        carmen_id,
-    )
-    if existing:
-        print(
-            f"  carmen already has an active subscription ({existing[0]['id']}) — leaving it"
-        )
-        state["carmen_temp_subscription_id"] = None
-    else:
-        pack = await sql(
-            "select code from credit_packs where kind='subscription' and is_active"
-            " order by sort_order limit 1"
-        )
-        sub_id = str(uuid.uuid4())
-        await sql(
-            "insert into tenant_subscriptions (id, tenant_id, plan_code, doc_allowance,"
-            " docs_used, period_start, period_end, billing_period, cycle_start, status)"
-            " values ($1::uuid, $2::uuid, $3, 10, 0, now() - interval '1 hour',"
-            " now() + interval '7 days', 'monthly', now() - interval '1 hour', 'active')",
-            sub_id,
-            carmen_id,
-            pack[0]["code"],
-        )
-        state["carmen_temp_subscription_id"] = sub_id
-        print(
-            f"  granted carmen a temporary subscription {sub_id} (revert in teardown)"
-        )
-    save_state(state)
-
-    # carmencloud (R2): auto_post -> true, everything else resent unchanged from the
-    # snapshot so nothing this script does not own gets reset.
-    await _toggle_carmencloud_auto_post(state, True)
-    state["carmencloud_auto_post_toggled"] = True
-    save_state(state)
-
-    # pause both cron jobs — the pooled app role has no UPDATE on cron.job directly
-    # (InsufficientPrivilegeError), but cron.alter_job() is SECURITY DEFINER and granted.
-    await sql(
-        "select cron.alter_job(jobid, active:=false) from cron.job"
-        " where jobname in ('email-ingest','email-confirm')"
-    )
-    print("  paused cron: email-ingest, email-confirm")
-
-    save_state(state)
-    print(f"\nsetup complete. state file: {STATE_FILE}")
 
 
 async def _toggle_carmencloud_auto_post(state: dict, value: bool) -> None:
@@ -517,6 +533,9 @@ class MsgSpec:
     )
     note: str = ""
     plan_ids: list[str] = field(default_factory=list)  # which plan test IDs this covers
+    # Appended already read, as if a person had opened it in Gmail before the poll ran --
+    # the exact F-1 trigger. Under the old UNSEEN queue such mail was never looked at.
+    seen: bool = False
 
 
 def _addr(tag: str) -> str:
@@ -1098,6 +1117,107 @@ def build_wave2fix(state: dict) -> list[MsgSpec]:
     ]
 
 
+def build_wave_fixcheck(state: dict) -> list[MsgSpec]:
+    """2026-09-25 re-test of the fixes for F-1, F-3 and F-6, live (DEF-1/DEF-2 are driven
+    by the `fixcheck` phase against `fx-f1-read`'s row). Needs only S4 and carmencloud."""
+    s4 = state["bus"]["S4"]["tag"]
+    return [
+        MsgSpec(
+            "fx-f1-read",
+            "S4",
+            f"KTC_fx_{TAG_MARK}.pdf",
+            "KTC.pdf",
+            f"[{TAG_MARK}] F-1 opened by a person before the poll",
+            "pending_review",
+            None,
+            plan_ids=["F-1", "DEF-1", "DEF-2"],
+            seen=True,
+            note="appended already \\Seen; the $OcrDone queue must still process it",
+        ),
+        MsgSpec(
+            "fx-f3-suffix",
+            "S4",
+            f"suffix_{TAG_MARK}.pdf",
+            "BAY.pdf",
+            f"[{TAG_MARK}] F-3 domain-suffix tag forgery",
+            "unrouted",
+            None,
+            plan_ids=["F-3"],
+            to_addr=f"{_addr(s4)}.evil.test",
+        ),
+        MsgSpec(
+            "fx-f3-prefix",
+            "S4",
+            f"prefix_{TAG_MARK}.pdf",
+            "BAY.pdf",
+            f"[{TAG_MARK}] F-3 local-part prefix tag forgery",
+            "unrouted",
+            None,
+            plan_ids=["F-3"],
+            to_addr=f"x{_addr(s4)}",
+        ),
+        MsgSpec(
+            "fx-f6-foreign",
+            "carmencloud",
+            f"KTC_fx6_{TAG_MARK}.pdf",
+            "KTC.pdf",
+            f"[{TAG_MARK}] F-6 foreign TIN to a BU with a dead token",
+            "pending_review",
+            "tax_id_mismatch",
+            plan_ids=["F-6"],
+        ),
+    ]
+
+
+def build_wave_r2_e06(_state: dict) -> list[MsgSpec]:
+    """E-06: mail to a BU with nothing left to spend is held, not charged, not lost."""
+    return [
+        MsgSpec(
+            "r2-e06",
+            "S6",
+            f"BAY_e06_{TAG_MARK}.pdf",
+            "BAY.pdf",
+            f"[{TAG_MARK}] E-06 out of credits",
+            "retry_later",
+            None,
+            plan_ids=["E-06"],
+        )
+    ]
+
+
+def build_wave_r2_q09(_state: dict) -> list[MsgSpec]:
+    """Q-09: mail to a BU with 50 documents awaiting review is held, not charged."""
+    return [
+        MsgSpec(
+            "r2-q09",
+            "S6",
+            f"BAY_q09_{TAG_MARK}.pdf",
+            "BAY.pdf",
+            f"[{TAG_MARK}] Q-09 backlog cap",
+            "retry_later",
+            None,
+            plan_ids=["Q-09"],
+        )
+    ]
+
+
+def build_wave_r2_jv(_state: dict) -> list[MsgSpec]:
+    """A real KBank commission receipt for carmencloud, approved later into real Carmen.
+    `KBANK_user.pdf` is the user's own document (041125E00023869), not a shared fixture."""
+    return [
+        MsgSpec(
+            "r2-jv",
+            "carmencloud",
+            f"KBank_commissions_{TAG_MARK}.pdf",
+            "KBANK_user.pdf",
+            f"[{TAG_MARK}] real JV into Carmen",
+            "pending_review",
+            None,
+            plan_ids=["R-JV"],
+        )
+    ]
+
+
 # ── sending ──────────────────────────────────────────────────────────────────
 
 
@@ -1146,8 +1266,9 @@ def imap_connect() -> imaplib.IMAP4_SSL:
     return box
 
 
-def imap_append(box: imaplib.IMAP4_SSL, raw: bytes) -> None:
-    box.append(f'"{IMAP_FOLDER}"', "", imaplib.Time2Internaldate(time.time()), raw)
+def imap_append(box: imaplib.IMAP4_SSL, raw: bytes, *, seen: bool = False) -> None:
+    flags = "(\\Seen)" if seen else ""
+    box.append(f'"{IMAP_FOLDER}"', flags, imaplib.Time2Internaldate(time.time()), raw)
 
 
 def smtp_send(raw: bytes, to_addr: str) -> None:
@@ -1168,6 +1289,10 @@ WAVES = {
     "3b": build_wave3b_s4_reenabled,
     "3c": build_wave3c_s6_reentitled,
     "s5fix": build_wave_s5_fix,
+    "fixcheck": build_wave_fixcheck,
+    "r2-e06": build_wave_r2_e06,
+    "r2-q09": build_wave_r2_q09,
+    "r2-jv": build_wave_r2_jv,
 }
 
 
@@ -1194,8 +1319,11 @@ async def phase_send(args) -> None:
                 smtp_send(raw, to_addr)
                 print(f"  SMTP sent  {spec.id:<28} -> {to_addr}")
             else:
-                imap_append(box, raw)
-                print(f"  APPEND     {spec.id:<28} -> {spec.bu_code}")
+                imap_append(box, raw, seen=spec.seen)
+                print(
+                    f"  APPEND     {spec.id:<28} -> {spec.bu_code}"
+                    + ("  (already \\Seen)" if spec.seen else "")
+                )
             state["messages"].append(
                 {
                     **asdict(spec),
@@ -1268,6 +1396,54 @@ async def phase_toggle(args) -> None:
             state["bus"]["S6"]["tenant_id"],
         )
         print("  S6 subscription extended — should process new mail again")
+    elif args.action == "s6-exhaust":
+        # E-06: still entitled (an active package), but nothing left in it or in credits.
+        s6 = state["bus"]["S6"]["tenant_id"]
+        await sql(
+            "update tenant_subscriptions set docs_used = doc_allowance"
+            " where tenant_id=$1::uuid and status='active'",
+            s6,
+        )
+        await sql("update tenant_credits set balance=0 where tenant_id=$1::uuid", s6)
+        print("  S6 allowance used up, credit balance 0")
+    elif args.action == "s6-restore":
+        await sql(
+            "update tenant_subscriptions set docs_used = 0"
+            " where tenant_id=$1::uuid and status='active'",
+            state["bus"]["S6"]["tenant_id"],
+        )
+        print("  S6 allowance restored")
+    elif args.action == "s6-backlog-fill":
+        # Q-09: synthetic rows (run-tagged, wiped with S6) up to the cap.
+        from app.services.email_ingest_service import REVIEW_BACKLOG_CAP
+
+        s6 = state["bus"]["S6"]["tenant_id"]
+        have = (
+            await sql(
+                "select count(*) as n from email_documents"
+                " where tenant_id=$1::uuid and status='pending_review'",
+                s6,
+            )
+        )[0]["n"]
+        need = max(REVIEW_BACKLOG_CAP - have, 0)
+        await sql(
+            "insert into email_documents (id, tenant_id, message_id, attachment, status)"
+            " select gen_random_uuid(), $1::uuid, '<qa-' || $2 || '-backlog-' || g"
+            " || '@qa.local>', 'backlog_' || g || '_' || $3 || '.pdf', 'pending_review'"
+            " from generate_series(1, $4::int) g",
+            s6,
+            RUN,
+            TAG_MARK,
+            need,
+        )
+        print(f"  S6 backlog: {have} real + {need} synthetic = {have + need} pending")
+    elif args.action == "s6-backlog-drain":
+        await sql(
+            "delete from email_documents where id = (select id from email_documents"
+            " where tenant_id=$1::uuid and attachment like 'backlog\\_%' limit 1)",
+            state["bus"]["S6"]["tenant_id"],
+        )
+        print("  S6 backlog: one synthetic row removed (now below the cap)")
     else:
         raise SystemExit(f"unknown toggle action {args.action!r}")
 
@@ -1284,7 +1460,7 @@ class DispatchRecord:
     doc_no: str | None = None
 
 
-def dispatch_patches(records: list[DispatchRecord]) -> list:
+def dispatch_patches(records: list[DispatchRecord], dry_delay: float = 0.0) -> list:
     from app.context import current_carmen_uri, current_tenant_id
     from app.services import email_ingest_service as ingest
 
@@ -1312,6 +1488,9 @@ def dispatch_patches(records: list[DispatchRecord]) -> list:
             )
         )
         if _is_dry(uri):
+            # A real Carmen post takes seconds; the delay keeps a racing second approve
+            # in flight while the first one is still "posting" (DEF-1).
+            await asyncio.sleep(dry_delay)
             return {"Code": 0, "InternalMessage": f"QA-DRY-{len(records)}"}
         return await real_post_gljv(payload, token)
 
@@ -1581,14 +1760,26 @@ async def phase_teardown(_args) -> None:
     # `doc_type: "ar_reconcile"` marker the first time (setup's toggle-on call), which had
     # to be restored by hand. That is a real finding (see the report), but teardown's own
     # job is to touch nothing beyond the one column it changed, so it never goes through
-    # that path again.
-    if "carmencloud" in state["bus"]:
+    # that path again. Only if setup toggled it: `fixcheck-setup` never does.
+    if state.get("carmencloud_auto_post_toggled"):
         await sql(
             "update email_ingest_settings set auto_post=$1 where tenant_id=$2::uuid",
             bool(state["snapshot"]["carmencloud"]["auto_post"]),
             state["bus"]["carmencloud"]["tenant_id"],
         )
         print("  carmencloud auto_post reverted (raw column update, rules untouched)")
+
+    # 1b. fixcheck's placeholder on carmencloud's verified_at, back to what it was.
+    fx = state.get("fixcheck", {})
+    if "verified_at_before" in fx:
+        before = fx["verified_at_before"]
+        await sql(
+            "update email_ingest_settings set carmen_token_verified_at=$1"
+            " where tenant_id=$2::uuid",
+            datetime.fromisoformat(before) if before else None,
+            state["bus"]["carmencloud"]["tenant_id"],
+        )
+        print(f"  carmencloud verified_at restored to {before}")
 
     # 2. delete carmen's temporary subscription
     sub_id = state.get("carmen_temp_subscription_id")
@@ -1600,11 +1791,24 @@ async def phase_teardown(_args) -> None:
     for code in ("carmen", "carmencloud"):
         tid = state["bus"][code]["tenant_id"]
         rows = await sql(
-            "select id::text as id, task_id::text as task_id from email_documents"
-            " where tenant_id=$1::uuid and attachment like $2",
+            "select id::text as id, task_id::text as task_id, status, jv_no"
+            " from email_documents where tenant_id=$1::uuid and attachment like $2",
             tid,
             f"%{TAG_MARK}%",
         )
+        # A document that really posted is kept whole — ledger row, card, task, charge.
+        # Its JV is in Carmen's books now; deleting our side would erase the duplicate
+        # guard's memory of it and let the same document post a second time.
+        real_posted = [
+            r
+            for r in rows
+            if r["status"] == "posted" and not (r["jv_no"] or "").startswith("QA-DRY")
+        ]
+        for r in real_posted:
+            print(
+                f"  {code}: KEPT {r['id']} — really posted to Carmen as JV {r['jv_no']}"
+            )
+        rows = [r for r in rows if r not in real_posted]
         task_ids = [r["task_id"] for r in rows if r["task_id"]]
         ids = [r["id"] for r in rows]
         # email_documents.task_id FKs to ocr_tasks.id — must go first, or deleting
@@ -1616,6 +1820,24 @@ async def phase_teardown(_args) -> None:
                 [uuid.UUID(i) for i in ids],
             )
         if task_ids:
+            # Give back what the run charged this real BU, or its allowance is left short.
+            # Subscription only: a charge that fell through to the credit balance (no
+            # active subscription) is not refunded here.
+            charged = (
+                await sql(
+                    "select coalesce(sum(charged_docs), 0) as n from ocr_tasks"
+                    " where id = any($1::uuid[])",
+                    [uuid.UUID(t) for t in task_ids],
+                )
+            )[0]["n"]
+            if charged:
+                await sql(
+                    "update tenant_subscriptions set docs_used = greatest(docs_used - $2, 0)"
+                    " where tenant_id=$1::uuid and status='active'",
+                    tid,
+                    charged,
+                )
+                print(f"  {code}: gave back {charged} document(s) to its subscription")
             await sql(
                 "delete from credit_cards where task_id = any($1::uuid[])",
                 [uuid.UUID(t) for t in task_ids],
@@ -1662,12 +1884,14 @@ async def phase_teardown(_args) -> None:
     finally:
         box.logout()
 
-    # 6. resume cron
+    # 6. resume cron — exactly what was paused (fixcheck records it; setup pauses two)
+    jobs = fx.get("cron_paused", ["email-ingest", "email-confirm"])
     await sql(
         "select cron.alter_job(jobid, active:=true) from cron.job"
-        " where jobname in ('email-ingest','email-confirm')"
+        " where jobname = any($1::text[])",
+        jobs,
     )
-    print("  resumed cron: email-ingest, email-confirm")
+    print(f"  resumed cron: {', '.join(jobs)}")
 
     print("\nteardown complete.")
 
@@ -1944,6 +2168,662 @@ async def phase_review(_args) -> None:
     save_state(state)
 
 
+# ── phases: fixcheck-setup / fixcheck (2026-09-25 live re-test of the fixes) ──
+
+# `email-token-health` too: it can clear carmencloud's verified_at by itself, which would
+# make F-6's "the token was still flagged" check pass for the wrong reason.
+FIXCHECK_CRON = ["email-ingest", "email-confirm", "email-token-health"]
+
+
+async def phase_fixcheck_setup(_args) -> None:
+    """Only what the re-test needs: S4 (dry-run Carmen), a placeholder on carmencloud's
+    verified_at that only a real 401 can clear, and the three pollers paused."""
+    guard()
+    state = load_state()
+    if "carmencloud" not in state["bus"]:
+        print("[abort] run `preflight` first")
+        sys.exit(2)
+    if "S4" not in state["bus"]:
+        await _create_scratch(state, [s for s in SCRATCH_SPECS if s["code"] == "S4"])
+        save_state(state)
+
+    cc = state["bus"]["carmencloud"]["tenant_id"]
+    fx = state.setdefault("fixcheck", {})
+    if "verified_at_before" not in fx:  # first run only, so a re-run keeps the original
+        rows = await sql(
+            "select carmen_token_verified_at from email_ingest_settings"
+            " where tenant_id=$1::uuid",
+            cc,
+        )
+        fx["verified_at_before"] = rows[0]["carmen_token_verified_at"]
+        save_state(state)
+
+    await sql(
+        "update email_ingest_settings set carmen_token_verified_at = now()"
+        " where tenant_id=$1::uuid",
+        cc,
+    )
+    print(
+        f"  carmencloud verified_at: {fx['verified_at_before']} -> now() (placeholder)"
+    )
+    await _pause_cron(state)
+    print(f"\nfixcheck setup complete. state file: {STATE_FILE}")
+
+
+async def _pause_cron(state: dict) -> None:
+    """Pause the pollers, remembering which were active so teardown resumes exactly those.
+    Recorded on the first call only, so a re-run cannot mistake its own pause for "off"."""
+    fx = state.setdefault("fixcheck", {})
+    if "cron_paused" not in fx:
+        rows = await sql(
+            "select jobname from cron.job where active and jobname = any($1::text[])",
+            FIXCHECK_CRON,
+        )
+        fx["cron_paused"] = [r["jobname"] for r in rows]
+        save_state(state)
+    await sql(
+        "select cron.alter_job(jobid, active:=false) from cron.job"
+        " where jobname = any($1::text[])",
+        fx["cron_paused"],
+    )
+    print(f"  paused cron: {', '.join(fx['cron_paused']) or '(none were active)'}")
+
+
+async def _imap_flags_by_message_id() -> dict[str, str]:
+    """This run's fixtures -> their FLAGS, read back from the mailbox by UID."""
+    flags: dict[str, str] = {}
+    box = imap_connect()
+    try:
+        uids = (
+            box.uid("SEARCH", None, "SUBJECT", f'"{TAG_MARK}"')[1][0] or b""
+        ).split()
+        for uid in uids:
+            _, hdr = box.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+            _, meta = box.uid("FETCH", uid, "(FLAGS)")
+            mid = email.message_from_bytes(hdr[0][1])["Message-ID"]
+            flags[(mid or "").strip()] = meta[0].decode()
+    finally:
+        box.logout()
+    return flags
+
+
+async def phase_fixcheck(_args) -> None:
+    """Every verdict read back from rows and mailbox flags after the poll."""
+    guard()
+    state = load_state()
+    b = state["bus"]
+    from app.services.email_imap import DONE_FLAG
+
+    msgs = {m["id"]: m for m in state["messages"] if m.get("wave") == "fixcheck"}
+    results: dict[str, dict] = {}
+
+    def record(case: str, ok: bool | None, note: str) -> None:
+        label = {True: "PASS", False: "FAIL", None: "INCONCLUSIVE"}[ok]
+        print(f"  {label:<12} {case:<6} {note}")
+        results[case] = {"result": label, "note": note}
+
+    rows = await sql(
+        "select id::text as id, tenant_id::text as tid, message_id, status, reason_code,"
+        " error_message, task_id::text as task_id from email_documents"
+        " where message_id = any($1::text[])",
+        [m["message_id"] for m in msgs.values()],
+    )
+    by_id: dict[str, list[dict]] = {k: [] for k in msgs}
+    mid_to_case = {m["message_id"]: k for k, m in msgs.items()}
+    for r in rows:
+        by_id[mid_to_case[r["message_id"]]].append(dict(r))
+    flags = await _imap_flags_by_message_id()
+
+    def done(case: str) -> bool:
+        return DONE_FLAG in flags.get(msgs[case]["message_id"], "")
+
+    print("## F-1 — mail a person already opened is still processed\n")
+    f1 = by_id["fx-f1-read"]
+    record(
+        "F-1",
+        bool(f1) and f1[0]["tid"] == b["S4"]["tenant_id"] and done("fx-f1-read"),
+        f"row={f1[0]['status'] + '/' + str(f1[0]['reason_code']) if f1 else 'NONE'}"
+        f" imap={flags.get(msgs['fx-f1-read']['message_id'], 'NOT FOUND')}",
+    )
+
+    print("\n## F-3 — lookalike addresses do not route\n")
+    unrouted = sum(p["summary"].get("unrouted", 0) for p in state["polls"])
+    attacks = ["fx-f3-suffix", "fx-f3-prefix"]
+    record(
+        "F-3",
+        all(not by_id[c] and done(c) for c in attacks) and unrouted >= len(attacks),
+        f"rows={[len(by_id[c]) for c in attacks]} done={[done(c) for c in attacks]}"
+        f" unrouted_in_polls={unrouted}",
+    )
+
+    print("\n## F-6 — a foreign TIN keeps its verdict on a BU with a dead token\n")
+    f6 = by_id["fx-f6-foreign"]
+    verified = (
+        await sql(
+            "select carmen_token_verified_at from email_ingest_settings"
+            " where tenant_id=$1::uuid",
+            b["carmencloud"]["tenant_id"],
+        )
+    )[0]["carmen_token_verified_at"]
+    reason_ok = (
+        bool(f6)
+        and f6[0]["reason_code"] == "tax_id_mismatch"
+        and S4_TIN in (f6[0]["error_message"] or "")
+    )
+    note = (
+        f"row={f6[0]['status'] + '/' + str(f6[0]['reason_code']) if f6 else 'NONE'}"
+        f" verified_at={verified}"
+    )
+    # verified_at back to NULL is the proof the suggester really met Carmen's 401: nothing
+    # else clears the placeholder while email-token-health is paused. Right verdict with
+    # the placeholder still set means the dead-token path never ran — not a pass.
+    if not reason_ok:
+        f6_ok = False
+    elif verified is None:
+        f6_ok = True
+    else:
+        f6_ok = None
+    record("F-6", f6_ok, note)
+
+    print("\n## DEF-1 / DEF-2 — two approves at once through the real router\n")
+    doc = await sql(
+        "select id::text as id, bank_code, review_payload, task_id::text as task_id"
+        " from email_documents where message_id=$1 and status='pending_review'",
+        msgs["fx-f1-read"]["message_id"],
+    )
+    if not doc:
+        record("DEF-1", None, "no pending fx-f1-read row to approve")
+        record("DEF-2", None, "no pending fx-f1-read row to approve")
+    else:
+        from app.database import async_session
+        from app.models.schemas.ocr import ExtractedDetailRow
+        from app.services.accounting_config_service import get_accounting_config
+        from app.services.cc_jv import build_jv_rows
+
+        doc_id, s4 = doc[0]["id"], b["S4"]
+        payload = doc[0]["review_payload"]
+        payload = json.loads(payload) if isinstance(payload, str) else payload
+        extracted = payload["extracted"]
+        async with async_session() as db:
+            config = await get_accounting_config(
+                db, s4["tenant_id"], doc[0]["bank_code"]
+            )
+        details = [ExtractedDetailRow(**d) for d in extracted.get("details", [])]
+        # What the review screen would show: the BU's rules plus the AI's suggestions.
+        jv_rows = build_jv_rows(
+            details, {**(config.mappings or {}), **(payload.get("suggested") or {})}
+        )
+        # DEF-2 probe: the browser-supplied id points at carmencloud's card. Only the
+        # ledger row's own task may be stamped.
+        foreign_card = None
+        if f6 and f6[0]["task_id"]:
+            cards = await sql(
+                "select id::text as id from credit_cards where task_id=$1::uuid",
+                f6[0]["task_id"],
+            )
+            foreign_card = cards[0]["id"] if cards else None
+        body = {
+            "extracted": {**extracted, "id": foreign_card or extracted.get("id")},
+            "rows": jv_rows,
+            "post_input_tax": False,
+        }
+        url = f"/api/v1/email/documents/{doc_id}/approve"
+        records: list[DispatchRecord] = []
+        with ExitStack() as stack:
+            for p in dispatch_patches(records, dry_delay=2.0):
+                stack.enter_context(p)
+            async with real_client(
+                s4["tenant_id"], bu="S4", user="qa-S4-reviewer"
+            ) as c:
+                r1, r2 = await asyncio.gather(
+                    c.post(url, headers=AUTH, json=body),
+                    c.post(url, headers=AUTH, json=body),
+                )
+        state["dispatcher"].extend(asdict(r) for r in records)
+        posts = [r for r in records if r.kind == "post_gljv"]
+        after = (
+            await sql(
+                "select status, posting_started_at from email_documents where id=$1::uuid",
+                doc_id,
+            )
+        )[0]
+        codes = sorted([r1.status_code, r2.status_code])
+        loser = r1 if r1.status_code != 200 else r2
+        record(
+            "DEF-1",
+            codes == [200, 409]
+            and len(posts) == 1
+            and after["status"] == "posted"
+            and after["posting_started_at"] is None,
+            f"http={codes} post_gljv_calls={len(posts)} row={after['status']}"
+            f" claim={after['posting_started_at']} 409={loser.text[:120]}",
+        )
+
+        own = await sql(
+            "select submitted_at from credit_cards where task_id=$1::uuid",
+            doc[0]["task_id"],
+        )
+        other = (
+            await sql(
+                "select submitted_at from credit_cards where id=$1::uuid", foreign_card
+            )
+            if foreign_card
+            else []
+        )
+        own_stamped = bool(own) and own[0]["submitted_at"] is not None
+        record(
+            "DEF-2",
+            (own_stamped and other[0]["submitted_at"] is None) if other else None,
+            f"own_card_stamped={bool(own) and own[0]['submitted_at'] is not None}"
+            f" carmencloud_card_stamped={other[0]['submitted_at'] is not None if other else 'n/a'}",
+        )
+
+    state.setdefault("fixcheck", {})["results"] = results
+    save_state(state)
+    failed = [k for k, v in results.items() if v["result"] != "PASS"]
+    print(
+        f"\n## fixcheck: {len(results) - len(failed)}/{len(results)} PASS"
+        + (f" — not passing: {failed}" if failed else "")
+    )
+
+
+# ── phases: round 2 (real Carmen JV, E-06, Q-09, S-07) ─────────────────────────
+#
+# Nothing here decrypts, reads or replays a stored credential. The real JV goes through the
+# app's own approve path, which uses the BU's credential the way it always does; the
+# harness only observes where the post went (tenant + host, from the dispatcher).
+
+
+async def phase_round2_setup(_args) -> None:
+    guard()
+    state = load_state()
+    if "carmencloud" not in state["bus"]:
+        print("[abort] run `preflight` first")
+        sys.exit(2)
+    if "S6" not in state["bus"]:
+        await _create_scratch(state, [s for s in SCRATCH_SPECS if s["code"] == "S6"])
+        save_state(state)
+    src = Path.home() / "Downloads" / "KBankBank commissions.pdf"
+    dst = DOCS_DIR / "KBANK_user.pdf"
+    if not dst.exists():
+        dst.write_bytes(src.read_bytes())
+    print(f"  fixture {dst.name}: {dst.stat().st_size} bytes")
+    await _pause_cron(state)
+    print(f"\nround 2 setup complete. state file: {STATE_FILE}")
+
+
+async def phase_r2_token(_args) -> None:
+    """Has carmencloud's credential been replaced since preflight? Metadata only: the
+    stored fingerprint column and when Carmen last accepted it."""
+    guard()
+    state = load_state()
+    row = (
+        await sql(
+            "select carmen_token_fp, carmen_token_verified_at from email_ingest_settings"
+            " where tenant_id=$1::uuid",
+            state["bus"]["carmencloud"]["tenant_id"],
+        )
+    )[0]
+    before = state["snapshot"]["carmencloud"].get("carmen_token_fp")
+    changed = row["carmen_token_fp"] != before
+    verified = row["carmen_token_verified_at"]
+    state.setdefault("round2", {})["carmencloud_token"] = {
+        "replaced": changed,
+        "verified_at": verified,
+    }
+    save_state(state)
+    print(
+        f"  carmencloud credential replaced since preflight: {changed};"
+        f" last verified by Carmen: {verified}"
+    )
+
+
+def _r2_record(state: dict, case: str, ok: bool | None, note: str) -> None:
+    label = {True: "PASS", False: "FAIL", None: "INCONCLUSIVE"}[ok]
+    print(f"  {label:<12} {case:<14} {note}")
+    state.setdefault("round2", {}).setdefault("results", {})[case] = {
+        "result": label,
+        "note": note,
+    }
+
+
+async def phase_r2check(args) -> None:
+    """E-06 / Q-09, read back after each poll: held = no row, no charge, not done."""
+    guard()
+    state = load_state()
+    from app.services.email_imap import DONE_FLAG
+
+    s6 = state["bus"]["S6"]["tenant_id"]
+    case = {"e06": "r2-e06", "q09": "r2-q09"}[args.stage.split("-")[0]]
+    msg = next(m for m in state["messages"] if m["id"] == case)
+    rows = await sql(
+        "select status, reason_code from email_documents where message_id=$1",
+        msg["message_id"],
+    )
+    tasks = (
+        await sql(
+            "select count(*) as n from ocr_tasks where tenant_id=$1::uuid",
+            s6,
+        )
+    )[0]["n"]
+    used = (
+        await sql(
+            "select docs_used from tenant_subscriptions"
+            " where tenant_id=$1::uuid and status='active'",
+            s6,
+        )
+    )[0]["docs_used"]
+    done = DONE_FLAG in (await _imap_flags_by_message_id()).get(msg["message_id"], "")
+    held_in_poll = state["polls"][-1]["summary"].get("retry_later", 0)
+    note = (
+        f"rows={[r['status'] for r in rows]} s6_tasks={tasks} s6_docs_used={used}"
+        f" done={done} last_poll_retry_later={held_in_poll}"
+    )
+    # E-06 runs first (so tasks 0 -> 1); Q-09 finds E-06's one task already there.
+    tasks_before = 0 if case == "r2-e06" else 1
+    if args.stage.endswith("held"):
+        ok = (
+            not rows
+            and tasks == tasks_before
+            and not done
+            and held_in_poll >= 1
+            and (case == "r2-q09" or used == 30)
+        )
+    else:
+        ok = bool(rows) and done and tasks == tasks_before + 1
+    _r2_record(state, args.stage, ok, note)
+    save_state(state)
+
+
+async def phase_approve_real(args) -> None:
+    """R-JV: the review screen's approve, through the real router, into real Carmen."""
+    guard()
+    state = load_state()
+    cc = state["bus"]["carmencloud"]
+    msg = next(m for m in state["messages"] if m["id"] == "r2-jv")
+    doc = await sql(
+        "select id::text as id, bank_code, review_payload, task_id::text as task_id,"
+        " status, reason_code, doc_no from email_documents where message_id=$1",
+        msg["message_id"],
+    )
+    if not doc or doc[0]["status"] != "pending_review":
+        _r2_record(state, "R-JV", None, f"nothing to approve: {[dict(d) for d in doc]}")
+        save_state(state)
+        return
+
+    from app.database import async_session
+    from app.models.schemas.ocr import ExtractedDetailRow
+    from app.services.accounting_config_service import get_accounting_config
+    from app.services.cc_jv import build_jv_rows
+
+    d = doc[0]
+    payload = d["review_payload"]
+    payload = json.loads(payload) if isinstance(payload, str) else payload
+    extracted = payload["extracted"]
+    async with async_session() as db:
+        config = await get_accounting_config(db, cc["tenant_id"], d["bank_code"])
+    details = [ExtractedDetailRow(**x) for x in extracted.get("details", [])]
+    # What the reviewer picks in the dialog for anything still unmapped:
+    # --map "<payment type>=<dept>:<acc>", applied last, like a hand edit on screen.
+    picked = {}
+    for item in args.map or []:
+        field, _, target = item.partition("=")
+        dept, _, acc = target.partition(":")
+        picked[field] = {"dept": dept, "acc": acc}
+    jv_rows = build_jv_rows(
+        details,
+        {**(config.mappings or {}), **(payload.get("suggested") or {}), **picked},
+    )
+    blank = [r for r in jv_rows if not r.get("acc")]
+    if blank:
+        _r2_record(
+            state, "R-JV", None, f"not posted: JV line(s) with no account {blank}"
+        )
+        save_state(state)
+        return
+    print(
+        f"  approving {d['id']} ({d['bank_code']} {d['doc_no']}, parked reason"
+        f" {d['reason_code']}, flags {payload.get('flags')}) — {len(jv_rows)} JV row(s)"
+    )
+    records: list[DispatchRecord] = []
+    with ExitStack() as stack:
+        for p in dispatch_patches(records):
+            stack.enter_context(p)
+        async with real_client(
+            cc["tenant_id"], bu="carmencloud", user="qa-carmencloud-reviewer"
+        ) as c:
+            resp = await c.post(
+                f"/api/v1/email/documents/{d['id']}/approve",
+                headers=AUTH,
+                json={"extracted": extracted, "rows": jv_rows, "post_input_tax": True},
+            )
+    state["dispatcher"].extend(asdict(r) for r in records)
+    after = (
+        await sql(
+            "select status, jv_no, error_message, posting_started_at"
+            " from email_documents where id=$1::uuid",
+            d["id"],
+        )
+    )[0]
+    card = await sql(
+        "select submitted_at from credit_cards where task_id=$1::uuid", d["task_id"]
+    )
+    posts = [r for r in records if r.kind == "post_gljv"]
+    taxes = [r for r in records if r.kind == "post_input_tax"]
+    jv = after["jv_no"] or ""
+    ok = (
+        resp.status_code == 200
+        and after["status"] == "posted"
+        and bool(jv)
+        and not jv.startswith("QA-DRY")
+        and bool(card)
+        and card[0]["submitted_at"] is not None
+        and len(posts) == 1
+        and posts[0].carmen_uri == "https://dev.carmen4.com"
+        and posts[0].tenant_id == cc["tenant_id"]
+    )
+    note = (
+        f"http={resp.status_code} jv_no={jv or '-'} row={after['status']}"
+        f" card_submitted={bool(card) and card[0]['submitted_at'] is not None}"
+        f" posts={len(posts)} posted_as_tenant="
+        f"{'carmencloud' if posts and posts[0].tenant_id == cc['tenant_id'] else '?'}"
+        f" input_tax_calls={len(taxes)} tax_note={after['error_message']!r}"
+        f" extracted_doc_no={d['doc_no']} body={resp.text[:200]}"
+    )
+    _r2_record(state, "R-JV", ok, note)
+    state["round2"]["real_jv"] = {"doc_id": d["id"], "jv_no": jv, "doc_no": d["doc_no"]}
+    save_state(state)
+
+
+async def phase_s07(_args) -> None:
+    """Settings-API auth boundaries through the real app, with no real credential: the
+    cases a caller holding nothing valid can reach. The ones that need a real BU token or
+    a minted admin JWT are left for a run the user explicitly authorises."""
+    guard()
+    state = load_state()
+    import httpx
+
+    from app.main import app
+
+    host = "https://dev.carmen4.com"
+    cases: list[tuple[str, str, int | None, str]] = []  # (id, expect, got, detail)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://qa.local"
+    ) as c:
+
+        async def get(bu: str, auth: str | None, uri: str = host) -> httpx.Response:
+            headers = {"Authorization": auth} if auth is not None else {}
+            return await c.get(
+                "/api/v1/carmen/settings",
+                params={"uri": uri, "bu": bu},
+                headers=headers,
+            )
+
+        # Shaped like a Carmen token, issued by nobody.
+        fake = f"qa{uuid.uuid4().hex}|{uuid.uuid4()}"
+        r = await get("carmen", None)
+        cases.append(("no-auth", "401", r.status_code, r.text[:80]))
+        r = await get("carmen", "not-a-carmen-token")
+        cases.append(("malformed", "401", r.status_code, r.text[:80]))
+        r = await get("carmen", fake)
+        cases.append(("fake-token", "401", r.status_code, r.text[:80]))
+        r = await get("carmen", fake)
+        cases.append(("fake-token-cached", "401", r.status_code, r.text[:80]))
+        r = await get("nope", fake, uri="https://qa-unknown.invalid")
+        cases.append(("unknown-bu", "400", r.status_code, r.text[:80]))
+        first_429 = None
+        for i in range(1, 26):
+            r = await get("nope", fake, uri="https://qa-unknown.invalid")
+            if r.status_code == 429:
+                first_429 = i
+                break
+        cases.append(
+            ("rate-limit", "429", 429 if first_429 else None, f"at call {first_429}")
+        )
+
+    print("## S-07 — settings API auth boundaries (real app, no real credential)\n")
+    failing = []
+    for cid, expect, got, detail in cases:
+        ok = str(got) in expect.split("/")
+        print(
+            f"  {'ok ' if ok else 'BAD'} {cid:<18} expect {expect:<4} got {got}  {detail}"
+        )
+        if not ok:
+            failing.append(cid)
+    state.setdefault("round2", {})["s07_cases"] = cases
+    _r2_record(
+        state,
+        "S-07",
+        not failing,
+        f"{len(cases) - len(failing)}/{len(cases)} as expected"
+        + (f"; not: {failing}" if failing else ""),
+    )
+    save_state(state)
+
+
+async def phase_s07_creds(_args) -> None:
+    """S-07 with real credentials — run only with the owner's explicit authorisation
+    (given 2026-09-25, dev only). carmen's stored posting credential is decrypted in
+    memory, never printed or saved; any session the login probe creates is deleted before
+    this function returns.
+
+    Cross-BU on one host is expected to SUCCEED: `docs/CARMEN_INTEGRATION.md` makes the host
+    the ownership boundary ("one host is always one corporate group, a valid token for host X
+    may manage any BU under X"). These cases pin that, so a change to it is visible."""
+    guard()
+    state = load_state()
+    import httpx
+    from jose import jwt as jose_jwt
+
+    from app.auth.admin_session import create_admin_jwt
+    from app.auth.session import decrypt_carmen_token
+    from app.config import settings as app_settings
+    from app.main import app
+    from app.services.admin_auth_service import get_admin_jwt_secret
+
+    b = state["bus"]
+    host = "https://dev.carmen4.com"
+    enc = (
+        await sql(
+            "select carmen_token_enc from email_ingest_settings where tenant_id=$1::uuid",
+            b["carmen"]["tenant_id"],
+        )
+    )[0]["carmen_token_enc"]
+    token = decrypt_carmen_token(enc, app_settings.session_encryption_key)
+    cases: list[tuple[str, str, int | None, str]] = []
+
+    def admin(perms: list[str], scope: str = "") -> str:
+        return "Bearer " + create_admin_jwt(
+            "qa-admin",
+            "qa-admin",
+            [],
+            perms,
+            get_admin_jwt_secret(),
+            tenant_scope=scope,
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://qa.local"
+    ) as c:
+
+        async def get(bu: str, auth: str) -> httpx.Response:
+            return await c.get(
+                "/api/v1/carmen/settings",
+                params={"uri": host, "bu": bu},
+                headers={"Authorization": auth},
+            )
+
+        async def login(bu: str) -> tuple[int, str | None]:
+            """-> (status, tenant the issued session names). The session is deleted."""
+            r = await c.post(
+                "/api/v1/auth/exchange", json={"token": token, "bu": bu, "uri": host}
+            )
+            if r.status_code != 200:
+                return r.status_code, None
+            claims = jose_jwt.get_unverified_claims(r.json()["access_token"])
+            await sql("delete from ocr_sessions where id=$1::uuid", claims["sid"])
+            return 200, claims.get("tid")
+
+        r = await get("carmen", token)
+        leaked = token in r.text or "carmen_token_enc" in r.text
+        cases.append(("own-bu", "200", r.status_code, f"token_in_body={leaked}"))
+        r = await get("carmencloud", token)
+        cases.append(
+            (
+                "cross-bu-settings",
+                "200",
+                r.status_code,
+                f"body_is_carmencloud={b['carmencloud']['tag'] in r.text}",
+            )
+        )
+        status, tid = await login("carmen")
+        cases.append(
+            (
+                "own-bu-login",
+                "200",
+                status,
+                f"tid_is_carmen={tid == b['carmen']['tenant_id']}",
+            )
+        )
+        status, tid = await login("carmencloud")
+        cases.append(
+            (
+                "cross-bu-login",
+                "200",
+                status,
+                f"session_for_carmencloud={tid == b['carmencloud']['tenant_id']}",
+            )
+        )
+        r = await get("carmen", admin(["configs:read"]))
+        cases.append(("admin-no-write", "403", r.status_code, r.text[:70]))
+        scoped = admin(["configs:write"], b["carmen"]["tenant_id"])
+        r = await get("carmencloud", scoped)
+        cases.append(("admin-scoped-other", "403", r.status_code, r.text[:70]))
+        r = await get("carmen", scoped)
+        cases.append(("admin-scoped-own", "200", r.status_code, ""))
+        r = await get("carmencloud", admin(["configs:write"]))
+        cases.append(("admin-global", "200", r.status_code, ""))
+
+    print("## S-07 with real credentials (dev, authorised)\n")
+    failing = []
+    for cid, expect, got, detail in cases:
+        ok = str(got) in expect.split("/") and "token_in_body=True" not in detail
+        print(
+            f"  {'ok ' if ok else 'BAD'} {cid:<20} expect {expect:<8} got {got}  {detail}"
+        )
+        if not ok:
+            failing.append(cid)
+    state.setdefault("round2", {})["s07_creds_cases"] = cases
+    _r2_record(
+        state,
+        "S-07-creds",
+        not failing,
+        f"{len(cases) - len(failing)}/{len(cases)} as expected"
+        + (f"; not: {failing}" if failing else ""),
+    )
+    save_state(state)
+
+
 # ── phase: probes (O-02 overlap poll — DEF-1/DEF-2 live in tests/tenancy) ─────
 
 
@@ -2141,7 +3021,17 @@ async def main() -> int:
 
     p_toggle = sub.add_parser("toggle")
     p_toggle.add_argument(
-        "--action", required=True, choices=["s4-disable", "s4-enable", "s6-reentitle"]
+        "--action",
+        required=True,
+        choices=[
+            "s4-disable",
+            "s4-enable",
+            "s6-reentitle",
+            "s6-exhaust",
+            "s6-restore",
+            "s6-backlog-fill",
+            "s6-backlog-drain",
+        ],
     )
 
     p_send = sub.add_parser("send")
@@ -2159,6 +3049,24 @@ async def main() -> int:
     sub.add_parser("probes")
     sub.add_parser("report")
     sub.add_parser("teardown")
+    sub.add_parser("fixcheck-setup")
+    sub.add_parser("fixcheck")
+    sub.add_parser("round2-setup")
+    sub.add_parser("r2-token")
+    p_r2 = sub.add_parser("r2check")
+    p_r2.add_argument(
+        "--stage",
+        required=True,
+        choices=["e06-held", "e06-released", "q09-held", "q09-released"],
+    )
+    p_ar = sub.add_parser("approve-real")
+    p_ar.add_argument(
+        "--map",
+        action="append",
+        help='reviewer\'s pick for an unmapped line: "<payment type>=<dept>:<acc>"',
+    )
+    sub.add_parser("s07")
+    sub.add_parser("s07-creds")
 
     args = ap.parse_args()
     if args.state:
@@ -2177,6 +3085,14 @@ async def main() -> int:
         "probes": phase_probes,
         "report": phase_report,
         "teardown": phase_teardown,
+        "fixcheck-setup": phase_fixcheck_setup,
+        "fixcheck": phase_fixcheck,
+        "round2-setup": phase_round2_setup,
+        "r2-token": phase_r2_token,
+        "r2check": phase_r2check,
+        "approve-real": phase_approve_real,
+        "s07": phase_s07,
+        "s07-creds": phase_s07_creds,
     }
     await handlers[args.phase](args)
     return 0

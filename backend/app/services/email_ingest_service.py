@@ -638,7 +638,7 @@ async def _process_message(
     # document keyed straight into Carmen writes no `credit_cards` row, so the duplicate
     # guard cannot see it and the whole held backlog would post a second time the moment
     # the toggle goes back on. Mail older than the switch-on is therefore dropped rather
-    # than replayed, and left `\Seen`. It still gets a ledger row per attachment: the
+    # than replayed, and marked done. It still gets a ledger row per attachment: the
     # customer needs the list of what arrived while they were off, or this fix would just
     # trade duplicate posts for silent loss. Message-level because arrival time is a fact
     # about the mail — nothing here enters the money path.
@@ -784,8 +784,8 @@ async def _process_attachment(
         except _HOLD:
             # Not a verdict on this document — the BU has nothing left to spend, or the
             # module is switched off for them. Drop the claim so a poll after that is
-            # fixed can take it again; the caller leaves the mail itself unread by never
-            # flagging it `\Seen`.
+            # fixed can take it again; the caller leaves the mail itself pending by never
+            # flagging it done (`$OcrDone`).
             await _release(ledger_id)
             raise
     finally:

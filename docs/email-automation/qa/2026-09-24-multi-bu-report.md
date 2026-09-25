@@ -21,6 +21,11 @@ That said, **this run found real, unrelated defects — some higher-severity tha
 > (296–334) was an IMAP **sequence number** — the diagnostics used `search`/`fetch`, not
 > `uid` — the real UIDs were 366–404. No conclusion depended on the difference.
 
+> **Status 2026-09-25: all fixed and re-tested live.** DEF-1/DEF-2 (#251), F-3 (#252),
+> F-1/F-4 (#253), F-6/F-5 (#254) are merged; F-1, F-3, F-6, DEF-1 and DEF-2 were re-run
+> against real Gmail, a real LLM and the real router — **5/5 pass**. See
+> [Re-test after fixes](#re-test-after-fixes-2026-09-25) at the end.
+
 | | |
 |---|---|
 | BUs | 6 (`carmen`, `carmencloud` real; `S3`–`S6` scratch) |
@@ -146,7 +151,7 @@ The appendix's checker does an exact string match against a status/reason predic
 ```bash
 # DEF-1 / DEF-2
 cd backend && TENANCY_DB_TESTS=1 venv\Scripts\python -m pytest tests\tenancy\test_email_approve_integrity.py -v
-# -> 2 xfailed (both live in the code today)
+# -> 2 xfailed on 2026-09-24; since #251 the xfails are gone and all 7 pass
 
 # Full harness (creates scratch tenants, sends real mail, real LLM, real dev DB — see
 # scripts/email_multibu_qa.py's own docstring for the phase order and safety rails)
@@ -167,3 +172,96 @@ python scripts\email_multibu_qa.py preflight
 **Teardown itself had two bugs, found by verifying rather than trusting it — worth disclosing the same as any other finding:**
 1. First attempt crashed with a `ForeignKeyViolationError`: it deleted `ocr_tasks` before `email_documents` (which FKs to it) for `carmen`/`carmencloud`'s QA-tagged rows. This **left cron paused** after the crash — a real BU's automation would have stayed off for other people using `dev.carmen4.com` until caught. Fixed (delete order reversed) and re-run.
 2. The mailbox purge searched `HEADER Message-ID` for the run's tag — the same Gmail IMAP substring-search unreliability already documented in `email_multibu_loadtest.py`. It reported "0 fixture(s) expunged" while all 39 QA messages were still sitting in `AR Agent`. Fixed (switched to `SUBJECT` search, confirmed reliable throughout this run) and re-run; all 39 confirmed expunged afterward.
+
+---
+
+## Re-test after fixes (2026-09-25)
+
+**Run:** `0925035135` · `main` at `6268ef8` (#251–#254 merged) · same harness, new phases
+`fixcheck-setup` → `send --wave fixcheck` → `poll` → `fixcheck` → `teardown`. The test used real
+Gmail (`project@` / `AR Agent`), a real LLM and the real dev DB. The approve race went through the
+real FastAPI router (`httpx.ASGITransport`). Every verdict below was read back from rows and IMAP
+flags after the fact, never from a phase's printed summary.
+
+**Result: 5/5 pass.**
+
+| Case | Set-up that used to fail | Evidence after the fix | Result |
+|---|---|---|---|
+| **F-1** | Fixture APPENDed **already `\Seen`**, as if a person had opened it before the poll. `SEARCH UNSEEN` would have skipped it (the other three fixtures were unread). | `email_documents` row `pending_review`; the message now carries `$OcrDone \Seen` (UID 405) | PASS |
+| **F-3** | `aragent+<S4 tag>@carmensoftware.com.evil.test` (the 09-24 attack) and `xaragent+<S4 tag>@carmensoftware.com` | Both logged "No ingest tag … dropped"; **0 rows**; poll `unrouted=2`; both flagged `$OcrDone` | PASS |
+| **F-6** | KTC.pdf carrying S4's TIN, sent to `carmencloud`, whose Carmen token is dead. This is the same shape as 09-24's `r2-foreign-ktc`, which parked as `carmen_unauthorized`. | `pending_review / tax_id_mismatch` "Tax ID 0105556117534 is not in this BU's register". carmencloud's `carmen_token_verified_at` was set to a placeholder beforehand and came back **NULL**, so the suggester really met Carmen's 401 and still flagged the token. `email-token-health` was paused, so nothing else could have cleared it. | PASS |
+| **DEF-1** | Two `POST …/approve` for the F-1 document fired with `asyncio.gather` through the real router. The dry-run Carmen post held 2 s, so both requests were in flight together. | HTTP `[200, 409]`. The 409 read "Another reviewer is posting this document right now" and came back while the winner was still posting. **1** `post_gljv` call. Row `posted`, `posting_started_at` NULL. | PASS |
+| **DEF-2** | Both approve bodies carried `extracted.id` = **carmencloud's** card (the F-6 document). | S4's own card (by `task_id`) stamped; carmencloud's card `submitted_at` still NULL | PASS |
+
+**Switch-over tool, exercised live.** Before the send, `scripts/imap_mark_done_backfill.py
+--apply --seen-as-done` flagged 295 dev-mailbox messages (209 older than the window, 86 in-window
+`\Seen`). A second dry run then reported 0 left, so it is idempotent. Only this run's 4 fixtures were
+pending when the poll ran.
+
+**Cost:** 2 vision calls (`gemini-2.5-flash-lite`), 12,650 tokens, **$0.0015**. The carmencloud
+suggester stopped at Carmen's 401 before reaching any model.
+
+**Isolation and cleanup, independently re-queried after teardown:**
+- 0 QA rows, tasks, cards or LLM logs, and 0 scratch tenants.
+- `carmencloud`: `verified_at` back to NULL, `auto_post=false`, and `docs_used` back to 18. Teardown now returns what the run charged a real BU.
+- `carmen` untouched: its token was verified that morning and the run never used it.
+- All 4 cron jobs active again.
+- 0 fixtures left in `AR Agent`, and 0 messages pending in the folder.
+
+**Limits, same as 09-24:**
+- The JV post in DEF-1 went to S4's dry-run dispatcher. No real Carmen post was possible: carmen's fixtures collide with its own history, and carmencloud's token is dead.
+- The *deployed* dev backend still runs pre-fix code. CD has been failing since at least 09-23 on an empty `SUPABASE_DB_URL` secret, so this proves the code on `main`, not what dev or prod currently serve.
+- F-4 (confirmation sweep) was not re-run live. It needs a real Gmail forwarding-confirmation mail; the unit test covers it.
+
+---
+
+## Round 2 (2026-09-25)
+
+**Run:** `0925044057` · `main` at `6268ef8` plus this branch's harness phases (`round2-setup`, `s07`, `toggle s6-*`, `r2check`, `r2-token`, `approve-real`). Real Gmail, a real LLM, the real dev DB and the real app. Every verdict was read back from rows, IMAP flags and charges after the fact.
+
+| Case | Set-up | Evidence | Result |
+|---|---|---|---|
+| **E-06** out of credits | Scratch S6 is still entitled (active package), but its allowance is used up and its credit balance is 0. `BAY.pdf` sent to it. | **Held:** `retry_later=1`, 0 rows, 0 tasks, `docs_used` stays 30, mail **not** `$OcrDone`. **After the allowance was restored:** processed on the next poll (`pending_review`, 1 document charged, flagged done). | PASS |
+| **Q-09** backlog cap | S6 at 50 pending: 1 real + 49 synthetic run-tagged rows. `BAY.pdf` sent again. | **Held:** `retry_later=1`, 0 rows, no new task, `docs_used` unchanged, not done. **After one row was removed:** processed (charged, done). It then ended `failed / duplicate_document` "A copy is already waiting for review": the fixture was the same `BAY.pdf` as E-06's copy, which was still pending. That is the duplicate guard working; the cause was my fixture choice, not a defect. | PASS |
+| **S-07** auth boundaries (no real credential) | Real app over `ASGITransport`, with no dependency override; real dev Carmen answers the token checks. | No auth → 401 · malformed → 401 · Carmen-shaped fake token → 401 (Carmen rejected it) · repeated → 401 · unknown BU → 400 · **429 on the 21st limited call** (limit 20/min) | PASS (6/6) |
+| **S-07** with real credentials (run with the owner's explicit permission, dev only) | carmen's stored credential, decrypted in memory only and never printed or saved; admin JWTs minted with dev's secret; each session the login probe created was deleted straight away | Own BU → 200, no token in the body · **carmen token → carmencloud settings → 200** · **carmen token → `/auth/exchange` `bu=carmencloud` → a carmencloud session** · admin without `configs:write` → 403 · admin scoped to carmen: carmencloud → 403, carmen → 200 · global admin → 200 | PASS (8/8, **as designed**, see below) |
+| **F-4** confirmation sweep | Code plus unit tests (agreed as sufficient; a live test needs a real Gmail forwarding-confirmation mail). | `fetch_confirmations` searches `NOT KEYWORD $OcrDone … FROM`, fetches `BODY.PEEK[]` and never STOREs. All 10 confirmation unit tests pass. | PASS |
+| **R-JV** real JV into Carmen | The owner's KBank commission receipt (`041125E00023869`, 04/11/2025), mailed to carmencloud after its token was refreshed (Carmen verified it 06:07 UTC), then approved through the real router with `post_input_tax: true`. carmen was not used because it had already posted this document (F-7). For the one line the AI could not map (`บัตรเครดิต/เดบิต`), the reviewer's pick was carmencloud's **own** existing account `GEN/1021009` (see F-8). | Extraction matched the paper exactly: gross 428,513.98, fee 14,140.97, VAT 989.87, net 413,383.14, and doc no. read correctly this time. The AI's suggestions for commission/tax/net (`6080008`/`1022005`/`1011001`) matched carmencloud's own. **Carmen `POST /gljv` → 200, JV 1103**, plus `POST /inputTaxRec` → 200. The row is `posted`, the card has `submitted_at`, 1 post under carmencloud's tenant, and nothing under carmen. Teardown **kept** this row, its card and its charge, so the duplicate guard remembers the JV. | PASS |
+
+### F-7 (MEDIUM, fixed in #256): one misread digit defeats the duplicate guard
+
+The KBank receipt used for R-JV (printed doc no. `041125E00023869`, 04/11/2025) **had already been posted by carmen** on 2026-08-25, under doc_no `041125E00023869767`: the printed number with an extra "767". Both duplicate checks key on doc_no with exact equality:
+- `has_submitted_doc` (`utils/db_helpers.py`, `==` per field), used by approve and by `is_duplicate` at extraction
+- `_already_pending`
+
+So if the LLM reads the number correctly the next time, the same real document posts a second JV. It needs a misread plus a re-send, but the money path has no second line of defence.
+
+**Decision and fix (2026-09-25): park, don't block — #256.** `_possibly_posted()` looks for a document this BU already submitted **on the same date** whose number contains the new one or is contained in it (shorter side at least 8 characters). A match parks the new document as `duplicate_document`, "Possibly already posted to Carmen as `<number>`". The reviewer can still approve it, and it never auto-posts. The amount isn't part of the key because `credit_cards` stores none, and rows posted before a new column, like the F-7 row, would have none either. One-digit substitutions are not matched on purpose: same-day sequential numbers are the normal case.
+
+### F-8 (MEDIUM, open): GL mappings saved before #248 are invisible to per-bank reads
+
+Found while preparing R-JV. carmencloud has 29 GL mapping entries, among them `บัตรเครดิต/เดบิต → GEN/1021009`, `commission → 6080008` and `tax → 1022005`, yet `get_accounting_config(db, carmencloud, "KBANK")` returned **0**. So the document parked `mapping_missing` + `mapping_guessed`, with the AI re-guessing accounts the BU had already chosen.
+
+**Root cause:**
+- `20260924000000_bank_scoped_mapping_entries.sql` (#248) added `bu_accounting_mapping_entries.bank_code` and backfilled it from `bu_accounting_configs.bank_code`, but only `where c.bank_code is not null`.
+- carmencloud's config row has no `bank_code`, so its entries stayed NULL.
+- `_get_entries` now filters `bank_code = '<bank>'`, and a NULL never matches.
+
+**Effect:** every BU whose config row had no bank loses its pre-#248 mappings in email ingest and the per-bank wizard fetch.
+- Each document parks as `mapping_missing` (or relies on a fresh AI guess).
+- **An `auto_post` BU stops auto-posting entirely.**
+
+It can't be measured on prod from here (prod DB is off-limits).
+
+**Next step:** a decision. The read path could fall back to the BU's bank-less (pre-#248) entry for any field the bank has no entry of its own for.
+
+### S-07: the ownership boundary is the host, not the BU — confirmed live, matches the design
+
+`validate_token` (`routers/auth.py`) proves a Carmen token with `GET {host}/Carmen.API/api/interface/department`, and no BU is part of that call. `_resolve` (the settings API) and `/auth/exchange` then act on the `bu` the request names. So **a token valid on a host can act on every BU under that host**. Live on dev, a carmen token:
+- read carmencloud's settings, including its `ingest_address`
+- got a carmencloud session, which opens its review queue and its approve, and approve posts with carmencloud's own stored credential
+
+**This is the documented contract, not a defect.** `docs/CARMEN_INTEGRATION.md` states: *"Since one host is always one corporate group, a valid token for host X may manage any BU under X — which is the ownership boundary."* Carmen also offers no API that says which BU a token belongs to, so enforcing a BU boundary is not possible today. The owner's decision (2026-09-25) is to keep the design, and pin it: `test_a_token_valid_for_the_host_may_act_on_any_bu_under_it` in `tests/integration/test_email_automation_router.py`, plus the `s07-creds` harness phase. Any change to the boundary will then show up as a failing test rather than as a side effect.
+
+**What still depends on an assumption — a question for the Carmen team:**
+> Does "one host = one corporate group whose every Carmen user may act for every BU" still hold? In particular, can a Carmen user be restricted to *some* BUs (hotels) of a group? If so, our app currently lets that user manage the email settings of, and approve JVs for, BUs Carmen itself would not show them, because we can't ask Carmen which BUs a token may access. Can Carmen expose an endpoint that returns the BU(s) a token is valid for?

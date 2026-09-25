@@ -278,6 +278,30 @@ async def test_resolve_proves_the_token_against_the_host_in_the_payload():
 
 
 @pytest.mark.asyncio
+async def test_a_token_valid_for_the_host_may_act_on_any_bu_under_it():
+    """The ownership boundary is the host, not the BU (CARMEN_INTEGRATION.md: "one host is
+    always one corporate group"). Carmen's check names no BU, so a token proven for the host
+    resolves whichever BU the payload asks for. Confirmed live on dev 2026-09-25 — a carmen
+    token read carmencloud's settings and got a carmencloud session. Pinned so that tightening
+    or loosening this is a visible decision, not a side effect."""
+    from app.routers import email_automation as mod
+
+    other_bu = _tenant(bu="bkk01")
+    validate = AsyncMock()
+    with (
+        patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=other_bu),
+        patch.object(mod, "validate_token", validate),
+    ):
+        got = await _resolve(
+            AsyncMock(), Caller("user:x", CARMEN_TOKEN), f"https://{other_bu.host}", "bkk01"
+        )
+
+    assert got is other_bu
+    # The only question put to Carmen is "is this token good on this host?" — no BU in it.
+    assert validate.await_args.args == (CARMEN_TOKEN, f"https://{other_bu.host}")
+
+
+@pytest.mark.asyncio
 async def test_resolve_rejects_a_token_carmen_does_not_accept():
     from app.routers import email_automation as mod
 
