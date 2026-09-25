@@ -18,6 +18,7 @@ import { useT } from '../../i18n/LanguageContext'
 // Mirrors the active top-up credit_packs catalog (see migration 219).
 function getPacks(t: ReturnType<typeof useT>['t']) {
   return [
+    { code: 'pack_micro', label: t('admin.credits.pack.micro') },
     { code: 'pack_small', label: t('admin.credits.pack.small') },
     { code: 'pack_medium', label: t('admin.credits.pack.medium') },
     { code: 'pack_large', label: t('admin.credits.pack.large') },

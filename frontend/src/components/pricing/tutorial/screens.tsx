@@ -223,7 +223,6 @@ function CatalogFigure() {
             <div className="pricing-section-head pricing-section-head--center">
               <h2 className="pricing-section-title">{t('pricing.topupTitle')}</h2>
               <p className="pricing-section-sub">{t('pricing.topupSub')}</p>
-              <p className="pricing-section-sub">{t('pricing.topupSub2')}</p>
               <p className="pricing-note">{t('pricing.topupNote')}</p>
             </div>
             <PackList packs={DEMO_PACKS} onSelect={noop} />

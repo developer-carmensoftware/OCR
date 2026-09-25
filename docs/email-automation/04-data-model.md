@@ -63,6 +63,7 @@ trail for every outcome, `reason_code` taxonomy included.
 | `reviewed_by` | `varchar(36)`, nullable | `carmen_user_id` of whoever approved or rejected it. No FK — there is no users table, and the id is opaque to us |
 | `reviewed_by_name` | `varchar(100)`, nullable | Their username, from the same session claims. Stored because an opaque uuid answers nobody's question about who posted a JV |
 | `reviewed_at` | `timestamptz`, nullable | When they did |
+| `posting_started_at` | `timestamptz`, nullable | **The approve/reject claim.** Set by `_claim_for_review`'s compare-and-set (`UPDATE … WHERE status='pending_review' AND (null OR older than POSTING_CLAIM_TTL)`), given back by `_release_claim` on every exit before Carmen accepts, cleared by `_finish`. Non-null and younger than 5 min = someone is acting on the row; a second approve/reject gets 409. A timestamp rather than a status so no tab or count moves, and a claim left by a dead process expires instead of stranding the document. Replaced a `FOR UPDATE` that was released before `post_gljv` ran (DEF-1, 2026-09-24 QA) |
 | `dismissed_at` | `timestamptz`, nullable | **Read-only since §18** — nothing writes it any more. It survives because the 2026-09-03 migration back-dated every historical `failed`/`rejected`/`skipped` row as dismissed, and `_attention` subtracts them so that pile does not light the queue's dot for ever. The gesture it was added for is gone: dismissal existed to stop `review` filling with rows it could never clear (§13 #54), and `review` holds only `pending_review` now. Not a soft delete, and this table has no `deleted_at` for it to be confused with |
 | `auth_verdict` | `varchar(100)`, nullable | Our own MX's verdict on the sender, from the topmost `Authentication-Results` header only if its authserv-id is `mx.google.com` (`email_imap.auth_verdict`), e.g. `dmarc=pass dkim=pass spf=softfail`. Stamped per message by `_record_auth` after `_process_message`. **Measurement only** — no gate reads it until real auto-forwards have been seen to pass (item 26 in `backend/db/queries.sql`) |
 
@@ -231,6 +232,7 @@ how the design changed (full narrative in [06-decision-log.md](06-decision-log.m
 | `20260829000000_email_review_queue.sql` | Human-in-the-loop: `review_payload`, `reviewed_by`, `reviewed_at`, the partial pending index, and `auto_post` on the settings table |
 | `20260829010000_email_review_reviewer_name.sql` | `reviewed_by_name` — added a day later, as its own migration, because `20260829000000` had already been applied |
 | `20260923000000_email_documents_retention.sql` | `fn_purge_email_documents` + its daily schedule (scrub 90 d, delete 2 y, `skipped` at 90 d, `job_runs` at 90 d), and `auth_verdict` for measuring DMARC before any gate uses it |
+| `20260925000000_email_documents_posting_claim.sql` | `posting_started_at` — the expiring approve/reject claim that stops two reviewers posting one document twice |
 
 ## Deliberately not stored
 

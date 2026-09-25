@@ -21,6 +21,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.sql.dml import Update
 
 from app.exceptions import (
     CarmenServiceError,
@@ -364,7 +365,11 @@ async def test_posting_stamps_submitted_at_so_the_duplicate_guard_sees_it():
         carmen_result={"Code": 0, "InternalMessage": "JV-999"},
     )
     assert outcome == "posted"
-    p.mark_submitted.assert_awaited_once_with(extracted.id)
+    # Stamped by this BU's own task, never by `extracted.id` (DEF-2: on the approve path
+    # that id comes from the request body).
+    tenant, task = p.mark_submitted.await_args.args
+    assert tenant == TENANT_ID
+    assert task and task != extracted.id
 
 
 @pytest.mark.asyncio
@@ -2761,14 +2766,19 @@ def _pending_row(**overrides):
         reason_code=None,
         error_message=None,
         attachment="statement.pdf",
+        posting_started_at=None,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
 
 class _ReviewDB:
-    """Enough AsyncSession for the approve path: scalar() answers the claim, get()
-    answers the tenant lookup and the later _finish/_stamp_reviewer fetches."""
+    """Enough AsyncSession for the approve/reject path.
+
+    execute() plays the claim's compare-and-set (`_claim_for_review`) and its release
+    (`_release_claim`) against the one row, honouring the same conditions the SQL does —
+    this BU's row, still pending, not already claimed. scalar() answers the "why not"
+    lookup, get() the tenant and the later _finish/_stamp_reviewer fetches."""
 
     def __init__(self, row, tenant=None):
         self.row = row
@@ -2780,12 +2790,37 @@ class _ReviewDB:
     def add(self, obj):
         self.added.append(obj)
 
-    async def scalar(self, *_a, **_kw):
-        return self.row
+    def _tenant_ok(self, stmt) -> bool:
+        if self.row is None:  # no row this BU can see
+            return False
+        params = stmt.compile().params
+        tid = next((v for k, v in params.items() if k.startswith("tenant_id")), None)
+        return tid is None or tid == self.row.tenant_id
 
-    async def execute(self, *_a, **_kw):
+    async def scalar(self, stmt, *_a, **_kw):
+        return self.row.status if self._tenant_ok(stmt) else None
+
+    async def execute(self, stmt, *_a, **_kw):
         result = MagicMock()
         result.scalars.return_value.first.return_value = None  # has_submitted_doc: no
+        if isinstance(stmt, Update):
+            new = stmt.compile().params.get("posting_started_at")
+            pending = self.row is not None and self.row.status == "pending_review"
+            if new is None:  # _release_claim
+                if pending:
+                    self.row.posting_started_at = None
+            elif (
+                self._tenant_ok(stmt)
+                and pending
+                and (
+                    self.row.posting_started_at is None
+                    or self.row.posting_started_at < new - ingest.POSTING_CLAIM_TTL
+                )
+            ):
+                self.row.posting_started_at = new
+                result.first.return_value = self.row
+            else:
+                result.first.return_value = None
         return result
 
     async def get(self, model, ident):
@@ -2919,9 +2954,8 @@ async def test_input_tax_files_the_branch_off_the_document(branch_no, expected):
 @pytest.mark.asyncio
 async def test_a_second_approve_finds_nothing_to_approve():
     """Two reviewers in one BU with the queue open is the expected case — the bell
-    notification has no user to address, so it goes to everyone. The row is taken FOR
-    UPDATE, so the loser of that race must find a row that is no longer pending rather
-    than post the same JV twice."""
+    notification has no user to address, so it goes to everyone. Whoever comes second
+    must find a row that is no longer pending rather than post the same JV twice."""
     row = _pending_row(status="posted")
     db = _ReviewDB(row)
     with _approve_patches(db, carmen_result={"Code": 0}) as p, pytest.raises(ConflictError):
@@ -2968,6 +3002,66 @@ async def test_a_rejected_jv_leaves_the_document_reviewable():
             )
     assert row.status == "pending_review"
     assert row.review_payload is not None
+    # ...and approvable again at once: the claim went back with it.
+    assert row.posting_started_at is None
+
+
+@pytest.mark.asyncio
+async def test_a_live_claim_turns_a_second_approve_away():
+    """DEF-1 (2026-09-24 QA). The claim is taken before Carmen is called and lives in the
+    row, so a second reviewer arriving mid-post gets a 409 instead of a second JV."""
+    row = _pending_row(posting_started_at=datetime.now(UTC))
+    db = _ReviewDB(row)
+    with _approve_patches(db, carmen_result={"Code": 0}) as p:
+        with pytest.raises(ConflictError, match="posting this document right now"):
+            await ingest.approve_document(
+                row.id, tenant_id=str(row.tenant_id), reviewer="u", extracted=_extracted(), rows=[]
+            )
+    p.post.assert_not_awaited()
+    assert row.status == "pending_review"
+
+
+@pytest.mark.asyncio
+async def test_a_claim_older_than_its_ttl_can_be_retaken():
+    """A process that died mid-post must not strand the document: its claim expires."""
+    stale = datetime.now(UTC) - ingest.POSTING_CLAIM_TTL - timedelta(seconds=1)
+    row = _pending_row(posting_started_at=stale)
+    db = _ReviewDB(row)
+    with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-1"}) as p:
+        out = await ingest.approve_document(
+            row.id, tenant_id=str(row.tenant_id), reviewer="u", extracted=_extracted(), rows=[]
+        )
+    assert out["jv_no"] == "JV-1"
+    p.post.assert_awaited_once()
+    assert row.status == "posted"
+    assert row.posting_started_at is None
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_carmen_gives_the_claim_back():
+    """Transport failure: the JV's fate is unknown and the reviewer is told to check, but
+    the document must not stay locked for five minutes while they do."""
+    row = _pending_row()
+    db = _ReviewDB(row)
+    boom = CarmenAPIError(504, "timeout")
+    with _approve_patches(db, carmen_result=None, carmen_side_effect=boom):
+        with pytest.raises(CarmenServiceError):
+            await ingest.approve_document(
+                row.id, tenant_id=str(row.tenant_id), reviewer="u", extracted=_extracted(), rows=[]
+            )
+    assert row.status == "pending_review"
+    assert row.posting_started_at is None
+
+
+@pytest.mark.asyncio
+async def test_reject_cannot_land_while_an_approve_is_posting():
+    """A reject racing an approve must not mark rejected a JV that is going into Carmen."""
+    row = _pending_row(posting_started_at=datetime.now(UTC))
+    db = _ReviewDB(row)
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        with pytest.raises(ConflictError):
+            await ingest.reject_document(row.id, tenant_id=str(row.tenant_id), reviewer="u")
+    assert row.status == "pending_review"
 
 
 @pytest.mark.asyncio
