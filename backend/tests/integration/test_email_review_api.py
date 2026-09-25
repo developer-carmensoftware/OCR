@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from app.auth.session import SessionInfo
-from app.routers import email_review
+from app.routers.email_automation import review as email_review
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
 

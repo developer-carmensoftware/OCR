@@ -272,7 +272,7 @@ class TestCreditLedger:
         return e
 
     async def _call(self, db, **kw):
-        from app.services.credit_service import get_ledger
+        from app.services.shared.credits import get_ledger
 
         return await get_ledger(
             db,

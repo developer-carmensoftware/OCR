@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 async def _perf_flush_loop() -> None:
     """Flush buffered performance / outbound / audit log rows every 10 seconds."""
     from app.middleware.performance import flush_perf_buffer
-    from app.services.audit_service import flush_audit_buffer
-    from app.services.outbound_log_service import flush_outbound_buffer
+    from app.services.shared.audit import flush_audit_buffer
+    from app.services.shared.outbound_log import flush_outbound_buffer
 
     async def _drain_all() -> None:
         await flush_perf_buffer()
@@ -65,7 +65,7 @@ async def lifespan(_app):
     except asyncio.CancelledError:
         pass
 
-    from app.services.carmen_service import close_client as _close_carmen
+    from app.services.shared.carmen import close_client as _close_carmen
 
     try:
         await _close_carmen()

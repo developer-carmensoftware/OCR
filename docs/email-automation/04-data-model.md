@@ -126,7 +126,7 @@ call), `credit_ledger` (the charge, and any refund), and one `job_runs` row per 
 
 The single table everything else in this folder points back to — cross-checked against
 every raise site in `_run_document()` / `_open_or_fail()` and the three `except` clauses at
-`email_ingest_service.py:842-886`.
+`email_automation/ingest.py:842-886`.
 
 | `reason_code` | Raised from | Charged first? | Refunded? | Final `status` |
 |---|---|---|---|---|

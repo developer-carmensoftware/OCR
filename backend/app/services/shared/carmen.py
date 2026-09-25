@@ -101,7 +101,7 @@ async def _on_response(response: httpx.Response) -> None:
     the user's unsubmitted work away. The request still returns 401 to the caller; what
     changed is that the row stays usable (and #/admin/sessions stays truthful).
     """
-    from app.services.outbound_log_service import log_outbound
+    from app.services.shared.outbound_log import log_outbound
 
     start = response.request.extensions.get("_start", time.perf_counter())
     duration_ms = (time.perf_counter() - start) * 1000

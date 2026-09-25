@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.exceptions import RequestRateLimitExceeded
-from app.services import rate_limit_service as rls
+from app.services.shared import rate_limit as rls
 
 
 class FakeClock:

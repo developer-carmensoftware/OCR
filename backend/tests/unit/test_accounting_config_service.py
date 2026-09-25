@@ -13,7 +13,7 @@ from uuid import uuid4
 import pytest
 
 from app.models import BUAccountingMappingEntry
-from app.services.accounting_config_service import (
+from app.services.credit_card.accounting_config import (
     description_for,
     fill_missing_mappings,
     patch_config,
@@ -321,7 +321,7 @@ async def test_a_bank_read_falls_back_to_the_bus_pre_scoping_entries():
     row named one, so carmencloud's 29 entries stayed bank-less and a KBANK read saw none of
     them — every document parked `mapping_missing` and an auto-post BU stopped posting. A
     bank-less entry was the BU's answer for every bank; the bank's own entry still wins."""
-    from app.services.accounting_config_service import get_accounting_config
+    from app.services.credit_card.accounting_config import get_accounting_config
 
     kbank_own = [_typed("commission", "OPS", "5199")]
     bankless = [
@@ -341,7 +341,7 @@ async def test_a_bank_read_falls_back_to_the_bus_pre_scoping_entries():
 async def test_an_unscoped_read_asks_for_the_bankless_entries_once():
     """No bank named and none on the row: the bank-less entries are the whole answer, read
     once — the fallback is only for a read scoped to a bank."""
-    from app.services.accounting_config_service import get_accounting_config
+    from app.services.credit_card.accounting_config import get_accounting_config
 
     db = _reads(_config_row(), [_typed("tax", "GEN", "1022005")])
 

@@ -97,7 +97,7 @@ _OLD_CATEGORY_KW = {
 
 
 def _get_new_category_kw():
-    from app.services.ap_invoice_service import _CATEGORY_KW
+    from app.services.ap_invoice.service import _CATEGORY_KW
 
     return _CATEGORY_KW
 

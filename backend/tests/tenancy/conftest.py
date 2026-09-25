@@ -394,7 +394,7 @@ def _maintenance_inactive():
     """A live maintenance flag on the dev DB would 503 every request here."""
     import time
 
-    from app.services import maintenance_service as maint
+    from app.services.shared import maintenance as maint
 
     maint._cache.update(
         {
@@ -440,7 +440,7 @@ def real_client(session):
         return session
 
     with (
-        patch("app.services.usage_service.fetch_openrouter_pricing", new_callable=AsyncMock),
+        patch("app.services.shared.pricing_cache.fetch_openrouter_pricing", new_callable=AsyncMock),
         patch("app.lifecycle._perf_flush_loop", new_callable=AsyncMock),
         patch("app.lifecycle.asyncio.sleep", new_callable=AsyncMock),
         TestClient(app, raise_server_exceptions=True) as client,
@@ -483,7 +483,7 @@ def admin_client(*, perms=None, tenant_scope=""):
         return principal
 
     with (
-        patch("app.services.usage_service.fetch_openrouter_pricing", new_callable=AsyncMock),
+        patch("app.services.shared.pricing_cache.fetch_openrouter_pricing", new_callable=AsyncMock),
         patch("app.lifecycle._perf_flush_loop", new_callable=AsyncMock),
         patch("app.lifecycle.asyncio.sleep", new_callable=AsyncMock),
         TestClient(app, raise_server_exceptions=True) as client,

@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.models.schemas import ExtractedDetailRow
-from app.services.cc_jv import num, r2
+from app.services.credit_card.jv import num, r2
 
 logger = logging.getLogger(__name__)
 

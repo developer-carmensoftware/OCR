@@ -14,8 +14,8 @@ from app.exceptions import ValidationError
 from app.llm.client import call_text_llm, call_vision_llm, parse_vision_json
 from app.llm.prompts.ap_invoice import PROMPT as AP_INVOICE_PROMPT
 from app.llm.prompts.mapping import build_ap_expense_prompt
-from app.services.ap_invoice_postprocess_service import postprocess as postprocess_ap_invoice
-from app.services.ap_vendor_history_service import (
+from app.services.ap_invoice.postprocess import postprocess as postprocess_ap_invoice
+from app.services.ap_invoice.vendor_history import (
     aggregate_history,
     fetch_vendor_history,
     format_history_for_prompt,

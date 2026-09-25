@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.gl_suggestion_service import _dept_allowed_map, _pair_ok, _validate_codes
+from app.services.credit_card.gl_suggestion import _dept_allowed_map, _pair_ok, _validate_codes
 from app.utils.gl_filter import parse_default_account
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
@@ -106,12 +106,12 @@ class TestRouterHistoryBypassEnforcement:
 
         with (
             patch(
-                "app.routers.mapping.get_confirmed_mappings",
+                "app.routers.credit_card.mapping.get_confirmed_mappings",
                 new_callable=AsyncMock,
                 return_value=history_data,
             ),
             patch(
-                "app.routers.mapping.map_gl.suggest_fixed_fields",
+                "app.routers.credit_card.mapping.map_gl.suggest_fixed_fields",
                 new_callable=AsyncMock,
                 return_value=ai_return,
             ) as mock_llm,
@@ -148,11 +148,11 @@ class TestRouterHistoryBypassEnforcement:
 
         with (
             patch(
-                "app.routers.mapping.get_confirmed_mappings",
+                "app.routers.credit_card.mapping.get_confirmed_mappings",
                 new_callable=AsyncMock,
                 return_value=history_data,
             ),
-            patch("app.routers.mapping.map_gl.suggest_fixed_fields") as mock_llm,
+            patch("app.routers.credit_card.mapping.map_gl.suggest_fixed_fields") as mock_llm,
             make_test_client(db) as client,
         ):
             resp = client.post(

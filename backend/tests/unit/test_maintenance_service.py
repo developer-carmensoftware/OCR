@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.services import maintenance_service as ms
+from app.services.shared import maintenance as ms
 
 # Cache reset between tests is handled by the autouse `_maintenance_inactive`
 # fixture in tests/conftest.py; each test here re-seeds `_cache` as it needs.

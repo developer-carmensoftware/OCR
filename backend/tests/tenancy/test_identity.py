@@ -67,7 +67,7 @@ def test_repeating_the_exchange_reuses_the_row_it_already_made(real_engine, tena
 def test_a_brand_new_host_bu_pair_mints_its_own_tenant_and_grants_once(real_engine):
     """The create path, end to end, including the signup grant that rides the same
     transaction — then cleaned up so the suite leaves nothing behind."""
-    from app.services.credit_service import SIGNUP_GRANT_CREDITS
+    from app.services.shared.credits import SIGNUP_GRANT_CREDITS
 
     host, bu = TEST_HOST, "bu-ephemeral"
     new_id, created = _upsert(real_engine, host, bu)
@@ -75,7 +75,7 @@ def test_a_brand_new_host_bu_pair_mints_its_own_tenant_and_grants_once(real_engi
 
     async def _grant_and_clean():
         from app.database import async_session
-        from app.services.credit_service import grant_signup_credits
+        from app.services.shared.credits import grant_signup_credits
 
         async with async_session() as db:
             await grant_signup_credits(db, new_id)

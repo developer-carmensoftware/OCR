@@ -10,8 +10,8 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models.enums import BillingDocumentType
-from app.services import ar_posting_service
-from app.services.billing_document_service import BuyerInfo, issue_document
+from app.services.billing import ar_posting as ar_posting_service
+from app.services.billing.documents import BuyerInfo, issue_document
 
 
 def _make_db():
@@ -38,11 +38,11 @@ async def test_starter_pack_posts_524_30_not_double_vated_561():
     db = _make_db()
     with (
         patch(
-            "app.services.billing_document_service._fetch_billing_configs",
+            "app.services.billing.documents._fetch_billing_configs",
             new=AsyncMock(return_value={"billing.vat_rate": "7"}),
         ),
         patch(
-            "app.services.billing_document_service._next_document_number",
+            "app.services.billing.documents._next_document_number",
             new=AsyncMock(return_value="PI-202607-0001"),
         ),
     ):

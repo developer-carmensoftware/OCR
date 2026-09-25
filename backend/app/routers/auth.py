@@ -35,8 +35,8 @@ from app.constants import BlockedHosts
 from app.database import async_session, get_db, provision_tenant
 from app.models.orm import OcrSession, Tenant
 from app.models.schemas import ExchangeRequest, ExchangeResponse
-from app.services.credit_service import grant_signup_credits
-from app.services.rate_limit_service import InMemoryRateLimiter
+from app.services.shared.credits import grant_signup_credits
+from app.services.shared.rate_limit import InMemoryRateLimiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
@@ -180,7 +180,7 @@ async def _upsert_tenant(db: AsyncSession, host: str, bu_code: str) -> tuple[Ten
 
 
 async def validate_token(token: str, carmen_uri: str) -> None:
-    from app.services.carmen_service import get_http_client
+    from app.services.shared.carmen import get_http_client
 
     headers = {"Authorization": token, "User-Agent": "OCR-SSO-Validator"}
     resp = await get_http_client().get(
@@ -304,7 +304,7 @@ async def revoke_session(
 async def get_usage(_session: SessionInfo = Depends(get_current_session)):
     """Get credit balance + active subscription for the tenant — the two pools
     consume_document() charges, in the order it charges them."""
-    from app.services.credit_service import get_active_subscription, get_credit_balance
+    from app.services.shared.credits import get_active_subscription, get_credit_balance
 
     credit_balance = await get_credit_balance(_session.tenant_id)
 

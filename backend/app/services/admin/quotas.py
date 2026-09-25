@@ -21,8 +21,8 @@ from app.models.billing import TenantCredit
 from app.models.catalog import Module, TenantModule
 from app.models.identity import Tenant
 from app.models.observability import LLMUsageLog
-from app.services.audit_service import AuditAction, log_admin_action
-from app.services.credit_service import active_subscription_map
+from app.services.shared.audit import AuditAction, log_admin_action
+from app.services.shared.credits import active_subscription_map
 
 
 async def get_tenants_quota_overview(

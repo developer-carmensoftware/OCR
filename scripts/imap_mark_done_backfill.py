@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from app.config import settings  # noqa: E402
-from app.services.email_imap import (  # noqa: E402
+from app.services.email_automation.imap import (  # noqa: E402
     DONE_FLAG,
     _connect,
     _quoted_folder,

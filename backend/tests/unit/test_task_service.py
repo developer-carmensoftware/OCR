@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.models.orm import TaskStatus
-from app.services import task_service as ts
+from app.services.shared import task as ts
 from tests.conftest import make_mock_db
 
 

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services import ar_posting_service
+from app.services.billing import ar_posting as ar_posting_service
 
 
 def _kwargs():

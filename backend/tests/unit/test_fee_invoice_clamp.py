@@ -9,7 +9,7 @@ arithmetic, not re-OCR'd.
 
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services.credit_card_service import (
+from app.services.credit_card.extraction import (
     _ASSUMED_RATE,
     _FEE_UNALLOCATED,
     _NEGATIVE_UNSUPPORTED,

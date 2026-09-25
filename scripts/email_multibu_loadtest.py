@@ -286,7 +286,7 @@ async def seed_gl(bu: BU) -> None:
     from app.database import async_session
     from app.models.schemas.common import FieldMapping
     from app.models.schemas.config import AccountingConfigRequest
-    from app.services.accounting_config_service import save_accounting_config
+    from app.services.credit_card.accounting_config import save_accounting_config
 
     async with async_session() as db:
         await save_accounting_config(
@@ -392,7 +392,7 @@ def dry_run_patches(rec: DryRun, *, fake_extract: bool) -> list:
     to the originals.
     """
     from app.context import current_carmen_uri, current_tenant_id
-    from app.services import email_ingest_service as ingest
+    from app.services.email_automation import ingest
 
     async def _post_gljv(payload, token):
         rec.jvs.append(
@@ -425,8 +425,8 @@ def dry_run_patches(rec: DryRun, *, fake_extract: bool) -> list:
         return None
 
     patches = [
-        patch.object(ingest, "post_gljv", _post_gljv),
-        patch.object(ingest, "post_input_tax", _post_input_tax),
+        patch.object(ingest.carmen, "post_gljv", _post_gljv),
+        patch.object(ingest.carmen, "post_input_tax", _post_input_tax),
         patch.object(ingest, "get_account_codes", _accounts),
         patch.object(ingest, "get_departments", _departments),
         patch.object(ingest, "get_tax_profiles", _tax_profiles),
@@ -487,7 +487,7 @@ async def _canned_extract(*, file_bytes, original_filename, bank_code, task_id, 
 
 def timing_patch(rec: DryRun):
     """Wrap `_process_attachment` to time each document without changing what it does."""
-    from app.services import email_ingest_service as ingest
+    from app.services.email_automation import ingest
 
     original = ingest._process_attachment
 
@@ -611,7 +611,7 @@ def token_table(rows: list[dict]) -> str:
 
 
 async def mode_batch(args) -> bool:
-    from app.services import email_ingest_service as ingest
+    from app.services.email_automation import ingest
 
     documents = load_documents(args.docs, args.docs_dir)
     per_bu = len(documents)
@@ -781,7 +781,7 @@ async def mode_batch(args) -> bool:
 
 async def gate_cases(report: Report, bus, documents, box, rec: DryRun, args) -> None:
     """The two gates the matrix deliberately bypasses, each with the patch removed."""
-    from app.services import email_ingest_service as ingest
+    from app.services.email_automation import ingest
 
     name, blob = documents[0]
     a, b = bus[0], bus[1 if len(bus) > 1 else 0]
@@ -846,7 +846,7 @@ async def fire_level(
     spans several tenants — which is the point: a ContextVar that leaked would show up as
     a row filed under the wrong one, and the caller checks exactly that afterwards.
     """
-    from app.services import email_ingest_service as ingest
+    from app.services.email_automation import ingest
 
     latencies: list[float] = []
     errors: dict[str, int] = {}
@@ -985,7 +985,7 @@ async def mode_overlap(args) -> bool:
     The real shapes: a second Render replica, or an operator pressing Poll on
     `#/admin/email` while the cron is mid-run.
     """
-    from app.services import email_ingest_service as ingest
+    from app.services.email_automation import ingest
 
     documents = load_documents(args.docs, args.docs_dir)
     report = Report()

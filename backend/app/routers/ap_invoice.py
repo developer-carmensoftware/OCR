@@ -12,14 +12,14 @@ from app.context import current_document_ref
 from app.database import async_session
 from app.models.orm import APInvoice, OCRTask, TaskStatus
 from app.models.schemas import SuggestGLRequest
-from app.services import audit_service
-from app.services.ap_invoice_service import extract_ap_invoice_data, suggest_for_items
-from app.services.audit_service import AuditAction
-from app.services.carmen_service import CarmenAPIError, get_account_codes, get_departments
-from app.services.credit_service import consume_document, refund_document
-from app.services.file_service import file_service
-from app.services.module_gate import assert_module_enabled
-from app.services.task_service import create_task, mark_failed
+from app.services.ap_invoice.service import extract_ap_invoice_data, suggest_for_items
+from app.services.shared import audit as audit_service
+from app.services.shared.audit import AuditAction
+from app.services.shared.carmen import CarmenAPIError, get_account_codes, get_departments
+from app.services.shared.credits import consume_document, refund_document
+from app.services.shared.file import file_service
+from app.services.shared.module_gate import assert_module_enabled
+from app.services.shared.task import create_task, mark_failed
 from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc

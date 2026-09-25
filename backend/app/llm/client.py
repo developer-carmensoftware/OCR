@@ -89,7 +89,7 @@ async def _guard_provider(provider: str | None, module_id: str | None) -> None:
         )
         from app.context import current_tenant_id
         from app.models.enums import AlertSeverity
-        from app.services import anomaly_service
+        from app.services.shared import anomaly as anomaly_service
 
         await anomaly_service.open_alert_if_absent(
             tenant_id=current_tenant_id.get() or "system",
@@ -376,8 +376,8 @@ async def call_vision_llm(
     Charging a document is the caller's responsibility (routers call consume_document()).
     """
     from app.context import current_request_id
-    from app.services.outbound_log_service import log_outbound
-    from app.services.usage_service import log_llm_usage
+    from app.services.shared.llm_usage_logger import log_llm_usage
+    from app.services.shared.outbound_log import log_outbound
 
     start = time.perf_counter()
     status_code = 200
@@ -490,8 +490,8 @@ async def call_text_llm(
     Returns None on any failure (never raises to callers).
     """
     from app.context import current_request_id
-    from app.services.outbound_log_service import log_outbound
-    from app.services.usage_service import log_llm_usage
+    from app.services.shared.llm_usage_logger import log_llm_usage
+    from app.services.shared.outbound_log import log_outbound
 
     target_model = model or settings.openrouter_suggestion_model
 

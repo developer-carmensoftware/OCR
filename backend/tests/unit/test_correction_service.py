@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.context import current_tenant_id
-from app.services import correction_service as cs
+from app.services.shared import correction as cs
 
 
 @pytest.fixture(autouse=True)
