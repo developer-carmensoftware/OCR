@@ -941,10 +941,13 @@ def build_wave_missing7(state: dict) -> list[MsgSpec]:
     """Resend of the 7 wave-1 fixtures that vanished: marked \\Seen with no ledger row and
     no entry in the poll's own outcome summary (15 processed of 22 sent). No overlapping
     poll ran (`job_runs` shows exactly one `email-ingest` execution in that window) and no
-    parse-failure warning was logged, so this was not attempted-and-crashed — `fetch_unseen`
-    silently did not return them. Isolated here, in a smaller batch, to see whether it
-    reproduces: if it does, silent loss of a batch that bills customers is a finding in its
-    own right, independent of anything these 7 cases were built to test."""
+    parse-failure warning was logged, so this was not attempted-and-crashed. Isolated here,
+    in a smaller batch, to see whether it reproduces.
+
+    Root cause, established after the run (report F-1): not the poller. Something outside it
+    marked the mail read, and `SEARCH UNSEEN` was the queue, so read mail dropped out of every
+    poll. Fixed on `fix/email-imap-done-flag`: the queue is now the `$OcrDone` keyword, which
+    only this system writes, so reading the mailbox no longer loses anything."""
     return [
         MsgSpec(
             "R1-own-r2",
@@ -1454,10 +1457,9 @@ async def phase_verify(_args) -> None:
             # Both are designed to leave no email_documents row (retry_later releases its
             # claim so the message can be retried later) — so "no row" is correct here,
             # not a failure. IMPORTANT: this table alone cannot tell "correctly still held,
-            # will retry" apart from "silently lost — marked \Seen with nothing to show for
-            # it", since both look identical (no row) from here. That distinction needs a
-            # separate IMAP \Seen check (see the report's silent-loss finding, confirmed
-            # that way, not by this function).
+            # will retry" apart from "silently lost", since both look identical (no row)
+            # from here. That distinction needs a separate IMAP check: held mail lacks
+            # `$OcrDone` (`\Seen` before fix/email-imap-done-flag — see report F-1).
             ok = len(got) == 0
             note = "no ledger row (correct)" if ok else f"UNEXPECTED ROW: {got}"
             _line(m["id"], ok, note)
