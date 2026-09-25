@@ -228,9 +228,11 @@ def append(box: imaplib.IMAP4_SSL, cases: list[Case], extra: list[Case] = ()) ->
         print(f"  + {case.id:4} {case.why}")
 
 
-def unseen_ids(box: imaplib.IMAP4_SSL) -> set[str]:
+def pending_ids(box: imaplib.IMAP4_SSL) -> set[str]:
+    """Message-IDs the poll has not reached a verdict on — no `$OcrDone`, whatever `\\Seen`
+    says (the poll's queue since F-1, 2026-09-24)."""
     out = set()
-    for uid in (box.search(None, "UNSEEN")[1][0] or b"").split():
+    for uid in (box.search(None, "NOT", "KEYWORD", "$OcrDone")[1][0] or b"").split():
         fetched = box.fetch(uid, "(BODY.PEEK[HEADER])")[1]
         # Same guard the poll itself keeps: a server may answer a FETCH with a bare `)`
         # rather than a (header, body) tuple — for a message expunged between the SEARCH
@@ -372,11 +374,11 @@ async def free_run(box, report: Report, pdfs: dict[str, bytes]) -> None:
     found = await rows_for("P12")
     report.check("P12b", "the duplicate produced no second row", 1, len(found))
 
-    # P16 must still be sitting there unread — SMALLER filters at the server, so the poll
-    # never fetched it and never marked it seen.
-    still = unseen_ids(box)
+    # P16 must still be pending — SMALLER filters at the server, so the poll never fetched
+    # it and never marked it done.
+    still = pending_ids(box)
     p16 = next(c for c in open_gate if c.id == "P16")
-    report.check("P16b", "oversized mail left unfetched (still UNSEEN)", True,
+    report.check("P16b", "oversized mail left unfetched (still pending)", True,
                  p16.message_id in still)
 
     # P4 stored the code it read out of the subject.

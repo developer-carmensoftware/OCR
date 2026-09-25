@@ -1253,7 +1253,7 @@ async def test_a_lapsed_package_stops_the_message_before_any_extraction():
 async def test_a_switched_off_bu_keeps_its_mail_instead_of_losing_it():
     """The toggle is a pause, not a verdict on the mail.
 
-    `fetch_unseen` flags the whole batch before anyone knows who it belongs to, so
+    `fetch_pending` flags the whole batch before anyone knows who it belongs to, so
     anything short of handing it back means a BU that switches the feature off for a
     week has that week's statements destroyed — with no ledger row, no notification and
     nothing to re-run.
@@ -1577,9 +1577,9 @@ async def test_run_ingest_summarises_every_message_and_records_the_job_run():
     process = AsyncMock(side_effect=[["posted"], ["unrouted"]])
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "fetch_unseen", lambda limit: (messages, 0)),
+        patch.object(ingest, "fetch_pending", lambda limit: (messages, 0)),
         patch.object(ingest, "_process_message", process),
-        patch.object(ingest, "mark_seen", MagicMock()),
+        patch.object(ingest, "mark_done", MagicMock()),
         patch.object(ingest, "_record_run", record),
     ):
         summary = await ingest.run_ingest(limit=5)
@@ -1843,12 +1843,12 @@ def test_the_mailbox_name_is_quoted_before_select(configured, sent):
     assert imap._quoted_folder(configured) == sent
 
 
-def test_fetch_unseen_selects_the_configured_folder_quoted(monkeypatch):
+def test_fetch_pending_selects_the_configured_folder_quoted(monkeypatch):
     """The wiring, not just the helper: a poll must reach SELECT with a usable name."""
     box = _searching_box(monkeypatch, b"")
     monkeypatch.setattr(ingest.settings, "imap_folder", "AR Agent")
 
-    assert ingest.fetch_unseen(10) == ([], 0)
+    assert ingest.fetch_pending(10) == ([], 0)
     box.select.assert_called_once_with('"AR Agent"')
 
 
@@ -1903,7 +1903,7 @@ def test_the_poll_records_when_each_message_arrived(monkeypatch, fetched):
     The `Date:` header is written by whoever sent the mail."""
     box = _searching_box(monkeypatch, b"1", fetch=("OK", fetched))
 
-    messages, _ = ingest.fetch_unseen(10)
+    messages, _ = ingest.fetch_pending(10)
 
     # PEEK, not a bare RFC822 fetch: reading the body must not set `\Seen` as a side
     # effect — the flag is the poll's verdict and is set after one exists.
@@ -1916,7 +1916,7 @@ def test_an_internaldate_the_server_answers_oddly_leaves_the_arrival_unknown(mon
     processes the mail. Guessing a time in either direction would drop real documents."""
     box = _searching_box(monkeypatch, b"1", fetch=("OK", [(b"1 (RFC822 {26}", _RAW), b")"]))
 
-    messages, _ = ingest.fetch_unseen(10)
+    messages, _ = ingest.fetch_pending(10)
 
     assert messages[0]["arrived_at"] is None
     # The fetch flags nothing: a message it parsed is the poll's to decide about.
@@ -1933,7 +1933,7 @@ def test_the_poll_addresses_mail_by_uid_not_sequence_number(monkeypatch):
     only checks the arguments, which is why this asserts on the method.
     """
     box = _searching_box(monkeypatch, b"1 2")
-    ingest.fetch_unseen(10)
+    ingest.fetch_pending(10)
     assert _uid_calls(box, "SEARCH")
     assert [c[0] for c in _uid_calls(box, "FETCH")] == ["1", "2"]
     box.search.assert_not_called()
@@ -1941,12 +1941,14 @@ def test_the_poll_addresses_mail_by_uid_not_sequence_number(monkeypatch):
     box.store.assert_not_called()
 
 
-def test_setting_the_seen_flag_addresses_mail_by_uid(monkeypatch):
-    """The connection that made UIDs mandatory: `mark_seen` opens its own, minutes after
-    the one that read the mail."""
+def test_marking_done_addresses_mail_by_uid(monkeypatch):
+    """The connection that made UIDs mandatory: `mark_done` opens its own, minutes after
+    the one that read the mail. It sets the done flag — the only thing the queue reads —
+    and `\\Seen` beside it for whoever looks at the label."""
     box = _searching_box(monkeypatch, b"")
-    ingest.mark_seen(["11", "12"])
-    assert _uid_calls(box, "STORE") == [("11", "+FLAGS", "\\Seen"), ("12", "+FLAGS", "\\Seen")]
+    ingest.mark_done(["11", "12"])
+    done = f"(\\Seen {imap.DONE_FLAG})"
+    assert _uid_calls(box, "STORE") == [("11", "+FLAGS", done), ("12", "+FLAGS", done)]
     box.store.assert_not_called()
 
 
@@ -1960,10 +1962,10 @@ def test_a_message_that_cannot_be_parsed_is_flagged_and_left(monkeypatch):
     box = _searching_box(monkeypatch, b"1", fetch=("OK", [(b"1 (UID 1 BODY[] {3}", b"raw")]))
     monkeypatch.setattr(imap, "_attachments", MagicMock(side_effect=ValueError("bad MIME")))
 
-    messages, _ = ingest.fetch_unseen(10)
+    messages, _ = ingest.fetch_pending(10)
 
     assert messages == []
-    assert _uid_calls(box, "STORE") == [("1", "+FLAGS", "\\Seen")]
+    assert _uid_calls(box, "STORE") == [("1", "+FLAGS", f"(\\Seen {imap.DONE_FLAG})")]
 
 
 def test_a_poll_takes_the_newest_mail_not_the_oldest(monkeypatch):
@@ -1975,7 +1977,7 @@ def test_a_poll_takes_the_newest_mail_not_the_oldest(monkeypatch):
     other tenant. Taking the tail means a backlog can only use capacity nothing else wants.
     """
     box = _searching_box(monkeypatch, b"1 2 3 4 5")
-    ingest.fetch_unseen(2)
+    ingest.fetch_pending(2)
     assert [c[0] for c in _uid_calls(box, "FETCH")] == ["4", "5"]
 
 
@@ -1984,17 +1986,56 @@ def test_a_poll_looks_no_further_back_than_the_hold_window(monkeypatch):
     is re-fetched on every poll for the life of the deployment."""
     box = _searching_box(monkeypatch, b"")
     monkeypatch.setattr(ingest.settings, "imap_hold_days", 14)
-    ingest.fetch_unseen(10)
+    ingest.fetch_pending(10)
 
     args = _uid_calls(box, "SEARCH")[0]
-    assert args[0] == "UNSEEN"
-    assert args[1] == "SINCE"
+    assert args[:3] == ("NOT", "KEYWORD", imap.DONE_FLAG)
+    assert args[3] == "SINCE"
     # IMAP dates are ASCII English whatever the host's locale is set to.
-    assert args[2] == imap.since_arg()
+    assert args[4] == imap.since_arg()
     assert (
-        datetime.strptime(args[2], "%d-%b-%Y").date()
+        datetime.strptime(args[4], "%d-%b-%Y").date()
         == (datetime.now(UTC) - timedelta(days=14)).date()
     )
+
+
+def test_the_queue_is_the_done_flag_never_unseen(monkeypatch):
+    """F-1 (2026-09-24 QA): with `SEARCH UNSEEN` as the queue, anybody who read the mailbox —
+    a person in Gmail, a mail client, another deployment — made mail drop out of every poll
+    with no trace. Both searches must ask for "not done", and neither may mention UNSEEN."""
+    box = _searching_box(monkeypatch, b"")
+    ingest.fetch_pending(10)
+
+    searches = _uid_calls(box, "SEARCH")
+    assert len(searches) == 2
+    for terms in searches:
+        assert terms[:3] == ("NOT", "KEYWORD", imap.DONE_FLAG)
+        assert "UNSEEN" not in terms
+
+
+def test_the_confirmation_sweep_peeks_and_reads_the_same_queue(monkeypatch):
+    """F-4: it fetched `(RFC822)`, which marks Gmail mail read, so a confirmation for a tag
+    nobody was waiting on — deliberately left for the document poll — was consumed here."""
+    box = _searching_box(monkeypatch, b"7", fetch=("OK", [(b"7 (UID 7 BODY[] {26}", _RAW), b")"]))
+    imap.fetch_confirmations()
+
+    terms = _uid_calls(box, "SEARCH")[0]
+    assert terms[:3] == ("NOT", "KEYWORD", imap.DONE_FLAG)
+    assert "FROM" in terms and "UNSEEN" not in terms
+    assert _uid_calls(box, "FETCH") == [("7", "(BODY.PEEK[])")]
+    assert not _uid_calls(box, "STORE")
+
+
+def test_an_odd_fetch_response_is_left_pending_but_logged(monkeypatch, caplog):
+    """This skip used to leave no trace anywhere. It still leaves the mail pending (the next
+    poll tries again) but now says so."""
+    box = _searching_box(monkeypatch, b"9")  # FETCH answers ("OK", [None])
+    with caplog.at_level("WARNING", logger=imap.logger.name):
+        messages, _ = ingest.fetch_pending(10)
+
+    assert messages == []
+    assert not _uid_calls(box, "STORE")
+    assert any("UID 9" in r.getMessage() for r in caplog.records)
 
 
 def test_mail_past_the_hold_window_is_counted_even_though_it_is_never_fetched(monkeypatch):
@@ -2002,7 +2043,7 @@ def test_mail_past_the_hold_window_is_counted_even_though_it_is_never_fetched(mo
     poller outage longer than IMAP_HOLD_DAYS loses real mail with no symptom at all. The
     second search costs one round trip on the connection already open and no FETCH."""
     box = _searching_box(monkeypatch, b"4 5", unbounded=b"1 2 3 4 5")
-    messages, beyond = ingest.fetch_unseen(10)
+    messages, beyond = ingest.fetch_pending(10)
 
     assert messages == []
     assert beyond == 3
@@ -2076,7 +2117,7 @@ async def test_the_sweep_follows_the_link_and_records_the_confirmation():
         patch.object(ingest, "fetch_confirmations", lambda: [_confirmation()]),
         patch.object(ingest, "auto_confirm_forwarding", confirm),
         patch.object(ingest.es, "record_gmail_confirmed", record),
-        patch.object(ingest, "mark_seen", seen),
+        patch.object(ingest, "mark_done", seen),
         patch.object(ingest, "_record_run", run),
     ):
         result = await ingest.sweep_confirmations()
@@ -2102,7 +2143,7 @@ async def test_a_confirmation_google_refuses_is_still_marked_seen_and_writes_no_
         patch.object(ingest, "fetch_confirmations", lambda: [_confirmation()]),
         patch.object(ingest, "auto_confirm_forwarding", AsyncMock(return_value=False)),
         patch.object(ingest.es, "record_gmail_confirmed", AsyncMock()),
-        patch.object(ingest, "mark_seen", seen),
+        patch.object(ingest, "mark_done", seen),
         patch.object(ingest, "_record_run", run),
     ):
         result = await ingest.sweep_confirmations()
@@ -2124,7 +2165,7 @@ async def test_a_confirmation_for_a_tag_outside_the_window_is_left_for_the_docum
         patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"someone"})),
         patch.object(ingest, "fetch_confirmations", lambda: [_confirmation()]),
         patch.object(ingest, "auto_confirm_forwarding", confirm),
-        patch.object(ingest, "mark_seen", seen),
+        patch.object(ingest, "mark_done", seen),
         patch.object(ingest, "_record_run", AsyncMock()),
     ):
         result = await ingest.sweep_confirmations()
@@ -2260,11 +2301,11 @@ async def test_the_poll_flags_only_the_mail_it_reached_a_verdict_on():
     ]
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "fetch_unseen", lambda limit: (messages, 0)),
+        patch.object(ingest, "fetch_pending", lambda limit: (messages, 0)),
         patch.object(
             ingest, "_process_message", AsyncMock(side_effect=[["posted"], ["retry_later"]])
         ),
-        patch.object(ingest, "mark_seen", mark),
+        patch.object(ingest, "mark_done", mark),
         patch.object(ingest, "_record_run", AsyncMock()),
     ):
         summary = await ingest.run_ingest()
@@ -2288,13 +2329,13 @@ async def test_a_crash_mid_poll_leaves_everything_it_never_looked_at_unread():
     ]
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "fetch_unseen", lambda limit: (messages, 0)),
+        patch.object(ingest, "fetch_pending", lambda limit: (messages, 0)),
         patch.object(
             ingest,
             "_process_message",
             AsyncMock(side_effect=[["posted"], RuntimeError("connection reset"), ["posted"]]),
         ),
-        patch.object(ingest, "mark_seen", mark),
+        patch.object(ingest, "mark_done", mark),
         patch.object(ingest, "_record_run", AsyncMock()),
         pytest.raises(RuntimeError),
     ):
@@ -2317,9 +2358,9 @@ async def test_a_poll_that_dies_before_the_ledger_leaves_its_mail_unread():
     ]
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "fetch_unseen", lambda limit: (messages, 0)),
+        patch.object(ingest, "fetch_pending", lambda limit: (messages, 0)),
         patch.object(ingest, "_process_message", AsyncMock(side_effect=BaseException("killed"))),
-        patch.object(ingest, "mark_seen", mark),
+        patch.object(ingest, "mark_done", mark),
         patch.object(ingest, "_record_run", AsyncMock()),
         pytest.raises(BaseException, match="killed"),
     ):
@@ -2334,8 +2375,8 @@ async def test_mail_beyond_the_hold_window_reaches_the_summary_and_an_alert():
     alert = AsyncMock()
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "fetch_unseen", lambda limit: ([], 4)),
-        patch.object(ingest, "mark_seen", MagicMock()),
+        patch.object(ingest, "fetch_pending", lambda limit: ([], 4)),
+        patch.object(ingest, "mark_done", MagicMock()),
         patch.object(ingest, "async_session", _session_factory(_FakeDB())),
         patch.object(ingest.anomaly_service, "open_alert_if_absent", alert),
     ):

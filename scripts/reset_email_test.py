@@ -10,7 +10,7 @@ and each one is doing its job in production.
 
     email_documents   (tenant, message_id, attachment)   the mail was already handled
     credit_cards      doc_no + submitted_at              the document was already posted
-    IMAP \\Seen                                           the poll only reads UNSEEN
+    IMAP $OcrDone (+ \\Seen)                              the poll only reads mail without $OcrDone
 
 So a reset is all three, and skipping one produces a confusing half-result: clear only the
 ledger and the document is refused as a duplicate; clear only `credit_cards` and the poll
@@ -86,7 +86,11 @@ async def _charged(conn, rows: list[dict]) -> int:
 
 
 def _unread(message_ids: list[str]) -> None:
-    """Clear \\Seen so the next poll fetches these messages again."""
+    """Clear the done flag (and \\Seen) so the next poll fetches these messages again.
+
+    `$OcrDone` is what the poll reads (`email_imap.DONE_FLAG`); clearing only `\\Seen`, as
+    this did before the queue stopped being `UNSEEN`, would now replay nothing.
+    """
     box = imaplib.IMAP4_SSL(os.environ["IMAP_HOST"], int(os.environ.get("IMAP_PORT", 993)))
     try:
         box.login(os.environ["IMAP_USER"], os.environ["IMAP_PASSWORD"])
@@ -95,7 +99,7 @@ def _unread(message_ids: list[str]) -> None:
             _, data = box.search(None, "HEADER", "Message-ID", f'"{message_id}"')
             uids = (data[0] or b"").split()
             for uid in uids:
-                box.store(uid, "-FLAGS", "\\Seen")
+                box.store(uid, "-FLAGS", "(\\Seen $OcrDone)")
             print(f"  unread  {message_id} ({len(uids)} message(s))")
     finally:
         try:
@@ -110,7 +114,9 @@ async def main() -> int:
     ap.add_argument("--message-id", help="reset one mail by its RFC-822 Message-ID")
     ap.add_argument("--doc-no", help="reset by the extracted document number")
     ap.add_argument("--apply", action="store_true", help="actually change things")
-    ap.add_argument("--unread", action="store_true", help="also clear \\Seen in the mailbox")
+    ap.add_argument(
+        "--unread", action="store_true", help="also clear $OcrDone and \\Seen in the mailbox"
+    )
     args = ap.parse_args()
 
     conn = await asyncpg.connect(DSN, statement_cache_size=0)
@@ -170,7 +176,10 @@ async def main() -> int:
         if args.unread:
             _unread(message_ids)
         else:
-            print("\n  \\Seen left alone — mark the mail unread in Gmail, or pass --unread")
+            print(
+                "\n  Mailbox flags left alone — marking mail unread in Gmail does NOT replay it"
+                " (the poll reads $OcrDone); pass --unread to clear it"
+            )
         return 0
     finally:
         await conn.close()

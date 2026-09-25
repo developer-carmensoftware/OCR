@@ -111,10 +111,10 @@ from app.services.credit_service import consume_document, refund_document
 from app.services.email_imap import (
     auto_confirm_forwarding,
     fetch_confirmations,
-    fetch_unseen,
+    fetch_pending,
     gmail_confirm_code,
     gmail_confirm_link,
-    mark_seen,
+    mark_done,
     match_rules,
     people_addresses,
     sender_allowed,
@@ -232,7 +232,7 @@ async def run_ingest(limit: int | None = None) -> dict:
 
     Serialised against itself. A batch whose documents are slow can outlast the poll
     interval, and a second poll starting on top of it would not duplicate work — `_claim`
-    dedupes, and nothing is flagged `\\Seen` until a verdict exists — but it would double
+    dedupes, and nothing is flagged done until a verdict exists — but it would double
     this job's share of a connection pool capped at 15 for the whole application. Skipping
     is free and the backlog is still there in ten minutes.
     """
@@ -272,17 +272,17 @@ async def run_ingest(limit: int | None = None) -> dict:
         # document: a 20-attachment batch must produce one bell row saying "20 documents
         # need review", not 20 rows saying "one does".
         parked: dict[str, int] = {}
-        # The mail this poll has reached a verdict on, and may therefore flag `\Seen`.
-        # Nothing else is touched: `fetch_unseen` flags nothing on the way in, so a poll
-        # that dies — crash, deploy, OOM, a killed request — leaves every undecided
-        # message unread and the next poll picks it up. Flagged on the way in instead,
-        # that mail was read, unclaimed and recorded nowhere at all.
+        # The mail this poll has reached a verdict on, and may therefore flag done
+        # (`email_imap.DONE_FLAG`). Nothing else is touched: `fetch_pending` flags nothing on
+        # the way in, so a poll that dies — crash, deploy, OOM, a killed request — leaves
+        # every undecided message pending and the next poll picks it up. Flagged on the way
+        # in instead, that mail was done, unclaimed and recorded nowhere at all.
         handled: list[str] = []
         messages: list[dict[str, Any]] = []
         done = 0
         try:
             messages, beyond = await asyncio.to_thread(
-                fetch_unseen, limit or settings.imap_batch_size
+                fetch_pending, limit or settings.imap_batch_size
             )
             summary["messages"] = len(messages)
             summary["beyond_window"] = beyond
@@ -290,7 +290,7 @@ async def run_ingest(limit: int | None = None) -> dict:
                 outcomes = await _process_message(msg, exhausted, parked)
                 await _record_auth(msg["message_id"], msg.get("auth"))
                 # `retry_later` is the one verdict that is not about the mail — the BU has
-                # nothing to spend or is switched off — so that message stays unread and
+                # nothing to spend or is switched off — so that message stays pending and
                 # replays for as long as `since_arg` allows.
                 if "retry_later" not in outcomes:
                     handled.append(msg["uid"])
@@ -300,12 +300,12 @@ async def run_ingest(limit: int | None = None) -> dict:
         except Exception as exc:
             logger.exception("[email] Poll failed")
             # `messages[done]` — the one that actually raised — is flagged on purpose:
-            # leaving it unread would re-crash the next poll on it forever, and the FAILED
+            # leaving it pending would re-crash the next poll on it forever, and the FAILED
             # `job_runs` row plus the traceback above is the trail for that one message.
-            # Everything after it was never attempted and stays unread.
+            # Everything after it was never attempted and stays pending.
             if done < len(messages):
                 handled.append(messages[done]["uid"])
-            await asyncio.to_thread(mark_seen, handled)
+            await asyncio.to_thread(mark_done, handled)
             # Documents parked before the crash are real and waiting; a poll that died
             # half way through must not swallow the only signal a reviewer gets.
             await _notify_pending(parked)
@@ -314,13 +314,13 @@ async def run_ingest(limit: int | None = None) -> dict:
 
         if summary.get("beyond_window"):
             logger.warning(
-                "[email] %d unseen message(s) are older than the %d-day hold window and "
+                "[email] %d pending message(s) are older than the %d-day hold window and "
                 "will never be polled again",
                 summary["beyond_window"],
                 settings.imap_hold_days,
             )
         # One IMAP round trip for the whole batch, after every verdict is on the ledger.
-        await asyncio.to_thread(mark_seen, handled)
+        await asyncio.to_thread(mark_done, handled)
         await _notify_pending(parked)
         logger.info("[email] Poll finished: %s", summary)
         await _record_run(started, summary)
@@ -375,7 +375,9 @@ async def sweep_confirmations() -> dict:
             tag = tag_from_recipients(msg["recipients"])
             if not tag or tag not in waiting:
                 # Someone else's confirmation, or one for a BU that went quiet. The
-                # document poll picks it up; leaving it unseen is what lets that happen.
+                # document poll picks it up; leaving it pending is what lets that happen
+                # (true since `fetch_confirmations` PEEKs — its old `RFC822` fetch marked
+                # these read on the way in, F-4).
                 continue
             handled.append(msg["uid"])
             async with async_session() as db:
@@ -388,10 +390,10 @@ async def sweep_confirmations() -> dict:
                 else:
                     logger.warning("[email] Could not confirm forwarding for tag %s", tag)
 
-        # Seen whether or not Google took it: a link we failed to follow is almost always
+        # Done whether or not Google took it: a link we failed to follow is almost always
         # a dead one, and retrying it every minute for a day is 1 440 requests to Google
         # for a forward the customer can re-trigger with Gmail's own "Resend email".
-        await asyncio.to_thread(mark_seen, handled)
+        await asyncio.to_thread(mark_done, handled)
 
         if confirmed:
             await _record_run(

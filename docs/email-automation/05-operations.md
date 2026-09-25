@@ -88,13 +88,31 @@ reloaded after `supabase db push` applied the schedule (a recurring trap on this
 see the `pgcron_stale_launcher_cache` memory note). Fix by re-issuing one `cron.schedule`
 call directly from the Supabase SQL Editor.
 
+## Switching a mailbox to the `$OcrDone` queue (one-off, 2026-09-25)
+
+The poll reads "mail without `$OcrDone`", not `UNSEEN`. On a mailbox that predates that,
+nothing carries the flag yet, so **before the first poll of the new code** run:
+
+```bash
+python scripts/imap_mark_done_backfill.py            # dry run: counts only
+python scripts/imap_mark_done_backfill.py --apply
+```
+
+It flags every mail older than the hold window done — no poll can reach those, and without
+the flag they all count as `beyond_window` and raise the alert. Mail **inside** the window is
+left pending on purpose: the first polls re-read it newest first, anything already decided
+dedupes on `email_documents` for free, and anything the old `UNSEEN` queue lost because a
+person had opened it is found and processed. `--seen-as-done` also flags in-window `\Seen`
+mail (old behaviour, no re-reading, no recovery). It reads `backend/.env`, so point that at
+the mailbox you mean. Dev, 2026-09-25 dry run: 209 old → done, 86 in-window left pending.
+
 ## Observability today
 
 | Where | What it shows |
 |---|---|
 | `#/admin/jobs` | One row per poll, `job_name = "email-ingest"`, `rows_affected` = documents posted that poll |
 | `#/admin/anomalies` | `email_ingest_unrouted` — WARN, tenant `"system"`, raised when a single poll has ≥5 messages with no resolvable tag |
-| `#/admin/anomalies` | `email_ingest_beyond_window` — WARN, tenant `"system"`, raised when any unseen mail is already older than `IMAP_HOLD_DAYS`. Deduped while the alert is open, so a standing backlog raises one alert, not one per poll. This is the only signal that a poller outage longer than the window ate real mail |
+| `#/admin/anomalies` | `email_ingest_beyond_window` — WARN, tenant `"system"`, raised when any pending mail (no `$OcrDone`) is already older than `IMAP_HOLD_DAYS`. Deduped while the alert is open, so a standing backlog raises one alert, not one per poll. This is the only signal that a poller outage longer than the window ate real mail |
 | `GET /api/v1/carmen/settings` | Per-BU `status.documents_total` / `status.last_received_at` (an aggregate `COUNT`/`MAX` over `email_documents`) |
 | `cron.job_run_details` (`email-documents-purge`) | Daily 03:50 UTC retention: `skipped` deleted at 90 d, other terminal rows scrubbed at 90 d and deleted at 2 y, `pending_review` untouched, `job_runs` at 90 d — see [04-data-model.md](04-data-model.md#email_documents) |
 
@@ -149,14 +167,14 @@ limit 50;
 | Symptom | Likely cause | Check |
 |---|---|---|
 | Every poll shows `FAILED` on `#/admin/jobs` | IMAP folder name has a space and isn't being quoted, or credentials are wrong | Confirm `_quoted_folder()` is in the code path you're running (it should be — check the app version deployed); test `IMAP_USER`/`IMAP_PASSWORD` directly against `IMAP_HOST` |
-| Zero messages, ever | `IMAP_HOST` empty (feature off), wrong `IMAP_FOLDER`, or the server rejected `SEARCH … SMALLER` and there's nothing unseen | Check `run_ingest()`'s return isn't `{"status":"disabled"}`; confirm the mailbox actually has unseen mail in that folder |
+| Zero messages, ever | `IMAP_HOST` empty (feature off), wrong `IMAP_FOLDER`, or the server rejected `SEARCH … SMALLER` and there's nothing pending | Check `run_ingest()`'s return isn't `{"status":"disabled"}`; confirm the folder actually holds mail without `$OcrDone` (`UID SEARCH NOT KEYWORD $OcrDone`) inside the hold window |
 | Messages arrive but land as `unrouted` | The tag isn't present in `Delivered-To` / `X-Original-To` / `Envelope-To` / `Received: … for` | Dump the raw headers of one such message; confirm the customer copied the address from Carmen's screen rather than typing it |
 | A BU's documents are all `no_rule_match` | `filename_patterns` too narrow for how this bank actually names its files | Point the customer at "start broad, narrow later" — `.pdf` accepts everything from that bank as an escape hatch |
 | A previously-working BU starts failing with `carmen_unauthorized` | Carmen token expired, was rotated, or was revoked on Carmen's side without the OFF/ON cycle | Since 2026-08-28 the pipeline itself clears `verified_at` on the first 401, so `GET /settings/token` already says "unproven" — the fix is a fresh token, then replay the failed documents. `POST /email-ingest/health` re-checks every BU at once |
 | A BU fails with `carmen_rejected` | Carmen read the JV and declined it — the `error_message` carries Carmen's own `Code` and text | Read the row's message first: it is Carmen's verdict verbatim, not our summary of it. Before 2026-08-28 this reason also absorbed every HTTP-level refusal, so older rows saying "Carmen rejected the JV" with no detail are usually dead tokens, not bad JVs |
 | `gmail_confirmed_at` stays null despite the customer insisting they set up the forward | Google changed the confirmation link format — `auto_confirm_forwarding()` targets an undocumented interface | Check application logs for `"Could not follow the confirmation link"`; this is the one failure mode that breaks silently by design |
-| A BU switched the feature back on and the mail from the off period is not posted | **Expected since 2026-08-18.** Mail older than `enabled_at` is recorded `skipped / ingest_paused` and never scanned: switching the feature off means the customer keyed those documents by hand, and a manual Carmen entry is invisible to the duplicate guard, so replaying the backlog posted everything twice | Filter `#/admin/email` on reason `ingest_paused` — that list *is* the set of documents they must key themselves. To ingest one anyway: re-send it (a fresh arrival time), since the `\Seen` flag and the ledger row both make the original a no-op |
-| A BU switched the feature back on and nothing arrives at all | Their mail was held unread while off, and `IMAP_HOLD_DAYS` has since passed — or it was read by a person or a Gmail filter, which makes it invisible to `SEARCH UNSEEN` for good | The messages are still in the mailbox: mark them unread and poll. Held mail writes no `email_documents` row by design (a ledger row would dedupe it out of ever being retried), so the only live signal is the `held` count in the poll toast on `#/admin/email` |
+| A BU switched the feature back on and the mail from the off period is not posted | **Expected since 2026-08-18.** Mail older than `enabled_at` is recorded `skipped / ingest_paused` and never scanned: switching the feature off means the customer keyed those documents by hand, and a manual Carmen entry is invisible to the duplicate guard, so replaying the backlog posted everything twice | Filter `#/admin/email` on reason `ingest_paused` — that list *is* the set of documents they must key themselves. To ingest one anyway: re-send it (a fresh arrival time), since the `$OcrDone` flag and the ledger row both make the original a no-op |
+| A BU switched the feature back on and nothing arrives at all | Their mail was held while off and `IMAP_HOLD_DAYS` has since passed, or it was deleted / moved out of the polled label. Reading it no longer matters (since 2026-09-25 the queue is `$OcrDone`, not `\Seen`) | If the messages are still in the label they are either past the window (send them again) or already carry `$OcrDone` — `scripts/reset_email_test.py --unread` clears it on dev. Held mail writes no `email_documents` row by design (a ledger row would dedupe it out of ever being retried), so the only live signal is the `held` count in the poll toast on `#/admin/email` |
 | A customer forwarded something and there is no row at all | Their attachment was a type this module cannot read (`.xlsx`, `.rar`, a `.zip` of CSVs), or the mail named no file whatsoever | Filter `#/admin/email` on reason `unsupported_attachment` — since 2026-08-18 a mail whose every attachment was refused writes one `skipped` row per rejected filename, free. **Still no row?** Then the mail named no file at all (a "your statement is ready" notice), or it never reached us: check `unrouted` on that poll and the raw `Delivered-To` header |
 | A credit was charged but nothing posted | Look at the `email_documents` row for that message — `reason_code` explains exactly which post-charge gate stopped it | Query as above; cross-reference against [04-data-model.md's taxonomy](04-data-model.md#reason_code-taxonomy) for whether it should have refunded |
 
