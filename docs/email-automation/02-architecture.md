@@ -119,7 +119,7 @@ sequenceDiagram
     participant DB as Postgres
 
     Google->>Mbx: "Gmail Forwarding Confirmation" to AIAGENT+tag@…
-    Poll->>Mbx: _fetch_unseen()
+    Poll->>Mbx: fetch_confirmations() — NOT KEYWORD $OcrDone FROM Google, BODY.PEEK[] (reads nothing)
     Poll->>Poll: _confirmation_body() — only decoded because From matches Google's sender
     Poll->>Poll: gmail_confirm_link(body) — matches only /mail/vf-… (never /mail/uf-…, which cancels)
     Poll->>Poll: tag_from_recipients() — same tag extraction as any document
@@ -160,15 +160,15 @@ sequenceDiagram
         Ingest-->>Router: {"status":"disabled"}
     else configured
         Ingest->>IMAP: login, SELECT quoted folder
-        Ingest->>IMAP: SEARCH UNSEEN SMALLER max_file_size_mb×1MB
+        Ingest->>IMAP: UID SEARCH NOT KEYWORD $OcrDone SINCE hold SMALLER max_file_size_mb×1MB
         alt server rejects SMALLER
-            Ingest->>IMAP: SEARCH UNSEEN (fallback)
+            Ingest->>IMAP: UID SEARCH NOT KEYWORD $OcrDone SINCE hold (fallback)
         end
-        loop each unseen UID, up to imap_batch_size
-            Ingest->>IMAP: FETCH RFC822
-            Ingest->>IMAP: STORE +FLAGS \Seen (marked immediately, even if junk)
+        loop each pending UID, newest first, up to imap_batch_size
+            Ingest->>IMAP: UID FETCH (INTERNALDATE BODY.PEEK[]) — marks nothing
         end
         Ingest->>Ingest: _process_message() per message — see Diagram 6
+        Ingest->>IMAP: UID STORE +FLAGS (\Seen $OcrDone) — only for mail that reached a verdict
         Ingest->>DB: insert job_runs row (job_name="email-ingest")
         alt unrouted >= 5 in this poll
             Ingest->>DB: anomaly_service.open_alert_if_absent("email_ingest_unrouted")
@@ -176,6 +176,17 @@ sequenceDiagram
         Ingest-->>Router: {messages, posted, failed, skipped, unrouted}
     end
 ```
+
+**The queue is `$OcrDone`, not `\Seen`** (2026-09-25, F-1 of the
+[multi-BU QA run](qa/2026-09-24-multi-bu-report.md)). A mail is pending until this system
+stores the keyword `$OcrDone` on it (`email_imap.DONE_FLAG`), which nothing else writes.
+`\Seen` is still set beside it, so the label reads as "handled" to a person, but the poll
+never looks at it. Before this, `SEARCH UNSEEN` was the queue, so anyone who opened a mail
+— a person in Gmail, a mail client, a second deployment — silently removed it from every
+future poll, with no row anywhere. Opening the mailbox is now safe. **Deleting a mail, or
+removing it from the polled label, still loses it**: that is outside what a flag can
+protect. Held mail (`retry_later`, backlog cap, crash mid-poll) simply is not marked done,
+exactly as it used to be left unread.
 
 ## Diagram 6 — one document, happy path
 

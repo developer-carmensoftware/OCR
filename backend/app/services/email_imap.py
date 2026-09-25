@@ -3,8 +3,8 @@ r"""IMAP transport for email ingestion — reading the mailbox, nothing about do
 Split out of `email_ingest_service.py`, which had grown past 1,700 lines with 600 of
 them being MIME decoding and IMAP plumbing that the posting pipeline only calls into.
 Nothing here touches the database, a session, or a tenant: it turns a mailbox into
-`dict`s and puts `\Seen` flags back. `email_ingest_service` owns everything that
-decides what a document means and what it costs.
+`dict`s and puts the `DONE_FLAG` back on what was decided. `email_ingest_service` owns
+everything that decides what a document means and what it costs.
 
 Blocking on purpose — `imaplib` has no async API, so the pipeline runs these in a
 thread (`asyncio.to_thread`).
@@ -43,9 +43,27 @@ IMAP_TIMEOUT_SECONDS = 60
 # limits messages per poll, not attachments per message.
 MAX_ATTACHMENTS_PER_MESSAGE = 10
 
-# Google sends one confirmation per forward. More than a handful unseen at once means
+# Google sends one confirmation per forward. More than a handful pending at once means
 # something other than a customer finishing a setup, and it is not this job's problem.
 MAX_CONFIRMATIONS_PER_SWEEP = 5
+
+# "A verdict has been reached on this message" — an IMAP keyword only this code writes.
+#
+# The queue used to be `SEARCH UNSEEN`, which made `\Seen` its only record of "decided".
+# `\Seen` belongs to everybody: a person opening the label in Gmail, a mail client syncing
+# the account, another deployment reading the same mailbox. Any of them marking a message
+# read made it drop out of every poll — no ledger row, no charge, no log, nothing anywhere
+# to investigate. The 2026-09-24 multi-BU QA run watched it happen twice, with the poller
+# itself ruled out (F-1). In production the likeliest reader is support opening the ingest
+# mailbox to find out why a document never arrived, which would erase exactly that mail.
+#
+# `\Seen` is still set alongside it, so a person looking at the label sees what has been
+# handled; it just no longer decides anything. Measured on Gmail before relying on it: the
+# folder's PERMANENTFLAGS include `\*`, the keyword survives a new session, and
+# `NOT KEYWORD` in the full `SINCE … SMALLER …` search returns a message a person marked
+# read. Deleting a message or removing its label still loses it — no flag can help there.
+DONE_FLAG = "$OcrDone"
+_DONE_FLAGS = f"(\\Seen {DONE_FLAG})"
 
 # Envelope headers only. **Never `To:`** — on an auto-forward that is still the
 # customer's own address, so reading it would pass a hand-sent test and route every
@@ -320,7 +338,7 @@ def since_arg() -> str:
     """The `SEARCH … SINCE` floor, as an IMAP date.
 
     Bounds the hold-and-retry window. Mail we reach no verdict on is never flagged (see
-    `mark_seen`), so that a BU switched off, out of package or with the module disabled loses
+    `mark_done`), so that a BU switched off, out of package or with the module disabled loses
     nothing and replays its backlog the moment it is switched on again. What it must not
     do is accumulate for ever: past this many days a held message drops out of every
     search, costing nothing more, and stays in the mailbox for a person to find.
@@ -360,7 +378,7 @@ def _uid_search(box: imaplib.IMAP4_SSL, *terms: str) -> list[str]:
     **UID, not sequence numbers.** `box.search`/`box.fetch`/`box.store` speak message
     sequence numbers, which are per-session and shift down whenever anything is expunged
     from the folder — so a number captured in one connection names a different message in
-    the next. `_set_seen` opens its own connection minutes later, which made every
+    the next. `mark_done` opens its own connection minutes later, which made every
     hand-back a coin flip: the held mail stayed `\\Seen` (lost) while an unrelated message
     was silently marked unread. UIDs are stable for the life of the mailbox, which is what
     this code always assumed it had.
@@ -369,28 +387,32 @@ def _uid_search(box: imaplib.IMAP4_SSL, *terms: str) -> list[str]:
     return [u.decode() for u in (data[0] or b"").split()]
 
 
-def fetch_unseen(limit: int) -> tuple[list[dict[str, Any]], int]:
-    """Pull unseen mail and mark it seen in the same connection.
+def fetch_pending(limit: int) -> tuple[list[dict[str, Any]], int]:
+    """Pull the mail no poll has reached a verdict on yet — everything without `DONE_FLAG`.
 
-    Returns the messages and **how many unseen messages fell outside the hold window** —
+    Returns the messages and **how many pending messages fell outside the hold window** —
     see the second search below.
+
+    Pending means "no `DONE_FLAG`", never "unseen": `\\Seen` is set by anyone who reads
+    the mailbox, and while it was the queue a person opening the label made mail vanish
+    (F-1, 2026-09-24 QA — see `DONE_FLAG`).
 
     `SMALLER` filters at the server, before `FETCH` pulls the whole message — including
     every attachment — into this process's memory. That is the byte-size cap the ingest
     path never had: `MAX_FILE_SIZE_MB` is enforced in `file_service.py`, which only the
     interactive upload path calls.
 
-    `SINCE` is the other half of the hold-and-retry behaviour (`mark_seen`): mail the
-    pipeline never reaches a verdict on stays unseen, so without a floor a BU that
+    `SINCE` is the other half of the hold-and-retry behaviour (`mark_done`): mail the
+    pipeline never reaches a verdict on stays pending, so without a floor a BU that
     switches the feature off leaves its bank's daily mail in the search result for
     ever. See `since_arg`.
 
-    **Nothing is flagged here** — `BODY.PEEK[]`, not `RFC822`, because a bare FETCH of
-    the body sets `\\Seen` as a side effect. The flag is the poll's verdict and belongs
-    where verdicts are reached (`run_ingest`): flagged on the way in, a poll whose
-    process dies between this call and the ledger write leaves the mail read, unclaimed
-    and unrecoverable, with no row anywhere to say it ever arrived. Re-reading is free
-    and safe — `_claim` dedupes on (tenant, message, attachment).
+    **Nothing is flagged here** — `BODY.PEEK[]`, not `RFC822`, so a person looking at the
+    label still sees the mail unread. The done flag is the poll's verdict and belongs
+    where verdicts are reached (`run_ingest`): flagged on the way in, a poll whose process
+    dies between this call and the ledger write leaves the mail done, unclaimed and
+    unrecoverable, with no row anywhere to say it ever arrived. Re-reading is free and
+    safe — `_claim` dedupes on (tenant, message, attachment).
 
     The one exception is a message we cannot even parse: it is flagged right here,
     because there is no verdict to reach and handing it back would re-crash every poll
@@ -403,15 +425,16 @@ def fetch_unseen(limit: int) -> tuple[list[dict[str, Any]], int]:
         since = since_arg()
         # Everything but the date floor, so the unbounded count below differs from this
         # search in exactly one term.
-        terms = ["UNSEEN", "SMALLER", max_octets]
+        pending = ["NOT", "KEYWORD", DONE_FLAG]
+        terms = [*pending, "SMALLER", max_octets]
         try:
-            found = _uid_search(box, "UNSEEN", "SINCE", since, "SMALLER", max_octets)
+            found = _uid_search(box, *pending, "SINCE", since, "SMALLER", max_octets)
         except imaplib.IMAP4.error as exc:
             # SMALLER is RFC 3501 mandatory, but a broken server refusing it must not
             # silently mean "no mail today" — that is a total outage with no symptom.
             logger.warning("[email] IMAP SMALLER refused (%s) — searching without it", exc)
-            terms = ["UNSEEN"]
-            found = _uid_search(box, "UNSEEN", "SINCE", since)
+            terms = pending
+            found = _uid_search(box, *pending, "SINCE", since)
 
         # The same search minus the date floor, and **no FETCH** — one round trip on the
         # connection that is already open. Past `IMAP_HOLD_DAYS` a message drops out of
@@ -435,23 +458,27 @@ def fetch_unseen(limit: int) -> tuple[list[dict[str, Any]], int]:
         for uid in found[-limit:]:
             _, fetched = box.uid("FETCH", uid, "(INTERNALDATE BODY.PEEK[])")
             if not fetched or not isinstance(fetched[0], tuple):
+                # Left pending, so the next poll tries again — but no longer silently: this
+                # branch used to leave no trace at all, which is the last thing anyone
+                # wants when mail goes missing and somebody is asking why.
+                logger.warning("[email] Unexpected FETCH response for UID %s — left pending", uid)
                 continue
             try:
                 msg = email.message_from_bytes(fetched[0][1])
                 accepted, rejected = _attachments(msg)
             except Exception as exc:  # noqa: BLE001 — one unparseable mail is not an outage
-                # Nothing downstream can do anything with it, and leaving it unread would
+                # Nothing downstream can do anything with it, and leaving it pending would
                 # put it at the head of every future poll. This is the only place the flag
                 # is set without a verdict.
                 logger.warning(
                     "[email] Could not parse message %s — flagged and left: %s", uid, exc
                 )
-                box.uid("STORE", uid, "+FLAGS", "\\Seen")
+                box.uid("STORE", uid, "+FLAGS", _DONE_FLAGS)
                 continue
             messages.append(
                 {
                     # Carried so the poll can flag the mail it *has* reached a verdict on
-                    # and leave everything else unread — see `mark_seen`.
+                    # and leave everything else pending — see `mark_done`.
                     "uid": uid,
                     "message_id": (msg.get("Message-ID") or f"no-id-{uid}")[:500],
                     "subject": _decode(msg.get("Subject")),
@@ -489,24 +516,30 @@ def fetch_unseen(limit: int) -> tuple[list[dict[str, Any]], int]:
 
 
 def fetch_confirmations(limit: int = MAX_CONFIRMATIONS_PER_SWEEP) -> list[dict[str, Any]]:
-    """Unseen Gmail forwarding-confirmation mail only — the cheap half of `fetch_unseen`.
+    """Pending Gmail forwarding-confirmation mail only — the cheap half of `fetch_pending`.
 
     Narrowed at the server by sender, so a mailbox full of bank statements costs one
     SEARCH that matches nothing. No `SMALLER` (a confirmation has no attachment), no
     `_attachments()` parse, and **nothing is marked seen here** — the flag is a decision
     the async caller makes after it knows whether the link was followed.
 
-    Same `SINCE` floor and same newest-first slice as `fetch_unseen`, for the same
+    Same `SINCE` floor and same newest-first slice as `fetch_pending`, for the same
     reason: a confirmation for a tag nobody is waiting on is never marked seen, and five
     of those would otherwise pin the whole sweep to stale mail permanently.
     """
     box = _connect()
     try:
         box.select(_quoted_folder(settings.imap_folder))
-        found = _uid_search(box, "UNSEEN", "SINCE", since_arg(), "FROM", _GMAIL_CONFIRM_SENDER)
+        found = _uid_search(
+            box, "NOT", "KEYWORD", DONE_FLAG, "SINCE", since_arg(), "FROM", _GMAIL_CONFIRM_SENDER
+        )
         out = []
         for uid in found[-limit:]:
-            _, fetched = box.uid("FETCH", uid, "(RFC822)")
+            # PEEK, as the docstring always promised. This was `(RFC822)`, which on Gmail sets
+            # `\\Seen` as a side effect — so a confirmation for a tag nobody was waiting on,
+            # which `sweep_confirmations` deliberately leaves for the document poll, was
+            # consumed here instead (F-4, 2026-09-24 QA).
+            _, fetched = box.uid("FETCH", uid, "(BODY.PEEK[])")
             if not fetched or not isinstance(fetched[0], tuple):
                 continue
             msg = email.message_from_bytes(fetched[0][1])
@@ -527,8 +560,9 @@ def fetch_confirmations(limit: int = MAX_CONFIRMATIONS_PER_SWEEP) -> list[dict[s
             pass
 
 
-def mark_seen(uids: list[str]) -> None:
-    """Flag the messages the caller has finished with. Never raises.
+def mark_done(uids: list[str]) -> None:
+    """Flag the messages the caller has finished with (`DONE_FLAG`, plus `\\Seen` for the
+    humans looking at the label). Never raises.
 
     The flag means "this one has been decided about", so nothing calls it until a
     verdict exists — mail the pipeline could not judge (out of credits, switched off,
@@ -545,14 +579,14 @@ def mark_seen(uids: list[str]) -> None:
         try:
             box.select(_quoted_folder(settings.imap_folder))
             for uid in uids:
-                box.uid("STORE", uid, "+FLAGS", "\\Seen")
+                box.uid("STORE", uid, "+FLAGS", _DONE_FLAGS)
         finally:
             try:
                 box.logout()
             except OSError:
                 pass
     except Exception as exc:  # noqa: BLE001 — a flag we could not set is not an outage
-        logger.error("[email] Could not set \\Seen on %d message(s): %s", len(uids), exc)
+        logger.error("[email] Could not mark %d message(s) done: %s", len(uids), exc)
 
 
 # ── Routing ───────────────────────────────────────────────────────────────────
@@ -715,7 +749,7 @@ def people_addresses(people: str) -> list[str]:
     forwarded, and the ledger said only that no registered address appeared — leaving
     "the whole feature is broken" as the only available reading.
 
-    `people` is comma-joined in `fetch_unseen` for exactly this: `getaddresses` parses an
+    `people` is comma-joined in `fetch_pending` for exactly this: `getaddresses` parses an
     address list, and answers `[("", "")]` for headers concatenated on whitespace.
     """
     return list(dict.fromkeys(addr.lower() for _, addr in getaddresses([people]) if addr))

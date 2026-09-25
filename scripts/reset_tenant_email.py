@@ -13,7 +13,7 @@ one clears the BU's whole email-automation state. What it removes, and why each 
     email_ingest_settings  tag, rules, owner addresses, Carmen token, Gmail handshake
     tenant_subscriptions   the active window, so buying a package is part of the test
     credit_cards           soft-deleted for the doc_nos the mails posted (duplicate guard)
-    IMAP \\Seen             cleared for those messages, since the poll only reads UNSEEN
+    IMAP $OcrDone (+\\Seen) cleared for those messages — the poll reads mail without $OcrDone
 
 `--clear-mapping` additionally drops the BU's GL mapping, which is the fourth thing that
 remembers: once a payment type is mapped, `_suggest_missing_mappings` never runs, so the
@@ -132,7 +132,9 @@ async def main() -> int:
         action="store_true",
         help="also soft-delete the BU's wizard scans, so the module's Posted tab is empty",
     )
-    ap.add_argument("--no-unread", action="store_true", help="leave \\Seen alone in the mailbox")
+    ap.add_argument(
+        "--no-unread", action="store_true", help="leave $OcrDone and \\Seen alone in the mailbox"
+    )
     args = ap.parse_args()
     # `tenants.host` is the bare host; a Carmen URI is what everyone has to hand.
     host = args.host.split("://")[-1].strip("/")
@@ -269,7 +271,10 @@ async def main() -> int:
         if message_ids and not args.no_unread:
             _unread(message_ids)
         elif message_ids:
-            print("\n  \\Seen left alone — mark the mail unread in Gmail, or drop --no-unread")
+            print(
+                "\n  Mailbox flags left alone — marking mail unread in Gmail does NOT replay it"
+                " (the poll reads $OcrDone); drop --no-unread to clear it"
+            )
         return 0
     finally:
         await conn.close()

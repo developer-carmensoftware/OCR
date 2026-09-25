@@ -314,7 +314,7 @@ def test_missing_sender_or_subject_is_not_a_crash():
 
 # ── sender_allowed — the optional owner-address layer ─────────────────────────
 
-# From + To + Cc comma-joined, exactly as `fetch_unseen` builds `people`, per arrival mode.
+# From + To + Cc comma-joined, exactly as `fetch_pending` builds `people`, per arrival mode.
 _AUTO = '"KTC" <no-reply@ktc.co.th>, accounting@hotelgroup.com'
 _MANUAL = "Somchai <somchai@hotelgroup.com>, AIAGENT+a1b2c3d4@carmensoftware.com"
 
@@ -352,12 +352,12 @@ def test_sender_allowed(owners, people, allowed):
 
 
 def test_people_addresses_names_what_a_refused_mail_carried():
-    """The header shapes of the 2026-08-28 incident, as `fetch_unseen` concatenates them.
+    """The header shapes of the 2026-08-28 incident, as `fetch_pending` concatenates them.
 
     A BU had registered `acounting@hotelgroup.com` for a mailbox spelled
     `accounting@hotelgroup.com`, and every document it forwarded was skipped with a
     message that named no address at all. This is what makes the near-miss readable — and
-    it fails if the comma join in `fetch_unseen` is ever reverted, because `getaddresses`
+    it fails if the comma join in `fetch_pending` is ever reverted, because `getaddresses`
     parses an address list, not headers run together on whitespace.
     """
     people = ", ".join(
