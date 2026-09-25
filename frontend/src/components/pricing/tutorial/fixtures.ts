@@ -55,6 +55,7 @@ export const DEMO_PLANS: CreditPack[] = [
 ]
 
 export const DEMO_PACKS: CreditPack[] = [
+  { code: 'pack_micro', kind: 'topup', credits: 100, price_thb: 490, sort_order: 10 },
   { code: 'pack_small', kind: 'topup', credits: 500, price_thb: 2000, sort_order: 11 },
   { code: 'pack_medium', kind: 'topup', credits: 2500, price_thb: 7500, sort_order: 12 },
   { code: 'pack_large', kind: 'topup', credits: 10000, price_thb: 20000, sort_order: 13 },
