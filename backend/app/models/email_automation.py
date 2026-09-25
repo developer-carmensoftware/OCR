@@ -142,6 +142,10 @@ class EmailDocument(Base, TenantFKMixin, TimestampMixin):
     # well — past that, "who approved this JV" is Carmen's audit trail, not ours.
     reviewed_by_name = Column(String(100), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    # Somebody is approving or rejecting this row right now. A claim, not a status: it
+    # expires (`POSTING_CLAIM_TTL`) so a process that died mid-post cannot strand the
+    # document. See 20260925000000_email_documents_posting_claim.sql.
+    posting_started_at = Column(DateTime(timezone=True), nullable=True)
     # Somebody put this row away. Only ever set on a row with no `review_payload`: a parked
     # document is retired with Reject, which records who and why, and two ways to retire a
     # real document is worse than one. Dismissed rows leave the Review chip and stay

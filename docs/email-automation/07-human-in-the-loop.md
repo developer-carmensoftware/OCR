@@ -251,24 +251,28 @@ Schemas go in the existing `app/models/schemas/email_automation.py`. `paginate()
 ```python
 # routers/email_review.py — the shape, not the code
 async with async_session() as db:
-    doc = await _claim_for_approval(db, doc_id, tenant_id)   # SELECT ... FOR UPDATE,
-                                                             # refuse if status != pending_review
-    token, uri = await es.posting_target(db, settings_row)    # fresh, never persisted
-
-tenant_ctx = current_tenant_id.set(tenant_id)                 # both ContextVars, or
-uri_ctx = current_carmen_uri.set(uri)                         # post_gljv has no host
+    doc = await _claim_for_review(db, doc_id, tenant_id)     # compare-and-set on
+                                                             # posting_started_at, committed
+posted = False
 try:
+    token, uri = await es.posting_target(db, settings_row)    # fresh, never persisted
+    tenant_ctx = current_tenant_id.set(tenant_id)             # both ContextVars, or
+    uri_ctx = current_carmen_uri.set(uri)                     # post_gljv has no host
     if await has_submitted_doc(tenant_id, doc_no, doc_date):  # re-check, not the stale flag
         raise DuplicateDocument(...)
     result = await post_gljv(build_gljv_payload(...), token)
-    await _mark_submitted(card_id)
+    posted = True
+    await _mark_submitted(tenant_id, doc.task_id)             # the row's own task, never
+                                                              # the client's extracted.id
     tax_note = await _post_input_tax(...) if body.post_input_tax else None
     await _finish(doc.id, status="posted", jv_no=..., error=tax_note)   # clears review_payload
-finally:
+finally:                                                      #  and the claim
     current_carmen_uri.reset(uri_ctx); current_tenant_id.reset(tenant_ctx)
+    if not posted:
+        await _release_claim(doc.id)                          # approvable again at once
 ```
 
-Three things that will be got wrong if not written down:
+Four things that will be got wrong if not written down:
 
 1. **Do not post through `routers/carmen.py:proxy_gljv`.** It reads `session.carmen_token` —
    the *reviewer's* token. An ingested document must post under the **BU's stored credential**,
@@ -276,8 +280,19 @@ Three things that will be got wrong if not written down:
 2. **Both ContextVars, reset in `finally`.** `post_gljv` reads the host from
    `current_carmen_uri`; `log_llm_usage` reads `current_tenant_id`. This is the same setup
    `_process_attachment` does at lines 591-592.
-3. **`SELECT ... FOR UPDATE` on the claim.** Two people in the same BU can have the queue open.
-   The second click must find a row that is no longer `pending_review` and say so.
+3. **A claim that outlives the session, not a lock inside it.** Two people in the same BU can
+   have the queue open, so the second click must be refused. This was first built as
+   `SELECT … FOR UPDATE` — in a session that closed before `post_gljv` ran, so the lock was
+   gone when it mattered and two approvals both posted (DEF-1, found by the 2026-09-24 QA run,
+   `docs/email-automation/qa/`). It is now a compare-and-set on
+   `email_documents.posting_started_at`: the second approve — or a reject arriving mid-post —
+   gets 409, the claim is given back on every exit before Carmen accepts, and one older than
+   `POSTING_CLAIM_TTL` (5 min) belongs to a dead process and can be retaken. Holding the row
+   lock across the Carmen call (the wizard's way) was the alternative; it pins a pooled
+   connection for up to two Carmen timeouts against a pool of 10.
+4. **Stamp the card through the ledger row's own `task_id`, with the tenant in the WHERE
+   clause.** `ApproveIn.extracted` is whatever the browser sent; stamping `extracted.id` once
+   let one BU mark another's card posted (DEF-2).
 
 ### Notification
 

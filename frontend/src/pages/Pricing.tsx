@@ -364,7 +364,6 @@ export default function Pricing() {
                       {t('pricing.topupTitle')}
                     </h2>
                     <p className="pricing-section-sub">{t('pricing.topupSub')}</p>
-                    <p className="pricing-section-sub">{t('pricing.topupSub2')}</p>
                     <p className="pricing-note">{t('pricing.topupNote')}</p>
                   </div>
                   <PackList packs={packs} onSelect={startCheckout} disabled={hasOpenOrder} />
