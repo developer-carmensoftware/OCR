@@ -1169,6 +1169,55 @@ def build_wave_fixcheck(state: dict) -> list[MsgSpec]:
     ]
 
 
+def build_wave_r2_e06(_state: dict) -> list[MsgSpec]:
+    """E-06: mail to a BU with nothing left to spend is held, not charged, not lost."""
+    return [
+        MsgSpec(
+            "r2-e06",
+            "S6",
+            f"BAY_e06_{TAG_MARK}.pdf",
+            "BAY.pdf",
+            f"[{TAG_MARK}] E-06 out of credits",
+            "retry_later",
+            None,
+            plan_ids=["E-06"],
+        )
+    ]
+
+
+def build_wave_r2_q09(_state: dict) -> list[MsgSpec]:
+    """Q-09: mail to a BU with 50 documents awaiting review is held, not charged."""
+    return [
+        MsgSpec(
+            "r2-q09",
+            "S6",
+            f"BAY_q09_{TAG_MARK}.pdf",
+            "BAY.pdf",
+            f"[{TAG_MARK}] Q-09 backlog cap",
+            "retry_later",
+            None,
+            plan_ids=["Q-09"],
+        )
+    ]
+
+
+def build_wave_r2_jv(_state: dict) -> list[MsgSpec]:
+    """A real KBank commission receipt for carmencloud, approved later into real Carmen.
+    `KBANK_user.pdf` is the user's own document (041125E00023869), not a shared fixture."""
+    return [
+        MsgSpec(
+            "r2-jv",
+            "carmencloud",
+            f"KBank_commissions_{TAG_MARK}.pdf",
+            "KBANK_user.pdf",
+            f"[{TAG_MARK}] real JV into Carmen",
+            "pending_review",
+            None,
+            plan_ids=["R-JV"],
+        )
+    ]
+
+
 # ── sending ──────────────────────────────────────────────────────────────────
 
 
@@ -1241,6 +1290,9 @@ WAVES = {
     "3c": build_wave3c_s6_reentitled,
     "s5fix": build_wave_s5_fix,
     "fixcheck": build_wave_fixcheck,
+    "r2-e06": build_wave_r2_e06,
+    "r2-q09": build_wave_r2_q09,
+    "r2-jv": build_wave_r2_jv,
 }
 
 
@@ -1344,6 +1396,54 @@ async def phase_toggle(args) -> None:
             state["bus"]["S6"]["tenant_id"],
         )
         print("  S6 subscription extended — should process new mail again")
+    elif args.action == "s6-exhaust":
+        # E-06: still entitled (an active package), but nothing left in it or in credits.
+        s6 = state["bus"]["S6"]["tenant_id"]
+        await sql(
+            "update tenant_subscriptions set docs_used = doc_allowance"
+            " where tenant_id=$1::uuid and status='active'",
+            s6,
+        )
+        await sql("update tenant_credits set balance=0 where tenant_id=$1::uuid", s6)
+        print("  S6 allowance used up, credit balance 0")
+    elif args.action == "s6-restore":
+        await sql(
+            "update tenant_subscriptions set docs_used = 0"
+            " where tenant_id=$1::uuid and status='active'",
+            state["bus"]["S6"]["tenant_id"],
+        )
+        print("  S6 allowance restored")
+    elif args.action == "s6-backlog-fill":
+        # Q-09: synthetic rows (run-tagged, wiped with S6) up to the cap.
+        from app.services.email_ingest_service import REVIEW_BACKLOG_CAP
+
+        s6 = state["bus"]["S6"]["tenant_id"]
+        have = (
+            await sql(
+                "select count(*) as n from email_documents"
+                " where tenant_id=$1::uuid and status='pending_review'",
+                s6,
+            )
+        )[0]["n"]
+        need = max(REVIEW_BACKLOG_CAP - have, 0)
+        await sql(
+            "insert into email_documents (id, tenant_id, message_id, attachment, status)"
+            " select gen_random_uuid(), $1::uuid, '<qa-' || $2 || '-backlog-' || g"
+            " || '@qa.local>', 'backlog_' || g || '_' || $3 || '.pdf', 'pending_review'"
+            " from generate_series(1, $4::int) g",
+            s6,
+            RUN,
+            TAG_MARK,
+            need,
+        )
+        print(f"  S6 backlog: {have} real + {need} synthetic = {have + need} pending")
+    elif args.action == "s6-backlog-drain":
+        await sql(
+            "delete from email_documents where id = (select id from email_documents"
+            " where tenant_id=$1::uuid and attachment like 'backlog\\_%' limit 1)",
+            state["bus"]["S6"]["tenant_id"],
+        )
+        print("  S6 backlog: one synthetic row removed (now below the cap)")
     else:
         raise SystemExit(f"unknown toggle action {args.action!r}")
 
@@ -1691,11 +1791,24 @@ async def phase_teardown(_args) -> None:
     for code in ("carmen", "carmencloud"):
         tid = state["bus"][code]["tenant_id"]
         rows = await sql(
-            "select id::text as id, task_id::text as task_id from email_documents"
-            " where tenant_id=$1::uuid and attachment like $2",
+            "select id::text as id, task_id::text as task_id, status, jv_no"
+            " from email_documents where tenant_id=$1::uuid and attachment like $2",
             tid,
             f"%{TAG_MARK}%",
         )
+        # A document that really posted is kept whole — ledger row, card, task, charge.
+        # Its JV is in Carmen's books now; deleting our side would erase the duplicate
+        # guard's memory of it and let the same document post a second time.
+        real_posted = [
+            r
+            for r in rows
+            if r["status"] == "posted" and not (r["jv_no"] or "").startswith("QA-DRY")
+        ]
+        for r in real_posted:
+            print(
+                f"  {code}: KEPT {r['id']} — really posted to Carmen as JV {r['jv_no']}"
+            )
+        rows = [r for r in rows if r not in real_posted]
         task_ids = [r["task_id"] for r in rows if r["task_id"]]
         ids = [r["id"] for r in rows]
         # email_documents.task_id FKs to ocr_tasks.id — must go first, or deleting
@@ -2083,11 +2196,6 @@ async def phase_fixcheck_setup(_args) -> None:
             cc,
         )
         fx["verified_at_before"] = rows[0]["carmen_token_verified_at"]
-        rows = await sql(
-            "select jobname from cron.job where active and jobname = any($1::text[])",
-            FIXCHECK_CRON,
-        )
-        fx["cron_paused"] = [r["jobname"] for r in rows]
         save_state(state)
 
     await sql(
@@ -2095,16 +2203,30 @@ async def phase_fixcheck_setup(_args) -> None:
         " where tenant_id=$1::uuid",
         cc,
     )
+    print(
+        f"  carmencloud verified_at: {fx['verified_at_before']} -> now() (placeholder)"
+    )
+    await _pause_cron(state)
+    print(f"\nfixcheck setup complete. state file: {STATE_FILE}")
+
+
+async def _pause_cron(state: dict) -> None:
+    """Pause the pollers, remembering which were active so teardown resumes exactly those.
+    Recorded on the first call only, so a re-run cannot mistake its own pause for "off"."""
+    fx = state.setdefault("fixcheck", {})
+    if "cron_paused" not in fx:
+        rows = await sql(
+            "select jobname from cron.job where active and jobname = any($1::text[])",
+            FIXCHECK_CRON,
+        )
+        fx["cron_paused"] = [r["jobname"] for r in rows]
+        save_state(state)
     await sql(
         "select cron.alter_job(jobid, active:=false) from cron.job"
         " where jobname = any($1::text[])",
         fx["cron_paused"],
     )
-    print(
-        f"  carmencloud verified_at: {fx['verified_at_before']} -> now() (placeholder)"
-    )
     print(f"  paused cron: {', '.join(fx['cron_paused']) or '(none were active)'}")
-    print(f"\nfixcheck setup complete. state file: {STATE_FILE}")
 
 
 async def _imap_flags_by_message_id() -> dict[str, str]:
@@ -2305,6 +2427,265 @@ async def phase_fixcheck(_args) -> None:
     )
 
 
+# ── phases: round 2 (real Carmen JV, E-06, Q-09, S-07) ─────────────────────────
+#
+# Nothing here decrypts, reads or replays a stored credential. The real JV goes through the
+# app's own approve path, which uses the BU's credential the way it always does; the
+# harness only observes where the post went (tenant + host, from the dispatcher).
+
+
+async def phase_round2_setup(_args) -> None:
+    guard()
+    state = load_state()
+    if "carmencloud" not in state["bus"]:
+        print("[abort] run `preflight` first")
+        sys.exit(2)
+    if "S6" not in state["bus"]:
+        await _create_scratch(state, [s for s in SCRATCH_SPECS if s["code"] == "S6"])
+        save_state(state)
+    src = Path.home() / "Downloads" / "KBankBank commissions.pdf"
+    dst = DOCS_DIR / "KBANK_user.pdf"
+    if not dst.exists():
+        dst.write_bytes(src.read_bytes())
+    print(f"  fixture {dst.name}: {dst.stat().st_size} bytes")
+    await _pause_cron(state)
+    print(f"\nround 2 setup complete. state file: {STATE_FILE}")
+
+
+async def phase_r2_token(_args) -> None:
+    """Has carmencloud's credential been replaced since preflight? Metadata only: the
+    stored fingerprint column and when Carmen last accepted it."""
+    guard()
+    state = load_state()
+    row = (
+        await sql(
+            "select carmen_token_fp, carmen_token_verified_at from email_ingest_settings"
+            " where tenant_id=$1::uuid",
+            state["bus"]["carmencloud"]["tenant_id"],
+        )
+    )[0]
+    before = state["snapshot"]["carmencloud"].get("carmen_token_fp")
+    changed = row["carmen_token_fp"] != before
+    verified = row["carmen_token_verified_at"]
+    state.setdefault("round2", {})["carmencloud_token"] = {
+        "replaced": changed,
+        "verified_at": verified,
+    }
+    save_state(state)
+    print(
+        f"  carmencloud credential replaced since preflight: {changed};"
+        f" last verified by Carmen: {verified}"
+    )
+
+
+def _r2_record(state: dict, case: str, ok: bool | None, note: str) -> None:
+    label = {True: "PASS", False: "FAIL", None: "INCONCLUSIVE"}[ok]
+    print(f"  {label:<12} {case:<14} {note}")
+    state.setdefault("round2", {}).setdefault("results", {})[case] = {
+        "result": label,
+        "note": note,
+    }
+
+
+async def phase_r2check(args) -> None:
+    """E-06 / Q-09, read back after each poll: held = no row, no charge, not done."""
+    guard()
+    state = load_state()
+    from app.services.email_imap import DONE_FLAG
+
+    s6 = state["bus"]["S6"]["tenant_id"]
+    case = {"e06": "r2-e06", "q09": "r2-q09"}[args.stage.split("-")[0]]
+    msg = next(m for m in state["messages"] if m["id"] == case)
+    rows = await sql(
+        "select status, reason_code from email_documents where message_id=$1",
+        msg["message_id"],
+    )
+    tasks = (
+        await sql(
+            "select count(*) as n from ocr_tasks where tenant_id=$1::uuid",
+            s6,
+        )
+    )[0]["n"]
+    used = (
+        await sql(
+            "select docs_used from tenant_subscriptions"
+            " where tenant_id=$1::uuid and status='active'",
+            s6,
+        )
+    )[0]["docs_used"]
+    done = DONE_FLAG in (await _imap_flags_by_message_id()).get(msg["message_id"], "")
+    held_in_poll = state["polls"][-1]["summary"].get("retry_later", 0)
+    note = (
+        f"rows={[r['status'] for r in rows]} s6_tasks={tasks} s6_docs_used={used}"
+        f" done={done} last_poll_retry_later={held_in_poll}"
+    )
+    # E-06 runs first (so tasks 0 -> 1); Q-09 finds E-06's one task already there.
+    tasks_before = 0 if case == "r2-e06" else 1
+    if args.stage.endswith("held"):
+        ok = (
+            not rows
+            and tasks == tasks_before
+            and not done
+            and held_in_poll >= 1
+            and (case == "r2-q09" or used == 30)
+        )
+    else:
+        ok = bool(rows) and done and tasks == tasks_before + 1
+    _r2_record(state, args.stage, ok, note)
+    save_state(state)
+
+
+async def phase_approve_real(_args) -> None:
+    """R-JV: the review screen's approve, through the real router, into real Carmen."""
+    guard()
+    state = load_state()
+    cc = state["bus"]["carmencloud"]
+    msg = next(m for m in state["messages"] if m["id"] == "r2-jv")
+    doc = await sql(
+        "select id::text as id, bank_code, review_payload, task_id::text as task_id,"
+        " status, reason_code, doc_no from email_documents where message_id=$1",
+        msg["message_id"],
+    )
+    if not doc or doc[0]["status"] != "pending_review":
+        _r2_record(state, "R-JV", None, f"nothing to approve: {[dict(d) for d in doc]}")
+        save_state(state)
+        return
+
+    from app.database import async_session
+    from app.models.schemas.ocr import ExtractedDetailRow
+    from app.services.accounting_config_service import get_accounting_config
+    from app.services.cc_jv import build_jv_rows
+
+    d = doc[0]
+    payload = d["review_payload"]
+    payload = json.loads(payload) if isinstance(payload, str) else payload
+    extracted = payload["extracted"]
+    async with async_session() as db:
+        config = await get_accounting_config(db, cc["tenant_id"], d["bank_code"])
+    details = [ExtractedDetailRow(**x) for x in extracted.get("details", [])]
+    jv_rows = build_jv_rows(
+        details, {**(config.mappings or {}), **(payload.get("suggested") or {})}
+    )
+    print(
+        f"  approving {d['id']} ({d['bank_code']} {d['doc_no']}, parked reason"
+        f" {d['reason_code']}, flags {payload.get('flags')}) — {len(jv_rows)} JV row(s)"
+    )
+    records: list[DispatchRecord] = []
+    with ExitStack() as stack:
+        for p in dispatch_patches(records):
+            stack.enter_context(p)
+        async with real_client(
+            cc["tenant_id"], bu="carmencloud", user="qa-carmencloud-reviewer"
+        ) as c:
+            resp = await c.post(
+                f"/api/v1/email/documents/{d['id']}/approve",
+                headers=AUTH,
+                json={"extracted": extracted, "rows": jv_rows, "post_input_tax": True},
+            )
+    state["dispatcher"].extend(asdict(r) for r in records)
+    after = (
+        await sql(
+            "select status, jv_no, error_message, posting_started_at"
+            " from email_documents where id=$1::uuid",
+            d["id"],
+        )
+    )[0]
+    card = await sql(
+        "select submitted_at from credit_cards where task_id=$1::uuid", d["task_id"]
+    )
+    posts = [r for r in records if r.kind == "post_gljv"]
+    taxes = [r for r in records if r.kind == "post_input_tax"]
+    jv = after["jv_no"] or ""
+    ok = (
+        resp.status_code == 200
+        and after["status"] == "posted"
+        and bool(jv)
+        and not jv.startswith("QA-DRY")
+        and bool(card)
+        and card[0]["submitted_at"] is not None
+        and len(posts) == 1
+        and posts[0].carmen_uri == "https://dev.carmen4.com"
+        and posts[0].tenant_id == cc["tenant_id"]
+    )
+    note = (
+        f"http={resp.status_code} jv_no={jv or '-'} row={after['status']}"
+        f" card_submitted={bool(card) and card[0]['submitted_at'] is not None}"
+        f" posts={len(posts)} posted_as_tenant="
+        f"{'carmencloud' if posts and posts[0].tenant_id == cc['tenant_id'] else '?'}"
+        f" input_tax_calls={len(taxes)} tax_note={after['error_message']!r}"
+        f" extracted_doc_no={d['doc_no']} body={resp.text[:200]}"
+    )
+    _r2_record(state, "R-JV", ok, note)
+    state["round2"]["real_jv"] = {"doc_id": d["id"], "jv_no": jv, "doc_no": d["doc_no"]}
+    save_state(state)
+
+
+async def phase_s07(_args) -> None:
+    """Settings-API auth boundaries through the real app, with no real credential: the
+    cases a caller holding nothing valid can reach. The ones that need a real BU token or
+    a minted admin JWT are left for a run the user explicitly authorises."""
+    guard()
+    state = load_state()
+    import httpx
+
+    from app.main import app
+
+    host = "https://dev.carmen4.com"
+    cases: list[tuple[str, str, int | None, str]] = []  # (id, expect, got, detail)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://qa.local"
+    ) as c:
+
+        async def get(bu: str, auth: str | None, uri: str = host) -> httpx.Response:
+            headers = {"Authorization": auth} if auth is not None else {}
+            return await c.get(
+                "/api/v1/carmen/settings",
+                params={"uri": uri, "bu": bu},
+                headers=headers,
+            )
+
+        # Shaped like a Carmen token, issued by nobody.
+        fake = f"qa{uuid.uuid4().hex}|{uuid.uuid4()}"
+        r = await get("carmen", None)
+        cases.append(("no-auth", "401", r.status_code, r.text[:80]))
+        r = await get("carmen", "not-a-carmen-token")
+        cases.append(("malformed", "401", r.status_code, r.text[:80]))
+        r = await get("carmen", fake)
+        cases.append(("fake-token", "401", r.status_code, r.text[:80]))
+        r = await get("carmen", fake)
+        cases.append(("fake-token-cached", "401", r.status_code, r.text[:80]))
+        r = await get("nope", fake, uri="https://qa-unknown.invalid")
+        cases.append(("unknown-bu", "400", r.status_code, r.text[:80]))
+        first_429 = None
+        for i in range(1, 26):
+            r = await get("nope", fake, uri="https://qa-unknown.invalid")
+            if r.status_code == 429:
+                first_429 = i
+                break
+        cases.append(
+            ("rate-limit", "429", 429 if first_429 else None, f"at call {first_429}")
+        )
+
+    print("## S-07 — settings API auth boundaries (real app, no real credential)\n")
+    failing = []
+    for cid, expect, got, detail in cases:
+        ok = str(got) in expect.split("/")
+        print(
+            f"  {'ok ' if ok else 'BAD'} {cid:<18} expect {expect:<4} got {got}  {detail}"
+        )
+        if not ok:
+            failing.append(cid)
+    state.setdefault("round2", {})["s07_cases"] = cases
+    _r2_record(
+        state,
+        "S-07",
+        not failing,
+        f"{len(cases) - len(failing)}/{len(cases)} as expected"
+        + (f"; not: {failing}" if failing else ""),
+    )
+    save_state(state)
+
+
 # ── phase: probes (O-02 overlap poll — DEF-1/DEF-2 live in tests/tenancy) ─────
 
 
@@ -2502,7 +2883,17 @@ async def main() -> int:
 
     p_toggle = sub.add_parser("toggle")
     p_toggle.add_argument(
-        "--action", required=True, choices=["s4-disable", "s4-enable", "s6-reentitle"]
+        "--action",
+        required=True,
+        choices=[
+            "s4-disable",
+            "s4-enable",
+            "s6-reentitle",
+            "s6-exhaust",
+            "s6-restore",
+            "s6-backlog-fill",
+            "s6-backlog-drain",
+        ],
     )
 
     p_send = sub.add_parser("send")
@@ -2522,6 +2913,16 @@ async def main() -> int:
     sub.add_parser("teardown")
     sub.add_parser("fixcheck-setup")
     sub.add_parser("fixcheck")
+    sub.add_parser("round2-setup")
+    sub.add_parser("r2-token")
+    p_r2 = sub.add_parser("r2check")
+    p_r2.add_argument(
+        "--stage",
+        required=True,
+        choices=["e06-held", "e06-released", "q09-held", "q09-released"],
+    )
+    sub.add_parser("approve-real")
+    sub.add_parser("s07")
 
     args = ap.parse_args()
     if args.state:
@@ -2542,6 +2943,11 @@ async def main() -> int:
         "teardown": phase_teardown,
         "fixcheck-setup": phase_fixcheck_setup,
         "fixcheck": phase_fixcheck,
+        "round2-setup": phase_round2_setup,
+        "r2-token": phase_r2_token,
+        "r2check": phase_r2check,
+        "approve-real": phase_approve_real,
+        "s07": phase_s07,
     }
     await handlers[args.phase](args)
     return 0

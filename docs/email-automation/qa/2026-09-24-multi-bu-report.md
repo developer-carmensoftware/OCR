@@ -212,3 +212,43 @@ suggester stopped at Carmen's 401 before reaching any model.
 - The JV post in DEF-1 went to S4's dry-run dispatcher. No real Carmen post was possible: carmen's fixtures collide with its own history, and carmencloud's token is dead.
 - The *deployed* dev backend still runs pre-fix code. CD has been failing since at least 09-23 on an empty `SUPABASE_DB_URL` secret, so this proves the code on `main`, not what dev or prod currently serve.
 - F-4 (confirmation sweep) was not re-run live. It needs a real Gmail forwarding-confirmation mail; the unit test covers it.
+
+---
+
+## Round 2 (2026-09-25)
+
+**Run:** `0925044057` · `main` at `6268ef8` plus this branch's harness phases (`round2-setup`, `s07`, `toggle s6-*`, `r2check`, `r2-token`, `approve-real`). Real Gmail, a real LLM, the real dev DB and the real app. Every verdict was read back from rows, IMAP flags and charges after the fact.
+
+| Case | Set-up | Evidence | Result |
+|---|---|---|---|
+| **E-06** out of credits | Scratch S6 is still entitled (active package), but its allowance is used up and its credit balance is 0. `BAY.pdf` sent to it. | **Held:** `retry_later=1`, 0 rows, 0 tasks, `docs_used` stays 30, mail **not** `$OcrDone`. **After the allowance was restored:** processed on the next poll (`pending_review`, 1 document charged, flagged done). | PASS |
+| **Q-09** backlog cap | S6 at 50 pending: 1 real + 49 synthetic run-tagged rows. `BAY.pdf` sent again. | **Held:** `retry_later=1`, 0 rows, no new task, `docs_used` unchanged, not done. **After one row was removed:** processed (charged, done). It then ended `failed / duplicate_document` "A copy is already waiting for review": the fixture was the same `BAY.pdf` as E-06's copy, which was still pending. That is the duplicate guard working; the cause was my fixture choice, not a defect. | PASS |
+| **S-07** auth boundaries (no real credential) | Real app over `ASGITransport`, with no dependency override; real dev Carmen answers the token checks. | No auth → 401 · malformed → 401 · Carmen-shaped fake token → 401 (Carmen rejected it) · repeated → 401 · unknown BU → 400 · **429 on the 21st limited call** (limit 20/min) | PASS (6/6) |
+| **F-4** confirmation sweep | Code plus unit tests (agreed as sufficient; a live test needs a real Gmail forwarding-confirmation mail). | `fetch_confirmations` searches `NOT KEYWORD $OcrDone … FROM`, fetches `BODY.PEEK[]` and never STOREs. All 10 confirmation unit tests pass. | PASS |
+| **R-JV** real JV into Carmen | carmencloud (see F-7 for why not carmen), approved through the real router with `post_input_tax: true` | Waiting for carmencloud's Carmen token to be refreshed: the stored fingerprint is unchanged and `verified_at` is NULL | **NOT RUN YET** |
+
+**S-07 cases not run.** These need a real stored BU credential decrypted, or an admin JWT minted with the environment's secret:
+- a valid token on its own BU
+- a valid token on *another* BU on the same host
+- `/auth/exchange` for another BU
+- admin-JWT scope
+
+This session's safety policy blocked that, so these cases wait for a run the owner explicitly authorises.
+
+### F-7 (MEDIUM, observation — not fixed): one misread digit defeats the duplicate guard
+
+The KBank receipt used for R-JV (printed doc no. `041125E00023869`, 04/11/2025) **had already been posted by carmen** on 2026-08-25, under doc_no `041125E00023869767`: the printed number with an extra "767". Both duplicate checks key on doc_no with exact equality:
+- `has_submitted_doc` (`utils/db_helpers.py`, `==` per field), used by approve and by `is_duplicate` at extraction
+- `_already_pending`
+
+So if the LLM reads the number correctly the next time, the same real document posts a second JV. It needs a misread plus a re-send, but the money path has no second line of defence. **Next step (a decision, not a patch):** also match on something the LLM can't misread in the same way, such as `doc_date` + total amount + bank, or normalise doc_no before comparing.
+
+### S-07 code-level concern (unverified live): a token is proven for the host, not for the BU
+
+`validate_token` (`routers/auth.py`) proves a Carmen token with `GET {host}/Carmen.API/api/interface/department`; no BU is part of that call. `_resolve` (the settings API) and `/auth/exchange` then trust the `bu` in the request. **If** a Carmen token isn't bound to one BU on Carmen's side, a user of one BU could read and write another BU's email settings on the same host, including its `ingest_address`. `/auth/exchange` could also issue them a session for that BU, and with it the review queue and approve. `tests/integration/test_email_automation_router.py` has no test for this.
+
+**Unconfirmed on two counts:**
+1. The live probe needs a real token (see above).
+2. Whether it's a hole depends on Carmen's token model: is a token bound to a single BU?
+
+Severity: potentially HIGH if both hold. Next step: an authorised run of the four credential cases above, plus the Carmen team's answer on token scoping.
