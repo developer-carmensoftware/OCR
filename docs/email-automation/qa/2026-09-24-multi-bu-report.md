@@ -226,7 +226,7 @@ suggester stopped at Carmen's 401 before reaching any model.
 | **S-07** auth boundaries (no real credential) | Real app over `ASGITransport`, with no dependency override; real dev Carmen answers the token checks. | No auth → 401 · malformed → 401 · Carmen-shaped fake token → 401 (Carmen rejected it) · repeated → 401 · unknown BU → 400 · **429 on the 21st limited call** (limit 20/min) | PASS (6/6) |
 | **S-07** with real credentials (run with the owner's explicit permission, dev only) | carmen's stored credential, decrypted in memory only and never printed or saved; admin JWTs minted with dev's secret; each session the login probe created was deleted straight away | Own BU → 200, no token in the body · **carmen token → carmencloud settings → 200** · **carmen token → `/auth/exchange` `bu=carmencloud` → a carmencloud session** · admin without `configs:write` → 403 · admin scoped to carmen: carmencloud → 403, carmen → 200 · global admin → 200 | PASS (8/8, **as designed**, see below) |
 | **F-4** confirmation sweep | Code plus unit tests (agreed as sufficient; a live test needs a real Gmail forwarding-confirmation mail). | `fetch_confirmations` searches `NOT KEYWORD $OcrDone … FROM`, fetches `BODY.PEEK[]` and never STOREs. All 10 confirmation unit tests pass. | PASS |
-| **R-JV** real JV into Carmen | carmencloud (see F-7 for why not carmen), approved through the real router with `post_input_tax: true` | Waiting for carmencloud's Carmen token to be refreshed: the stored fingerprint is unchanged and `verified_at` is NULL | **NOT RUN YET** |
+| **R-JV** real JV into Carmen | The owner's KBank commission receipt (`041125E00023869`, 04/11/2025), mailed to carmencloud after its token was refreshed (Carmen verified it 06:07 UTC), then approved through the real router with `post_input_tax: true`. carmen was not used because it had already posted this document (F-7). For the one line the AI could not map (`บัตรเครดิต/เดบิต`), the reviewer's pick was carmencloud's **own** existing account `GEN/1021009` (see F-8). | Extraction matched the paper exactly: gross 428,513.98, fee 14,140.97, VAT 989.87, net 413,383.14, and doc no. read correctly this time. The AI's suggestions for commission/tax/net (`6080008`/`1022005`/`1011001`) matched carmencloud's own. **Carmen `POST /gljv` → 200, JV 1103**, plus `POST /inputTaxRec` → 200. The row is `posted`, the card has `submitted_at`, 1 post under carmencloud's tenant, and nothing under carmen. Teardown **kept** this row, its card and its charge, so the duplicate guard remembers the JV. | PASS |
 
 ### F-7 (MEDIUM, fixed in #256): one misread digit defeats the duplicate guard
 
@@ -237,6 +237,23 @@ The KBank receipt used for R-JV (printed doc no. `041125E00023869`, 04/11/2025) 
 So if the LLM reads the number correctly the next time, the same real document posts a second JV. It needs a misread plus a re-send, but the money path has no second line of defence.
 
 **Decision and fix (2026-09-25): park, don't block — #256.** `_possibly_posted()` looks for a document this BU already submitted **on the same date** whose number contains the new one or is contained in it (shorter side at least 8 characters). A match parks the new document as `duplicate_document`, "Possibly already posted to Carmen as `<number>`". The reviewer can still approve it, and it never auto-posts. The amount isn't part of the key because `credit_cards` stores none, and rows posted before a new column, like the F-7 row, would have none either. One-digit substitutions are not matched on purpose: same-day sequential numbers are the normal case.
+
+### F-8 (MEDIUM, open): GL mappings saved before #248 are invisible to per-bank reads
+
+Found while preparing R-JV. carmencloud has 29 GL mapping entries, among them `บัตรเครดิต/เดบิต → GEN/1021009`, `commission → 6080008` and `tax → 1022005`, yet `get_accounting_config(db, carmencloud, "KBANK")` returned **0**. So the document parked `mapping_missing` + `mapping_guessed`, with the AI re-guessing accounts the BU had already chosen.
+
+**Root cause:**
+- `20260924000000_bank_scoped_mapping_entries.sql` (#248) added `bu_accounting_mapping_entries.bank_code` and backfilled it from `bu_accounting_configs.bank_code`, but only `where c.bank_code is not null`.
+- carmencloud's config row has no `bank_code`, so its entries stayed NULL.
+- `_get_entries` now filters `bank_code = '<bank>'`, and a NULL never matches.
+
+**Effect:** every BU whose config row had no bank loses its pre-#248 mappings in email ingest and the per-bank wizard fetch.
+- Each document parks as `mapping_missing` (or relies on a fresh AI guess).
+- **An `auto_post` BU stops auto-posting entirely.**
+
+It can't be measured on prod from here (prod DB is off-limits).
+
+**Next step:** a decision. The read path could fall back to the BU's bank-less (pre-#248) entry for any field the bank has no entry of its own for.
 
 ### S-07: the ownership boundary is the host, not the BU — confirmed live, matches the design
 

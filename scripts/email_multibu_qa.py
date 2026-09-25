@@ -2535,7 +2535,7 @@ async def phase_r2check(args) -> None:
     save_state(state)
 
 
-async def phase_approve_real(_args) -> None:
+async def phase_approve_real(args) -> None:
     """R-JV: the review screen's approve, through the real router, into real Carmen."""
     guard()
     state = load_state()
@@ -2563,9 +2563,24 @@ async def phase_approve_real(_args) -> None:
     async with async_session() as db:
         config = await get_accounting_config(db, cc["tenant_id"], d["bank_code"])
     details = [ExtractedDetailRow(**x) for x in extracted.get("details", [])]
+    # What the reviewer picks in the dialog for anything still unmapped:
+    # --map "<payment type>=<dept>:<acc>", applied last, like a hand edit on screen.
+    picked = {}
+    for item in args.map or []:
+        field, _, target = item.partition("=")
+        dept, _, acc = target.partition(":")
+        picked[field] = {"dept": dept, "acc": acc}
     jv_rows = build_jv_rows(
-        details, {**(config.mappings or {}), **(payload.get("suggested") or {})}
+        details,
+        {**(config.mappings or {}), **(payload.get("suggested") or {}), **picked},
     )
+    blank = [r for r in jv_rows if not r.get("acc")]
+    if blank:
+        _r2_record(
+            state, "R-JV", None, f"not posted: JV line(s) with no account {blank}"
+        )
+        save_state(state)
+        return
     print(
         f"  approving {d['id']} ({d['bank_code']} {d['doc_no']}, parked reason"
         f" {d['reason_code']}, flags {payload.get('flags')}) — {len(jv_rows)} JV row(s)"
@@ -3044,7 +3059,12 @@ async def main() -> int:
         required=True,
         choices=["e06-held", "e06-released", "q09-held", "q09-released"],
     )
-    sub.add_parser("approve-real")
+    p_ar = sub.add_parser("approve-real")
+    p_ar.add_argument(
+        "--map",
+        action="append",
+        help='reviewer\'s pick for an unmapped line: "<payment type>=<dept>:<acc>"',
+    )
     sub.add_parser("s07")
     sub.add_parser("s07-creds")
 
