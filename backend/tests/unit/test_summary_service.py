@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.summary_service import _aggregate_all
+from app.services.admin.summary import _aggregate_all
 
 
 class RowMock:

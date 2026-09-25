@@ -8,7 +8,7 @@ import logging
 
 from app.database import async_session
 from app.models.orm import LLMUsageLog
-from app.services.pricing_cache_service import estimate_cost, get_pricing
+from app.services.shared.pricing_cache import estimate_cost, get_pricing
 
 logger = logging.getLogger(__name__)
 

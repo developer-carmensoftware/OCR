@@ -5,7 +5,7 @@ Pure Python — no DB, no LLM, no mocking needed.
 
 import pytest
 
-from app.services.ap_invoice_postprocess_service import (
+from app.services.ap_invoice.postprocess import (
     _build_deposit_row,
     _compute_line_totals,
     _deposit_applies,

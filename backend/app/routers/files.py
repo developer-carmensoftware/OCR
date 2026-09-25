@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.auth import SessionInfo, get_current_session
 from app.models.schemas.files import FilePreviewResponse, PdfInfoResponse
-from app.services.file_service import file_service
+from app.services.shared.file import file_service
 from app.utils.pdf_utils import (
     PDF_RENDER_TIMEOUT_SECONDS,
     get_pdf_page_count,

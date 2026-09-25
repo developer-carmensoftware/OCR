@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.enums import BillingDocumentType
-from app.services.billing_document_service import (
+from app.services.billing.documents import (
     BuyerInfo,
     _fetch_billing_configs,
     get_last_buyer_info,
@@ -121,11 +121,11 @@ async def test_issue_document_proforma_vat_math():
     db = _make_db()
     with (
         patch(
-            "app.services.billing_document_service._fetch_billing_configs",
+            "app.services.billing.documents._fetch_billing_configs",
             new=AsyncMock(return_value={"billing.vat_rate": "7"}),
         ),
         patch(
-            "app.services.billing_document_service._next_document_number",
+            "app.services.billing.documents._next_document_number",
             new=AsyncMock(return_value="PF-202606-0001"),
         ),
     ):
@@ -155,11 +155,11 @@ async def test_issue_document_buyer_snapshot_saved():
     db = _make_db()
     with (
         patch(
-            "app.services.billing_document_service._fetch_billing_configs",
+            "app.services.billing.documents._fetch_billing_configs",
             new=AsyncMock(return_value={"billing.vat_rate": "7", "billing.seller_name": "Seller"}),
         ),
         patch(
-            "app.services.billing_document_service._next_document_number",
+            "app.services.billing.documents._next_document_number",
             new=AsyncMock(return_value="IV-202606-0001"),
         ),
     ):
@@ -191,11 +191,11 @@ async def test_issue_document_empty_buyer_fields_are_none():
     db = _make_db()
     with (
         patch(
-            "app.services.billing_document_service._fetch_billing_configs",
+            "app.services.billing.documents._fetch_billing_configs",
             new=AsyncMock(return_value={}),
         ),
         patch(
-            "app.services.billing_document_service._next_document_number",
+            "app.services.billing.documents._next_document_number",
             new=AsyncMock(return_value="PF-202606-0001"),
         ),
     ):

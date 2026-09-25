@@ -35,9 +35,8 @@ from app.models.billing import UserNotification
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.config import AccountingConfigResponse
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services import email_imap as imap
-from app.services import email_ingest_service as ingest
-from app.services.carmen_service import CarmenAPIError
+from app.services.email_automation import imap, ingest
+from app.services.shared.carmen import CarmenAPIError
 
 TENANT_ID = str(uuid4())
 
@@ -162,7 +161,7 @@ class _Patches:
         self.post_input_tax = AsyncMock(return_value=tax_note)
         # Exposed like every other collaborator so a test can assert the JV was *not*
         # posted. The patch is stopped by the time `_run` returns, so reaching for
-        # `ingest.post_gljv` afterwards finds the real function again.
+        # `ingest.carmen.post_gljv` afterwards finds the real function again.
         self.post_gljv = AsyncMock(return_value=carmen_result, side_effect=carmen_side_effect)
         self._stack = []
 
@@ -183,7 +182,7 @@ class _Patches:
             patch.object(ingest, "_mark_submitted", self.mark_submitted),
             patch.object(ingest, "get_accounting_config", AsyncMock(return_value=self.config)),
             patch.object(ingest, "_suggest_missing_mappings", self.suggest),
-            patch.object(ingest, "post_gljv", self.post_gljv),
+            patch.object(ingest.carmen, "post_gljv", self.post_gljv),
         ]
         for p in patches:
             p.start()
@@ -1737,7 +1736,7 @@ async def test_the_extraction_runs_with_a_tenant_and_a_task_already_set():
 @pytest.mark.asyncio
 async def test_log_llm_usage_writes_the_row_with_the_tenant_in_context():
     from app.context import current_tenant_id
-    from app.services import llm_usage_logger as lu
+    from app.services.shared import llm_usage_logger as lu
 
     db = _FakeDB()
     tctx = current_tenant_id.set(TENANT_ID)
@@ -2927,7 +2926,7 @@ def _approve_patches(db, *, carmen_result, carmen_side_effect=None, tax_note=Non
         patch.object(ingest.es, "posting_target", AsyncMock(return_value=("bu-tok", "https://bu"))),
         patch.object(ingest, "get_accounting_config", AsyncMock(return_value=_config())),
         patch.object(ingest, "build_gljv_payload", MagicMock(return_value={"JvhSeq": -1})),
-        patch.object(ingest, "post_gljv", post),
+        patch.object(ingest.carmen, "post_gljv", post),
         patch.object(ingest, "_post_input_tax", tax),
         patch.object(ingest, "_mark_submitted", mark),
     ):

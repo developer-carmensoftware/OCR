@@ -5,7 +5,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from app.middleware.performance import decode_jwt_claims
-from app.services import maintenance_service
+from app.services.shared import maintenance as maintenance_service
 
 # Always reachable, even during maintenance: health (Render restarts the service
 # if this ever 503s), the admin plane (so admins can toggle it back off), the public

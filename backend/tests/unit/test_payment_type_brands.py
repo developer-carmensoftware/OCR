@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services.gl_suggestion_service import suggest_payment_types
+from app.services.credit_card.gl_suggestion import suggest_payment_types
 
 ACCOUNTS = [
     {"code": f"1011{i:03d}", "name": f"Bank {i} SCB Saving · บัญชีออมทรัพย์", "type": "balancesheet"}
@@ -25,9 +25,11 @@ TYPES = ["VSA-INT-P", "VSA-INT", "MCA-INT-P", "MCA-INT", "QR-THAI"]
 
 @pytest.mark.asyncio
 async def test_brand_accounts_reach_prompt_and_fill_a_silent_model():
-    with patch("app.services.gl_suggestion_service.call_text_llm", new_callable=AsyncMock) as llm:
+    with patch(
+        "app.services.credit_card.gl_suggestion.call_text_llm", new_callable=AsyncMock
+    ) as llm:
         llm.return_value = {}
-        with patch("app.services.gl_suggestion_service.settings") as cfg:
+        with patch("app.services.credit_card.gl_suggestion.settings") as cfg:
             cfg.openrouter_api_key = "sk-test"
             result = await suggest_payment_types(TYPES, ACCOUNTS, DEPARTMENTS, bank_code="SCB")
 

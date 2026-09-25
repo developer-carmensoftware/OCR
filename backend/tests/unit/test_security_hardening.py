@@ -36,7 +36,7 @@ class TestIDORTenantScoping:
     @pytest.mark.asyncio
     async def test_mark_invoice_submitted_query_is_tenant_scoped(self):
         """The AP-invoice lookup must filter by tenant_id AND deleted_at."""
-        from app.services.ap_invoice_service import mark_invoice_submitted
+        from app.services.ap_invoice.service import mark_invoice_submitted
 
         db = make_mock_db(execute_rows=[])  # scalar_one_or_none → None (not found)
         tenant = str(uuid.uuid4())
@@ -53,7 +53,7 @@ class TestIDORTenantScoping:
     @pytest.mark.asyncio
     async def test_mark_invoice_submitted_rejects_bad_uuid(self):
         """A non-UUID id/tenant must short-circuit before touching the DB."""
-        from app.services.ap_invoice_service import mark_invoice_submitted
+        from app.services.ap_invoice.service import mark_invoice_submitted
 
         db = make_mock_db(execute_rows=[])
         await mark_invoice_submitted(db, "not-a-uuid", "also-bad")
@@ -99,7 +99,8 @@ class TestIDORTenantScoping:
             with (
                 patch("app.lifecycle.ensure_db", new_callable=AsyncMock),
                 patch(
-                    "app.services.usage_service.fetch_openrouter_pricing", new_callable=AsyncMock
+                    "app.services.shared.pricing_cache.fetch_openrouter_pricing",
+                    new_callable=AsyncMock,
                 ),
                 patch("app.lifecycle._perf_flush_loop", new_callable=AsyncMock),
                 patch("app.lifecycle.asyncio.sleep", new_callable=AsyncMock),
@@ -174,7 +175,7 @@ class TestSSRFHardening:
 
     def test_carmen_client_does_not_follow_redirects(self):
         """A redirect must not be able to bounce the validation probe internally."""
-        from app.services import carmen_service
+        from app.services.shared import carmen as carmen_service
 
         carmen_service._SHARED_CLIENT = None  # force fresh build
         client = carmen_service.get_http_client()

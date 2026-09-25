@@ -36,8 +36,8 @@ def _addr(tag):
 def test_the_envelope_tag_picks_the_owning_bu(tenants):
     """The whole routing decision, on real rows."""
     from app.database import async_session
-    from app.services import email_settings_service as es
-    from app.services.email_imap import tag_from_recipients
+    from app.services.email_automation import ingest_settings as es
+    from app.services.email_automation.imap import tag_from_recipients
 
     async def _route(header):
         tag = tag_from_recipients([header])
@@ -54,7 +54,7 @@ def test_the_envelope_tag_picks_the_owning_bu(tenants):
 def test_an_unknown_tag_routes_to_nobody(tenants):
     """Mail nobody owns must resolve to nothing — not to the first BU in the table."""
     from app.database import async_session
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     async def _resolve(tag):
         async with async_session() as db:
@@ -64,7 +64,7 @@ def test_an_unknown_tag_routes_to_nobody(tenants):
 
 
 def test_a_bare_address_with_no_tag_routes_to_nobody():
-    from app.services.email_imap import tag_from_recipients
+    from app.services.email_automation.imap import tag_from_recipients
 
     assert tag_from_recipients(["for ocr@carmensoftware.com; Mon, 1 Sep 2026"]) is None
     assert tag_from_recipients(["for someone+isoalpha@elsewhere.example;"]) is None
@@ -75,7 +75,7 @@ def test_a_switched_off_bu_still_resolves_so_its_mail_is_held_not_lost(real_engi
     "known tag, switched off" (hand it back unread) need opposite answers, and a `None`
     for both cannot express the difference."""
     from app.database import async_session
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     async def _set_enabled(tid, on):
         async with real_engine.begin() as conn:
@@ -106,7 +106,7 @@ def test_a_document_carrying_the_neighbours_tax_id_is_a_conflict_for_the_receive
     """Arrives on A's tag, prints B's TIN. It must be flagged against A — never handed
     to B, who never received it."""
     from app.database import async_session
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     async def _check(tax_ids, tenant_id):
         async with async_session() as db:
@@ -125,7 +125,7 @@ def test_a_switched_off_bus_tax_id_still_blocks_the_neighbour(real_engine, tenan
     """Turning the feature off does not release the number. Otherwise a BU pausing for a
     month would let its documents start posting into somebody else's books."""
     from app.database import async_session
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     async def _set_enabled(tid, on):
         async with real_engine.begin() as conn:
@@ -150,7 +150,7 @@ def test_registering_a_tax_id_another_bu_already_owns_is_refused(tenants):
     from app.database import async_session
     from app.exceptions import ConflictError
     from app.models.identity import Tenant
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     async def _save():
         async with async_session() as db:
@@ -183,8 +183,8 @@ def test_each_bus_filename_rule_claims_only_its_own_files(real_engine, tenants):
     """A scans `*statement*`, B scans `*invoice*`. A file matching the neighbour's rule
     and not your own must stop before the LLM — not fall through to the neighbour."""
     from app.database import async_session
-    from app.services import email_settings_service as es
-    from app.services.email_imap import match_rules
+    from app.services.email_automation import ingest_settings as es
+    from app.services.email_automation.imap import match_rules
 
     async def _rules(tag):
         async with async_session() as db:
@@ -205,7 +205,7 @@ def test_a_bus_pdf_passwords_are_never_pooled_with_the_neighbours(real_engine, t
     """`rule_passwords` reads one BU's active rules. A password leaking into the other
     BU's attempt list would open documents that BU has no business opening."""
     from app.database import async_session
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     async def _set_password(tid, plain):
         from cryptography.fernet import Fernet
@@ -250,8 +250,8 @@ def test_a_bus_pdf_passwords_are_never_pooled_with_the_neighbours(real_engine, t
 def test_owner_email_lists_are_read_per_bu(tenants):
     """A restricts to its own address; B accepts anybody. Same message, two answers."""
     from app.database import async_session
-    from app.services import email_settings_service as es
-    from app.services.email_imap import sender_allowed
+    from app.services.email_automation import ingest_settings as es
+    from app.services.email_automation.imap import sender_allowed
 
     async def _owners(tag):
         async with async_session() as db:
@@ -266,7 +266,7 @@ def test_owner_email_lists_are_read_per_bu(tenants):
 def test_auto_post_is_read_per_bu(tenants):
     """A posts clean documents straight through; B parks everything for a human."""
     from app.database import async_session
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     async def _auto(tag):
         async with async_session() as db:
@@ -283,7 +283,7 @@ def test_the_same_message_can_be_claimed_by_both_bus(real_engine, tenants):
     """Dedupe keys on (tenant, message, attachment). One bank mailing both BUs the same
     newsletter must not have the second BU's copy silently swallowed."""
     from app.database import async_session
-    from app.services.email_ingest_service import _claim
+    from app.services.email_automation.ingest import _claim
 
     msg = f"<shared-{uuid.uuid4()}@iso.test>"
 
@@ -313,7 +313,7 @@ def test_the_same_message_can_be_claimed_by_both_bus(real_engine, tenants):
 def test_the_same_doc_no_parked_in_two_bus_is_not_a_cross_bu_duplicate(real_engine, tenants):
     """`_already_pending` keys on (tenant, bank, doc_no). Two BUs processing the same
     invoice number from the same processor is normal and must not block either."""
-    from app.services.email_ingest_service import _already_pending
+    from app.services.email_automation.ingest import _already_pending
 
     doc_no = f"SHARED-{uuid.uuid4().hex[:8]}"
 
@@ -350,7 +350,7 @@ def test_the_review_backlog_is_counted_per_bu(real_engine, tenants):
     """Backpressure protects a BU that stops reading its queue. It must not throttle the
     BU next door."""
     from app.database import async_session
-    from app.services.email_ingest_service import _pending_count
+    from app.services.email_automation.ingest import _pending_count
 
     async def _count(tid):
         async with async_session() as db:
@@ -393,7 +393,7 @@ def test_the_posting_credential_is_the_receiving_bus_own(tenants):
     """Approve and auto-post both re-read `posting_target`. If it ever resolved to the
     wrong BU, one customer's JV would post into another's Carmen."""
     from app.database import async_session
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     async def _target(tag):
         async with async_session() as db:

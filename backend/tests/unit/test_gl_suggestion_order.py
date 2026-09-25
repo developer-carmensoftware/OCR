@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services.gl_suggestion_service import suggest_fixed_fields, suggest_payment_types
+from app.services.credit_card.gl_suggestion import suggest_fixed_fields, suggest_payment_types
 
 # Enough accounts to be cut by the 40-item commission limit and the 30-item balance one, so
 # a reordering changes *membership* and not merely position — the sharper failure.
@@ -42,9 +42,11 @@ def _shuffled(items: list[dict]) -> list[dict]:
 
 
 async def _prompt_from(fn, **kwargs) -> str:
-    with patch("app.services.gl_suggestion_service.call_text_llm", new_callable=AsyncMock) as llm:
+    with patch(
+        "app.services.credit_card.gl_suggestion.call_text_llm", new_callable=AsyncMock
+    ) as llm:
         llm.return_value = {"suggestions": {}}
-        with patch("app.services.gl_suggestion_service.settings") as cfg:
+        with patch("app.services.credit_card.gl_suggestion.settings") as cfg:
             cfg.openrouter_api_key = "sk-test"
             await fn(**kwargs)
     assert llm.await_count == 1

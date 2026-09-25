@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.observability import AnomalyAlert, JobRun, PerformanceLog
-from app.services.tenant_lookup import tenant_name_map
+from app.services.shared.tenant_lookup import tenant_name_map
 from app.utils.pagination import paginate
 
 from ._query import ListQuery, apply_list_query, list_query

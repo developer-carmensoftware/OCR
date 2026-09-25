@@ -3,7 +3,7 @@ Print the exact Carmen AR JSON payload that POST /admin/credit-orders/post-ar
 sends, for a given net (pre-VAT) catalog price — no DB, no network.
 
 Reproduces the real math (app.utils.tax.vat_on_top) and the real payload shape
-(app.services.ar_posting_service.post_ar_entry), so you can eyeball the numbers
+(app.services.billing.ar_posting.post_ar_entry), so you can eyeball the numbers
 without pulling them out of network devtools.
 
 Usage (cd backend, venv active):

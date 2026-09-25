@@ -17,7 +17,7 @@ from app.models import (
     CorrectionFeedbackRequest,
     CorrectionFeedbackResponse,
 )
-from app.services.correction_service import build_correction_upsert, invalidate_hints_cache
+from app.services.shared.correction import build_correction_upsert, invalidate_hints_cache
 
 router = APIRouter(prefix="/api/v1/feedback", tags=["feedback"])
 logger = logging.getLogger(__name__)

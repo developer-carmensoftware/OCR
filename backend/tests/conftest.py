@@ -95,7 +95,7 @@ def _maintenance_inactive():
     (a real one is on right now during the pilot) or a prior test that seeded it
     would 503 unrelated router tests. A far-future ts keeps it from refreshing
     from the DB. Tests that exercise the flag re-seed the cache in their body."""
-    from app.services import maintenance_service as _maint
+    from app.services.shared import maintenance as _maint
 
     _maint._cache.update(
         {
@@ -158,7 +158,7 @@ def ctx():
 @pytest.fixture(autouse=True)
 def clear_service_caches():
     """Wipe in-process caches before every test to prevent state leak between tests."""
-    from app.services import usage_service
+    from app.services.shared import pricing_cache
 
-    usage_service._PRICING_CACHE.clear()
+    pricing_cache._PRICING_CACHE.clear()
     yield

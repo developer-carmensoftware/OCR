@@ -133,7 +133,7 @@ class TestExtractionFailuresEndpoint:
 
 class TestGetExtractionFailures:
     async def _call(self, db, **kwargs):
-        from app.services.usage_analytics_service import get_extraction_failures
+        from app.services.admin.usage_analytics import get_extraction_failures
 
         return await get_extraction_failures(
             db,
@@ -215,7 +215,7 @@ class TestGetExtractionFailures:
 
 class TestTenantEngagementMap:
     async def _call(self, db, tenant_uuids, today=None):
-        from app.services.usage_analytics_service import get_tenant_engagement_map
+        from app.services.admin.usage_analytics import get_tenant_engagement_map
 
         return await get_tenant_engagement_map(db, tenant_uuids, today=today)
 
@@ -308,7 +308,7 @@ class TestCallTypeSplit:
         assert 'call_type="suggest"' in text_src
 
     async def test_log_llm_usage_persists_call_type(self):
-        from app.services.llm_usage_logger import log_llm_usage
+        from app.services.shared.llm_usage_logger import log_llm_usage
 
         captured = {}
 
@@ -326,9 +326,9 @@ class TestCallTypeSplit:
                 pass
 
         with (
-            patch("app.services.llm_usage_logger.async_session", _Session),
-            patch("app.services.llm_usage_logger.get_pricing", AsyncMock(return_value=None)),
-            patch("app.services.llm_usage_logger._ctx", return_value="t-1"),
+            patch("app.services.shared.llm_usage_logger.async_session", _Session),
+            patch("app.services.shared.llm_usage_logger.get_pricing", AsyncMock(return_value=None)),
+            patch("app.services.shared.llm_usage_logger._ctx", return_value="t-1"),
         ):
             await log_llm_usage(
                 model="m", prompt_tokens=1, completion_tokens=1, total_tokens=2, call_type="suggest"

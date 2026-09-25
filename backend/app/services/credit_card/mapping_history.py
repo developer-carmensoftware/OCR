@@ -15,8 +15,8 @@ import logging
 import time
 
 from app.context import current_tenant_id
-from app.services.ap_vendor_history_service import normalize_description
-from app.services.carmen_service import CarmenAPIError, get_jv_by_source
+from app.services.ap_invoice.vendor_history import normalize_description
+from app.services.shared.carmen import CarmenAPIError, get_jv_by_source
 
 logger = logging.getLogger(__name__)
 

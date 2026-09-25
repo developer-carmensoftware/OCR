@@ -20,8 +20,10 @@ from app.models.enums import BillingDocumentType, CreditLedgerReason, CreditOrde
 from app.models.orm import BillingDocument, CreditOrder, CreditPack, Tenant
 from app.models.schemas import CreditOrderResponse, KpiSummaryResponse
 from app.models.schemas.credits import HoldBatchResultItem, PostArResultItem
-from app.services import ar_posting_service, notification_service, storage_service
-from app.services.credit_service import activate_subscription, grant_credits
+from app.services.billing import ar_posting as ar_posting_service
+from app.services.billing import slip_storage as storage_service
+from app.services.shared import notification as notification_service
+from app.services.shared.credits import activate_subscription, grant_credits
 from app.utils.pagination import count_rows
 
 logger = logging.getLogger(__name__)

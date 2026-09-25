@@ -10,7 +10,7 @@ import pytest
 
 from app.models.enums import TaskStatus
 from app.models.orm import OCRTask
-from app.services.carmen_service import CarmenAPIError
+from app.services.shared.carmen import CarmenAPIError
 from tests.integration.conftest import FAKE_SESSION, make_test_client
 
 BASE_URL = "/api/v1/ap-invoice"

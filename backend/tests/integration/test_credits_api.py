@@ -257,7 +257,7 @@ def test_create_order_returns_qr_and_proforma():
 
 def test_create_order_annual_subscription_uses_discounted_price():
     """Annual subscription order is priced at 12 months − 10%, with VAT on top."""
-    from app.services.credit_service import annual_price
+    from app.services.shared.credits import annual_price
     from app.utils.tax import vat_on_top
 
     pack = _pack("sub_pro", 1500, 2490.0, kind="subscription")
@@ -413,7 +413,7 @@ def test_create_order_rejects_unknown_billing_period():
 
 def test_annual_price_is_ten_percent_off():
     """Annual = monthly × 12 × 0.9 — the one money-path check that must hold."""
-    from app.services.credit_service import annual_price
+    from app.services.shared.credits import annual_price
 
     assert annual_price(Decimal("490")) == Decimal("5292.00")
     assert annual_price(Decimal("990")) == Decimal("10692.00")

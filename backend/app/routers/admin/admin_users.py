@@ -13,7 +13,7 @@ from app.models.schemas import (
     PasswordResetRequest,
     RoleAssignmentRequest,
 )
-from app.services import admin_user_service as svc
+from app.services.admin import users as svc
 
 from .deps import require_permission
 

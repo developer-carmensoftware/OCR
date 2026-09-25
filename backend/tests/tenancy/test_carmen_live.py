@@ -47,7 +47,7 @@ def test_each_bus_credential_resolves_to_that_bus_own_carmen_origin(real_engine,
     the wrong origin would post one customer's JV into another's Carmen."""
     from app.database import async_session
     from app.models.email_automation import EmailIngestSettings
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     async def _targets():
         out = []
@@ -81,7 +81,7 @@ def test_two_bus_do_not_share_one_carmen_credential(live):
 async def _fingerprints(live):
     from app.database import async_session
     from app.models.email_automation import EmailIngestSettings
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     out = {}
     async with async_session() as db:
@@ -100,7 +100,7 @@ def test_a_stored_credential_still_opens_the_real_carmen(real_engine, live):
     from app.database import async_session
     from app.models.email_automation import EmailIngestSettings
     from app.routers.auth import validate_token
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     async def _probe():
         results = {}
@@ -138,7 +138,7 @@ def test_a_seeded_bu_with_no_credential_cannot_post_at_all(tenants):
     the pipeline parks the document instead of reaching for somebody else's."""
     from app.database import async_session
     from app.models.email_automation import EmailIngestSettings
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     async def _go():
         async with async_session() as db:

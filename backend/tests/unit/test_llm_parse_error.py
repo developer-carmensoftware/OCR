@@ -13,7 +13,7 @@ import json
 import pytest
 
 from app.exceptions import LLMParseError
-from app.services import llm_service
+from app.services.credit_card import vision as llm_service
 
 
 def test_message_is_readable_and_leaks_no_parser_internals():

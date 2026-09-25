@@ -60,7 +60,7 @@ def _ok(payload=None):
 
 
 def _err(status: int, detail: str = "upstream error"):
-    from app.services.carmen_service import CarmenAPIError
+    from app.services.shared.carmen import CarmenAPIError
 
     return AsyncMock(side_effect=CarmenAPIError(status, detail))
 

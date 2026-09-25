@@ -17,7 +17,7 @@ import pytest
 
 from app.exceptions import ConflictError, FieldValidationError
 from app.models.schemas.email_automation import RuleIn, SettingsIn
-from app.services import email_settings_service as es
+from app.services.email_automation import ingest_settings as es
 
 
 def _valid_tax_id(prefix: str = "010553600012") -> str:
@@ -519,12 +519,12 @@ async def test_set_token_stores_encrypted_plus_fingerprint_never_plaintext(monke
 @pytest.mark.asyncio
 async def test_set_token_stores_nothing_when_carmen_rejects_it(monkeypatch):
     """Strict verification: a token Carmen will not accept never reaches the DB."""
-    from app.services.carmen_service import CarmenAPIError
+    from app.services.shared.carmen import CarmenAPIError
 
     async def _reject(_token):
         raise CarmenAPIError(401, "Unauthorized")
 
-    monkeypatch.setattr("app.services.carmen_service.get_departments", _reject)
+    monkeypatch.setattr("app.services.shared.carmen.get_departments", _reject)
 
     row = _fake_row(carmen_token_enc=None, carmen_uri=None)
     db = AsyncMock()
@@ -667,7 +667,7 @@ async def test_unconfigured_bu_reports_only_not_configured(monkeypatch):
 )
 @pytest.mark.asyncio
 async def test_carmen_origin_rejected_before_any_outbound_request(host):
-    from app.routers.email_automation import _safe_carmen_uri
+    from app.routers.email_automation.settings_api import _safe_carmen_uri
 
     with pytest.raises(FieldValidationError) as exc:
         await _safe_carmen_uri(_tenant_with_host(host))
@@ -677,7 +677,7 @@ async def test_carmen_origin_rejected_before_any_outbound_request(host):
 @pytest.mark.asyncio
 async def test_carmen_origin_is_derived_from_the_tenant_host():
     """One value, not two: the origin a token is validated against is the one we post to."""
-    from app.routers.email_automation import _safe_carmen_uri
+    from app.routers.email_automation.settings_api import _safe_carmen_uri
 
     assert await _safe_carmen_uri(_tenant_with_host()) == "https://hotel.carmenwork.com"
 

@@ -21,14 +21,15 @@ from app.constants import Module
 from app.context import current_document_ref
 from app.database import async_session, get_db
 from app.models import ExtractedCreditCardData, OCRTask, TaskStatus
-from app.services import audit_service, ocr_service
-from app.services.audit_service import AuditAction
-from app.services.correction_service import get_correction_hints
-from app.services.credit_card_service import finalize_extraction, mark_task_failed
-from app.services.credit_service import consume_document, refund_document
-from app.services.file_service import file_service
-from app.services.module_gate import assert_module_enabled
-from app.services.task_service import create_task
+from app.services.credit_card import ocr as ocr_service
+from app.services.credit_card.extraction import finalize_extraction, mark_task_failed
+from app.services.shared import audit as audit_service
+from app.services.shared.audit import AuditAction
+from app.services.shared.correction import get_correction_hints
+from app.services.shared.credits import consume_document, refund_document
+from app.services.shared.file import file_service
+from app.services.shared.module_gate import assert_module_enabled
+from app.services.shared.task import create_task
 from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import format_doc_date
 from app.utils.pdf_utils import ensure_pdf_openable

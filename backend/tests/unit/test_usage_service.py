@@ -1,5 +1,5 @@
 """
-Unit tests for services/usage_service.py
+Unit tests for services/shared/pricing_cache.py & shared/llm_usage_logger.py
 Mocks DB session and context vars.
 """
 
@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.usage_service import estimate_cost
+from app.services.shared.pricing_cache import estimate_cost
 from tests.conftest import set_context
 
 # ── estimate_cost ────────────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ class TestEstimateCost:
 
 class TestLogLlmUsage:
     async def test_B4_5_inserts_usage_log_row(self):
-        from app.services import llm_usage_logger
+        from app.services.shared import llm_usage_logger
 
         set_context("t-001", "bu-001")
 
@@ -46,7 +46,7 @@ class TestLogLlmUsage:
 
         with (
             patch.object(llm_usage_logger, "async_session", return_value=ctx),
-            patch("app.services.llm_usage_logger.get_pricing", AsyncMock(return_value=None)),
+            patch("app.services.shared.llm_usage_logger.get_pricing", AsyncMock(return_value=None)),
         ):
             await llm_usage_logger.log_llm_usage(
                 model="test-model",
@@ -66,7 +66,7 @@ class TestLogLlmUsage:
     async def test_B4_6_count_quota_true_is_a_noop(self):
         """count_quota=True is a no-op — a document is charged by consume_document()
         at the router, before the model is ever called."""
-        from app.services import llm_usage_logger
+        from app.services.shared import llm_usage_logger
 
         set_context("t-001", "bu-001")
 
@@ -79,7 +79,7 @@ class TestLogLlmUsage:
 
         with (
             patch.object(llm_usage_logger, "async_session", return_value=ctx),
-            patch("app.services.llm_usage_logger.get_pricing", AsyncMock(return_value=None)),
+            patch("app.services.shared.llm_usage_logger.get_pricing", AsyncMock(return_value=None)),
         ):
             await llm_usage_logger.log_llm_usage(
                 model="m",

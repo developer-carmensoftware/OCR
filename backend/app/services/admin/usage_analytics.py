@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.business import APInvoice, CreditCard, OCRTask
 from app.models.enums import TaskStatus
 from app.models.observability import LLMUsageLog, MonthlyUsageSummary, PerformanceLog
-from app.services.tenant_lookup import tenant_name_map
+from app.services.shared.tenant_lookup import tenant_name_map
 from app.utils.list_query import ListQuery, apply_list_query
 from app.utils.pagination import count_rows, paginate
 
