@@ -47,15 +47,15 @@ Each is traceable to the code that implements it.
 
 | # | Requirement | Implementation |
 |---|---|---|
-| FR-1 | The owning BU is identified from the envelope, before any LLM spend | `tag_from_recipients()` (`email_ingest_service.py:300`), `resolve_by_tag()` (`email_settings_service.py:104`) |
-| FR-2 | A tax ID printed on the document is checked as an independent second signal; disagreement parks the document rather than picking a winner | `foreign_tax_id()` (`email_settings_service.py:176`) |
-| FR-3 | An attachment is only processed if it passes two free gates: the BU's sender allow-list, then its filename rules | `sender_allowed()` (`email_ingest_service.py:419`), `match_rules()` (`email_ingest_service.py:446`) |
-| FR-4 | A file is opened (magic-byte check, then this BU's PDF passwords) before anything is charged | `_open_or_fail()` (`email_ingest_service.py:1007`) |
-| FR-5 | The same mail is never processed twice, and the same document arriving in two different mails is never posted twice | IMAP keyword `$OcrDone` (never `\Seen`, which anyone can set) + atomic `_claim()` on `(tenant_id, message_id, attachment)`; `credit_cards.submitted_at` stamped post-post (`_mark_submitted()`, `email_ingest_service.py:1068`) |
-| FR-6 | Extraction runs through the same pipeline the wizard uses; a GL mapping the BU never configured is filled by AI and saved for next time | `_suggest_missing_mappings()` (`email_ingest_service.py:951`) |
-| FR-7 | The GL JV is posted, then the input-tax record; the second can never fail the first | `_post_input_tax()` (`email_ingest_service.py:892`) |
+| FR-1 | The owning BU is identified from the envelope, before any LLM spend | `tag_from_recipients()` (`email_automation/ingest.py:300`), `resolve_by_tag()` (`email_automation/ingest_settings.py:104`) |
+| FR-2 | A tax ID printed on the document is checked as an independent second signal; disagreement parks the document rather than picking a winner | `foreign_tax_id()` (`email_automation/ingest_settings.py:176`) |
+| FR-3 | An attachment is only processed if it passes two free gates: the BU's sender allow-list, then its filename rules | `sender_allowed()` (`email_automation/ingest.py:419`), `match_rules()` (`email_automation/ingest.py:446`) |
+| FR-4 | A file is opened (magic-byte check, then this BU's PDF passwords) before anything is charged | `_open_or_fail()` (`email_automation/ingest.py:1007`) |
+| FR-5 | The same mail is never processed twice, and the same document arriving in two different mails is never posted twice | IMAP keyword `$OcrDone` (never `\Seen`, which anyone can set) + atomic `_claim()` on `(tenant_id, message_id, attachment)`; `credit_cards.submitted_at` stamped post-post (`_mark_submitted()`, `email_automation/ingest.py:1068`) |
+| FR-6 | Extraction runs through the same pipeline the wizard uses; a GL mapping the BU never configured is filled by AI and saved for next time | `_suggest_missing_mappings()` (`email_automation/ingest.py:951`) |
+| FR-7 | The GL JV is posted, then the input-tax record; the second can never fail the first | `_post_input_tax()` (`email_automation/ingest.py:892`) |
 | FR-8 | Every attachment's outcome is recorded with a stable `reason_code`, whether it posted, parked, was skipped, or failed | `_finish()` and `_park_for_review()` — full taxonomy in [04-data-model.md](04-data-model.md#reason_code-taxonomy) |
-| FR-9 | Gmail's forwarding-confirmation handshake is completed automatically — no support call needed | `auto_confirm_forwarding()` (`email_ingest_service.py:371`) |
+| FR-9 | Gmail's forwarding-confirmation handshake is completed automatically — no support call needed | `auto_confirm_forwarding()` (`email_automation/ingest.py:371`) |
 | FR-10 | The feature requires an active monthly package, checked both when the BU switches it on and on every poll (a lapsed package doesn't rewrite settings) | `is_entitled()` gate in `save_settings()` and `_process_message()` |
 | FR-11 | **A document the BU was charged for stays reviewable.** A refusal after a successful extraction parks with its reason recorded, so the reading it paid for can be corrected and posted rather than discarded | `_park_or_finish()` in `_run_document` — decision-log [#22](06-decision-log.md), [§13](07-human-in-the-loop.md) |
 | FR-12 | **The queue shows everything that wants a human in one chip**, whether it needs a decision or a settings change, and a row nobody will act on can be put away so the pile can reach zero | `_chip_expr()` (`credit_card_activity.py`), `POST /activity/{id}/dismiss`, `email_documents.dismissed_at` |
@@ -71,7 +71,7 @@ Each is traceable to the code that implements it.
   [02-architecture.md](02-architecture.md#diagram-7--gate-ladder-and-the-cost-boundary).
 - **Tenant isolation.** One BU's PDF passwords are never tried against another BU's file —
   the tag establishes ownership before any file is opened (`rule_passwords()`,
-  `email_settings_service.py:565`).
+  `email_automation/ingest_settings.py:565`).
 - **Secret handling.** PDF passwords and the Carmen posting token are Fernet-encrypted at
   rest, never returned by any endpoint, and identified in logs/support only by a
   fingerprint (first 8 hex of a SHA-256 hash).

@@ -184,7 +184,7 @@ user's login for a problem that isn't theirs.
 ```
 
 Validation codes, all raised from `save_settings()` / `set_token()`
-(`email_settings_service.py`):
+(`email_automation/ingest_settings.py`):
 
 | Code | Field | Meaning |
 |---|---|---|
@@ -203,7 +203,7 @@ Validation codes, all raised from `save_settings()` / `set_token()`
 The payload replaces the BU's rule list wholesale — **send the complete current list, not
 a delta.** A rule's `pdf_password` field is the one exception to "whatever you send is what
 gets stored": omit it to keep the existing password, send `""` to clear it, send a value to
-set it (`_merge_rule()`, `email_settings_service.py:534`).
+set it (`_merge_rule()`, `email_automation/ingest_settings.py:534`).
 
 The ingest tag is allocated inside this call, and only here — the first time `enabled` is
 set `true` for a BU that doesn't already have one (`save_settings():516`). It is never

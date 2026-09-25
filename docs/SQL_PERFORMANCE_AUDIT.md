@@ -140,8 +140,8 @@ Counted from the source tree, not estimated.
 | Named indexes | **174** | plus PK / unique constraints |
 | Migrations | 62 | `supabase/migrations/` |
 
-Concentrated in five files: `usage_analytics_service.py` (18), `email_settings_service.py`
-(16), `credit_order_service.py` (16), `credit_service.py` (12), `summary_service.py` (10).
+Concentrated in five files: `admin/usage_analytics.py` (18), `email_automation/ingest_settings.py`
+(16), `billing/orders.py` (16), `shared/credits.py` (12), `admin/summary.py` (10).
 
 ### 2.1 What the code already does right
 
@@ -159,7 +159,7 @@ Recorded because an audit that only lists faults misrepresents the system.
    `MaintenanceMiddleware` — which runs on every single request — touches the DB at most
    ~12 times per minute for the whole process regardless of user count.
 4. **Credit consumption is an atomic `UPDATE … WHERE`**, not read-modify-write
-   (`credit_service.py:105-141`): no race, no row lock held across application logic.
+   (`shared/credits.py:105-141`): no race, no row lock held across application logic.
 5. **No N+1.** A full sweep found no loop issuing a query per row. Cross-table lookups use
    bulk `IN (...)` and merge in Python — the correct shape against a partitioned table.
 6. **A 30 s `statement_timeout` is applied on every pool checkout** (`database.py:98-110`),
@@ -577,7 +577,7 @@ columns in place; they cost nothing.
 **Hypothesis.** `daily_usage_summary`, `daily_model_cost`, and `monthly_usage_summary` are
 populated by three cron jobs, but the only reader is `anomaly_service`. The admin Usage and
 Overview pages re-aggregate raw `llm_usage_logs` and `ocr_tasks` on every load
-([`usage_analytics_service.py:31-133`](../backend/app/services/usage_analytics_service.py) —
+([`admin/usage_analytics.py:31-133`](../backend/app/services/admin/usage_analytics.py) —
 four queries, grouping on `cast(created_at as date)`, which no index can serve). A 92-day
 range cap bounds it today.
 
@@ -589,7 +589,7 @@ upgrade path that already exists, to be spent when the raw query stops being aff
 
 ### F5 — `get_tenant_engagement_map` reads a tenant's entire history
 
-**Hypothesis.** [`usage_analytics_service.py:573-646`](../backend/app/services/usage_analytics_service.py)
+**Hypothesis.** [`admin/usage_analytics.py:573-646`](../backend/app/services/admin/usage_analytics.py)
 aggregates `ocr_tasks` with no time bound, on a table that is never purged (five-year
 retention). `ix_ocr_tasks_created_module_tenant_active` leads with `created_at`, so this
 query cannot use it and falls back to `ix_ocr_tasks_tenant_id`. Metrics like `active_weeks`
@@ -630,7 +630,7 @@ anything not on that list.
 
 **Hypothesis.** `get_usage_summary` and `get_usage_totals` filter
 `submitted_at BETWEEN …` on `credit_cards` and `ap_invoices`
-([`usage_analytics_service.py:98-119`](../backend/app/services/usage_analytics_service.py)),
+([`admin/usage_analytics.py:98-119`](../backend/app/services/admin/usage_analytics.py)),
 but neither column is indexed — `uq_credit_cards_submitted_doc` is
 `(tenant_id, bank_code, doc_no)` and does not serve a range on `submitted_at`. Both tables
 are small enough today that a seq scan is likely the correct plan.
