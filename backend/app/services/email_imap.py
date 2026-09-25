@@ -568,8 +568,16 @@ def tag_from_recipients(candidates: list[str]) -> str | None:
     user, _, domain = settings.email_ingest_address.partition("@")
     if not domain:
         return None
+    # Bounded on both sides, or it is a substring search: unbounded, it matched
+    # `aragent+<tag>@carmensoftware.com.evil.test` (routed live to the BU owning <tag>,
+    # 2026-09-24 QA, F-3) and `xaragent+<tag>@…` alike. The left edge refuses any
+    # local-part character before ours; the right edge refuses a label continuing the
+    # domain (`-x`, `.x`) while still allowing the `>`, `;`, space, or sentence-ending dot
+    # a free-text candidate such as `for <…>; date` puts after it.
     pattern = re.compile(
-        rf"{re.escape(user)}\+([A-Za-z0-9]{{1,32}})@{re.escape(domain)}", re.IGNORECASE
+        rf"(?<![\w.+-]){re.escape(user)}\+([A-Za-z0-9]{{1,32}})@{re.escape(domain)}"
+        rf"(?![\w-]|\.[\w-])",
+        re.IGNORECASE,
     )
     for value in candidates:
         if found := pattern.search(value):

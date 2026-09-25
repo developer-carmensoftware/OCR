@@ -93,6 +93,37 @@ def test_another_domains_plus_address_is_not_our_tag():
     assert tag_from_recipients(["someoneelse+a1b2c3d4@carmensoftware.com"]) is None
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        # Routed live to the BU owning the tag before the regex had edges (2026-09-24 QA, F-3).
+        "AIAGENT+a1b2c3d4@carmensoftware.com.evil.test",
+        "for <AIAGENT+a1b2c3d4@carmensoftware.com.evil.test>; Wed, 6 Aug 2026 09:00:00 -0700",
+        "AIAGENT+a1b2c3d4@carmensoftware.com-evil.test",
+        # A different mailbox whose local part merely ends in ours.
+        "xAIAGENT+a1b2c3d4@carmensoftware.com",
+        "a.AIAGENT+a1b2c3d4@carmensoftware.com",
+        "foo+AIAGENT+a1b2c3d4@carmensoftware.com",
+    ],
+)
+def test_a_lookalike_address_is_not_our_tag(value):
+    assert tag_from_recipients([value]) is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "<AIAGENT+a1b2c3d4@carmensoftware.com>",
+        "AIAGENT+a1b2c3d4@carmensoftware.com;",
+        "AIAGENT+a1b2c3d4@carmensoftware.com.",  # sentence-ending dot in free text
+        "Accounts <AIAGENT+a1b2c3d4@carmensoftware.com>",
+        "AIAGENT+a1b2c3d4@carmensoftware.com, other@example.com",
+    ],
+)
+def test_the_tag_survives_the_punctuation_real_headers_put_around_it(value):
+    assert tag_from_recipients([value]) == "a1b2c3d4"
+
+
 def test_no_delivery_headers_at_all_yields_no_tag():
     assert tag_from_recipients([]) is None
 
