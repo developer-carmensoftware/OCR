@@ -329,6 +329,19 @@ async def test_existing_row_rules_replace_wholesale_password_kept_or_cleared():
     assert by_bank["BBL"]["pdf_password_enc"] is None  # cleared
 
 
+def test_a_rule_key_this_version_does_not_know_survives_a_save():
+    """F-5 (2026-09-24 QA): the AR branch stores `doc_type` on a rule; a save from code
+    that does not know the field rebuilt the rule without it, silently turning a
+    settlement rule back into a fee-invoice rule. Known fields still take the new value."""
+    previous = {"bank_code": "KTC", "doc_type": "settlement", "is_active": True}
+    merged = es._merge_rule(
+        RuleIn(bank_code="KTC", filename_patterns=["ktc"], is_active=False), previous
+    )
+    assert merged["doc_type"] == "settlement"
+    assert merged["is_active"] is False
+    assert merged["filename_patterns"] == ["ktc"]
+
+
 # ── to_response ────────────────────────────────────────────────────────────────
 
 

@@ -573,8 +573,15 @@ def _clean_patterns(incoming: Any) -> list[str]:
 
 
 def _merge_rule(incoming: Any, previous: dict | None) -> dict:
-    """omit pdf_password = keep the stored one, "" = clear it (§2.3)."""
+    """omit pdf_password = keep the stored one, "" = clear it (§2.3).
+
+    Starts from the stored rule, so a key this version does not know survives a save.
+    Rebuilt from only the known fields, a rule written by a newer version (the AR branch's
+    `doc_type`) lost that key on the next save from an older one — a rollback would quietly
+    turn a settlement rule back into a fee-invoice rule (F-5, 2026-09-24 QA).
+    """
     rule = {
+        **(previous or {}),
         "bank_code": incoming.bank_code,
         "bank_sender_email": incoming.bank_sender_email,
         "filename_patterns": _clean_patterns(incoming),

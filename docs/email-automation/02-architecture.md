@@ -201,15 +201,16 @@ sequenceDiagram
     Vision-->>Ingest: ExtractedCreditCardData
     Ingest->>Ingest: _resolve_bank() — the document names its issuer, the rule is the fallback
     Ingest->>Ingest: finalize_extraction()
-    Ingest->>DB: foreign_tax_id() — second-factor check
-    Ingest->>DB: is_duplicate check
     Ingest->>DB: get_accounting_config() — existing GL mappings
+    Ingest->>DB: foreign_tax_id() — second-factor check
+    Ingest->>Ingest: verdict = tax_id_mismatch, else is_duplicate (decided now, raised after the GL step)
     opt payment types with no mapping
         Ingest->>GLSuggest: suggest_fixed_fields() / suggest_payment_types()
         GLSuggest->>Carmen: get_account_codes(), get_departments()
-        GLSuggest-->>Ingest: suggested {dept, acc} pairs
-        Ingest->>DB: fill_missing_mappings() — saved for next document
+        GLSuggest-->>Ingest: suggested {dept, acc} pairs — in memory; saved only when a human approves
+        Note over Ingest,Carmen: 401/403 here flags the token; it parks as carmen_unauthorized only if there is no verdict
     end
+    Ingest->>Ingest: raise the verdict, if any — parks with its own reason
     Ingest->>Ingest: build_jv_rows()
     Ingest->>Ingest: _review_flags() — anything to say about this reading?
     alt auto_post = false (the default), or any flag
