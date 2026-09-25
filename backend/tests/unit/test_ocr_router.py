@@ -17,6 +17,18 @@ BASE_URL = "/api/v1/credit-card"
 AUTH_HEADERS = {"Authorization": "Bearer dummy"}
 
 
+@pytest.fixture(autouse=True)
+def _module_enabled():
+    """None of these tests are about module gating — they exercise extraction and
+    charging. Without this, `assert_module_enabled` (called ahead of
+    `consume_document` in the router) reaches its own un-mocked `async_session` and
+    makes a real DB call that only "passes" today because it fails open and the dev
+    DB happens to be reachable — see module_gate.py's own docstring on that behavior.
+    """
+    with patch("app.routers.ocr.assert_module_enabled", new_callable=AsyncMock):
+        yield
+
+
 @pytest.fixture
 def mock_session():
     """Mock the async_session context manager."""

@@ -8,15 +8,84 @@ it can close file handles that pytest's capture mechanism still holds open,
 causing "I/O operation on closed file" between tests.
 """
 
-import asyncio
-import sys
-import time
-from unittest.mock import AsyncMock, MagicMock
+import os
 
-import pytest
+# ── Real-DB guard ────────────────────────────────────────────────────────────
+#
+# Every test outside tests/tenancy/ runs against make_mock_db() or a patched
+# async_session — never the real database. But backend/.env points DATABASE_URL
+# at the real dev Supabase project, and app.config.settings reads it once, at
+# import time. If a future refactor moves a function without updating the test's
+# patch target, the "mocked" call would fall through to the real async_session()
+# and write to dev data — silently, since plenty of call sites fail open on a
+# broad `except Exception` (see the do_connect guard below for why that matters).
+#
+# This block runs before any app.* import in the whole test session —
+# tests/conftest.py is the first file pytest imports, and an env var wins over
+# the .env file pydantic-settings reads — so by the time app.config.settings is
+# built, it already points nowhere reachable. tests/tenancy/ needs the real URL
+# (see its own conftest.py's _test_db_url) and sets TENANCY_DB_TESTS=1 before
+# pytest even starts (tests/tenancy/_run.py), which is why this checks the flag
+# instead of overriding unconditionally.
+_TENANCY_MODE = os.getenv("TENANCY_DB_TESTS") == "1"
+if not _TENANCY_MODE:
+    os.environ["DATABASE_URL"] = "postgresql+asyncpg://guard:guard@127.0.0.1:1/unreachable-guard-db"
+
+import asyncio  # noqa: E402 — must follow the DATABASE_URL guard above
+import sys  # noqa: E402
+import time  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock  # noqa: E402
+
+import pytest  # noqa: E402
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+# ── Fail loud on a real connection attempt ───────────────────────────────────
+#
+# The guard above makes a leaked real connection fail on its own — but several
+# call sites in app/ catch Exception broadly and fail open by design (e.g.
+# `_already_pending` in email_ingest_service), so that failure can vanish into a
+# log line and the test still passes. This listener records every DBAPI connect
+# attempt on ANY SQLAlchemy engine built during the test, attached at the Engine
+# class rather than an instance so it also catches the engine app.database
+# builds lazily on first use. The autouse fixture below turns a recorded attempt
+# into a hard test failure regardless of whether app code swallowed the error.
+_db_connect_attempts: list[str] = []
+
+if not _TENANCY_MODE:
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    @event.listens_for(Engine, "do_connect")
+    def _record_connect_attempt(dialect, conn_rec, cargs, cparams):
+        _db_connect_attempts.append(repr(cparams))
+
+
+@pytest.fixture(autouse=True)
+def _fail_on_real_db_attempt(request):
+    """Fail any test that reaches a real DB connection instead of a mock/patch.
+
+    Opt out with @pytest.mark.db_attempt_ok for a test that deliberately exercises
+    the real connect path itself (e.g. asserting that a bad config fails to boot).
+    """
+    if _TENANCY_MODE:
+        yield
+        return
+    _db_connect_attempts.clear()
+    yield
+    if _db_connect_attempts and "db_attempt_ok" not in {
+        m.name for m in request.node.iter_markers()
+    }:
+        attempts = list(_db_connect_attempts)
+        _db_connect_attempts.clear()
+        pytest.fail(
+            f"{request.node.nodeid} attempted {len(attempts)} real DB connection(s) — "
+            "a patch on async_session (or the engine) is missing, or points at the "
+            "wrong module after a move. Mark @pytest.mark.db_attempt_ok if this is "
+            f"deliberate. Attempt(s): {attempts}"
+        )
 
 
 @pytest.fixture(autouse=True)
