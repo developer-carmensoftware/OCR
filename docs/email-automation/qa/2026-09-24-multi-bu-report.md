@@ -224,16 +224,9 @@ suggester stopped at Carmen's 401 before reaching any model.
 | **E-06** out of credits | Scratch S6 is still entitled (active package), but its allowance is used up and its credit balance is 0. `BAY.pdf` sent to it. | **Held:** `retry_later=1`, 0 rows, 0 tasks, `docs_used` stays 30, mail **not** `$OcrDone`. **After the allowance was restored:** processed on the next poll (`pending_review`, 1 document charged, flagged done). | PASS |
 | **Q-09** backlog cap | S6 at 50 pending: 1 real + 49 synthetic run-tagged rows. `BAY.pdf` sent again. | **Held:** `retry_later=1`, 0 rows, no new task, `docs_used` unchanged, not done. **After one row was removed:** processed (charged, done). It then ended `failed / duplicate_document` "A copy is already waiting for review": the fixture was the same `BAY.pdf` as E-06's copy, which was still pending. That is the duplicate guard working; the cause was my fixture choice, not a defect. | PASS |
 | **S-07** auth boundaries (no real credential) | Real app over `ASGITransport`, with no dependency override; real dev Carmen answers the token checks. | No auth → 401 · malformed → 401 · Carmen-shaped fake token → 401 (Carmen rejected it) · repeated → 401 · unknown BU → 400 · **429 on the 21st limited call** (limit 20/min) | PASS (6/6) |
+| **S-07** with real credentials (run with the owner's explicit permission, dev only) | carmen's stored credential, decrypted in memory only and never printed or saved; admin JWTs minted with dev's secret; each session the login probe created was deleted straight away | Own BU → 200, no token in the body · **carmen token → carmencloud settings → 200** · **carmen token → `/auth/exchange` `bu=carmencloud` → a carmencloud session** · admin without `configs:write` → 403 · admin scoped to carmen: carmencloud → 403, carmen → 200 · global admin → 200 | PASS (8/8, **as designed**, see below) |
 | **F-4** confirmation sweep | Code plus unit tests (agreed as sufficient; a live test needs a real Gmail forwarding-confirmation mail). | `fetch_confirmations` searches `NOT KEYWORD $OcrDone … FROM`, fetches `BODY.PEEK[]` and never STOREs. All 10 confirmation unit tests pass. | PASS |
 | **R-JV** real JV into Carmen | carmencloud (see F-7 for why not carmen), approved through the real router with `post_input_tax: true` | Waiting for carmencloud's Carmen token to be refreshed: the stored fingerprint is unchanged and `verified_at` is NULL | **NOT RUN YET** |
-
-**S-07 cases not run.** These need a real stored BU credential decrypted, or an admin JWT minted with the environment's secret:
-- a valid token on its own BU
-- a valid token on *another* BU on the same host
-- `/auth/exchange` for another BU
-- admin-JWT scope
-
-This session's safety policy blocked that, so these cases wait for a run the owner explicitly authorises.
 
 ### F-7 (MEDIUM, observation — not fixed): one misread digit defeats the duplicate guard
 
@@ -243,12 +236,13 @@ The KBank receipt used for R-JV (printed doc no. `041125E00023869`, 04/11/2025) 
 
 So if the LLM reads the number correctly the next time, the same real document posts a second JV. It needs a misread plus a re-send, but the money path has no second line of defence. **Next step (a decision, not a patch):** also match on something the LLM can't misread in the same way, such as `doc_date` + total amount + bank, or normalise doc_no before comparing.
 
-### S-07 code-level concern (unverified live): a token is proven for the host, not for the BU
+### S-07: the ownership boundary is the host, not the BU — confirmed live, matches the design
 
-`validate_token` (`routers/auth.py`) proves a Carmen token with `GET {host}/Carmen.API/api/interface/department`; no BU is part of that call. `_resolve` (the settings API) and `/auth/exchange` then trust the `bu` in the request. **If** a Carmen token isn't bound to one BU on Carmen's side, a user of one BU could read and write another BU's email settings on the same host, including its `ingest_address`. `/auth/exchange` could also issue them a session for that BU, and with it the review queue and approve. `tests/integration/test_email_automation_router.py` has no test for this.
+`validate_token` (`routers/auth.py`) proves a Carmen token with `GET {host}/Carmen.API/api/interface/department`, and no BU is part of that call. `_resolve` (the settings API) and `/auth/exchange` then act on the `bu` the request names. So **a token valid on a host can act on every BU under that host**. Live on dev, a carmen token:
+- read carmencloud's settings, including its `ingest_address`
+- got a carmencloud session, which opens its review queue and its approve, and approve posts with carmencloud's own stored credential
 
-**Unconfirmed on two counts:**
-1. The live probe needs a real token (see above).
-2. Whether it's a hole depends on Carmen's token model: is a token bound to a single BU?
+**This is the documented contract, not a defect.** `docs/CARMEN_INTEGRATION.md` states: *"Since one host is always one corporate group, a valid token for host X may manage any BU under X — which is the ownership boundary."* Carmen also offers no API that says which BU a token belongs to, so enforcing a BU boundary is not possible today. The owner's decision (2026-09-25) is to keep the design, and pin it: `test_a_token_valid_for_the_host_may_act_on_any_bu_under_it` in `tests/integration/test_email_automation_router.py`, plus the `s07-creds` harness phase. Any change to the boundary will then show up as a failing test rather than as a side effect.
 
-Severity: potentially HIGH if both hold. Next step: an authorised run of the four credential cases above, plus the Carmen team's answer on token scoping.
+**What still depends on an assumption — a question for the Carmen team:**
+> Does "one host = one corporate group whose every Carmen user may act for every BU" still hold? In particular, can a Carmen user be restricted to *some* BUs (hotels) of a group? If so, our app currently lets that user manage the email settings of, and approve JVs for, BUs Carmen itself would not show them, because we can't ask Carmen which BUs a token may access. Can Carmen expose an endpoint that returns the BU(s) a token is valid for?

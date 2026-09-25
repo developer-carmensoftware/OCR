@@ -2686,6 +2686,129 @@ async def phase_s07(_args) -> None:
     save_state(state)
 
 
+async def phase_s07_creds(_args) -> None:
+    """S-07 with real credentials — run only with the owner's explicit authorisation
+    (given 2026-09-25, dev only). carmen's stored posting credential is decrypted in
+    memory, never printed or saved; any session the login probe creates is deleted before
+    this function returns.
+
+    Cross-BU on one host is expected to SUCCEED: `docs/CARMEN_INTEGRATION.md` makes the host
+    the ownership boundary ("one host is always one corporate group, a valid token for host X
+    may manage any BU under X"). These cases pin that, so a change to it is visible."""
+    guard()
+    state = load_state()
+    import httpx
+    from jose import jwt as jose_jwt
+
+    from app.auth.admin_session import create_admin_jwt
+    from app.auth.session import decrypt_carmen_token
+    from app.config import settings as app_settings
+    from app.main import app
+    from app.services.admin_auth_service import get_admin_jwt_secret
+
+    b = state["bus"]
+    host = "https://dev.carmen4.com"
+    enc = (
+        await sql(
+            "select carmen_token_enc from email_ingest_settings where tenant_id=$1::uuid",
+            b["carmen"]["tenant_id"],
+        )
+    )[0]["carmen_token_enc"]
+    token = decrypt_carmen_token(enc, app_settings.session_encryption_key)
+    cases: list[tuple[str, str, int | None, str]] = []
+
+    def admin(perms: list[str], scope: str = "") -> str:
+        return "Bearer " + create_admin_jwt(
+            "qa-admin",
+            "qa-admin",
+            [],
+            perms,
+            get_admin_jwt_secret(),
+            tenant_scope=scope,
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://qa.local"
+    ) as c:
+
+        async def get(bu: str, auth: str) -> httpx.Response:
+            return await c.get(
+                "/api/v1/carmen/settings",
+                params={"uri": host, "bu": bu},
+                headers={"Authorization": auth},
+            )
+
+        async def login(bu: str) -> tuple[int, str | None]:
+            """-> (status, tenant the issued session names). The session is deleted."""
+            r = await c.post(
+                "/api/v1/auth/exchange", json={"token": token, "bu": bu, "uri": host}
+            )
+            if r.status_code != 200:
+                return r.status_code, None
+            claims = jose_jwt.get_unverified_claims(r.json()["access_token"])
+            await sql("delete from ocr_sessions where id=$1::uuid", claims["sid"])
+            return 200, claims.get("tid")
+
+        r = await get("carmen", token)
+        leaked = token in r.text or "carmen_token_enc" in r.text
+        cases.append(("own-bu", "200", r.status_code, f"token_in_body={leaked}"))
+        r = await get("carmencloud", token)
+        cases.append(
+            (
+                "cross-bu-settings",
+                "200",
+                r.status_code,
+                f"body_is_carmencloud={b['carmencloud']['tag'] in r.text}",
+            )
+        )
+        status, tid = await login("carmen")
+        cases.append(
+            (
+                "own-bu-login",
+                "200",
+                status,
+                f"tid_is_carmen={tid == b['carmen']['tenant_id']}",
+            )
+        )
+        status, tid = await login("carmencloud")
+        cases.append(
+            (
+                "cross-bu-login",
+                "200",
+                status,
+                f"session_for_carmencloud={tid == b['carmencloud']['tenant_id']}",
+            )
+        )
+        r = await get("carmen", admin(["configs:read"]))
+        cases.append(("admin-no-write", "403", r.status_code, r.text[:70]))
+        scoped = admin(["configs:write"], b["carmen"]["tenant_id"])
+        r = await get("carmencloud", scoped)
+        cases.append(("admin-scoped-other", "403", r.status_code, r.text[:70]))
+        r = await get("carmen", scoped)
+        cases.append(("admin-scoped-own", "200", r.status_code, ""))
+        r = await get("carmencloud", admin(["configs:write"]))
+        cases.append(("admin-global", "200", r.status_code, ""))
+
+    print("## S-07 with real credentials (dev, authorised)\n")
+    failing = []
+    for cid, expect, got, detail in cases:
+        ok = str(got) in expect.split("/") and "token_in_body=True" not in detail
+        print(
+            f"  {'ok ' if ok else 'BAD'} {cid:<20} expect {expect:<8} got {got}  {detail}"
+        )
+        if not ok:
+            failing.append(cid)
+    state.setdefault("round2", {})["s07_creds_cases"] = cases
+    _r2_record(
+        state,
+        "S-07-creds",
+        not failing,
+        f"{len(cases) - len(failing)}/{len(cases)} as expected"
+        + (f"; not: {failing}" if failing else ""),
+    )
+    save_state(state)
+
+
 # ── phase: probes (O-02 overlap poll — DEF-1/DEF-2 live in tests/tenancy) ─────
 
 
@@ -2923,6 +3046,7 @@ async def main() -> int:
     )
     sub.add_parser("approve-real")
     sub.add_parser("s07")
+    sub.add_parser("s07-creds")
 
     args = ap.parse_args()
     if args.state:
@@ -2948,6 +3072,7 @@ async def main() -> int:
         "r2check": phase_r2check,
         "approve-real": phase_approve_real,
         "s07": phase_s07,
+        "s07-creds": phase_s07_creds,
     }
     await handlers[args.phase](args)
     return 0
