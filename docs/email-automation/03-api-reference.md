@@ -2,13 +2,13 @@
 
 Two routers, two auth models, and the split is the point.
 
-`backend/app/routers/email_automation.py` (prefix `/api/v1/carmen`, tag `Email Automation`)
+`backend/app/routers/email_automation/settings_api.py` (prefix `/api/v1/carmen`, tag `Email Automation`)
 answers **Carmen's server**, authenticated by replaying the customer's own Carmen token.
 Seven are the Settings/notifications API Carmen calls (six also documented, in Thai, for
 Carmen's own developers in [`../CARMEN_API_SPEC.md`](../CARMEN_API_SPEC.md)); the two ingest
 routes are cron-only and appear in no other document.
 
-`backend/app/routers/email_review.py` (prefix `/api/v1/email`, tag `Email Review`) answers
+`backend/app/routers/email_automation/review.py` (prefix `/api/v1/email`, tag `Email Review`) answers
 **our own frontend** at `#/CreditCardOCR`, where the user already holds a session JWT, so it
 uses `get_current_session` like every other tenant-facing route in the app. It is what the
 human-in-the-loop queue reads and writes — see

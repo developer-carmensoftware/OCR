@@ -228,7 +228,7 @@ Merge-on-omit is the idiom `_merge_rule` already uses for `pdf_password_enc`.
 
 ## 5. API
 
-New router `backend/app/routers/email_review.py`, prefix `/api/v1/email`, every route
+New router `backend/app/routers/email_automation/review.py`, prefix `/api/v1/email`, every route
 `Depends(get_current_session)`. **Not** the `_caller`/`_resolve` Carmen-token path in
 `email_automation.py` — that exists for Carmen's server calling us; this is our own
 authenticated frontend.
@@ -249,7 +249,7 @@ Schemas go in the existing `app/models/schemas/email_automation.py`. `paginate()
 ### Approve, precisely
 
 ```python
-# routers/email_review.py — the shape, not the code
+# routers/email_automation/review.py — the shape, not the code
 async with async_session() as db:
     doc = await _claim_for_review(db, doc_id, tenant_id)     # compare-and-set on
                                                              # posting_started_at, committed
@@ -1473,7 +1473,7 @@ logos and unreadable files are gone from both chips, and still in `All`.
 
 A wording pass over every string the queue can print, read end to end for the first time.
 The column is fed from four places that had never been compared: `reasonFor`'s flag ladder,
-the `review.rc*` dictionary, `error_message` written by `email_automation/ingest.py`, and
+the `review.rc*` dictionary, `error_message` written by `email_automation/{ingest,pipeline}.py`, and
 `credit_card/input_tax.py`'s skip reasons. Three of the findings are defects, not taste.
 
 ### The defects

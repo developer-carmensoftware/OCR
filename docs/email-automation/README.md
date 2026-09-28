@@ -75,10 +75,13 @@ this folder adds the two cron-only routes neither of the above documents.
 
 | Path | Role |
 |---|---|
-| `backend/app/services/email_automation/ingest.py` | IMAP poll + the whole per-document pipeline (1116 lines) — the core of the feature |
+| `backend/app/services/email_automation/ingest.py` | The IMAP poll and forwarding-confirmation sweep: routes each attachment to its BU and hands it to the pipeline |
+| `backend/app/services/email_automation/pipeline.py` | One document end to end: open, charge, extract, GL-map, post — `_run_document()` and its refund boundary |
+| `backend/app/services/email_automation/ledger.py` | Every `email_documents` state write: claim, park, finish, dedupe, `_review_flags()` |
+| `backend/app/services/email_automation/review.py` | The human's two verbs: `approve_document()` / `reject_document()` |
 | `backend/app/services/email_automation/ingest_settings.py` | Settings store, secrets, tag allocation, token health (730 lines) |
-| `backend/app/routers/email_automation.py` | The Settings API + the two cron-triggered ingest routes (407 lines) |
-| `backend/app/routers/email_review.py` | The review queue's own API, on our session JWT rather than the customer's Carmen token |
+| `backend/app/routers/email_automation/settings_api.py` | The Settings API + the two cron-triggered ingest routes (407 lines) |
+| `backend/app/routers/email_automation/review.py` | The review queue's own API, on our session JWT rather than the customer's Carmen token |
 | `backend/app/models/email_automation.py` | ORM: `EmailIngestSettings`, `EmailDocument` |
 | `backend/app/models/schemas/email_automation.py` | Request payloads: `RuleIn`, `SettingsIn`, `TokenIn` |
 | `frontend/src/pages/EmailSettings.tsx` + `frontend/src/hooks/email-settings/` + `frontend/src/lib/api/emailAutomation.ts` | The internal test surface at `#/email-settings` — see [02-architecture.md](02-architecture.md#frontend-surface) |
