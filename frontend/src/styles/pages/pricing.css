@@ -1373,17 +1373,47 @@
 }
 
 /* 4 across leaves ~165px inside each card — too narrow for the icon · credits · price
-   row (≈185–260px, wider in Thai), so the card stacks: what you get, then what you pay.
+   row (≈185–260px, wider in Thai). So: no icon, "100 credits" centered on one line,
+   a divider, then price · rate. ≤860px keeps the single-row card above.
    Must stay after the .pack-card* base rules — same specificity, so order decides. */
 @media (min-width: 861px) {
   .pack-card {
+    position: relative; /* anchors the badge */
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
+    gap: 0.6rem;
+    padding: 1rem 0.75rem 0.85rem;
+    text-align: center;
+  }
+
+  .pack-card-icon {
+    display: none;
+  }
+
+  .pack-card-id {
+    flex-direction: row;
+    justify-content: center;
+    align-items: baseline;
+    gap: 0.35rem;
+  }
+
+  /* Sits on the top border instead of widening the credits line. */
+  .pack-card-badge {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, -50%);
   }
 
   .pack-card-price {
+    flex-direction: row;
+    flex-wrap: wrap; /* a Thai "/เอกสาร" rate drops under the price if it has to */
+    justify-content: center;
+    align-items: baseline;
+    column-gap: 0.4rem;
     margin: auto 0 0; /* pins prices to one line across the row */
-    align-items: flex-start;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
   }
 }
 
