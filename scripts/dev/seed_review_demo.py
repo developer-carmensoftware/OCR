@@ -16,8 +16,8 @@ Plus one row of the other kind the chip holds since 2026-09-03: a `skipped` docu
 was charged for, carrying a reason somebody here can clear from settings. It has no payload
 and no task — there is nothing to review, only a link to press and an ✕ to put it away.
 
-    python scripts/seed_review_demo.py            # seed
-    python scripts/seed_review_demo.py --clean    # remove everything it made
+    python scripts/dev/seed_review_demo.py            # seed
+    python scripts/dev/seed_review_demo.py --clean    # remove everything it made
 
 ⚠️  DEMO-CLEAN is approvable, and approving it posts a real JV into that BU's Carmen.
     Everything else here is deliberately unpostable — DEMO-BENT and DEMO-STOPPED do not
@@ -45,7 +45,7 @@ TAG = "demo-review"  # every row this script writes carries it, so --clean is ex
 
 
 def dsn() -> str:
-    env = Path(__file__).resolve().parent.parent / ".env"
+    env = Path(__file__).resolve().parents[2] / "backend" / ".env"
     url = next(
         line.split("=", 1)[1].strip()
         for line in env.read_text(encoding="utf-8").splitlines()

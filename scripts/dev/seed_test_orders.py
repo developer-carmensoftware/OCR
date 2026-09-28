@@ -5,11 +5,11 @@ order workspace during testing — then remove them with one command.
 Every seeded row carries  payment_ref = SEED_TAG  so cleanup is a single,
 complete hard-delete (orders + their billing documents). Nothing else is touched.
 
-Usage (cd backend, venv active):
-    python scripts/seed_test_orders.py                 # create 30 (default)
-    python scripts/seed_test_orders.py --count 30
-    python scripts/seed_test_orders.py --dry-run       # show the plan, write nothing
-    python scripts/seed_test_orders.py --cleanup       # delete every seeded row + its docs
+Usage (repo root, backend venv active):
+    python scripts/dev/seed_test_orders.py                 # create 30 (default)
+    python scripts/dev/seed_test_orders.py --count 30
+    python scripts/dev/seed_test_orders.py --dry-run       # show the plan, write nothing
+    python scripts/dev/seed_test_orders.py --cleanup       # delete every seeded row + its docs
 
 What it writes, per the documented flow (docs/Billing_Purchase_Flow.md):
     in_progress → order + proforma            (one with slip = "to review", one without = "awaiting")
@@ -35,7 +35,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")  # Windows console is cp1252 — Thai/box chars crash it
@@ -44,7 +44,7 @@ except Exception:
 
 import dotenv
 
-dotenv.load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+dotenv.load_dotenv(Path(__file__).resolve().parents[2] / "backend" / ".env")
 
 from sqlalchemy import delete, select  # noqa: E402
 
@@ -247,7 +247,7 @@ async def seed(count: int, dry_run: bool, stage: str | None) -> None:
 
         print("─" * 60)
         print(f"Done. Seeded {n} orders (payment_ref={SEED_TAG}).")
-        print("Cleanup: python scripts/seed_test_orders.py --cleanup")
+        print("Cleanup: python scripts/dev/seed_test_orders.py --cleanup")
 
 
 async def cleanup() -> None:

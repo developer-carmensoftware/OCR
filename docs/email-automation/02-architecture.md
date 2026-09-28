@@ -424,7 +424,7 @@ There is no admin UI at all for this feature — see
 
 ## Not built
 
-Outbound SMTP does not exist anywhere in this codebase. `scripts/email_ingest_e2e.py`
+Outbound SMTP does not exist anywhere in this codebase. `scripts/qa/email_ingest_e2e.py`
 constructs an `email.message.EmailMessage` and delivers it with IMAP `APPEND` (so it can
 also write a `Delivered-To` header), not SMTP — it is a test fixture, not a send path. The
 proposed webhook events in `../CARMEN_INTEGRATION.md §3` (`document.posted`,

@@ -5,11 +5,11 @@ Generates an EMVCo/PromptPay payload for a given receiving PromptPay ID + amount
 prints it as an ASCII QR in the terminal, and saves a PNG you can scan.
 
 Usage:
-    python promptpay_demo.py <promptpay_id> <amount>
+    python scripts/dev/promptpay_demo.py <promptpay_id> <amount>
 
 Examples:
-    python promptpay_demo.py 0812345678 500        # mobile number
-    python promptpay_demo.py 1234567890123 1000    # national ID / tax ID
+    python scripts/dev/promptpay_demo.py 0812345678 500        # mobile number
+    python scripts/dev/promptpay_demo.py 1234567890123 1000    # national ID / tax ID
 
 The amount shows up locked in the banking app when scanned.
 """

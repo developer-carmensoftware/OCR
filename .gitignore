@@ -105,5 +105,5 @@ skills-lock.json
 .vercel
 .bin/
 
-# Generated test fixtures (encrypted sample PDFs) — regenerate via scripts/make_test_pdfs.py
-backend/scripts/test_pdfs/
+# Generated test fixtures (encrypted sample PDFs) — regenerate via scripts/qa/make_test_pdfs.py
+scripts/qa/test_pdfs/
