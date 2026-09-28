@@ -1,10 +1,16 @@
 import { LogOut } from 'lucide-react'
+import { registerDict } from '@/i18n/dict'
+import { adminDict } from '@/features/admin/i18n'
 import logo from '@/assets/logo.png'
 import { useAdminAuth } from '@/shared/contexts/AdminAuthContext'
 import { useT } from '@/i18n/LanguageContext'
 import DarkModeToggle from '@/shared/components/common/DarkModeToggle'
 import LanguageToggle from '@/shared/components/common/LanguageToggle'
 import CreditOrdersPage from '@/features/admin/pages/CreditOrdersPage'
+
+// Its own lazy chunk (main.tsx), not reached through AdminRouter — so it registers the
+// admin copy itself. Idempotent if AdminRouter got there first.
+registerDict(adminDict)
 
 /**
  * Standalone shell for the Order Review console — its own page, separate from the

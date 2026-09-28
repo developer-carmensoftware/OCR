@@ -1,5 +1,11 @@
 import '@testing-library/jest-dom'
 import { vi } from 'vitest'
+import { registerDict } from '@/i18n/dict'
+import { adminDict } from '@/features/admin/i18n'
+
+// The app registers the admin copy when the admin chunk loads; tests render admin
+// components without going through that chunk's entry, so register it up front.
+registerDict(adminDict)
 
 // Stub sessionStorage / localStorage for all tests
 const makeStorage = () => {

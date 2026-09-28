@@ -714,7 +714,7 @@ record they intend to key by hand.
 
 ### i18n
 
-Customer-facing, so bilingual — `en` **and** `th` in `dict.ts` or `dict.test.ts` fails CI.
+Customer-facing, so bilingual — `en` **and** `th` in `i18n/dict/` or `dict.test.ts` fails CI.
 New namespace `review.*`. Reason-line phrases and reject reasons included.
 
 ---

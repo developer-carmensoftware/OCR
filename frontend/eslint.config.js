@@ -59,7 +59,8 @@ export default [
     // else would pull the whole dashboard into the main chunk. Type-only imports are erased
     // at build time, so they are allowed.
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/features/admin/**'],
+    // src/test/ is never bundled — its setup registers the admin copy for every test.
+    ignores: ['src/features/admin/**', 'src/test/**'],
     rules: {
       '@typescript-eslint/no-restricted-imports': [
         'error',

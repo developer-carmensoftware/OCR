@@ -2,7 +2,7 @@
  * Narration for the "How to buy a package" tour, shown from #/pricing.
  *
  * Content, not chrome — so it lives here beside `releaseNotes.ts` and is read as
- * `step[lang]`, instead of adding forty paragraphs to `i18n/dict.ts` (which
+ * `step[lang]`, instead of adding forty paragraphs to `i18n/dict/` (which
  * keeps the tour's buttons and labels). This is the file a second module copies
  * to start its own tutorial.
  *
@@ -12,7 +12,7 @@
  *
  * **Quote a button by the name the reader sees.** The figure renders in the
  * reader's language, so the Thai copy names the Thai label ("ยืนยันการชำระเงิน",
- * not "Confirm payment") — the string `i18n/dict.ts` gives that key under `th`.
+ * not "Confirm payment") — the string `i18n/dict/` gives that key under `th`.
  * Untranslated by design: Carmen, the plan tiers (Starter / Growth /
  * Professional) and "Proforma Invoice", which is printed in English on the
  * document itself.

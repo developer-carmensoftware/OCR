@@ -38,7 +38,7 @@ describe('planChangeLoss', () => {
 
 describe('planChangeWarning', () => {
   // Records the key and vars instead of translating, so these assert the mapping
-  // rather than the copy — the wording itself is dict.ts's business.
+  // rather than the copy — the wording itself is i18n/dict/'s business.
   const t = (k: string, v?: Record<string, string | number>) => `${k}|${JSON.stringify(v ?? {})}`
 
   it('says nothing when there is no loss', () => {
