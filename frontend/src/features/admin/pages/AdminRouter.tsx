@@ -1,8 +1,14 @@
 import { useEffect, useState, lazy } from 'react'
+import { registerDict } from '@/i18n/dict'
+import { adminDict } from '@/features/admin/i18n'
 import AdminProtectedRoute from '@/shared/components/common/AdminProtectedRoute'
 import { useAdminAuth } from '@/shared/contexts/AdminAuthContext'
 import AdminLayout from './AdminLayout'
 import { ADMIN_ROUTES, Overview } from './routes'
+
+// The dashboard's copy joins DICT when this chunk loads — before any admin page renders,
+// and never in the customer bundle (i18n/dict/index.ts).
+registerDict(adminDict)
 
 const AdminLogin = lazy(() => import('./AdminLogin'))
 
