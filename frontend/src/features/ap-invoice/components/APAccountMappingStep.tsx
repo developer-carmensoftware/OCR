@@ -13,10 +13,10 @@ import {
 } from 'lucide-react'
 import AccountMappingTable from './AccountMappingTable'
 import { useT } from '@/i18n/LanguageContext'
-import SwapLabel from '@/components/common/SwapLabel'
-import type { APLineItem } from '@/hooks/ap-invoice/useAPExtraction'
-import type { Vendor } from '@/hooks/ap-invoice/useAPVendor'
-import type { APInvoiceHeader } from '@/constants/apInvoice'
+import SwapLabel from '@/shared/components/common/SwapLabel'
+import type { APLineItem } from '@/features/ap-invoice/hooks/useAPExtraction'
+import type { Vendor } from '@/features/ap-invoice/hooks/useAPVendor'
+import type { APInvoiceHeader } from '@/features/ap-invoice/constants'
 
 interface GLAccount {
   code: string

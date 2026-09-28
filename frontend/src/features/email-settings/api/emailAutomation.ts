@@ -16,8 +16,8 @@
  *      remedy, and one the contract (CARMEN_INTEGRATION.md §2.1) explicitly asks to be
  *      rendered apart from a 502 "cannot reach Carmen".
  */
-import { getCarmenRawToken, resolveUrl } from './client'
-import { API } from './endpoints'
+import { getCarmenRawToken, resolveUrl } from '@/shared/api/client'
+import { API } from '@/shared/api/endpoints'
 
 export interface EmailRule {
   bank_code: string | null

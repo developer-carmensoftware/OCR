@@ -1,7 +1,9 @@
-import { BANKS } from '@/constants'
-import { BANK_CODE_MAP } from '@/constants/banks'
-import type { BankDisplayName } from '@/types/api'
-import CustomSearchSelect, { type SelectOption } from '@/components/common/CustomSearchSelect'
+import { BANKS } from '@/shared/constants'
+import { BANK_CODE_MAP } from '@/shared/constants/banks'
+import type { BankDisplayName } from '@/shared/types/api'
+import CustomSearchSelect, {
+  type SelectOption,
+} from '@/shared/components/common/CustomSearchSelect'
 
 const BANK_OPTIONS: SelectOption[] = BANKS.map(b => ({
   code: b.full,

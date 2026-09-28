@@ -1,7 +1,7 @@
-import Badge from '@/components/common/Badge'
+import Badge from '@/shared/components/common/Badge'
 import { useT } from '@/i18n/LanguageContext'
 import type { TKey } from '@/i18n/dict'
-import type { OrderStatus } from '@/lib/api/credits'
+import type { OrderStatus } from '@/shared/api/credits'
 
 // paid and complete deliberately share a key: `complete` is the admin's AR-posting
 // queue state (post_ar_batch), invisible to the customer, whose order is already

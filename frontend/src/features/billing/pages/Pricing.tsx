@@ -1,30 +1,30 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
 import { X, MessageCircle, Phone, Mail, GraduationCap } from 'lucide-react'
-import AppHeader from '@/components/common/AppHeader'
+import AppHeader from '@/shared/components/common/AppHeader'
 import { useT } from '@/i18n/LanguageContext'
-import { PlanCard, EnterpriseCard } from '@/components/pricing/PlanCard'
-import PackList from '@/components/pricing/PackList'
-import FeatureFlows from '@/components/pricing/FeatureFlows'
-import CheckoutFlow from '@/components/pricing/CheckoutFlow'
-import PendingOrderBanner from '@/components/pricing/PendingOrderBanner'
+import { PlanCard, EnterpriseCard } from '@/features/billing/components/PlanCard'
+import PackList from '@/features/billing/components/PackList'
+import FeatureFlows from '@/features/billing/components/FeatureFlows'
+import CheckoutFlow from '@/features/billing/components/CheckoutFlow'
+import PendingOrderBanner from '@/features/billing/components/PendingOrderBanner'
 import {
   usePricingCatalog,
   useOrderHistory,
   loadPersistedCheckout,
   clearPersistedCheckout,
   type CheckoutSession,
-} from '@/hooks/credits'
-import { PLAN_META, SALES_CONTACT } from '@/constants/billing'
+} from '@/features/billing/hooks'
+import { PLAN_META, SALES_CONTACT } from '@/features/billing/constants'
 import {
   getPaymentInfo,
   type BillingPeriod,
   type CreditPack,
   type PaymentInfo,
-} from '@/lib/api/credits'
-import { getUsage, type ActiveSubscription } from '@/lib/api/auth'
-import { getStoredToken } from '@/lib/api/client'
-import { useEntrance } from '@/lib/useEntrance'
+} from '@/shared/api/credits'
+import { getUsage, type ActiveSubscription } from '@/shared/api/auth'
+import { getStoredToken } from '@/shared/api/client'
+import { useEntrance } from '@/shared/lib/useEntrance'
 import '@/styles/pages/pricing.css'
 
 function ContactDialog({ onClose }: { onClose: () => void }) {
@@ -108,7 +108,9 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
 
 // Six mock screens of the whole purchase flow — a lot of markup for something
 // most visits never open. Loaded when the Tutorial button is pressed.
-const PurchaseTutorial = lazy(() => import('@/components/pricing/tutorial/PurchaseTutorial'))
+const PurchaseTutorial = lazy(
+  () => import('@/features/billing/components/tutorial/PurchaseTutorial')
+)
 
 const containerVariants = {
   hidden: { opacity: 0 },

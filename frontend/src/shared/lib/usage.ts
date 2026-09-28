@@ -1,4 +1,4 @@
-import type { UsageData } from './api/auth'
+import type { UsageData } from '@/shared/api/auth'
 
 export type UsageStats = UsageData['usage'] & {
   /** Documents still available across both pools. */

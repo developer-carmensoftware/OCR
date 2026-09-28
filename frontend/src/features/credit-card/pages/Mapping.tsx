@@ -1,14 +1,14 @@
 import { Network, Loader2, CheckCircle2 } from 'lucide-react'
-import CustomModal from '@/components/common/CustomModal'
+import CustomModal from '@/shared/components/common/CustomModal'
 import '@/styles/pages/mapping.css'
 import { useT } from '@/i18n/LanguageContext'
-import { useMapping } from '@/hooks/mapping'
-import TopLevelConfigSection from '@/components/credit-card/TopLevelConfigSection'
-import CompanyInfoSection from '@/components/credit-card/CompanyInfoSection'
-import MainMappingTable from '@/components/credit-card/MainMappingTable'
-import PaymentTypeModal from '@/components/credit-card/PaymentTypeModal'
-import SwapLabel from '@/components/common/SwapLabel'
-import type { ModalConfig } from '@/hooks/useModal'
+import { useMapping } from '@/features/credit-card/hooks/mapping'
+import TopLevelConfigSection from '@/features/credit-card/components/TopLevelConfigSection'
+import CompanyInfoSection from '@/features/credit-card/components/CompanyInfoSection'
+import MainMappingTable from '@/features/credit-card/components/MainMappingTable'
+import PaymentTypeModal from '@/features/credit-card/components/PaymentTypeModal'
+import SwapLabel from '@/shared/components/common/SwapLabel'
+import type { ModalConfig } from '@/shared/hooks/useModal'
 
 function MappingSkeleton() {
   return (

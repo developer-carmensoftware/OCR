@@ -2,18 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { useMapping } from './useMapping'
 
-vi.mock('@/lib/api/config', () => ({
+vi.mock('@/shared/api/config', () => ({
   getAccountingConfig: vi.fn(),
   saveAccountingConfig: vi.fn(),
 }))
-vi.mock('@/lib/api/carmen', () => ({
+vi.mock('@/shared/api/carmen', () => ({
   fetchAccountCodes: vi.fn().mockResolvedValue([]),
   fetchDepartments: vi.fn().mockResolvedValue([]),
   fetchGLPrefixes: vi.fn().mockResolvedValue([]),
 }))
 
-import { getAccountingConfig as realGetAccountingConfig } from '@/lib/api/config'
-import { appKey } from '@/lib/storage'
+import { getAccountingConfig as realGetAccountingConfig } from '@/shared/api/config'
+import { appKey } from '@/shared/lib/storage'
 
 const getAccountingConfig = vi.mocked(realGetAccountingConfig)
 

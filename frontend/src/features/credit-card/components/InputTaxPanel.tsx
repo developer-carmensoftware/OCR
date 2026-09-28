@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
-import CustomSearchSelect from '@/components/common/CustomSearchSelect'
+import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
 import { useT } from '@/i18n/LanguageContext'
-import { fetchTaxProfiles, type TaxProfileItem } from '@/lib/api/carmen'
-import type { ItxOverrides } from '@/lib/api/emailReview'
-import { fmt, parseNum, round2 } from '@/lib/format'
-import { normalizeYearToCE } from '@/lib/date'
-import { resolveTaxProfileForRate } from '@/lib/apTax'
-import { BANK_INFO, OCR_BANK_MAP } from '@/constants/banks'
+import { fetchTaxProfiles, type TaxProfileItem } from '@/shared/api/carmen'
+import type { ItxOverrides } from '@/features/credit-card/api/emailReview'
+import { fmt, parseNum, round2 } from '@/shared/lib/format'
+import { normalizeYearToCE } from '@/shared/lib/date'
+import { resolveTaxProfileForRate } from '@/shared/lib/apTax'
+import { BANK_INFO, OCR_BANK_MAP } from '@/shared/constants/banks'
 import type { DetailRow } from './DetailTable'
-import type { BankCode } from '@/types/api'
+import type { BankCode } from '@/shared/types/api'
 
 interface Props {
   details: DetailRow[]

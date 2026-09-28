@@ -9,19 +9,22 @@ import {
   History,
   ChevronRight,
 } from 'lucide-react'
-import CustomSearchSelect from '@/components/common/CustomSearchSelect'
-import { glFieldLabel } from '@/lib/glFieldLabels'
-import { allowedAccountsForDept, isAccountAllowed } from '@/lib/deptAccounts'
-import AISuggestBar from '@/components/common/AISuggestBar'
-import Badge from '@/components/common/Badge'
-import type { FieldMapping } from '@/types/api'
-import type { MasterAccount, MasterDepartment } from '@/hooks/mapping/useMappingData'
-import type { MainMappings, ActiveScan } from '@/hooks/mapping/useMapping'
+import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
+import { glFieldLabel } from '@/features/credit-card/lib/glFieldLabels'
+import { allowedAccountsForDept, isAccountAllowed } from '@/shared/lib/deptAccounts'
+import AISuggestBar from '@/shared/components/common/AISuggestBar'
+import Badge from '@/shared/components/common/Badge'
+import type { FieldMapping } from '@/shared/types/api'
+import type {
+  MasterAccount,
+  MasterDepartment,
+} from '@/features/credit-card/hooks/mapping/useMappingData'
+import type { MainMappings, ActiveScan } from '@/features/credit-card/hooks/mapping/useMapping'
 import type {
   MainMappingKey,
   Suggestion,
   SuggestionSource,
-} from '@/hooks/mapping/useMappingSuggestions'
+} from '@/features/credit-card/hooks/mapping/useMappingSuggestions'
 
 interface Props {
   masterAccounts: MasterAccount[]

@@ -1,17 +1,21 @@
 import { useState, useRef } from 'react'
 import type React from 'react'
-import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '@/lib/api/carmen'
-import type { TaxProfileItem } from '@/lib/api/carmen'
-import { apiFetch } from '@/lib/api/client'
-import { API } from '@/lib/api/endpoints'
-import { showToast, toast } from '@/lib/toast'
-import { parseNum } from '@/lib/format'
-import { parseDefaultAccount, isAccountAllowed } from '@/lib/deptAccounts'
-import type { ModalState } from '@/types/modal'
+import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '@/shared/api/carmen'
+import type { TaxProfileItem } from '@/shared/api/carmen'
+import { apiFetch } from '@/shared/api/client'
+import { API } from '@/shared/api/endpoints'
+import { showToast, toast } from '@/shared/lib/toast'
+import { parseNum } from '@/shared/lib/format'
+import { parseDefaultAccount, isAccountAllowed } from '@/shared/lib/deptAccounts'
+import type { ModalState } from '@/shared/types/modal'
 import type { APLineItem } from './useAPExtraction'
-import type { APInvoiceHeader } from '@/constants/apInvoice'
+import type { APInvoiceHeader } from '@/features/ap-invoice/constants'
 import type { Vendor } from './useAPVendor'
-import { buildInvoicePayload, formatCarmenError, parseCarmenDupError } from '@/lib/apInvoicePayload'
+import {
+  buildInvoicePayload,
+  formatCarmenError,
+  parseCarmenDupError,
+} from '@/features/ap-invoice/lib/apInvoicePayload'
 
 interface GLAccount {
   code: string

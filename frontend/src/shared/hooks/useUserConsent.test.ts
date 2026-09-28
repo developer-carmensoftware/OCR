@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { useUserConsent } from './useUserConsent'
-import type { AuthUser } from '@/contexts/AuthContext'
-import * as consentApi from '@/lib/api/consent'
+import type { AuthUser } from '@/shared/contexts/AuthContext'
+import * as consentApi from '@/shared/api/consent'
 
 const user = { tenant_id: 't-1' } as AuthUser
 

@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import { m, useReducedMotion } from 'framer-motion'
 import { ChevronRight, Coins } from 'lucide-react'
-import { getUsage } from '@/lib/api/auth'
-import { getStoredToken } from '@/lib/api/client'
-import { useAuth } from '@/contexts/AuthContext'
-import type { UsageData } from '@/lib/api/auth'
-import { computeUsageStats } from '@/lib/usage'
+import { getUsage } from '@/shared/api/auth'
+import { getStoredToken } from '@/shared/api/client'
+import { useAuth } from '@/shared/contexts/AuthContext'
+import type { UsageData } from '@/shared/api/auth'
+import { computeUsageStats } from '@/shared/lib/usage'
 import { useT } from '@/i18n/LanguageContext'
 
 type T = ReturnType<typeof useT>['t']

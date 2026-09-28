@@ -1,18 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useOcrExtraction } from './useOcrExtraction'
-import type { ExtractResult } from '@/lib/api/ocr'
+import type { ExtractResult } from '@/shared/api/ocr'
 
-vi.mock('@/lib/api/ocr', () => ({ extractFromFile: vi.fn() }))
-vi.mock('@/lib/toast', () => ({ showToast: vi.fn() }))
-vi.mock('@/constants', () => ({
+vi.mock('@/shared/api/ocr', () => ({ extractFromFile: vi.fn() }))
+vi.mock('@/shared/lib/toast', () => ({ showToast: vi.fn() }))
+vi.mock('@/shared/constants', () => ({
   EMPTY_DETAIL_ROW: { desc: '', amount: 0, type: '' },
   detectBankFromCompanyName: vi.fn(() => ''),
   detectBankFromExtracted: vi.fn(() => ''),
 }))
 
-import { extractFromFile as realExtractFromFile } from '@/lib/api/ocr'
-import { showToast } from '@/lib/toast'
+import { extractFromFile as realExtractFromFile } from '@/shared/api/ocr'
+import { showToast } from '@/shared/lib/toast'
 
 const extractFromFile = vi.mocked(realExtractFromFile)
 

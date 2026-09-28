@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { Landmark, ChevronDown, RotateCw, CircleCheck, CircleHelp } from 'lucide-react'
-import { BANKS, BANK_THAI_NAMES } from '@/constants'
+import { BANKS, BANK_THAI_NAMES } from '@/shared/constants'
 import { useT } from '@/i18n/LanguageContext'
-import type { BankCode } from '@/types/api'
+import type { BankCode } from '@/shared/types/api'
 
 const BANK_LOGOS = Object.fromEntries(
   ['BBL', 'KBANK', 'SCB'].map(k => [
     k,
-    new URL(`../../assets/bankLogo/${k.toLowerCase()}.svg`, import.meta.url).href,
+    new URL(`../../../assets/bankLogo/${k.toLowerCase()}.svg`, import.meta.url).href,
   ])
 )
 

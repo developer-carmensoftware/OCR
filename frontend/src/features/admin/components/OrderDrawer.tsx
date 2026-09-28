@@ -3,10 +3,10 @@ import { createPortal } from 'react-dom'
 import { m, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { X } from 'lucide-react'
 import OrderWorkspace from './OrderWorkspace'
-import type { AdminCreditOrder } from '@/lib/api/adminClient'
-import type { PaymentInfo } from '@/lib/api/credits'
+import type { AdminCreditOrder } from '@/shared/api/adminClient'
+import type { PaymentInfo } from '@/shared/api/credits'
 import { useT } from '@/i18n/LanguageContext'
-import { useScrollLock } from '@/hooks/useScrollLock'
+import { useScrollLock } from '@/shared/hooks/useScrollLock'
 
 interface Props {
   order: AdminCreditOrder | null

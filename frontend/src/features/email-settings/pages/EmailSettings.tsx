@@ -20,9 +20,9 @@
  */
 import { useState } from 'react'
 import { AlertTriangle, Check, Copy, Loader2, Mail, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useEmailSettings } from '@/hooks/email-settings'
-import type { EmailRule, EmailRulePayload } from '@/lib/api/emailAutomation'
-import { showToast } from '@/lib/toast'
+import { useEmailSettings } from '@/features/email-settings/hooks'
+import type { EmailRule, EmailRulePayload } from '@/features/email-settings/api/emailAutomation'
+import { showToast } from '@/shared/lib/toast'
 import '@/styles/pages/email-settings.css'
 
 const EMPTY_RULE = {

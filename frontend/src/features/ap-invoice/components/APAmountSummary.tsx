@@ -1,10 +1,10 @@
 import { Calculator, RotateCw, Wrench, AlertTriangle } from 'lucide-react'
-import Badge from '@/components/common/Badge'
-import Card from '@/components/common/Card'
-import NumericInput from '@/components/common/NumericInput'
-import { fmt, round2 } from '@/constants/apInvoice'
+import Badge from '@/shared/components/common/Badge'
+import Card from '@/shared/components/common/Card'
+import NumericInput from '@/shared/components/common/NumericInput'
+import { fmt, round2 } from '@/features/ap-invoice/constants'
 import { useT } from '@/i18n/LanguageContext'
-import type { APInvoiceHeader } from '@/constants/apInvoice'
+import type { APInvoiceHeader } from '@/features/ap-invoice/constants'
 
 interface Sums {
   lineSubTotal: number

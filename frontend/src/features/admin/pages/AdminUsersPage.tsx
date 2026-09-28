@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, UserCog } from 'lucide-react'
 import { toast } from 'sonner'
-import DataTable, { type Column } from '@/components/admin/DataTable'
-import CustomModal from '@/components/common/CustomModal'
-import PageHeader from '@/components/admin/ui/PageHeader'
-import Card from '@/components/admin/ui/Card'
-import Switch from '@/components/admin/ui/Switch'
-import Button from '@/components/admin/ui/Button'
-import EmptyState from '@/components/admin/ui/EmptyState'
+import DataTable, { type Column } from '@/features/admin/components/DataTable'
+import CustomModal from '@/shared/components/common/CustomModal'
+import PageHeader from '@/features/admin/components/ui/PageHeader'
+import Card from '@/features/admin/components/ui/Card'
+import Switch from '@/features/admin/components/ui/Switch'
+import Button from '@/features/admin/components/ui/Button'
+import EmptyState from '@/features/admin/components/ui/EmptyState'
 import {
   fetchAdminUsers,
   createAdminUser,
@@ -17,8 +17,8 @@ import {
   fetchRoles,
   type AdminUserRow,
   type RoleOption,
-} from '@/lib/api/adminClient'
-import { useAdminAuth } from '@/contexts/AdminAuthContext'
+} from '@/shared/api/adminClient'
+import { useAdminAuth } from '@/shared/contexts/AdminAuthContext'
 import { useT } from '@/i18n/LanguageContext'
 
 export default function AdminUsersPage() {

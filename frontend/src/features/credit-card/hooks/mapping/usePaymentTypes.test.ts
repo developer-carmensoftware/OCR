@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { usePaymentTypes } from './usePaymentTypes'
-import { appKey } from '@/lib/storage'
+import { appKey } from '@/shared/lib/storage'
 
 // initFromData is the seam useMapping restores saved config through — it had no call
 // site (and no test) until the mappings-never-restore bug, so pin its semantics here.

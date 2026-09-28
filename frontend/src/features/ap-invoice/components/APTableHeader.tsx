@@ -1,6 +1,6 @@
 ﻿import { Fragment } from 'react'
 import { useT } from '@/i18n/LanguageContext'
-import type { APColumnKey } from '@/constants/apInvoice'
+import type { APColumnKey } from '@/features/ap-invoice/constants'
 
 interface Props {
   activeCols: number[]

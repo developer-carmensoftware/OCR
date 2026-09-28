@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { buildJvRows, buildGljvPayload } from './ccJv'
-import { BANK_SOURCE_MAP, OCR_BANK_MAP } from '@/constants/banks'
+import { BANK_SOURCE_MAP, OCR_BANK_MAP } from '@/shared/constants/banks'
 // Imported, not read off disk: Vite resolves JSON natively (resolveJsonModule), so this
 // needs no node builtins and the path is checked at build time rather than at runtime.
-import contract from '../../../contracts/cc-jv.contract.json'
+import contract from '../../../../../contracts/cc-jv.contract.json'
 
 /**
  * Cross-language contract.

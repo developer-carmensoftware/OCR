@@ -1,5 +1,5 @@
-import { parseNum, fmt } from './format'
-import type { APLineItem } from '@/types/ap'
+import { parseNum, fmt } from '@/shared/lib/format'
+import type { APLineItem } from '@/shared/types/ap'
 
 // The grouping identity of a line: None lines collapse to 'None'; taxable lines are keyed by their
 // own profile code. Used as the bucket key in groupSelected.

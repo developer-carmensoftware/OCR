@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useT } from '@/i18n/LanguageContext'
-import { apiFetch } from '@/lib/api/client'
-import { API } from '@/lib/api/endpoints'
-import { showToast } from '@/lib/toast'
+import { apiFetch } from '@/shared/api/client'
+import { API } from '@/shared/api/endpoints'
+import { showToast } from '@/shared/lib/toast'
 
 export interface Vendor {
   code: string

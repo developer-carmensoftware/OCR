@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { reconcileRows, repairDocFigure, useAPValidation } from './useAPValidation'
-import { syncLineTotals } from '@/lib/apTax'
+import { syncLineTotals } from '@/shared/lib/apTax'
 import type { APLineItem } from './useAPExtraction'
-import type { APInvoiceHeader } from '@/constants/apInvoice'
+import type { APInvoiceHeader } from '@/features/ap-invoice/constants'
 
 // reconcileRows is the shared per-row reconcile used by the Adjust buttons and the
 // header-tax blur. After a single field is written, it re-derives the dependent field

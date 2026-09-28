@@ -87,7 +87,7 @@ export const NUMERIC_FIELDS: APFieldKey[] = [
 ]
 
 // Re-exported from lib/format for backward compatibility
-export { parseNum, fmt, round2 } from '@/lib/format'
+export { parseNum, fmt, round2 } from '@/shared/lib/format'
 
 export const isNumFld = (f: string): boolean => NUMERIC_FIELDS.includes(f as APFieldKey)
 

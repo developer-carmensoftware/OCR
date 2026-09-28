@@ -1,8 +1,8 @@
-import CustomSearchSelect from '@/components/common/CustomSearchSelect'
-import DateInput from '@/components/common/DateInput'
+import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
+import DateInput from '@/shared/components/common/DateInput'
 import { useT } from '@/i18n/LanguageContext'
-import { useGlMasters } from '@/hooks/mapping/useGlMasters'
-import type { BankCode } from '@/types/api'
+import { useGlMasters } from '@/features/credit-card/hooks/mapping/useGlMasters'
+import type { BankCode } from '@/shared/types/api'
 
 /**
  * The JV's own header — the four things that reach Carmen as the journal's identity.

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { listOrders, OPEN_ORDER_STATUSES, type CreditOrder } from '@/lib/api/credits'
+import { listOrders, OPEN_ORDER_STATUSES, type CreditOrder } from '@/shared/api/credits'
 import { useT } from '@/i18n/LanguageContext'
 
 interface OrderHistoryState {

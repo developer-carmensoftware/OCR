@@ -19,13 +19,13 @@ import type { LucideIcon } from 'lucide-react'
 import { useT } from '@/i18n/LanguageContext'
 import type { Lang, TKey } from '@/i18n/dict'
 import '@/styles/components/notification-bell.css'
-import { useNotifications } from '@/hooks/notifications'
-import { WHATS_NEW_RETURN_KEY } from '@/lib/releaseNotesSeen'
-import type { BellItem } from '@/lib/api/notifications'
-import type { ReleaseNoteCopy } from '@/content/releaseNotes'
+import { useNotifications } from '@/shared/hooks/notifications'
+import { WHATS_NEW_RETURN_KEY } from '@/shared/lib/releaseNotesSeen'
+import type { BellItem } from '@/shared/api/notifications'
+import type { ReleaseNoteCopy } from '@/shared/content/releaseNotes'
 import NotificationDetailModal from './NotificationDetailModal'
 import Pager from './Pager'
-import { timeAgo } from '@/lib/orderHelpers'
+import { timeAgo } from '@/shared/lib/orderHelpers'
 
 // The panel is a fixed-height dropdown, so its page size is not the reader's to pick —
 // a "Rows per page" control in a bell menu is furniture, and the panel cannot show more

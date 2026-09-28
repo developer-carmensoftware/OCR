@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { useState } from 'react'
 import TopLevelConfigSection from './TopLevelConfigSection'
-import type { BankDisplayName } from '@/types/api'
+import type { BankDisplayName } from '@/shared/types/api'
 
 /** Description is one field scoped to the selected bank.
  *

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { fetchAccountCodes, fetchDepartments, fetchGLPrefixes } from '@/lib/api/carmen'
-import { parseDefaultAccount } from '@/lib/deptAccounts'
+import { fetchAccountCodes, fetchDepartments, fetchGLPrefixes } from '@/shared/api/carmen'
+import { parseDefaultAccount } from '@/shared/lib/deptAccounts'
 import type { MasterAccount, MasterDepartment, MasterGLPrefix } from './useMappingData'
 
 /**

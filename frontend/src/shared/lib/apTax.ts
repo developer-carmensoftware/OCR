@@ -1,6 +1,6 @@
 import { parseNum, fmt, round2 } from './format'
-import type { APLineItem } from '@/types/ap'
-import type { TaxProfileItem } from './api/carmen'
+import type { APLineItem } from '@/shared/types/ap'
+import type { TaxProfileItem } from '@/shared/api/carmen'
 
 export type APTaxType = 'Include' | 'Exclude' | 'None'
 

@@ -37,7 +37,7 @@ import {
   Printer,
   Scale,
 } from 'lucide-react'
-import type { TutorialStepDefinition } from '@/components/tutorial'
+import type { TutorialStepDefinition } from '@/shared/components/tutorial'
 
 /**
  * A step, plus which of `PURCHASE_FIGURES` illustrates it (1-based).

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
-import type { AuthUser } from '@/contexts/AuthContext'
-import { postConsent, getConsentStatus } from '@/lib/api/consent'
+import type { AuthUser } from '@/shared/contexts/AuthContext'
+import { postConsent, getConsentStatus } from '@/shared/api/consent'
 
 // v2: consent is now recorded server-side (consent_logs, PDPA ม.19). Bumping from
 // v1 re-prompts users whose only proof was localStorage, so every tenant gets a

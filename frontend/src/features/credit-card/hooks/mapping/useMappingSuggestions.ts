@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { suggestMapping, suggestPaymentTypes } from '@/lib/api/mapping'
-import { accountName, mergeSuggestion } from '@/lib/deptAccounts'
-import type { FieldMapping } from '@/types/api'
+import { suggestMapping, suggestPaymentTypes } from '@/features/credit-card/api/mapping'
+import { accountName, mergeSuggestion } from '@/shared/lib/deptAccounts'
+import type { FieldMapping } from '@/shared/types/api'
 import type { MasterAccount, MasterDepartment } from './useMappingData'
-import type { ModalConfig } from '@/hooks/useModal'
+import type { ModalConfig } from '@/shared/hooks/useModal'
 
 export type SuggestionSource = 'ai' | 'history' | null | undefined
 

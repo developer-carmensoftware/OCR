@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
-import { TutorialModal, type TutorialStep } from '@/components/tutorial'
+import { TutorialModal, type TutorialStep } from '@/shared/components/tutorial'
 import { useT } from '@/i18n/LanguageContext'
-import { PURCHASE_TUTORIAL } from '@/content/tutorials/purchase'
+import { PURCHASE_TUTORIAL } from './purchase'
 import { PURCHASE_FIGURES, PURCHASE_FIGURE_WIDTHS } from './screens'
 
 /**

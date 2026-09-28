@@ -6,9 +6,9 @@
  * `emailAutomation.ts` is where that lives.
  */
 
-import { apiFetch } from './client'
-import { API } from './endpoints'
-import type { Page } from './page'
+import { apiFetch } from '@/shared/api/client'
+import { API } from '@/shared/api/endpoints'
+import type { Page } from '@/shared/api/page'
 
 /** Why a parked document might be worth opening. Computed once at park time and stored,
  *  because neither survives a list query: see `_review_flags` in email_ingest_service.py. */

@@ -1,6 +1,6 @@
-import { parseNum, round2 } from './format'
+import { parseNum, round2 } from '@/shared/lib/format'
 import { codeToSource, descriptionForBank } from './bankTransforms'
-import { normalizeYearToCE } from './date'
+import { normalizeYearToCE } from '@/shared/lib/date'
 
 /** The four accounting-config fields a JV header needs, already normalised. */
 export interface GljvConfig {

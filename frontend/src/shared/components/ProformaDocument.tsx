@@ -1,9 +1,9 @@
 import { Printer } from 'lucide-react'
-import { formatThb, bahtToEnglishWords, whtDeduction, WHT_RATE_PCT } from '@/lib/money'
-import { formatDate } from '@/lib/date'
+import { formatThb, bahtToEnglishWords, whtDeduction, WHT_RATE_PCT } from '@/shared/lib/money'
+import { formatDate } from '@/shared/lib/date'
 import { useT } from '@/i18n/LanguageContext'
 import logo from '@/assets/logo_carmen.png'
-import type { BillingDocument, PaymentInfo } from '@/lib/api/credits'
+import type { BillingDocument, PaymentInfo } from '@/shared/api/credits'
 
 const TITLE: Record<string, string> = {
   proforma: 'Proforma Invoice',

@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy } from 'react'
-import AdminProtectedRoute from '@/components/admin/AdminProtectedRoute'
-import { useAdminAuth } from '@/contexts/AdminAuthContext'
+import AdminProtectedRoute from '@/shared/components/common/AdminProtectedRoute'
+import { useAdminAuth } from '@/shared/contexts/AdminAuthContext'
 import AdminLayout from './AdminLayout'
 import { ADMIN_ROUTES, Overview } from './routes'
 

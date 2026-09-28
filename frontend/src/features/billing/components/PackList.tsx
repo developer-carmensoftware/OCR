@@ -1,8 +1,8 @@
 import { Coins } from 'lucide-react'
-import { formatThb } from '@/lib/money'
-import { PACK_META, perDoc } from '@/constants/billing'
+import { formatThb } from '@/shared/lib/money'
+import { PACK_META, perDoc } from '@/features/billing/constants'
 import { useT } from '@/i18n/LanguageContext'
-import type { CreditPack } from '@/lib/api/credits'
+import type { CreditPack } from '@/shared/api/credits'
 
 interface Props {
   packs: CreditPack[]

@@ -1,9 +1,9 @@
 import { ExternalLink } from 'lucide-react'
 import { useT } from '@/i18n/LanguageContext'
-import { glFieldLabel, glFieldList } from '@/lib/glFieldLabels'
-import { FIX, fixLinkProps, stopText } from '@/lib/reviewReasons'
-import { getCarmenUrl } from '@/lib/url'
-import type { ReviewDocument } from '@/lib/api/emailReview'
+import { glFieldLabel, glFieldList } from '@/features/credit-card/lib/glFieldLabels'
+import { FIX, fixLinkProps, stopText } from '@/shared/lib/reviewReasons'
+import { getCarmenUrl } from '@/shared/lib/url'
+import type { ReviewDocument } from '@/features/credit-card/api/emailReview'
 import type { TKey } from '@/i18n/dict'
 
 /**

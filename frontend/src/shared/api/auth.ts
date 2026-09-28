@@ -1,4 +1,4 @@
-import type { ExchangeResponse } from '@/types/api'
+import type { ExchangeResponse } from '@/shared/types/api'
 import { resolveUrl } from './client'
 import { API } from './endpoints'
 

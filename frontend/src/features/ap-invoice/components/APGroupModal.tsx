@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { m, AnimatePresence } from 'framer-motion'
 import { Layers } from 'lucide-react'
-import { fmt, parseNum } from '@/constants/apInvoice'
-import { effectiveTaxProfile, apGroupKey } from '@/lib/apGroup'
+import { fmt, parseNum } from '@/features/ap-invoice/constants'
+import { effectiveTaxProfile, apGroupKey } from '@/features/ap-invoice/lib/apGroup'
 import { useT } from '@/i18n/LanguageContext'
-import type { APLineItem } from '@/hooks/ap-invoice/useAPExtraction'
+import type { APLineItem } from '@/features/ap-invoice/hooks/useAPExtraction'
 
 interface Props {
   show: boolean

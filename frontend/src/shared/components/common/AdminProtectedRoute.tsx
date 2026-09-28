@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useAdminAuth } from '@/contexts/AdminAuthContext'
+import { useAdminAuth } from '@/shared/contexts/AdminAuthContext'
 
 export default function AdminProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, loading } = useAdminAuth()

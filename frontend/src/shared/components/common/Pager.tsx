@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useT } from '@/i18n/LanguageContext'
 import InlineSelect from './InlineSelect'
-import { ROWS_PER_PAGE } from '@/hooks/useRowsPerPage'
+import { ROWS_PER_PAGE } from '@/shared/hooks/useRowsPerPage'
 import '@/styles/components/pager.css'
 
 /** A constant, so it is built once rather than on every render of every table's pager. */

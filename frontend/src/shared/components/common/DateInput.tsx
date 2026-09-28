@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { DayPicker } from 'react-day-picker'
 import { CalendarDays } from 'lucide-react'
 import 'react-day-picker/style.css'
-import { parseDDMMYYYYToDate, formatDateToDDMMYYYY } from '@/lib/date'
+import { parseDDMMYYYYToDate, formatDateToDDMMYYYY } from '@/shared/lib/date'
 
 interface DateInputProps {
   /** Current value as a "DD/MM/YYYY" string (may carry a Buddhist-era year from OCR). */

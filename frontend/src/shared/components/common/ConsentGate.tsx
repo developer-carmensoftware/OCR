@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { useAuth } from '@/contexts/AuthContext'
-import { useUserConsent } from '@/hooks/useUserConsent'
+import { useAuth } from '@/shared/contexts/AuthContext'
+import { useUserConsent } from '@/shared/hooks/useUserConsent'
 import UserConsentModal from './UserConsentModal'
 
 interface Props {

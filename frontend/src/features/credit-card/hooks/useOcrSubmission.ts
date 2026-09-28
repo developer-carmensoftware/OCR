@@ -1,17 +1,17 @@
 import { useRef, useState } from 'react'
-import { submitToCarmen } from '@/lib/api/carmen'
-import { logCorrections, diffCorrections } from '@/lib/api/feedback'
-import { getAccountingConfig } from '@/lib/api/config'
-import { getCarmenUrl } from '@/lib/url'
-import { buildGljvPayload } from '@/lib/ccJv'
-import { showToast } from '@/lib/toast'
-import { appKey } from '@/lib/storage'
-import type { ModalConfig } from '@/hooks/useModal'
+import { submitToCarmen } from '@/shared/api/carmen'
+import { logCorrections, diffCorrections } from '@/features/credit-card/api/feedback'
+import { getAccountingConfig } from '@/shared/api/config'
+import { getCarmenUrl } from '@/shared/lib/url'
+import { buildGljvPayload } from '@/features/credit-card/lib/ccJv'
+import { showToast } from '@/shared/lib/toast'
+import { appKey } from '@/shared/lib/storage'
+import type { ModalConfig } from '@/shared/hooks/useModal'
 
 // JvRow and the JV body itself both live in lib/ccJv.ts, next to the row builder and
 // the contract test that pins them to the Python twin. Re-exported so the wizard's
 // existing importers keep one place to reach for it.
-import type { JvRow } from '@/lib/ccJv'
+import type { JvRow } from '@/features/credit-card/lib/ccJv'
 export type { JvRow }
 
 interface OcrSubmissionProps {

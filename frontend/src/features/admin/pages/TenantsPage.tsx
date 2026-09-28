@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import DataTable, { type Column } from '@/components/admin/DataTable'
-import KPICard from '@/components/admin/KPICard'
+import DataTable, { type Column } from '@/features/admin/components/DataTable'
+import KPICard from '@/features/admin/components/KPICard'
 import {
   fetchTenants,
   fetchTenantDetail,
   type TenantRow,
   type TenantDetail,
-} from '@/lib/api/adminClient'
-import { useTableData } from '@/hooks/admin/useTableData'
+} from '@/shared/api/adminClient'
+import { useTableData } from '@/features/admin/hooks/useTableData'
 import { useT } from '@/i18n/LanguageContext'
-import { fmtDateTime as fmtDate } from '@/lib/date'
+import { fmtDateTime as fmtDate } from '@/shared/lib/date'
 
 /** Days after which a BU that once used the product reads as gone quiet. */
 const IDLE_WARN_DAYS = 14

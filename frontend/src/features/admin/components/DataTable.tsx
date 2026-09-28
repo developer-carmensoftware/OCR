@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
 import { useT } from '@/i18n/LanguageContext'
-import { useRowsPerPage } from '@/hooks/useRowsPerPage'
-import Pager from '@/components/common/Pager'
+import { useRowsPerPage } from '@/shared/hooks/useRowsPerPage'
+import Pager from '@/shared/components/common/Pager'
 
 const SKELETON_WIDTHS = [
   'sk-w-72',

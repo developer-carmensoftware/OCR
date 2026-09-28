@@ -2,16 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { LanguageProvider } from '@/i18n/LanguageContext'
 import ReviewDocument from './ReviewDocument'
-import type { ReviewDocumentDetail } from '@/lib/api/emailReview'
+import type { ReviewDocumentDetail } from '@/features/credit-card/api/emailReview'
 
-vi.mock('@/lib/api/emailReview', () => ({
+vi.mock('@/features/credit-card/api/emailReview', () => ({
   getPending: vi.fn(),
   approveDocument: vi.fn(),
   rejectDocument: vi.fn(),
 }))
-vi.mock('@/lib/api/config', () => ({ patchAccountingConfig: vi.fn() }))
-vi.mock('@/lib/api/mapping', () => ({ suggestPaymentTypes: vi.fn() }))
-vi.mock('@/lib/api/carmen', () => ({
+vi.mock('@/shared/api/config', () => ({ patchAccountingConfig: vi.fn() }))
+vi.mock('@/features/credit-card/api/mapping', () => ({ suggestPaymentTypes: vi.fn() }))
+vi.mock('@/shared/api/carmen', () => ({
   fetchAccountCodes: vi.fn(async () => [
     { AccCode: '510300', Description: 'Bank charge' },
     { AccCode: '511200', Description: 'Input tax' },
@@ -49,14 +49,14 @@ vi.mock('@/lib/api/carmen', () => ({
 // The BU's stored rules. Every payment type is mapped, which is the state a parked
 // document actually arrives in — ingest fills and saves before it parks.
 let storedConfig: Record<string, unknown> | null = null
-vi.mock('@/hooks/credit-card', () => ({
+vi.mock('@/features/credit-card/hooks', () => ({
   useAccountingConfig: () => ({ config: storedConfig, loading: false }),
 }))
 
 // The picker is portaled and search-driven; its internals are not what this screen adds.
 // Standing in for it with a plain select keeps the real JvEditor under test — the shared
 // rule, the recompute, the undo — and still exposes the option list it was handed.
-vi.mock('@/components/common/CustomSearchSelect', () => ({
+vi.mock('@/shared/components/common/CustomSearchSelect', () => ({
   default: ({
     value,
     onChange,
@@ -84,8 +84,8 @@ vi.mock('@/components/common/CustomSearchSelect', () => ({
   ),
 }))
 
-const api = await import('@/lib/api/emailReview')
-const cfgApi = await import('@/lib/api/config')
+const api = await import('@/features/credit-card/api/emailReview')
+const cfgApi = await import('@/shared/api/config')
 
 const LINE = {
   transaction: 'Visa',
@@ -168,7 +168,7 @@ function mount() {
   )
 }
 
-const mapApi = await import('@/lib/api/mapping')
+const mapApi = await import('@/features/credit-card/api/mapping')
 
 beforeEach(() => {
   vi.clearAllMocks()

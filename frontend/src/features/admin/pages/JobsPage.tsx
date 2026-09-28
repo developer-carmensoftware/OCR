@@ -1,10 +1,10 @@
-import DataTable, { type Column } from '@/components/admin/DataTable'
-import PeriodPicker, { daysAgo, endOfDay, today } from '@/components/admin/PeriodPicker'
-import { fetchJobs } from '@/lib/api/adminClient'
-import { useTableQuery } from '@/hooks/admin/useTableQuery'
-import { useTableData } from '@/hooks/admin/useTableData'
+import DataTable, { type Column } from '@/features/admin/components/DataTable'
+import PeriodPicker, { daysAgo, endOfDay, today } from '@/features/admin/components/PeriodPicker'
+import { fetchJobs } from '@/shared/api/adminClient'
+import { useTableQuery } from '@/features/admin/hooks/useTableQuery'
+import { useTableData } from '@/features/admin/hooks/useTableData'
 import { useT } from '@/i18n/LanguageContext'
-import { fmtDateTime } from '@/lib/date'
+import { fmtDateTime } from '@/shared/lib/date'
 
 interface JobRow {
   id: string

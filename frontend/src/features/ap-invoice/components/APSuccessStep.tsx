@@ -1,9 +1,9 @@
 import { CheckCircle2, ExternalLink, RotateCw } from 'lucide-react'
-import { fmt } from '@/constants/apInvoice'
-import { getCarmenUrl } from '@/lib/url'
+import { fmt } from '@/features/ap-invoice/constants'
+import { getCarmenUrl } from '@/shared/lib/url'
 import { useT } from '@/i18n/LanguageContext'
-import type { APInvoiceHeader } from '@/constants/apInvoice'
-import type { APLineItem } from '@/hooks/ap-invoice/useAPExtraction'
+import type { APInvoiceHeader } from '@/features/ap-invoice/constants'
+import type { APLineItem } from '@/features/ap-invoice/hooks/useAPExtraction'
 
 interface Props {
   headerData: APInvoiceHeader

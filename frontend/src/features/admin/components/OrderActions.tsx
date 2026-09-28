@@ -1,8 +1,8 @@
 import { useEffect, useReducer, useRef } from 'react'
 import { AlertTriangle, Check, Loader2, Pause, PauseCircle, Send, X } from 'lucide-react'
-import type { AdminCreditOrder } from '@/lib/api/adminClient'
+import type { AdminCreditOrder } from '@/shared/api/adminClient'
 import { useT } from '@/i18n/LanguageContext'
-import { fmtDateTime } from '@/lib/date'
+import { fmtDateTime } from '@/shared/lib/date'
 
 // Re-exported: several order-review components import it from here.
 export { fmtDateTime }

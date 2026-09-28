@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import CustomModal from '@/components/common/CustomModal'
-import SwapLabel from '@/components/common/SwapLabel'
+import CustomModal from '@/shared/components/common/CustomModal'
+import SwapLabel from '@/shared/components/common/SwapLabel'
 import {
   endMaintenanceNow,
   fetchMaintenance,
@@ -10,7 +10,7 @@ import {
   setTenantMaintenance,
   type MaintenanceStatus,
   type TenantRow,
-} from '@/lib/api/adminClient'
+} from '@/shared/api/adminClient'
 import { useT } from '@/i18n/LanguageContext'
 
 // Blocks every user — require typing this to arm it (guards against a fat-fingered click).

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { usePdfPasswordPrompt, type PdfPasswordModalPayload } from './usePdfPasswordPrompt'
-import { PDF_PASSWORD_REQUIRED } from '@/lib/api/ocr'
+import { PDF_PASSWORD_REQUIRED } from '@/shared/api/ocr'
 
 function setup() {
   const openModal = vi.fn()

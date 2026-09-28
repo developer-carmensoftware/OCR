@@ -1,12 +1,12 @@
 import { toast } from 'sonner'
-import DataTable, { type Column } from '@/components/admin/DataTable'
-import TenantSelector from '@/components/admin/TenantSelector'
-import PeriodPicker, { daysAgo, endOfDay, today } from '@/components/admin/PeriodPicker'
-import { fetchSessions, revokeSession } from '@/lib/api/adminClient'
-import { useTableQuery } from '@/hooks/admin/useTableQuery'
-import { useTableData } from '@/hooks/admin/useTableData'
+import DataTable, { type Column } from '@/features/admin/components/DataTable'
+import TenantSelector from '@/features/admin/components/TenantSelector'
+import PeriodPicker, { daysAgo, endOfDay, today } from '@/features/admin/components/PeriodPicker'
+import { fetchSessions, revokeSession } from '@/shared/api/adminClient'
+import { useTableQuery } from '@/features/admin/hooks/useTableQuery'
+import { useTableData } from '@/features/admin/hooks/useTableData'
 import { useT } from '@/i18n/LanguageContext'
-import { fmtDateTime } from '@/lib/date'
+import { fmtDateTime } from '@/shared/lib/date'
 
 interface SessionRow {
   id: string

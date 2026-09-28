@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { LanguageProvider } from '@/i18n/LanguageContext'
-import type { BellItem } from '@/lib/api/notifications'
+import type { BellItem } from '@/shared/api/notifications'
 
 // This component mounts in AppHeader on every user-facing page, so a crash here
 // takes the whole surface down. These cover the render + navigation path; the
@@ -11,7 +11,7 @@ const markRead = vi.fn()
 let items: BellItem[] = []
 let unreadCount = 0
 
-vi.mock('@/hooks/notifications', () => ({
+vi.mock('@/shared/hooks/notifications', () => ({
   useNotifications: () => ({ items, unreadCount, markRead, refresh: vi.fn() }),
 }))
 

@@ -1,6 +1,6 @@
 import React from 'react'
 import { AlertCircle } from 'lucide-react'
-import type { CompanyData } from '@/lib/bankTransforms'
+import type { CompanyData } from '@/features/credit-card/lib/bankTransforms'
 
 interface RequiredField {
   key: keyof CompanyData

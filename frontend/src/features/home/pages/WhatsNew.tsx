@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
-import AppHeader from '@/components/common/AppHeader'
+import AppHeader from '@/shared/components/common/AppHeader'
 import { useT } from '@/i18n/LanguageContext'
-import { RELEASE_NOTES } from '@/content/releaseNotes'
-import { markReleaseSeen, readReleaseSeen, WHATS_NEW_RETURN_KEY } from '@/lib/releaseNotesSeen'
-import { formatDate } from '@/lib/date'
+import { RELEASE_NOTES } from '@/shared/content/releaseNotes'
+import {
+  markReleaseSeen,
+  readReleaseSeen,
+  WHATS_NEW_RETURN_KEY,
+} from '@/shared/lib/releaseNotesSeen'
+import { formatDate } from '@/shared/lib/date'
 import '@/styles/pages/whats-new.css'
 
 /**

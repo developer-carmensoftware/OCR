@@ -1,9 +1,9 @@
 import { SlidersHorizontal, ArrowLeft, ArrowRight } from 'lucide-react'
-import Badge from '@/components/common/Badge'
-import { isNumFld, fmt } from '@/constants/apInvoice'
+import Badge from '@/shared/components/common/Badge'
+import { isNumFld, fmt } from '@/features/ap-invoice/constants'
 import { useT } from '@/i18n/LanguageContext'
-import type { APLineItem } from '@/hooks/ap-invoice/useAPExtraction'
-import type { APColumnKey, APFieldKey, FieldOption } from '@/constants/apInvoice'
+import type { APLineItem } from '@/features/ap-invoice/hooks/useAPExtraction'
+import type { APColumnKey, APFieldKey, FieldOption } from '@/features/ap-invoice/constants'
 
 interface Props {
   lineItems: APLineItem[]

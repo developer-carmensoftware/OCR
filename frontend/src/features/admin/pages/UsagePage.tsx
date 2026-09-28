@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import DataTable, { type Column } from '@/components/admin/DataTable'
-import PeriodPicker, { granularityFor, today } from '@/components/admin/PeriodPicker'
-import MetricChart from '@/components/admin/MetricChart'
-import TenantSelector from '@/components/admin/TenantSelector'
-import { fetchUsageSummary } from '@/lib/api/adminClient'
+import DataTable, { type Column } from '@/features/admin/components/DataTable'
+import PeriodPicker, { granularityFor, today } from '@/features/admin/components/PeriodPicker'
+import MetricChart from '@/features/admin/components/MetricChart'
+import TenantSelector from '@/features/admin/components/TenantSelector'
+import { fetchUsageSummary } from '@/shared/api/adminClient'
 import { useT } from '@/i18n/LanguageContext'
 
 interface UsageRow {

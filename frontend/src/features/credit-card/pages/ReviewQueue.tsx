@@ -11,15 +11,15 @@ import {
   Upload,
   type LucideIcon,
 } from 'lucide-react'
-import AppHeader from '@/components/common/AppHeader'
-import UsageIndicator from '@/components/common/UsageIndicator'
-import Pager from '@/components/common/Pager'
-import QueueRow from '@/components/credit-card/QueueRow'
+import AppHeader from '@/shared/components/common/AppHeader'
+import UsageIndicator from '@/shared/components/common/UsageIndicator'
+import Pager from '@/shared/components/common/Pager'
+import QueueRow from '@/features/credit-card/components/QueueRow'
 import ReviewDocument from './ReviewDocument'
-import { useReviewQueue } from '@/hooks/credit-card/useReviewQueue'
-import { prefetchGlMasters } from '@/hooks/mapping/useGlMasters'
-import { ACTIVITY_FILTERS, type ActivityFilter } from '@/lib/api/emailReview'
-import { useRowsPerPage } from '@/hooks/useRowsPerPage'
+import { useReviewQueue } from '@/features/credit-card/hooks/useReviewQueue'
+import { prefetchGlMasters } from '@/features/credit-card/hooks/mapping/useGlMasters'
+import { ACTIVITY_FILTERS, type ActivityFilter } from '@/features/credit-card/api/emailReview'
+import { useRowsPerPage } from '@/shared/hooks/useRowsPerPage'
 import { useT } from '@/i18n/LanguageContext'
 import type { TKey } from '@/i18n/dict'
 

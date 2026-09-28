@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
 import { LogOut, Shield } from 'lucide-react'
-import { useAdminAuth } from '@/contexts/AdminAuthContext'
-import DarkModeToggle from '@/components/common/DarkModeToggle'
-import LanguageToggle from '@/components/common/LanguageToggle'
+import { useAdminAuth } from '@/shared/contexts/AdminAuthContext'
+import DarkModeToggle from '@/shared/components/common/DarkModeToggle'
+import LanguageToggle from '@/shared/components/common/LanguageToggle'
 import { useT } from '@/i18n/LanguageContext'
 // One list, two readers: the sidebar below and the route map in AdminRouter.
 import { NAV_SECTIONS } from './routes'

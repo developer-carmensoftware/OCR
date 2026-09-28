@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react'
 import type React from 'react'
-import { getFilePreview } from '@/lib/api/ocr'
-import { checkFilesSize } from '@/lib/fileValidation'
-import { showToast } from '@/lib/toast'
-import { sanitizedPdfUrl } from '@/lib/pdfPreview'
-import { selectedPagesToPdfUrl } from '@/lib/pdfPages'
+import { getFilePreview } from '@/shared/api/ocr'
+import { checkFilesSize } from '@/shared/lib/fileValidation'
+import { showToast } from '@/shared/lib/toast'
+import { sanitizedPdfUrl } from '@/shared/lib/pdfPreview'
+import { selectedPagesToPdfUrl } from '@/shared/lib/pdfPages'
 
 const HEIC_RE = /\.(heic|heif)$/i
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isSubscriptionCode, planChangeLoss, planChangeWarning } from './billing'
+import { isSubscriptionCode, planChangeLoss, planChangeWarning } from './constants'
 
 const ANNUAL_GROWTH = { doc_allowance: 1000, billing_period: 'annual' }
 const MONTHLY_GROWTH = { doc_allowance: 1000, billing_period: 'monthly' }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { m, AnimatePresence } from 'framer-motion'
 import { FileText, Info, CheckCircle2, XCircle, Lock, ArrowLeft } from 'lucide-react'
-import { getCarmenUrl } from '@/lib/url'
+import { getCarmenUrl } from '@/shared/lib/url'
 import { useT } from '@/i18n/LanguageContext'
 import '@/styles/components/user-consent.css'
 

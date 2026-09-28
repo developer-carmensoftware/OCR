@@ -1,5 +1,5 @@
-import { apiFetch } from './client'
-import { API } from './endpoints'
+import { apiFetch } from '@/shared/api/client'
+import { API } from '@/shared/api/endpoints'
 
 const FIELD_NAME_MAP: Record<string, string> = {
   DateProcessed: 'date_processed',

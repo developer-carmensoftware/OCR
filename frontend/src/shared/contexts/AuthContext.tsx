@@ -1,10 +1,10 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
-import { storeToken, clearToken, getStoredToken } from '@/lib/api/client'
-import { revokeSession } from '@/lib/api/auth'
-import { setActiveTenant, clearAppStorage, setCarmenUri } from '@/lib/storage'
-import { clearAllDrafts } from '@/lib/draft'
-import { getJwtExpMs } from '@/lib/jwt'
-import { showToast } from '@/lib/toast'
+import { storeToken, clearToken, getStoredToken } from '@/shared/api/client'
+import { revokeSession } from '@/shared/api/auth'
+import { setActiveTenant, clearAppStorage, setCarmenUri } from '@/shared/lib/storage'
+import { clearAllDrafts } from '@/shared/lib/draft'
+import { getJwtExpMs } from '@/shared/lib/jwt'
+import { showToast } from '@/shared/lib/toast'
 
 // Warn the user this long before their session token expires.
 const EXPIRY_WARNING_MS = 5 * 60 * 1000

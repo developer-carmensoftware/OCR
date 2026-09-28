@@ -3,8 +3,8 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { LanguageProvider } from '@/i18n/LanguageContext'
 import { PlanCard } from './PlanCard'
-import { PLAN_META } from '@/constants/billing'
-import type { CreditPack } from '@/lib/api/credits'
+import { PLAN_META } from '@/features/billing/constants'
+import type { CreditPack } from '@/shared/api/credits'
 
 const LITE: CreditPack = {
   code: 'sub_lite',

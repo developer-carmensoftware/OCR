@@ -20,15 +20,15 @@
  */
 
 import { ChevronRight, Coins, Languages, ShieldCheck, UploadCloud } from 'lucide-react'
-import { PlanCard, EnterpriseCard } from '@/components/pricing/PlanCard'
-import PackList from '@/components/pricing/PackList'
-import PendingOrderBanner from '@/components/pricing/PendingOrderBanner'
-import ProformaDocument from '@/components/pricing/ProformaDocument'
-import StepWizard from '@/components/common/StepWizard'
-import { Spot } from '@/components/tutorial'
+import { PlanCard, EnterpriseCard } from '@/features/billing/components/PlanCard'
+import PackList from '@/features/billing/components/PackList'
+import PendingOrderBanner from '@/features/billing/components/PendingOrderBanner'
+import ProformaDocument from '@/shared/components/ProformaDocument'
+import StepWizard from '@/shared/components/common/StepWizard'
+import { Spot } from '@/shared/components/tutorial'
 import { useT } from '@/i18n/LanguageContext'
-import { PLAN_META } from '@/constants/billing'
-import { formatThb } from '@/lib/money'
+import { PLAN_META } from '@/features/billing/constants'
+import { formatThb } from '@/shared/lib/money'
 import logo from '@/assets/logo.png'
 import {
   DEMO_BUYER,

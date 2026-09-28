@@ -8,21 +8,21 @@ import {
   BarChart3,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import DataTable, { type Column } from '@/components/admin/DataTable'
-import PeriodPicker from '@/components/admin/PeriodPicker'
-import MetricChart from '@/components/admin/MetricChart'
-import KPICard from '@/components/admin/KPICard'
-import PageHeader from '@/components/admin/ui/PageHeader'
-import Card from '@/components/admin/ui/Card'
-import Tabs from '@/components/admin/ui/Tabs'
-import Switch from '@/components/admin/ui/Switch'
-import EmptyState from '@/components/admin/ui/EmptyState'
+import DataTable, { type Column } from '@/features/admin/components/DataTable'
+import PeriodPicker from '@/features/admin/components/PeriodPicker'
+import MetricChart from '@/features/admin/components/MetricChart'
+import KPICard from '@/features/admin/components/KPICard'
+import PageHeader from '@/features/admin/components/ui/PageHeader'
+import Card from '@/features/admin/components/ui/Card'
+import Tabs from '@/features/admin/components/ui/Tabs'
+import Switch from '@/features/admin/components/ui/Switch'
+import EmptyState from '@/features/admin/components/ui/EmptyState'
 import {
   fetchQuotaOverview,
   toggleTenantModule,
   type TenantQuotaOverviewRow,
   type ModuleCatalogEntry,
-} from '@/lib/api/adminClient'
+} from '@/shared/api/adminClient'
 import { useT } from '@/i18n/LanguageContext'
 
 function todayStr() {

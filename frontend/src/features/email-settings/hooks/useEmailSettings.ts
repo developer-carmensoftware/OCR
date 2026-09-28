@@ -8,7 +8,7 @@
  * matters: the settings endpoints are rate-limited to 20/min per IP.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/shared/contexts/AuthContext'
 import {
   EmailApiError,
   deleteToken,
@@ -22,7 +22,7 @@ import {
   type EmailSettings,
   type SettingsPayload,
   type TokenStatus,
-} from '@/lib/api/emailAutomation'
+} from '@/features/email-settings/api/emailAutomation'
 
 export interface EmailSettingsController {
   loading: boolean
