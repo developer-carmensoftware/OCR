@@ -43,7 +43,7 @@ address).
 UTC (09:15 ICT — before the working day, after the overnight commission mail). The SQL below
 is what the migrations run — reproduced because it is also what you re-issue by hand when the
 launcher cache goes stale (see below), and it is documented as a docstring on
-`check_token_health()` (`routers/email_automation.py`):
+`check_token_health()` (`routers/email_automation/settings_api.py`):
 
 ```sql
 select cron.schedule('email-ingest', '*/10 * * * *', $$

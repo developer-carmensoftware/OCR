@@ -111,14 +111,19 @@ pg_cron → POST /api/v1/email/ingest  (internal job token)
   services/email_automation/imap.py    ← transport only: IMAP, MIME, zips, tag parsing.
                                      No DB, no session, no tenant. Blocking, so the
                                      pipeline calls it via asyncio.to_thread.
-  services/email_automation/ingest.py  ← everything that decides meaning and cost
+  services/email_automation/ingest.py  ← the poll loop + message-level routing
       AIAGENT+<tag>@…   tag from the envelope → tenant     ← routing, costs nothing
-      email_documents   claim the row (dedupe: message × attachment)
-      email_ingest_settings  filename must match one of this BU's rules; this BU's PDF passwords
+      email_ingest_settings  entitled? backlog under the cap? → else hand the mail back unread
+  services/email_automation/pipeline.py  ← _run_document: everything that decides meaning and cost
+      filename must match one of this BU's rules; this BU's PDF passwords
       consume_document() → same extract → GL-map → POST JV path as the Credit Card wizard
       tax ID vs this BU's register  ← verification, not routing; parks only on positive conflict
       _review_flags() non-empty, or auto_post = false (default)
                                     → park at pending_review; the poll stops here
+  services/email_automation/ledger.py  ← the email_documents row: claim (dedupe: message ×
+                                     attachment), park, finish, duplicate/backlog checks
+  services/email_automation/review.py  ← approve/reject: the second half of _run_document
+      import direction ledger ← pipeline ← ingest/review, enforced by tests/unit/test_layout.py
 routers/email_automation/review.py  ← the queue's own API (session JWT, not the Carmen-token path)
   #/CreditCardOCR        the review queue = the Credit Card module's landing page
   #/CreditCardOCR/review?id=…   approve → the same post_gljv the poll would have called
@@ -137,7 +142,7 @@ with its reason recorded** instead of finishing as `failed`. The customer paid f
 reading; throwing it away left re-scanning by hand as the only recovery. Only three
 post-extraction cases stay terminal: the generic `except` (it can fire after the JV posted),
 the refund boundary (the money went back), and a second copy of something already queued.
-`_park_or_finish` in `_run_document` is the whole rule.
+`_park_or_finish` in `_run_document` (`email_automation/pipeline.py`) is the whole rule.
 
 **`auto_post` is per BU and defaults to `false`** (`email_ingest_settings.auto_post`). Since
 2026-09-08 it has exactly **one writer, `PUT /api/v1/carmen/settings`** — Carmen's own
@@ -290,7 +295,7 @@ an ad-hoc script while `uvicorn` is up hits the 15-connection Supavisor cap.
 - **localStorage** — credit card: `accountingConfig`, `accountMappingAmount`. AP invoice: field mappings keyed by vendor name.
 - **Service layer contract** — services never raise `HTTPException`; they raise typed exceptions from `app/exceptions.py`. The global handler in `factory.py` maps these to HTTP status codes.
 - **App factory** — `app/factory.py` builds the FastAPI instance (middleware + exception handlers + routers). `app/lifecycle.py` owns lifespan (startup/shutdown + background tasks). `app/sentry.py` owns Sentry init. `app/main.py` is the thin entrypoint.
-- **Charge before the LLM, refund only when the LLM never ran** — `consume_document()` runs at every extract endpoint AFTER `ensure_pdf_openable` and `assert_module_enabled` (so a locked PDF or a disabled module never costs a document) and returns what it charged; pass that to `refund_document()` for the files that failed. Both fail open on infra errors — only a real out-of-credits raises `InsufficientCredits` (402). **The refund test is "did the vision call happen", not "did the document post".** In the wizards every refund site is an extraction that threw, so the user got nothing back. Email ingest states the same rule explicitly: `_run_document()` has a single **refund boundary** (`email_automation/ingest.py`) wrapping `create_task` + `extract_stateless` + `finalize_extraction`, and it is the only place in that pipeline that refunds — once extraction returns, the document is charged whatever happens next (`duplicate_document`, `tax_id_mismatch`, `mapping_incomplete`, any `carmen_rejected`). That is why `_Skip` carries no refund flag. Ingest deliberately matches the wizard here, which has always charged for a duplicate because `finalize_extraction` only sets an `is_duplicate` flag rather than raising.
+- **Charge before the LLM, refund only when the LLM never ran** — `consume_document()` runs at every extract endpoint AFTER `ensure_pdf_openable` and `assert_module_enabled` (so a locked PDF or a disabled module never costs a document) and returns what it charged; pass that to `refund_document()` for the files that failed. Both fail open on infra errors — only a real out-of-credits raises `InsufficientCredits` (402). **The refund test is "did the vision call happen", not "did the document post".** In the wizards every refund site is an extraction that threw, so the user got nothing back. Email ingest states the same rule explicitly: `_run_document()` has a single **refund boundary** (`email_automation/pipeline.py`) wrapping `create_task` + `extract_stateless` + `finalize_extraction`, and it is the only place in that pipeline that refunds — once extraction returns, the document is charged whatever happens next (`duplicate_document`, `tax_id_mismatch`, `mapping_incomplete`, any `carmen_rejected`). That is why `_Skip` carries no refund flag. Ingest deliberately matches the wizard here, which has always charged for a duplicate because `finalize_extraction` only sets an `is_duplicate` flag rather than raising.
 - **What one document costs differs per module** — credit card charges **per file** (`increment=len(file_data)`), AP invoice charges **per page sent to the LLM** (`billable_pages()` in `utils/pages.py`, capped at `MAX_PAGES_PER_CALL`=5): a 3-page selection costs 3, and 3 images merged client-side into one PDF cost 3. `ensure_pdf_openable()` returns the page count for exactly this. The whole N is charged to one pool — a tenant with 3 subscription docs left scanning 5 pages pays 5 credits and strands the 3. **`ocr_tasks.charged_docs` records what each task cost** — nothing else can (a subscription-funded scan writes no ledger row; `credit_ledger.ref` is the filename, since the charge precedes `create_task`). Count documents with `SUM(charged_docs)`, never `COUNT(ocr_tasks)`.
 - **Hook directory convention** — Feature hooks live in subdirectories, one per feature: `hooks/admin/`, `hooks/ap-invoice/`, `hooks/credit-card/`, `hooks/credits/`, `hooks/email-settings/`, `hooks/mapping/`, `hooks/notifications/`. Cross-cutting hooks (`useModal`, `useDarkMode`, `useCarmenSSO`, `useRowsPerPage`) stay at top level. Each subdir has an `index.ts` barrel. All **tenant-scoped** localStorage access goes through `lib/storage.ts` (`appKey()`); global UI preferences (`theme`, `lang`, `rowsPerPage`) deliberately stay outside it, because they are not business data and must survive logout — see that file's header before adding a key either way.
 - **Pydantic schemas** — All request/response schemas in `app/models/schemas/` package. Never define `class X(BaseModel)` inside a router file.

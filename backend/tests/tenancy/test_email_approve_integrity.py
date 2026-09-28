@@ -27,7 +27,7 @@ from sqlalchemy import text
 
 from app.exceptions import ConflictError, ValidationError
 from app.models.schemas.ocr import ExtractedCreditCardData
-from app.services.email_automation import ingest
+from app.services.email_automation import review
 
 # `real_engine` and `tenants` are pytest fixtures pytest finds via conftest.py in this
 # same directory — no import needed, and importing them would shadow the fixture-injected
@@ -167,10 +167,10 @@ def _approve_env(*, post_delay: float = 0.0, result=None):
 
     return calls, [
         patch.object(
-            ingest.es, "posting_target", AsyncMock(return_value=("tok", "https://fake.invalid"))
+            review.es, "posting_target", AsyncMock(return_value=("tok", "https://fake.invalid"))
         ),
-        patch.object(ingest.carmen, "post_gljv", _post),
-        patch.object(ingest, "_post_input_tax", AsyncMock(return_value=None)),
+        patch.object(review.carmen, "post_gljv", _post),
+        patch.object(review, "_post_input_tax", AsyncMock(return_value=None)),
     ]
 
 
@@ -181,7 +181,7 @@ def _extracted(**over):
 
 
 def _approve(doc_id, tenant_id, marker, **kw):
-    return ingest.approve_document(
+    return review.approve_document(
         doc_id,
         tenant_id=str(tenant_id),
         reviewer="reviewer",
@@ -233,7 +233,7 @@ async def test_a_reject_racing_an_approve_cannot_land(real_engine, tenants):
 
     async def _reject_mid_post():
         await asyncio.sleep(0.1)  # the approve has claimed the row and is inside post_gljv
-        return await ingest.reject_document(doc_id, tenant_id=str(tenants.a), reviewer="r2")
+        return await review.reject_document(doc_id, tenant_id=str(tenants.a), reviewer="r2")
 
     with patches[0], patches[1], patches[2]:
         approved, rejected = await asyncio.gather(
@@ -268,7 +268,7 @@ async def test_a_carmen_rejection_gives_the_claim_back(real_engine, tenants):
 
 async def test_a_claim_left_by_a_dead_process_expires(real_engine, tenants):
     marker = f"def1e-{uuid.uuid4().hex[:8]}"
-    stale = datetime.now(UTC) - ingest.POSTING_CLAIM_TTL - timedelta(seconds=5)
+    stale = datetime.now(UTC) - review.POSTING_CLAIM_TTL - timedelta(seconds=5)
     doc_id = await _seed_pending(real_engine, tenants.a, marker=marker, claimed_at=stale)
 
     calls, patches = _approve_env()

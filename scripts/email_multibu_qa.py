@@ -1415,7 +1415,7 @@ async def phase_toggle(args) -> None:
         print("  S6 allowance restored")
     elif args.action == "s6-backlog-fill":
         # Q-09: synthetic rows (run-tagged, wiped with S6) up to the cap.
-        from app.services.email_automation.ingest import REVIEW_BACKLOG_CAP
+        from app.services.email_automation.ledger import REVIEW_BACKLOG_CAP
 
         s6 = state["bus"]["S6"]["tenant_id"]
         have = (
@@ -1462,16 +1462,17 @@ class DispatchRecord:
 
 def dispatch_patches(records: list[DispatchRecord], dry_delay: float = 0.0) -> list:
     from app.context import current_carmen_uri, current_tenant_id
-    from app.services.email_automation import ingest
+    from app.services.email_automation import pipeline
+    from app.services.shared import carmen
 
     def _fp(token: str) -> str:
         return hashlib.sha256((token or "").encode()).hexdigest()[:8]
 
-    real_post_gljv = ingest.carmen.post_gljv
-    real_post_tax = ingest.carmen.post_input_tax
-    real_accounts = ingest.get_account_codes
-    real_depts = ingest.get_departments
-    real_tax_profiles = ingest.get_tax_profiles
+    real_post_gljv = carmen.post_gljv
+    real_post_tax = carmen.post_input_tax
+    real_accounts = pipeline.get_account_codes
+    real_depts = pipeline.get_departments
+    real_tax_profiles = pipeline.get_tax_profiles
 
     def _is_dry(uri: str | None) -> bool:
         return bool(uri) and uri.endswith(HOST_SUFFIX)
@@ -1551,11 +1552,11 @@ def dispatch_patches(records: list[DispatchRecord], dry_delay: float = 0.0) -> l
         return await real_tax_profiles(token)
 
     return [
-        patch.object(ingest.carmen, "post_gljv", _gljv),
-        patch.object(ingest.carmen, "post_input_tax", _tax),
-        patch.object(ingest, "get_account_codes", _accounts),
-        patch.object(ingest, "get_departments", _departments),
-        patch.object(ingest, "get_tax_profiles", _profiles),
+        patch.object(carmen, "post_gljv", _gljv),
+        patch.object(carmen, "post_input_tax", _tax),
+        patch.object(pipeline, "get_account_codes", _accounts),
+        patch.object(pipeline, "get_departments", _departments),
+        patch.object(pipeline, "get_tax_profiles", _profiles),
     ]
 
 
@@ -2122,7 +2123,7 @@ async def phase_review(_args) -> None:
                 f"  approving {doc_id} under {used_bu} — {len(rows)} JV row(s), "
                 f"first leg: {rows[0]}"
             )
-            # The approve HTTP call reaches `ingest.approve_document` -> `post_gljv` on the
+            # The approve HTTP call reaches `review.approve_document` -> `post_gljv` on the
             # same shared module `dispatch_patches` already knows how to patch — needed
             # here too, or a scratch BU's `.invalid` host gets a real DNS failure instead
             # of a dry-run (found live: this is exactly what happened before this fix).

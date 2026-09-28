@@ -17,7 +17,7 @@ import pytest
 
 from app.services.email_automation import imap, ingest
 from app.services.email_automation import ingest_settings as es
-from app.services.email_automation.ingest import (
+from app.services.email_automation.imap import (
     gmail_confirm_code,
     match_rules,
     sender_allowed,

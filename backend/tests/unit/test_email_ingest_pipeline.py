@@ -13,7 +13,7 @@ actual EmailDocument ORM instances in memory (no schema, no real DB).
 check correctly refuses; the gate itself is tested separately below.
 """
 
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import ExitStack, asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -35,7 +35,7 @@ from app.models.billing import UserNotification
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.config import AccountingConfigResponse
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services.email_automation import imap, ingest
+from app.services.email_automation import imap, ingest, ledger, pipeline, review
 from app.services.shared.carmen import CarmenAPIError
 
 TENANT_ID = str(uuid4())
@@ -85,6 +85,22 @@ def _session_factory(fake_db: _FakeDB):
         yield fake_db
 
     return _factory
+
+
+@contextmanager
+def _patch_sessions(factory):
+    """`async_session` the way the pre-split email_ingest_service had it: one binding.
+
+    The same functions now live in four modules, each with its own
+    `from app.database import async_session`, so patching only `ingest` would leave every
+    ledger/pipeline/review function on the real database — which the DB guard in
+    tests/conftest.py then fails loudly. Patching all four reproduces exactly the one
+    session the tests were written against.
+    """
+    with ExitStack() as stack:
+        for mod in (ingest, pipeline, ledger, review):
+            stack.enter_context(patch.object(mod, "async_session", factory))
+        yield
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────────────
@@ -167,22 +183,22 @@ class _Patches:
 
     def __enter__(self):
         patches = [
-            patch.object(ingest, "assert_module_enabled", AsyncMock(return_value=None)),
-            patch.object(ingest, "consume_document", self.consume_document),
-            patch.object(ingest, "refund_document", self.refund_document),
-            patch.object(ingest, "create_task", AsyncMock(return_value=MagicMock(id=uuid4()))),
-            patch.object(ingest.ocr_service, "extract_stateless", self.extract),
-            patch.object(ingest, "_open_or_fail", self.open_or_fail),
+            patch.object(pipeline, "assert_module_enabled", AsyncMock(return_value=None)),
+            patch.object(pipeline, "consume_document", self.consume_document),
+            patch.object(pipeline, "refund_document", self.refund_document),
+            patch.object(pipeline, "create_task", AsyncMock(return_value=MagicMock(id=uuid4()))),
+            patch.object(pipeline.ocr_service, "extract_stateless", self.extract),
+            patch.object(pipeline, "_open_or_fail", self.open_or_fail),
             patch.object(ingest.es, "foreign_tax_id", self.foreign_tax_id),
-            patch.object(ingest, "_possibly_posted", self.possibly_posted),
+            patch.object(pipeline, "_possibly_posted", self.possibly_posted),
             patch.object(ingest.es, "mark_token_unverified", self.mark_token_unverified),
-            patch.object(ingest, "_post_input_tax", self.post_input_tax),
-            patch.object(ingest, "finalize_extraction", AsyncMock(return_value=self.extracted)),
-            patch.object(ingest, "mark_task_failed", AsyncMock()),
-            patch.object(ingest, "_mark_submitted", self.mark_submitted),
-            patch.object(ingest, "get_accounting_config", AsyncMock(return_value=self.config)),
-            patch.object(ingest, "_suggest_missing_mappings", self.suggest),
-            patch.object(ingest.carmen, "post_gljv", self.post_gljv),
+            patch.object(pipeline, "_post_input_tax", self.post_input_tax),
+            patch.object(pipeline, "finalize_extraction", AsyncMock(return_value=self.extracted)),
+            patch.object(pipeline, "mark_task_failed", AsyncMock()),
+            patch.object(pipeline, "_mark_submitted", self.mark_submitted),
+            patch.object(pipeline, "get_accounting_config", AsyncMock(return_value=self.config)),
+            patch.object(pipeline, "_suggest_missing_mappings", self.suggest),
+            patch.object(pipeline.carmen, "post_gljv", self.post_gljv),
         ]
         for p in patches:
             p.start()
@@ -225,7 +241,7 @@ async def _run(
     pass for the wrong reason.
     """
     with (
-        patch.object(ingest, "async_session", _session_factory(fake_db)),
+        _patch_sessions(_session_factory(fake_db)),
         _Patches(**patch_kwargs) as p,
     ):
         outcome = await ingest._process_attachment(
@@ -551,7 +567,7 @@ async def test_a_second_copy_of_something_already_in_the_queue_does_not_park():
     the `_already_pending` check was written to prevent.
     """
     db = _FakeDB()
-    with patch.object(ingest, "_already_pending", AsyncMock(return_value=True)):
+    with patch.object(pipeline, "_already_pending", AsyncMock(return_value=True)):
         outcome, p = await _run(
             db,
             auto_post=False,  # `_already_pending` is only consulted with review on
@@ -723,10 +739,10 @@ async def test_the_documents_own_verdict_outranks_a_dead_credential(
 @pytest.mark.parametrize("status", [401, 403])
 async def test_the_suggester_hands_a_dead_credential_up_rather_than_swallowing_it(status):
     with patch.object(
-        ingest, "get_account_codes", AsyncMock(side_effect=CarmenAPIError(status, "no"))
+        pipeline, "get_account_codes", AsyncMock(side_effect=CarmenAPIError(status, "no"))
     ):
         with pytest.raises(CarmenAPIError):
-            await ingest._suggest_missing_mappings(["Visa"], "KTC", "dead-token")
+            await pipeline._suggest_missing_mappings(["Visa"], "KTC", "dead-token")
 
 
 @pytest.mark.asyncio
@@ -738,9 +754,9 @@ async def test_the_suggester_still_swallows_an_outage():
     next document of the same payment type can fill it.
     """
     with patch.object(
-        ingest, "get_account_codes", AsyncMock(side_effect=CarmenAPIError(503, "down"))
+        pipeline, "get_account_codes", AsyncMock(side_effect=CarmenAPIError(503, "down"))
     ):
-        assert await ingest._suggest_missing_mappings(["Visa"], "KTC", "good-token") == {}
+        assert await pipeline._suggest_missing_mappings(["Visa"], "KTC", "good-token") == {}
 
 
 @pytest.mark.asyncio
@@ -1074,7 +1090,7 @@ async def test_a_resent_copy_of_a_tax_mismatched_document_does_not_queue_twice()
     the same reviewer — the exact thing `_already_pending` was written to prevent.
     """
     db = _FakeDB()
-    with patch.object(ingest, "_already_pending", AsyncMock(return_value=True)):
+    with patch.object(pipeline, "_already_pending", AsyncMock(return_value=True)):
         outcome, p = await _run(
             db,
             extracted=_extracted(),
@@ -1127,7 +1143,7 @@ async def test_a_near_duplicate_of_a_posted_document_parks_instead_of_posting():
     ],
 )
 def test_which_numbers_count_as_overlapping(doc_no, posted, expected):
-    assert ingest._overlapping_doc_no(doc_no, posted) == expected
+    assert ledger._overlapping_doc_no(doc_no, posted) == expected
 
 
 @pytest.mark.asyncio
@@ -1166,9 +1182,9 @@ async def test_an_attachment_already_handled_is_never_extracted_again():
 @pytest.mark.asyncio
 async def test_claim_dedupes_on_integrity_error_second_attempt():
     db = _FakeDB(fail_commit_on_call=2)
-    first = await ingest._claim(db, TENANT_ID, "<msg-4@bank.co.th>", "statement.jpg")
+    first = await ledger._claim(db, TENANT_ID, "<msg-4@bank.co.th>", "statement.jpg")
     assert first is not None
-    second = await ingest._claim(db, TENANT_ID, "<msg-4@bank.co.th>", "statement.jpg")
+    second = await ledger._claim(db, TENANT_ID, "<msg-4@bank.co.th>", "statement.jpg")
     assert second is None
     db.rollback.assert_awaited_once()
 
@@ -1235,7 +1251,7 @@ async def _route(
     follow = AsyncMock(return_value=auto_confirm)
     with (
         patch.object(ingest.settings, "email_ingest_address", ADDRESS),
-        patch.object(ingest, "async_session", _session_factory(db)),
+        _patch_sessions(_session_factory(db)),
         patch.object(ingest.es, "resolve_by_tag", resolve),
         patch.object(ingest.es, "is_entitled", AsyncMock(return_value=entitled)),
         patch.object(ingest.es, "rule_passwords", MagicMock(return_value=["pw"])),
@@ -1243,7 +1259,7 @@ async def _route(
         patch.object(ingest.es, "record_gmail_code", record or AsyncMock()),
         patch.object(ingest.es, "record_gmail_confirmed", confirmed or AsyncMock()),
         patch.object(ingest, "auto_confirm_forwarding", follow),
-        patch.object(ingest.ocr_service, "extract_stateless", extract),
+        patch.object(pipeline.ocr_service, "extract_stateless", extract),
         patch.object(ingest, "_pending_count", AsyncMock(return_value=pending)),
         patch.object(ingest, "_process_attachment", process),
     ):
@@ -1679,7 +1695,7 @@ async def test_a_poll_full_of_unroutable_mail_raises_one_alert():
     mail, so there is no tenant to notify — the alert is ours."""
     alert = AsyncMock()
     with (
-        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        _patch_sessions(_session_factory(_FakeDB())),
         patch.object(ingest.anomaly_service, "open_alert_if_absent", alert),
     ):
         await ingest._record_run(
@@ -1693,7 +1709,7 @@ async def test_a_poll_full_of_unroutable_mail_raises_one_alert():
 async def test_a_quiet_poll_raises_no_alert():
     alert = AsyncMock()
     with (
-        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        _patch_sessions(_session_factory(_FakeDB())),
         patch.object(ingest.anomaly_service, "open_alert_if_absent", alert),
     ):
         await ingest._record_run(datetime.now(UTC), {"posted": 3, "unrouted": 0})
@@ -1761,14 +1777,14 @@ async def test_log_llm_usage_writes_the_row_with_the_tenant_in_context():
 async def test_a_disguised_file_is_refused_before_the_llm_sees_it():
     """`ensure_pdf_openable` is a no-op for non-PDFs, so a .jpg that is really a text
     file used to reach the vision model and be paid for."""
-    with pytest.raises(ingest._Skip) as exc:
-        await ingest._open_or_fail(b"not an image at all", "statement.jpg", [])
+    with pytest.raises(pipeline._Skip) as exc:
+        await pipeline._open_or_fail(b"not an image at all", "statement.jpg", [])
     assert exc.value.reason_code == "unreadable_document"
 
 
 @pytest.mark.asyncio
 async def test_a_real_jpeg_passes_the_magic_byte_gate():
-    assert await ingest._open_or_fail(b"\xff\xd8\xff" + bytes(20), "statement.jpg", []) is None
+    assert await pipeline._open_or_fail(b"\xff\xd8\xff" + bytes(20), "statement.jpg", []) is None
 
 
 # ── Attachments: a cap, and forward-as-attachment ─────────────────────────────
@@ -2175,7 +2191,7 @@ async def test_the_sweep_opens_no_mailbox_when_nobody_is_setting_up(monkeypatch)
     monkeypatch.setattr(imap.imaplib, "IMAP4_SSL", box)
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "async_session", _null_session),
+        _patch_sessions(_null_session),
         patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value=set())),
     ):
         result = await ingest.sweep_confirmations()
@@ -2192,7 +2208,7 @@ async def test_the_sweep_follows_the_link_and_records_the_confirmation():
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
         patch.object(ingest.settings, "email_ingest_address", INGEST_ADDR),
-        patch.object(ingest, "async_session", _null_session),
+        _patch_sessions(_null_session),
         patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"abc12345"})),
         patch.object(ingest, "fetch_confirmations", lambda: [_confirmation()]),
         patch.object(ingest, "auto_confirm_forwarding", confirm),
@@ -2218,7 +2234,7 @@ async def test_a_confirmation_google_refuses_is_still_marked_seen_and_writes_no_
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
         patch.object(ingest.settings, "email_ingest_address", INGEST_ADDR),
-        patch.object(ingest, "async_session", _null_session),
+        _patch_sessions(_null_session),
         patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"abc12345"})),
         patch.object(ingest, "fetch_confirmations", lambda: [_confirmation()]),
         patch.object(ingest, "auto_confirm_forwarding", AsyncMock(return_value=False)),
@@ -2241,7 +2257,7 @@ async def test_a_confirmation_for_a_tag_outside_the_window_is_left_for_the_docum
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
         patch.object(ingest.settings, "email_ingest_address", INGEST_ADDR),
-        patch.object(ingest, "async_session", _null_session),
+        _patch_sessions(_null_session),
         patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"someone"})),
         patch.object(ingest, "fetch_confirmations", lambda: [_confirmation()]),
         patch.object(ingest, "auto_confirm_forwarding", confirm),
@@ -2274,7 +2290,7 @@ async def test_running_out_of_documents_releases_the_claim():
     remaining statement, and this feature has no retry anywhere to save them."""
     release = AsyncMock()
     with (
-        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        _patch_sessions(_session_factory(_FakeDB())),
         patch.object(ingest, "_release", release),
         patch.object(ingest, "_run_document", AsyncMock(side_effect=InsufficientCredits("out"))),
         pytest.raises(InsufficientCredits),
@@ -2306,7 +2322,7 @@ async def test_a_disabled_module_holds_the_mail_instead_of_failing_the_document(
     """
     release = AsyncMock()
     with (
-        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        _patch_sessions(_session_factory(_FakeDB())),
         patch.object(ingest, "_release", release),
         patch.object(ingest, "_run_document", AsyncMock(side_effect=ModuleDisabled("off"))),
         pytest.raises(ModuleDisabled),
@@ -2457,7 +2473,7 @@ async def test_mail_beyond_the_hold_window_reaches_the_summary_and_an_alert():
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
         patch.object(ingest, "fetch_pending", lambda limit: ([], 4)),
         patch.object(ingest, "mark_done", MagicMock()),
-        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        _patch_sessions(_session_factory(_FakeDB())),
         patch.object(ingest.anomaly_service, "open_alert_if_absent", alert),
     ):
         summary = await ingest.run_ingest()
@@ -2471,7 +2487,7 @@ async def test_mail_beyond_the_hold_window_reaches_the_summary_and_an_alert():
 async def test_a_poll_with_nothing_past_the_window_raises_no_alert():
     alert = AsyncMock()
     with (
-        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        _patch_sessions(_session_factory(_FakeDB())),
         patch.object(ingest.anomaly_service, "open_alert_if_absent", alert),
     ):
         await ingest._record_run(datetime.now(UTC), {"posted": 1, "beyond_window": 0})
@@ -2496,7 +2512,7 @@ async def test_an_idle_poll_writes_no_job_run():
     """`job_runs` has no retention and #/admin/jobs shows the newest 100 with no
     job-name filter — a poll on a schedule would bury every other job within hours."""
     db = _FakeDB()
-    with patch.object(ingest, "async_session", _session_factory(db)):
+    with _patch_sessions(_session_factory(db)):
         await ingest._record_run(datetime.now(UTC), {"messages": 0, "posted": 0})
     assert db.added == []
 
@@ -2504,7 +2520,7 @@ async def test_an_idle_poll_writes_no_job_run():
 @pytest.mark.asyncio
 async def test_a_failed_poll_writes_a_job_run_even_with_no_mail():
     db = _FakeDB()
-    with patch.object(ingest, "async_session", _session_factory(db)):
+    with _patch_sessions(_session_factory(db)):
         await ingest._record_run(datetime.now(UTC), {"messages": 0}, error="IMAP login refused")
     assert len(db.added) == 1
     assert db.added[0].error_message == "IMAP login refused"
@@ -2716,7 +2732,7 @@ async def test_auto_post_holds_a_second_copy_of_a_queued_document():
     reviewer — which is the whole thing that check exists to prevent.
     """
     db = _FakeDB()
-    with patch.object(ingest, "_already_pending", AsyncMock(return_value=True)):
+    with patch.object(pipeline, "_already_pending", AsyncMock(return_value=True)):
         outcome, p = await _run(
             db,
             extracted=_extracted(),
@@ -2738,12 +2754,12 @@ async def test_finishing_a_document_clears_the_review_payload():
     every merchant name and amount the BU has ever received.
     """
     db = _FakeDB()
-    with patch.object(ingest, "async_session", _session_factory(db)):
-        ledger = await ingest._claim(db, TENANT_ID, "<m@b>", "s.pdf")
-        ledger.review_payload = {"extracted": {"doc_no": "INV-1"}, "flags": []}
-        await ingest._finish(ledger.id, status="posted", jv_no="JV-9")
-    assert ledger.status == "posted"
-    assert ledger.review_payload is None
+    with _patch_sessions(_session_factory(db)):
+        row = await ledger._claim(db, TENANT_ID, "<m@b>", "s.pdf")
+        row.review_payload = {"extracted": {"doc_no": "INV-1"}, "flags": []}
+        await ledger._finish(row.id, status="posted", jv_no="JV-9")
+    assert row.status == "posted"
+    assert row.review_payload is None
 
 
 # ── Backpressure: a queue nobody reads stops costing money ────────────────────
@@ -2760,7 +2776,7 @@ async def test_an_unread_backlog_holds_the_mail_instead_of_charging_for_it():
     outcomes, _, process = await _route(
         resolved=_settings_row(auto_post=False),
         exhausted=exhausted,
-        pending=ingest.REVIEW_BACKLOG_CAP,
+        pending=ledger.REVIEW_BACKLOG_CAP,
     )
     assert outcomes == ["retry_later"]
     process.assert_not_awaited()
@@ -2774,7 +2790,7 @@ async def test_a_backlog_under_the_cap_keeps_ingesting():
     """The guard is a stop for a queue nobody is reading, not a work limit. A BU handling
     fifty statements a fortnight must never notice it."""
     outcomes, _, process = await _route(
-        resolved=_settings_row(auto_post=False), pending=ingest.REVIEW_BACKLOG_CAP - 1
+        resolved=_settings_row(auto_post=False), pending=ledger.REVIEW_BACKLOG_CAP - 1
     )
     assert outcomes == ["posted"]
     process.assert_awaited_once()
@@ -2791,7 +2807,7 @@ async def test_auto_post_is_held_by_the_backlog_too():
     fills their queue while every one of those documents is still charged for.
     """
     outcomes, _, process = await _route(
-        resolved=_settings_row(auto_post=True), pending=ingest.REVIEW_BACKLOG_CAP
+        resolved=_settings_row(auto_post=True), pending=ledger.REVIEW_BACKLOG_CAP
     )
     # `retry_later` is reachable from nothing else here — the BU is enabled, entitled and
     # has a tag — so the outcome is the proof the count was consulted.
@@ -2809,7 +2825,7 @@ async def test_a_second_copy_of_a_parked_document_does_not_queue_twice():
     as `failed` rather than `skipped`.
     """
     db = _FakeDB()
-    with patch.object(ingest, "_already_pending", AsyncMock(return_value=True)):
+    with patch.object(pipeline, "_already_pending", AsyncMock(return_value=True)):
         outcome, p = await _run(
             db, auto_post=False, extracted=_extracted(), config=_config(), carmen_result=None
         )
@@ -2824,7 +2840,7 @@ async def test_an_unnumbered_document_is_never_called_a_duplicate():
     """Two statements the model could not read a document number off are not evidence of
     anything. Matching them would park the second one for a reason its reviewer cannot
     check."""
-    assert await ingest._already_pending(TENANT_ID, "KTC", None) is False
+    assert await ledger._already_pending(TENANT_ID, "KTC", None) is False
 
 
 # ── Approve and reject: the human's two verbs ─────────────────────────────────
@@ -2894,7 +2910,7 @@ class _ReviewDB:
                 and pending
                 and (
                     self.row.posting_started_at is None
-                    or self.row.posting_started_at < new - ingest.POSTING_CLAIM_TTL
+                    or self.row.posting_started_at < new - review.POSTING_CLAIM_TTL
                 )
             ):
                 self.row.posting_started_at = new
@@ -2921,14 +2937,14 @@ def _approve_patches(db, *, carmen_result, carmen_side_effect=None, tax_note=Non
     tax = AsyncMock(return_value=tax_note)
     mark = AsyncMock()
     with (
-        patch.object(ingest, "async_session", _session_factory(db)),
+        _patch_sessions(_session_factory(db)),
         patch.object(ingest.es, "get_settings", AsyncMock(return_value=MagicMock())),
         patch.object(ingest.es, "posting_target", AsyncMock(return_value=("bu-tok", "https://bu"))),
-        patch.object(ingest, "get_accounting_config", AsyncMock(return_value=_config())),
-        patch.object(ingest, "build_gljv_payload", MagicMock(return_value={"JvhSeq": -1})),
-        patch.object(ingest.carmen, "post_gljv", post),
-        patch.object(ingest, "_post_input_tax", tax),
-        patch.object(ingest, "_mark_submitted", mark),
+        patch.object(review, "get_accounting_config", AsyncMock(return_value=_config())),
+        patch.object(review, "build_gljv_payload", MagicMock(return_value={"JvhSeq": -1})),
+        patch.object(review.carmen, "post_gljv", post),
+        patch.object(review, "_post_input_tax", tax),
+        patch.object(review, "_mark_submitted", mark),
     ):
         yield SimpleNamespace(post=post, tax=tax, mark=mark)
 
@@ -2944,7 +2960,7 @@ async def test_approve_posts_under_the_bus_credential_not_the_reviewers():
     row = _pending_row()
     db = _ReviewDB(row)
     with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-77"}) as p:
-        out = await ingest.approve_document(
+        out = await review.approve_document(
             row.id,
             tenant_id=str(row.tenant_id),
             reviewer="u-reviewer",
@@ -2976,7 +2992,7 @@ async def test_approving_your_own_review_rings_no_bell():
     row = _pending_row()
     db = _ReviewDB(row)
     with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-77"}):
-        await ingest.approve_document(
+        await review.approve_document(
             row.id,
             tenant_id=str(row.tenant_id),
             reviewer="u-reviewer",
@@ -2994,8 +3010,8 @@ async def test_approve_posts_the_rows_the_reviewer_saw():
     db = _ReviewDB(row)
     edited = [{"dept": "OPS", "acc": "9999", "debit": 42.0, "credit": 0}]
     with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-1"}):
-        with patch.object(ingest, "build_gljv_payload", MagicMock(return_value={})) as build:
-            await ingest.approve_document(
+        with patch.object(review, "build_gljv_payload", MagicMock(return_value={})) as build:
+            await review.approve_document(
                 row.id,
                 tenant_id=str(row.tenant_id),
                 reviewer="u",
@@ -3018,11 +3034,11 @@ async def test_input_tax_files_the_branch_off_the_document(branch_no, expected):
     """
     build = MagicMock(return_value=(None, None))
     with (
-        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
-        patch.object(ingest, "build_input_tax_payload", build),
-        patch.object(ingest, "get_tax_profiles", AsyncMock(return_value={})),
+        _patch_sessions(_session_factory(_FakeDB())),
+        patch.object(pipeline, "build_input_tax_payload", build),
+        patch.object(pipeline, "get_tax_profiles", AsyncMock(return_value={})),
     ):
-        await ingest._post_input_tax(
+        await pipeline._post_input_tax(
             _extracted(branch_no=branch_no),
             bank_code=None,
             config=_config(branch="00000"),
@@ -3039,7 +3055,7 @@ async def test_a_second_approve_finds_nothing_to_approve():
     row = _pending_row(status="posted")
     db = _ReviewDB(row)
     with _approve_patches(db, carmen_result={"Code": 0}) as p, pytest.raises(ConflictError):
-        await ingest.approve_document(
+        await review.approve_document(
             row.id,
             tenant_id=str(row.tenant_id),
             reviewer="u",
@@ -3055,7 +3071,7 @@ async def test_approving_someone_elses_document_is_a_not_found():
     extracted line items, "is this yours" must not leak whether it is anyone's."""
     db = _ReviewDB(None, tenant=SimpleNamespace(id=uuid4()))
     with _approve_patches(db, carmen_result={"Code": 0}), pytest.raises(NotFoundError):
-        await ingest.approve_document(
+        await review.approve_document(
             uuid4(),
             tenant_id=str(uuid4()),
             reviewer="u",
@@ -3073,7 +3089,7 @@ async def test_a_rejected_jv_leaves_the_document_reviewable():
     db = _ReviewDB(row)
     with _approve_patches(db, carmen_result={"Code": -1, "UserMessage": "Period is closed"}):
         with pytest.raises(ValidationError, match="Period is closed"):
-            await ingest.approve_document(
+            await review.approve_document(
                 row.id,
                 tenant_id=str(row.tenant_id),
                 reviewer="u",
@@ -3094,7 +3110,7 @@ async def test_a_live_claim_turns_a_second_approve_away():
     db = _ReviewDB(row)
     with _approve_patches(db, carmen_result={"Code": 0}) as p:
         with pytest.raises(ConflictError, match="posting this document right now"):
-            await ingest.approve_document(
+            await review.approve_document(
                 row.id, tenant_id=str(row.tenant_id), reviewer="u", extracted=_extracted(), rows=[]
             )
     p.post.assert_not_awaited()
@@ -3104,11 +3120,11 @@ async def test_a_live_claim_turns_a_second_approve_away():
 @pytest.mark.asyncio
 async def test_a_claim_older_than_its_ttl_can_be_retaken():
     """A process that died mid-post must not strand the document: its claim expires."""
-    stale = datetime.now(UTC) - ingest.POSTING_CLAIM_TTL - timedelta(seconds=1)
+    stale = datetime.now(UTC) - review.POSTING_CLAIM_TTL - timedelta(seconds=1)
     row = _pending_row(posting_started_at=stale)
     db = _ReviewDB(row)
     with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-1"}) as p:
-        out = await ingest.approve_document(
+        out = await review.approve_document(
             row.id, tenant_id=str(row.tenant_id), reviewer="u", extracted=_extracted(), rows=[]
         )
     assert out["jv_no"] == "JV-1"
@@ -3126,7 +3142,7 @@ async def test_an_unreachable_carmen_gives_the_claim_back():
     boom = CarmenAPIError(504, "timeout")
     with _approve_patches(db, carmen_result=None, carmen_side_effect=boom):
         with pytest.raises(CarmenServiceError):
-            await ingest.approve_document(
+            await review.approve_document(
                 row.id, tenant_id=str(row.tenant_id), reviewer="u", extracted=_extracted(), rows=[]
             )
     assert row.status == "pending_review"
@@ -3138,9 +3154,9 @@ async def test_reject_cannot_land_while_an_approve_is_posting():
     """A reject racing an approve must not mark rejected a JV that is going into Carmen."""
     row = _pending_row(posting_started_at=datetime.now(UTC))
     db = _ReviewDB(row)
-    with patch.object(ingest, "async_session", _session_factory(db)):
+    with _patch_sessions(_session_factory(db)):
         with pytest.raises(ConflictError):
-            await ingest.reject_document(row.id, tenant_id=str(row.tenant_id), reviewer="u")
+            await review.reject_document(row.id, tenant_id=str(row.tenant_id), reviewer="u")
     assert row.status == "pending_review"
 
 
@@ -3156,7 +3172,7 @@ async def test_carmen_going_dark_tells_the_reviewer_to_check_before_retrying():
         db, carmen_result=None, carmen_side_effect=CarmenAPIError(502, "upstream timeout")
     ):
         with pytest.raises(CarmenServiceError, match="Check whether the JV posted"):
-            await ingest.approve_document(
+            await review.approve_document(
                 row.id,
                 tenant_id=str(row.tenant_id),
                 reviewer="u",
@@ -3173,7 +3189,7 @@ async def test_input_tax_can_be_declined_without_blocking_the_jv():
     row = _pending_row()
     db = _ReviewDB(row)
     with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-2"}) as p:
-        await ingest.approve_document(
+        await review.approve_document(
             row.id,
             tenant_id=str(row.tenant_id),
             reviewer="u",
@@ -3194,7 +3210,7 @@ async def test_a_failed_input_tax_still_leaves_the_document_posted():
     db = _ReviewDB(row)
     note = "Input tax not recorded: profile missing"
     with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-3"}, tax_note=note):
-        out = await ingest.approve_document(
+        out = await review.approve_document(
             row.id,
             tenant_id=str(row.tenant_id),
             reviewer="u",
@@ -3214,10 +3230,10 @@ async def test_reject_is_terminal_and_never_refunds():
     db = _ReviewDB(row)
     refund = AsyncMock()
     with (
-        patch.object(ingest, "async_session", _session_factory(db)),
-        patch.object(ingest, "refund_document", refund),
+        _patch_sessions(_session_factory(db)),
+        patch.object(pipeline, "refund_document", refund),
     ):
-        await ingest.reject_document(
+        await review.reject_document(
             row.id,
             tenant_id=str(row.tenant_id),
             reviewer="u-rev",
@@ -3240,8 +3256,8 @@ async def test_reject_without_a_reason_stores_none_not_an_empty_string():
     quote on #/admin/email, which reads as a reason nobody can see."""
     row = _pending_row()
     db = _ReviewDB(row)
-    with patch.object(ingest, "async_session", _session_factory(db)):
-        await ingest.reject_document(
+    with _patch_sessions(_session_factory(db)):
+        await review.reject_document(
             row.id, tenant_id=str(row.tenant_id), reviewer="u", reason="   "
         )
     assert row.error_message is None
@@ -3256,7 +3272,7 @@ async def test_a_batch_of_parked_documents_raises_one_notification():
     notification the customer has. One row per BU, carrying the queue's true count."""
     db = _FakeDB(scalar=[20, 0, None])  # pending, blocked, no existing unread row
     tenant = str(uuid4())
-    with patch.object(ingest, "async_session", _session_factory(db)):
+    with _patch_sessions(_session_factory(db)):
         await ingest._notify_pending({tenant: 20})
 
     assert len(db.added) == 1
@@ -3271,7 +3287,7 @@ async def test_each_bu_in_one_poll_is_told_separately():
     """The mailbox is shared; the queues are not."""
     db = _FakeDB(scalar=[2, 0, None, 1, 0, None])
     a, b = str(uuid4()), str(uuid4())
-    with patch.object(ingest, "async_session", _session_factory(db)):
+    with _patch_sessions(_session_factory(db)):
         await ingest._notify_pending({a: 2, b: 1})
     assert sorted(r.payload["pending"] for r in db.added) == [1, 2]
 
@@ -3283,7 +3299,7 @@ async def test_a_queue_holding_blocked_documents_says_so_in_the_same_row():
     credential failing every document of the BU still shows as one line, not two."""
     db = _FakeDB(scalar=[20, 7, None])
     tenant = str(uuid4())
-    with patch.object(ingest, "async_session", _session_factory(db)):
+    with _patch_sessions(_session_factory(db)):
         await ingest._notify_pending({tenant: 20})
 
     assert [r.type for r in db.added] == ["document_pending_review"]
@@ -3295,7 +3311,7 @@ async def test_a_queue_of_ordinary_parked_documents_is_not_blocked():
     """`reason_code IS NOT NULL` is the whole distinction. Twenty statements waiting for an
     OK are not a problem, and calling them blocked would make the word worthless."""
     db = _FakeDB(scalar=[20, 0, None])
-    with patch.object(ingest, "async_session", _session_factory(db)):
+    with _patch_sessions(_session_factory(db)):
         await ingest._notify_pending({str(uuid4()): 20})
     assert "blocked" not in db.added[0].payload
 
@@ -3314,7 +3330,7 @@ async def test_an_unread_row_is_updated_in_place_not_duplicated():
         created_at=datetime(2020, 1, 1, tzinfo=UTC),
     )
     db = _FakeDB(scalar=[8, 0, existing])
-    with patch.object(ingest, "async_session", _session_factory(db)):
+    with _patch_sessions(_session_factory(db)):
         await ingest._notify_pending({str(tenant): 3})
 
     assert db.added == []  # folded into `existing`, not a new row
@@ -3327,7 +3343,7 @@ async def test_a_poll_that_parked_nothing_writes_no_notification():
     """Every ten minutes, for every BU on auto-post. A bell that cries "0 documents"
     is one the customer stops opening."""
     db = _FakeDB()
-    with patch.object(ingest, "async_session", _session_factory(db)):
+    with _patch_sessions(_session_factory(db)):
         await ingest._notify_pending({})
     assert db.added == []
 
@@ -3338,7 +3354,7 @@ async def test_a_failed_notification_never_fails_the_poll():
     into a FAILED job_run and hand the mail back for a bell row."""
     broken = MagicMock(side_effect=RuntimeError("bell is down"))
     with (
-        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        _patch_sessions(_session_factory(_FakeDB())),
         patch.object(ingest.notification_service, "notify", broken),
     ):
         await ingest._notify_pending({str(uuid4()): 1})  # must not raise
@@ -3357,7 +3373,7 @@ async def test_the_reviewers_name_is_stored_not_looked_up_later():
     row = _pending_row()
     db = _ReviewDB(row)
     with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-5"}):
-        await ingest.approve_document(
+        await review.approve_document(
             row.id,
             tenant_id=str(row.tenant_id),
             reviewer="e6942437-7db5-4895-96e5-b300161dc2b2",
@@ -3375,8 +3391,8 @@ async def test_a_session_with_no_display_name_still_records_the_id():
     entirely because the name was missing would be the worse failure."""
     row = _pending_row()
     db = _ReviewDB(row)
-    with patch.object(ingest, "async_session", _session_factory(db)):
-        await ingest.reject_document(
+    with _patch_sessions(_session_factory(db)):
+        await review.reject_document(
             row.id, tenant_id=str(row.tenant_id), reviewer="u-1", reviewer_name=None
         )
     assert row.reviewed_by == "u-1"

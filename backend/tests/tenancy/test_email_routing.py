@@ -283,7 +283,7 @@ def test_the_same_message_can_be_claimed_by_both_bus(real_engine, tenants):
     """Dedupe keys on (tenant, message, attachment). One bank mailing both BUs the same
     newsletter must not have the second BU's copy silently swallowed."""
     from app.database import async_session
-    from app.services.email_automation.ingest import _claim
+    from app.services.email_automation.ledger import _claim
 
     msg = f"<shared-{uuid.uuid4()}@iso.test>"
 
@@ -313,7 +313,7 @@ def test_the_same_message_can_be_claimed_by_both_bus(real_engine, tenants):
 def test_the_same_doc_no_parked_in_two_bus_is_not_a_cross_bu_duplicate(real_engine, tenants):
     """`_already_pending` keys on (tenant, bank, doc_no). Two BUs processing the same
     invoice number from the same processor is normal and must not block either."""
-    from app.services.email_automation.ingest import _already_pending
+    from app.services.email_automation.ledger import _already_pending
 
     doc_no = f"SHARED-{uuid.uuid4().hex[:8]}"
 
@@ -350,7 +350,7 @@ def test_the_review_backlog_is_counted_per_bu(real_engine, tenants):
     """Backpressure protects a BU that stops reading its queue. It must not throttle the
     BU next door."""
     from app.database import async_session
-    from app.services.email_automation.ingest import _pending_count
+    from app.services.email_automation.ledger import _pending_count
 
     async def _count(tid):
         async with async_session() as db:
