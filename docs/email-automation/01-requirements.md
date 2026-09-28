@@ -71,7 +71,7 @@ Each is traceable to the code that implements it.
   [02-architecture.md](02-architecture.md#diagram-7--gate-ladder-and-the-cost-boundary).
 - **Tenant isolation.** One BU's PDF passwords are never tried against another BU's file —
   the tag establishes ownership before any file is opened (`rule_passwords()`,
-  `email_automation/ingest_settings.py:565`).
+  `email_automation/credential.py:46`).
 - **Secret handling.** PDF passwords and the Carmen posting token are Fernet-encrypted at
   rest, never returned by any endpoint, and identified in logs/support only by a
   fingerprint (first 8 hex of a SHA-256 hash).

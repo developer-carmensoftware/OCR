@@ -79,7 +79,8 @@ this folder adds the two cron-only routes neither of the above documents.
 | `backend/app/services/email_automation/pipeline.py` | One document end to end: open, charge, extract, GL-map, post — `_run_document()` and its refund boundary |
 | `backend/app/services/email_automation/ledger.py` | Every `email_documents` state write: claim, park, finish, dedupe, `_review_flags()` |
 | `backend/app/services/email_automation/review.py` | The human's two verbs: `approve_document()` / `reject_document()` |
-| `backend/app/services/email_automation/ingest_settings.py` | Settings store, secrets, tag allocation, token health (730 lines) |
+| `backend/app/services/email_automation/ingest_settings.py` | Settings store and its validation, tag allocation, tax-ID checks, readiness |
+| `backend/app/services/email_automation/credential.py` | The two secrets (PDF passwords, Carmen posting token): decrypt, verify, store, token health |
 | `backend/app/routers/email_automation/settings_api.py` | The Settings API + the two cron-triggered ingest routes (407 lines) |
 | `backend/app/routers/email_automation/review.py` | The review queue's own API, on our session JWT rather than the customer's Carmen token |
 | `backend/app/models/email_automation.py` | ORM: `EmailIngestSettings`, `EmailDocument` |

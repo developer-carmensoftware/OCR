@@ -36,6 +36,7 @@ from app.services.credit_card.accounting_config import description_for, get_acco
 from app.services.credit_card.extraction import finalize_extraction, mark_task_failed
 from app.services.credit_card.input_tax import build_input_tax_payload
 from app.services.credit_card.jv import build_gljv_payload, build_jv_rows, unmapped_payment_types
+from app.services.email_automation import credential
 from app.services.email_automation import ingest_settings as es
 from app.services.email_automation.imap import match_rules, people_addresses, sender_allowed
 from app.services.email_automation.ledger import (
@@ -706,7 +707,7 @@ async def _flag_dead_token(tenant_id: str) -> None:
     """Mark this BU's posting credential unproven after Carmen refused it (401/403)."""
     try:
         async with async_session() as db:
-            await es.mark_token_unverified(db, tenant_id)
+            await credential.mark_token_unverified(db, tenant_id)
     except Exception:  # never let the flag cost us the ledger row
         logger.exception("[email] Could not flag the credential for tenant %s", tenant_id)
 

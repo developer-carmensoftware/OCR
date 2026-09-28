@@ -86,7 +86,7 @@ step would fill the queue with documents whose only problem is a missing mapping
 about to fill by itself.
 
 **`carmen_token` and `carmen_uri` are deliberately not persisted.** Approve re-reads them via
-`es.posting_target(db, row)`. They rotate, and `sweep_token_health` may have unverified them
+`credential.posting_target(db, row)`. They rotate, and `sweep_token_health` may have unverified them
 while the document sat.
 
 ### What must be re-checked at approve time
@@ -255,7 +255,7 @@ async with async_session() as db:
                                                              # posting_started_at, committed
 posted = False
 try:
-    token, uri = await es.posting_target(db, settings_row)    # fresh, never persisted
+    token, uri = await credential.posting_target(db, settings_row)    # fresh, never persisted
     tenant_ctx = current_tenant_id.set(tenant_id)             # both ContextVars, or
     uri_ctx = current_carmen_uri.set(uri)                     # post_gljv has no host
     if await has_submitted_doc(tenant_id, doc_no, doc_date):  # re-check, not the stale flag

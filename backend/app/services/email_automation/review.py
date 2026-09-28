@@ -28,6 +28,7 @@ from app.models.identity import Tenant
 from app.models.schemas import ExtractedCreditCardData
 from app.services.credit_card.accounting_config import get_accounting_config
 from app.services.credit_card.jv import build_gljv_payload
+from app.services.email_automation import credential
 from app.services.email_automation import ingest_settings as es
 from app.services.email_automation.ledger import _finish, _mark_submitted
 from app.services.email_automation.pipeline import _post_input_tax
@@ -173,7 +174,7 @@ async def approve_document(
             tenant = await db.get(Tenant, uuid.UUID(tenant_id))
             settings_row = await es.get_settings(db, tenant) if tenant else None
             carmen_token, carmen_uri = (
-                await es.posting_target(db, settings_row) if settings_row else ("", "")
+                await credential.posting_target(db, settings_row) if settings_row else ("", "")
             )
 
         if not carmen_token:

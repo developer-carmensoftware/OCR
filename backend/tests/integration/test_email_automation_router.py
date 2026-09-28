@@ -587,6 +587,7 @@ def test_storing_a_token_targets_only_the_tenants_own_origin():
     tenant's own."""
     from app.main import app
     from app.routers.email_automation import settings_api as mod
+    from app.services.email_automation import credential
     from app.services.email_automation import ingest_settings as es
 
     app.dependency_overrides[_caller] = lambda: _admin_caller()
@@ -596,8 +597,8 @@ def test_storing_a_token_targets_only_the_tenants_own_origin():
         patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant),
         # Patched off so the assertion is about the value, not the SSRF allowlist.
         patch.object(mod, "validate_uri", lambda uri: uri),
-        patch.object(es, "set_token", set_token),
-        patch.object(es, "token_status", lambda row: {"configured": True}),
+        patch.object(credential, "set_token", set_token),
+        patch.object(credential, "token_status", lambda row: {"configured": True}),
     ):
         with make_test_client(AsyncMock()) as client:
             resp = client.put(

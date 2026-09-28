@@ -12,7 +12,7 @@ DEF-2 — `approve_document` passed the client-supplied `extracted.id` to `_mark
 which loaded the card with no tenant filter, so a reviewer in BU-B could stamp BU-A's card.
 Fixed by stamping through the ledger row's own `task_id` with the tenant in the WHERE clause.
 
-Only `post_gljv` / `post_input_tax` / `es.posting_target` are patched (talking to a real
+Only `post_gljv` / `post_input_tax` / `credential.posting_target` are patched (talking to a real
 Carmen with fabricated data would be wrong regardless of what is under test); the claim, the
 status transitions and `_mark_submitted`'s lookup are the real code on the real database.
 """
@@ -167,7 +167,9 @@ def _approve_env(*, post_delay: float = 0.0, result=None):
 
     return calls, [
         patch.object(
-            review.es, "posting_target", AsyncMock(return_value=("tok", "https://fake.invalid"))
+            review.credential,
+            "posting_target",
+            AsyncMock(return_value=("tok", "https://fake.invalid")),
         ),
         patch.object(review.carmen, "post_gljv", _post),
         patch.object(review, "_post_input_tax", AsyncMock(return_value=None)),

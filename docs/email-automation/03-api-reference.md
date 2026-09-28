@@ -183,8 +183,8 @@ user's login for a problem that isn't theirs.
 }
 ```
 
-Validation codes, all raised from `save_settings()` / `set_token()`
-(`email_automation/ingest_settings.py`):
+Validation codes, all raised from `save_settings()` (`email_automation/ingest_settings.py`) /
+`set_token()` (`email_automation/credential.py`):
 
 | Code | Field | Meaning |
 |---|---|---|

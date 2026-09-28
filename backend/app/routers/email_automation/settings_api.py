@@ -51,7 +51,7 @@ from app.routers.admin.deps import decode_admin_principal, require_maintenance_a
 # into a shared module is a real refactor, not a move — do it when something else
 # needs them too.
 from app.routers.auth import validate_token, validate_uri
-from app.services.email_automation import ingest
+from app.services.email_automation import credential, ingest
 from app.services.email_automation import ingest_settings as es
 from app.services.shared import notification as notification_service
 from app.services.shared.rate_limit import InMemoryRateLimiter
@@ -128,7 +128,7 @@ def _remember_rejection(key: str) -> None:
 # The operator path's permission, on the reads as well as the writes. Deliberately
 # **not** `configs:read`: the `viewer` role holds every `*:read` permission there is
 # (20260615000002_seed_control_plane.sql), and a GET here hands back the BU's
-# `ingest_address` — which `email_settings_service._fresh_tag` documents as *being* the
+# `ingest_address` — which `ingest_settings._fresh_tag` documents as *being* the
 # authorization to write a document into that BU's ledger, and from there into their
 # Carmen books. Reading it is a config-administration act, not a dashboard glance.
 _ADMIN_PERM = "configs:write"
@@ -382,7 +382,9 @@ async def write_token(
     """
     tenant = await _resolve(db, caller, payload.uri, payload.bu)
     origin = await _safe_carmen_uri(tenant)
-    row = await es.set_token(db, tenant, payload.token.get_secret_value(), origin, caller.actor)
+    row = await credential.set_token(
+        db, tenant, payload.token.get_secret_value(), origin, caller.actor
+    )
     logger.info(
         "[email] Carmen token %s stored for %s/%s by %s",
         row.carmen_token_fp,
@@ -390,7 +392,7 @@ async def write_token(
         tenant.bu_code,
         caller.actor,
     )
-    return es.token_status(row)
+    return credential.token_status(row)
 
 
 @router.get("/settings/token")
@@ -401,7 +403,7 @@ async def read_token(
     caller: Caller = Depends(_caller),
 ):
     tenant = await _resolve(db, caller, uri, bu)
-    return es.token_status(await es.get_settings(db, tenant))
+    return credential.token_status(await es.get_settings(db, tenant))
 
 
 @router.delete("/settings/token", status_code=204)
@@ -417,7 +419,7 @@ async def delete_token(
     deleted is still a live credential everywhere else.
     """
     tenant = await _resolve(db, caller, uri, bu)
-    await es.clear_token(db, tenant, caller.actor)
+    await credential.clear_token(db, tenant, caller.actor)
     logger.info(
         "[email] Carmen token cleared for %s/%s by %s", tenant.host, tenant.bu_code, caller.actor
     )
@@ -497,4 +499,4 @@ async def check_token_health(
     Use `value #>> '{}'`, not `trim(both '"' …)` — see 20260715010000_fix_cron_sql_bugs.sql,
     where that exact copy-paste silently disabled every HTTP cron job for months.
     """
-    return await es.sweep_token_health(db)
+    return await credential.sweep_token_health(db)
