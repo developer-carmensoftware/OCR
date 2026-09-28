@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.exceptions import NotFoundError
+from app.services.billing.slip_storage import StorageError
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
 
@@ -222,6 +224,43 @@ def test_get_slip_url_returns_404_when_no_slip():
         resp = client.get(f"{BASE}/credit-orders/{order.id}/slip-url", headers=AUTH)
 
     assert resp.status_code == 404
+
+
+def test_get_slip_url_is_404_when_the_file_is_gone_from_storage():
+    """A slip whose file FileService no longer has (every pre-2026-07-13 upload) is a
+    404 with a reason, not a 502 that counts as a server error on #/admin/errors."""
+    order = _order()
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _scalar(order)
+
+    with (
+        patch(
+            "app.routers.admin.credits.storage_service.signed_url",
+            new=AsyncMock(side_effect=NotFoundError("Slip file not found in storage")),
+        ),
+        make_admin_test_client(mock_db) as client,
+    ):
+        resp = client.get(f"{BASE}/credit-orders/{order.id}/slip-url", headers=AUTH)
+
+    assert resp.status_code == 404
+    assert "not found in storage" in resp.json()["detail"]
+
+
+def test_get_slip_url_is_502_when_storage_fails():
+    order = _order()
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _scalar(order)
+
+    with (
+        patch(
+            "app.routers.admin.credits.storage_service.signed_url",
+            new=AsyncMock(side_effect=StorageError("Storage unreachable")),
+        ),
+        make_admin_test_client(mock_db) as client,
+    ):
+        resp = client.get(f"{BASE}/credit-orders/{order.id}/slip-url", headers=AUTH)
+
+    assert resp.status_code == 502
 
 
 # ── POST /admin/credit-orders/{id}/approve ────────────────────────────────────

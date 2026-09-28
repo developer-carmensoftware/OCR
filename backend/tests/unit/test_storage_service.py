@@ -8,8 +8,10 @@ Unit tests for storage_service (OneApp FileService client):
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
+from app.exceptions import NotFoundError
 from app.services.billing.slip_storage import StorageError, guess_ext, signed_url, upload_slip
 
 
@@ -163,11 +165,52 @@ async def test_signed_url_raises_on_non_200():
         patch("app.services.billing.slip_storage.settings", _mock_settings()),
         patch(
             "app.services.billing.slip_storage.httpx.AsyncClient",
-            return_value=_mock_httpx_client(404),
+            return_value=_mock_httpx_client(500),
         ),
     ):
         with pytest.raises(StorageError, match="signed URL"):
             await signed_url("file-abc")
+
+
+@pytest.mark.asyncio
+async def test_signed_url_is_not_found_when_storage_has_no_such_file():
+    """FileService answering 404 is a missing file, not a failing server. Slips from
+    before the 2026-07-13 move to FileService were never carried over and 404 for
+    good — reporting that as a 502 made every look at an old order a server error."""
+    with (
+        patch("app.services.billing.slip_storage.settings", _mock_settings()),
+        patch(
+            "app.services.billing.slip_storage.httpx.AsyncClient",
+            return_value=_mock_httpx_client(404),
+        ),
+    ):
+        with pytest.raises(NotFoundError, match="not found in storage"):
+            await signed_url("tenant/order.jpg")
+
+
+@pytest.mark.asyncio
+async def test_signed_url_wraps_a_transport_failure_as_storage_error():
+    """Unreachable or timed out is StorageError (-> 502), not an unhandled 500."""
+    client = _mock_httpx_client()
+    client.get = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
+    with (
+        patch("app.services.billing.slip_storage.settings", _mock_settings()),
+        patch("app.services.billing.slip_storage.httpx.AsyncClient", return_value=client),
+    ):
+        with pytest.raises(StorageError, match="unreachable"):
+            await signed_url("file-abc")
+
+
+@pytest.mark.asyncio
+async def test_upload_slip_wraps_a_transport_failure_as_storage_error():
+    client = _mock_httpx_client()
+    client.post = AsyncMock(side_effect=httpx.ReadTimeout("timed out"))
+    with (
+        patch("app.services.billing.slip_storage.settings", _mock_settings()),
+        patch("app.services.billing.slip_storage.httpx.AsyncClient", return_value=client),
+    ):
+        with pytest.raises(StorageError, match="unreachable"):
+            await upload_slip("order-1", b"x", "image/png", path="202609")
 
 
 @pytest.mark.asyncio

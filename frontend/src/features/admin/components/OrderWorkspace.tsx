@@ -321,7 +321,8 @@ function CompanyPanel({
 
 interface WsState {
   slipUrl: string | null
-  slipErr: boolean
+  /** 'missing' = storage has no such file (404); 'failed' = anything else. */
+  slipErr: false | 'missing' | 'failed'
   proforma: BillingDocument | null
   docsErr: boolean
   history: AdminCreditOrder[]
@@ -330,7 +331,7 @@ interface WsState {
 type WsAction =
   | { type: 'RESET' }
   | { type: 'SET_SLIP_URL'; url: string }
-  | { type: 'SET_SLIP_ERR' }
+  | { type: 'SET_SLIP_ERR'; missing: boolean }
   | { type: 'SET_DOCS'; proforma: BillingDocument | null }
   | { type: 'SET_DOCS_ERR' }
   | { type: 'SET_HISTORY'; history: AdminCreditOrder[] }
@@ -350,7 +351,7 @@ function wsReducer(state: WsState, action: WsAction): WsState {
     case 'SET_SLIP_URL':
       return { ...state, slipUrl: action.url }
     case 'SET_SLIP_ERR':
-      return { ...state, slipErr: true }
+      return { ...state, slipErr: action.missing ? 'missing' : 'failed' }
     case 'SET_DOCS':
       return { ...state, proforma: action.proforma }
     case 'SET_DOCS_ERR':
@@ -390,7 +391,10 @@ export default function OrderWorkspace({
     let alive = true
     getOrderSlipUrl(order.id)
       .then(r => alive && dispatch({ type: 'SET_SLIP_URL', url: r.signed_url }))
-      .catch(() => alive && dispatch({ type: 'SET_SLIP_ERR' }))
+      .catch(
+        (e: Error & { status?: number }) =>
+          alive && dispatch({ type: 'SET_SLIP_ERR', missing: e.status === 404 })
+      )
     fetchAdminOrderDocuments(order.id)
       .then(docs => {
         if (!alive) return

@@ -82,6 +82,8 @@ export const en = {
   'orev.slip.heading': 'Payment slip',
   'orev.slip.none': 'No slip uploaded yet.',
   'orev.slip.errFallback': 'Slip preview unavailable.',
+  'orev.slip.missing':
+    'The slip file is no longer in storage. Slips uploaded before 13 Jul 2026 were not carried over when storage moved.',
   'orev.slip.loading': 'Loading slip…',
   'orev.slip.openTab': 'Open slip in new tab',
   'orev.slip.zoomIn': 'Zoom in',
@@ -249,6 +251,8 @@ export const th: Record<keyof typeof en, string> = {
   'orev.slip.heading': 'สลิปการชำระเงิน',
   'orev.slip.none': 'ยังไม่มีสลิป',
   'orev.slip.errFallback': 'แสดงสลิปไม่ได้',
+  'orev.slip.missing':
+    'ไม่พบไฟล์สลิปในที่จัดเก็บแล้ว สลิปที่อัปโหลดก่อน 13 ก.ค. 2026 ไม่ได้ถูกย้ายมาตอนเปลี่ยนที่จัดเก็บ',
   'orev.slip.loading': 'กำลังโหลดสลิป…',
   'orev.slip.openTab': 'เปิดสลิปในแท็บใหม่',
   'orev.slip.zoomIn': 'ซูมเข้า',
