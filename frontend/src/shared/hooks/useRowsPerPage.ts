@@ -9,7 +9,7 @@ import { useCallback, useState } from 'react'
  * 17 and 17 left room measuring 15 — a fetch loop that needed a monotonic high-water
  * guard to terminate. A number the reader picked cannot oscillate.
  *
- * One global key, not one per table and NOT `appKey()`. `lib/storage.ts` draws the line
+ * One global key, not one per table and NOT `appKey()`. `shared/lib/storage.ts` draws the line
  * this side of: a density preference is a UI setting like `theme` and `lang`, not
  * tenant-scoped business data, so it must survive logout and never needs wiping. And
  * somebody who wants 50 rows wants 50 rows everywhere.

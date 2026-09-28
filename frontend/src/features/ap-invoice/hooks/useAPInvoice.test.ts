@@ -16,7 +16,7 @@
  * group/ungroup, and the debounced-draft save/restore round trip).
  *
  * Sub-hooks (useAPExtraction, useAPVendor, useAPValidation, useAPSubmission) and
- * lib/apTax, lib/apGroup, lib/draft, lib/storage, lib/format all run for real — only
+ * shared/lib/apTax, features/ap-invoice/lib/apGroup, shared/lib/draft, shared/lib/storage, shared/lib/format all run for real — only
  * the true network/browser boundaries are mocked, same seam useAPExtraction.test.ts
  * mocks at.
  */

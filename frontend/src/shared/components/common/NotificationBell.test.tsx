@@ -5,7 +5,7 @@ import type { BellItem } from '@/shared/api/notifications'
 
 // This component mounts in AppHeader on every user-facing page, so a crash here
 // takes the whole surface down. These cover the render + navigation path; the
-// merge/seen logic lives in hooks/notifications/useNotifications.test.ts.
+// merge/seen logic lives in shared/hooks/notifications/useNotifications.test.ts.
 
 const markRead = vi.fn()
 let items: BellItem[] = []

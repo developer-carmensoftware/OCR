@@ -329,7 +329,7 @@ not a router.
 
 **The wizard does not change.** The current body of
 [`CreditCardOCR.tsx`](../../frontend/src/pages/CreditCardOCR.tsx) — `StepWizard` plus the four
-step branches — moves to `pages/ManualScan.tsx` unedited, and `useOcrWizard` is untouched. This
+step branches — moves to `features/credit-card/pages/ManualScan.tsx` unedited, and `useOcrWizard` is untouched. This
 makes the split *cheaper* to build than a single screen that shape-shifts: nothing has to merge.
 
 **The cost, stated plainly.** Every BU today has email ingestion off, so on day one the
@@ -1216,7 +1216,7 @@ document carrying it is clean and posts.
 still deferred — §12 left it for *"the day a supervisor asks for recency rather than a
 total"*, and #70's link answers the same dead end for the price of one button. §6's
 `Nothing waiting · 8 posted today` header line stays deleted (#40: a lifetime total only
-goes up). And `components/admin/ui/EmptyState.tsx` was not adopted: it is admin-only, its
+goes up). And `features/admin/components/ui/EmptyState.tsx` was not adopted: it is admin-only, its
 CSS lives in `admin.css`, its `action` slot has no CSS rule and no call site, and it puts
 body copy on `--text-4`, which `DESIGN.md:176` says can never reach AA.
 
@@ -1488,7 +1488,7 @@ the `review.rc*` dictionary, `error_message` written by `email_automation/{inges
 
 | # | Decision | Why |
 |---|---|---|
-| 89 | **`stopText` moves to `lib/reviewReasons.ts` and is the only thing that decides what a stopped row says** — the pending cell, the resolved cell and the dialog banner all call it. `full` is the single flag they differ on. | The invariant was already written down ("the two must not drift") and was already broken, because the rule lived in one screen's private helper. Two surfaces reading one module is what the module is for. |
+| 89 | **`stopText` moves to `shared/lib/reviewReasons.ts` and is the only thing that decides what a stopped row says** — the pending cell, the resolved cell and the dialog banner all call it. `full` is the single flag they differ on. | The invariant was already written down ("the two must not drift") and was already broken, because the rule lived in one screen's private helper. Two surfaces reading one module is what the module is for. |
 | 90 | **A pending row prints its detail, like a resolved one does.** | The phrase-only branch put Carmen's verdict on the dead row and hid it on the live one — backwards, since only the pending row can still be acted on. A reviewer could not triage the queue without opening each row. |
 | 91 | **The column is headed `Detail`, not `Message`.** | Every other header on the table names its content; this one named its medium. The cell is a reason while the row waits and an outcome once it resolves, and `Detail` is the word that covers both without promising either. English in both locales, like `Status` and `JV no.` |
 | 92 | **Sentence case on every phrase the column can print, backend details included.** | Five lowercase fragments, one capitalised phrase and two first-person sentences was four grammars in one scan. A reader's eye re-orients at each change, in the one column they are scanning to decide what to open. |

@@ -71,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // silently dropping them on the home screen mid-task.
       //
       // Deliberately NOT clearAllDrafts(): the unsent wizard draft is the one thing
-      // that has to outlive this event, which is why lib/draft.ts keys sit outside
+      // that has to outlive this event, which is why shared/lib/draft.ts keys sit outside
       // APP_STORAGE_BASES. Drafts die on logout, tenant switch, submit, or TTL.
       clearAppStorage()
       setActiveTenant(null)

@@ -20,7 +20,7 @@ import type { ModalState } from '@/shared/types/modal'
 
 /**
  * Snapshot written to localStorage — wizard position plus everything unrecoverable.
- * Changing these fields means bumping DRAFT_VERSION in lib/draft.ts, same commit.
+ * Changing these fields means bumping DRAFT_VERSION in shared/lib/draft.ts, same commit.
  */
 interface ApDraft extends APDraftState {
   step: number
@@ -404,7 +404,7 @@ export function useAPInvoice() {
   // Fields whose blur triggers a full line recalculation.
   const RECALC_TRIGGERS = new Set(['qty', 'unitPrice', 'discountPct', 'discountAmt', 'taxPct'])
 
-  // recalcRow (the per-row Include/Exclude/None formula) lives in lib/apTax so the hook,
+  // recalcRow (the per-row Include/Exclude/None formula) lives in shared/lib/apTax so the hook,
   // validation, and Adjust all share one implementation. See ../../lib/apTax.
 
   // Drop-in replacement for extraction.blurItem for table cells.

@@ -199,7 +199,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
 
 /**
  * Date of the newest user-visible release — the high-water mark for "have I read
- * this yet" (see lib/releaseNotesSeen.ts). NOT a version string: the version shown
+ * this yet" (see shared/lib/releaseNotesSeen.ts). NOT a version string: the version shown
  * in the UI is `__APP_VERSION__`, from the repo-root VERSION file.
  */
 export const LATEST_RELEASE = RELEASE_NOTES[0]?.date ?? ''

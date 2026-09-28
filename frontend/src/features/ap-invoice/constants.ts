@@ -86,7 +86,7 @@ export const NUMERIC_FIELDS: APFieldKey[] = [
   'lineTotal',
 ]
 
-// Re-exported from lib/format for backward compatibility
+// Re-exported from shared/lib/format for backward compatibility
 export { parseNum, fmt, round2 } from '@/shared/lib/format'
 
 export const isNumFld = (f: string): boolean => NUMERIC_FIELDS.includes(f as APFieldKey)

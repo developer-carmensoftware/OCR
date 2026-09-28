@@ -65,7 +65,7 @@ export const API = {
 
   // Email Automation settings. Same /carmen prefix, but a different world: these are
   // the endpoints *Carmen* calls, authenticated with the user's raw Carmen token
-  // rather than our session JWT. See lib/api/emailAutomation.ts.
+  // rather than our session JWT. See features/email-settings/api/emailAutomation.ts.
   emailAutomation: {
     bankCodes: `${V1}/carmen/bank-codes`,
     settings: `${V1}/carmen/settings`,

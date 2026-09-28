@@ -14,7 +14,7 @@ import type { TKey } from '@/i18n/dict'
  * once.
  *
  * Every list endpoint answers the same `Page<T>` envelope (`{total, limit, offset,
- * data}` — see `lib/api/page.ts`), which is what makes one hook enough.
+ * data}` — see `shared/api/page.ts`), which is what makes one hook enough.
  *
  * @param fetcher  Thunk returning the envelope. Closes over the current filters, so it
  *                 is re-created each render — hence the explicit `deps`.

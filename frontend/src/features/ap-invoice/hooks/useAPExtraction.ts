@@ -643,7 +643,7 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
   const restoreDraft = (snapshot: APDraftState) => {
     // `??` fallbacks are not paranoia about our own writer: a snapshot outlives a deploy,
     // and an undefined collection here throws on the next render with no way for the user
-    // to clear it. DRAFT_VERSION in lib/draft.ts is the primary gate; this is the backstop.
+    // to clear it. DRAFT_VERSION in shared/lib/draft.ts is the primary gate; this is the backstop.
     setHeaderData(snapshot.headerData ?? EMPTY_HEADER)
     setLineItems(snapshot.lineItems ?? [])
     setFieldMappings(snapshot.fieldMappings ?? DEFAULT_MAPPINGS)

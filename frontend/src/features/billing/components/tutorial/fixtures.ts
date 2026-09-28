@@ -2,7 +2,7 @@
  * Sample data for the purchase tour's figures.
  *
  * The figures mount the REAL pricing components, so this is the only thing that
- * has to be made up. Typed against `lib/api/credits.ts` on purpose: if a shape
+ * has to be made up. Typed against `shared/api/credits.ts` on purpose: if a shape
  * changes under us, the build breaks here instead of the tutorial quietly
  * drawing something the product no longer looks like.
  *

@@ -13,7 +13,7 @@ import type React from 'react'
 
 /**
  * Snapshot written to localStorage — wizard position plus everything unrecoverable.
- * Changing these fields means bumping DRAFT_VERSION in lib/draft.ts, same commit.
+ * Changing these fields means bumping DRAFT_VERSION in shared/lib/draft.ts, same commit.
  */
 interface CcDraft extends OcrDraftState {
   step: number

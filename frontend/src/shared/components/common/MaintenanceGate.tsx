@@ -64,7 +64,7 @@ function countdown(iso: string): string {
 
 /**
  * Full-screen wall + advance-notice banner for maintenance mode. Triggered
- * immediately by the `ocr:maintenance` event any 503 fires (lib/api/client.ts),
+ * immediately by the `ocr:maintenance` event any 503 fires (shared/api/client.ts),
  * confirmed on boot + polled every 30s so it clears itself once the backend
  * returns, and shows a countdown banner ahead of a scheduled window.
  */

@@ -33,7 +33,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
-      include: ['src/hooks/**', 'src/lib/**'],
+      // Every hooks/, lib/ and api/ folder, feature and shared alike (api/ was lib/api/).
+      include: ['src/**/hooks/**', 'src/**/lib/**', 'src/**/api/**'],
     },
   },
 })

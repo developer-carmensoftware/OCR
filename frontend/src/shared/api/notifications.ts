@@ -26,7 +26,7 @@ export interface Notification {
  * A row in the bell: server notifications plus client-synthesized release notes.
  * Release notes borrow the server's field names so the list renders one row shape
  * with no parallel branch — their bilingual copy rides in `payload`. They are
- * never returned by the API; see content/releaseNotes.ts for why they aren't rows.
+ * never returned by the API; see shared/content/releaseNotes.ts for why they aren't rows.
  */
 export interface BellItem extends Omit<Notification, 'type'> {
   type: Notification['type'] | 'release_note'

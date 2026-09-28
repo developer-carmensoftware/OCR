@@ -7,7 +7,7 @@ import { PURCHASE_FIGURES, PURCHASE_FIGURE_WIDTHS } from './screens'
 /**
  * "How to buy a package" — the purchase flow's tutorial.
  *
- * All this does is marry copy (content/tutorials/purchase.ts) to figures
+ * All this does is marry copy (features/billing/components/tutorial/purchase.ts) to figures
  * (./screens.tsx) and hand them to the shared modal. A second module's tutorial
  * is this file again with its own two imports.
  */

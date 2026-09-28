@@ -95,7 +95,7 @@ export interface AccountingConfig {
   filePrefix?: string
   fileSource?: string
   description?: string
-  /** bank_code -> description; see descriptionForBank in lib/bankTransforms. */
+  /** bank_code -> description; see descriptionForBank in features/credit-card/lib/bankTransforms. */
   bankDescriptions?: Record<string, string>
   company?: {
     name?: string

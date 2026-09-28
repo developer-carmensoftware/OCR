@@ -77,7 +77,7 @@ const leg = (
  * Build the Step-3 journal-entry rows from extracted detail lines + accounting config.
  *
  * Consolidated (`consolidateDebit`, the default for all banks — see
- * `GROUP_DEBIT_BY_TRANSACTION` in constants/banks.ts): credit legs stay
+ * `GROUP_DEBIT_BY_TRANSACTION` in shared/constants/banks.ts): credit legs stay
  * one-per-payment-type; the debit side collapses to the **three canonical buckets**
  * (commission, tax, Bank Account) in fixed order, each summed across all lines and
  * **always present** — so a gateway invoice (net = 0) still shows a `0.00` Bank Account

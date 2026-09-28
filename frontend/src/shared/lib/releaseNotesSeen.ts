@@ -3,7 +3,7 @@
  * string.
  *
  * Plain, un-namespaced key: this is a per-person UI pref, not tenant business
- * data, so it deliberately bypasses lib/storage.ts and survives logout and
+ * data, so it deliberately bypasses shared/lib/storage.ts and survives logout and
  * tenant switch (same human, same changelog). See the NOTE in storage.ts.
  *
  * Two readers need to stay in sync — the bell's unread badge and the What's New

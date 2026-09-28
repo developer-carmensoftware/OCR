@@ -35,7 +35,7 @@ interface Props {
 const AMOUNT_FIELDS: DetailColumn[] = ['PayAmt', 'CommisAmt', 'TaxAmt', 'Total']
 
 // Blank/null amount cells render as "0.00" (missing value = 0). For non-empty input
-// delegates to fmt() from lib/format.
+// delegates to fmt() from shared/lib/format.
 function formatAmount(value: unknown): string {
   const str = String(value ?? '')
     .replace(/,/g, '')

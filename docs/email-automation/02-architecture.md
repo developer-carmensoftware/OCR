@@ -393,7 +393,7 @@ document number.
 
 ## Frontend surface
 
-`#/email-settings` (`frontend/src/pages/EmailSettings.tsx`) is an internal test surface, not
+`#/email-settings` (`frontend/src/features/email-settings/pages/EmailSettings.tsx`) is an internal test surface, not
 a customer-facing screen — per `../CARMEN_INTEGRATION.md §0`, *"the OCR app has no settings
 UI for this feature"*; Carmen's own screen is where customers configure it. Three things
 about it are deliberate:
@@ -402,13 +402,13 @@ about it are deliberate:
   explicit comment: *"deliberately not linked from Home while it is a test surface"*).
 - **English-only** — `EmailSettings.tsx:14`, *"this is an internal surface"*, unlike the
   bilingual customer-facing purchase flow and admin dashboard.
-- **Bypasses `apiFetch`** (`lib/api/emailAutomation.ts:108-128`) — it sends the raw Carmen
+- **Bypasses `apiFetch`** (`features/email-settings/api/emailAutomation.ts:108-128`) — it sends the raw Carmen
   token with no `Bearer` scheme, matching exactly what `_caller()` expects and what Carmen
   itself sends. A 401 here means *Carmen* rejected the token, which the page renders
   inline; going through the shared `apiFetch` would instead treat a 401 as "our own session
   died" and wipe the OCR session.
 
-`#/CreditCardOCR` (`frontend/src/pages/ReviewQueue.tsx`) is the other half, and unlike
+`#/CreditCardOCR` (`frontend/src/features/credit-card/pages/ReviewQueue.tsx`) is the other half, and unlike
 `#/email-settings` it *is* customer-facing: it is the Credit Card module's landing page, so
 it is what Carmen's SSO deep-link opens. It lists this BU's email documents by status tab,
 and opens a parked one at `#/CreditCardOCR/review?id=…` for approval. It carries no

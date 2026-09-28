@@ -30,7 +30,7 @@ const diffCorrections = vi.mocked(realDiffCorrections)
 const getAccountingConfig = vi.mocked(realGetAccountingConfig)
 const showToast = vi.mocked(realShowToast)
 
-// submitToCarmen's payload param is `unknown` (see lib/api/carmen.ts); this narrows
+// submitToCarmen's payload param is `unknown` (see shared/api/carmen.ts); this narrows
 // just the fields these tests read off its call args.
 interface CarmenJvPayload {
   JvhDate: string

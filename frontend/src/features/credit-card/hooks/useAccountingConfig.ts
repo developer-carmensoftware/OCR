@@ -3,7 +3,7 @@ import { getAccountingConfig } from '@/shared/api/config'
 import { appKey, readAccountingConfig, type AccountingConfig } from '@/shared/lib/storage'
 import type { FieldMapping } from '@/shared/types/api'
 
-// Shape and storage key live together in lib/storage; re-exported because several
+// Shape and storage key live together in shared/lib/storage; re-exported because several
 // credit-card modules already import the type from here.
 export type { AccountingConfig }
 

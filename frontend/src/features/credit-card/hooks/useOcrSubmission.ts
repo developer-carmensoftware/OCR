@@ -8,7 +8,7 @@ import { showToast } from '@/shared/lib/toast'
 import { appKey } from '@/shared/lib/storage'
 import type { ModalConfig } from '@/shared/hooks/useModal'
 
-// JvRow and the JV body itself both live in lib/ccJv.ts, next to the row builder and
+// JvRow and the JV body itself both live in features/credit-card/lib/ccJv.ts, next to the row builder and
 // the contract test that pins them to the Python twin. Re-exported so the wizard's
 // existing importers keep one place to reach for it.
 import type { JvRow } from '@/features/credit-card/lib/ccJv'

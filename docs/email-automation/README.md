@@ -85,7 +85,7 @@ this folder adds the two cron-only routes neither of the above documents.
 | `backend/app/routers/email_automation/review.py` | The review queue's own API, on our session JWT rather than the customer's Carmen token |
 | `backend/app/models/email_automation.py` | ORM: `EmailIngestSettings`, `EmailDocument` |
 | `backend/app/models/schemas/email_automation.py` | Request payloads: `RuleIn`, `SettingsIn`, `TokenIn` |
-| `frontend/src/pages/EmailSettings.tsx` + `frontend/src/hooks/email-settings/` + `frontend/src/lib/api/emailAutomation.ts` | The internal test surface at `#/email-settings` — see [02-architecture.md](02-architecture.md#frontend-surface) |
-| `frontend/src/pages/ReviewQueue.tsx` + `ReviewDocument.tsx` + `hooks/credit-card/useReviewQueue.ts` + `lib/api/emailReview.ts` | The customer-facing queue at `#/CreditCardOCR` and the review page behind it |
+| `frontend/src/features/email-settings/pages/EmailSettings.tsx` + `frontend/src/hooks/email-settings/` + `frontend/src/features/email-settings/api/emailAutomation.ts` | The internal test surface at `#/email-settings` — see [02-architecture.md](02-architecture.md#frontend-surface) |
+| `frontend/src/features/credit-card/pages/ReviewQueue.tsx` + `ReviewDocument.tsx` + `features/credit-card/hooks/useReviewQueue.ts` + `features/credit-card/api/emailReview.ts` | The customer-facing queue at `#/CreditCardOCR` and the review page behind it |
 | `scripts/email_ingest_e2e.py` | End-to-end script against the real dev mailbox + database |
 | `supabase/migrations/20260803000000_email_automation.sql` and eight migrations after it | Schema — full lineage in [04-data-model.md](04-data-model.md#migration-lineage) |
