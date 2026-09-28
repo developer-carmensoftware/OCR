@@ -972,7 +972,7 @@ ALLOWED_CARMEN_HOSTS=carmen.example.com
 | `src/App.tsx` | Thin render shell — imports hooks, renders step JSX only |
 | `src/features/home/pages/Home.tsx` | Landing hub page |
 | `src/pages/CreditCardOCR.tsx` / `APInvoice.tsx` / `Mapping.tsx` | โมดูลหลัก 3 หน้า |
-| `src/features/billing/pages/Pricing.tsx` / `OrderHistory.tsx` | Customer-facing purchase flow (`#/pricing`, `#/pricing/orders`) — **bilingual EN/TH** ผ่าน `src/i18n/dict.ts` + `LanguageContext.tsx` |
+| `src/features/billing/pages/Pricing.tsx` / `OrderHistory.tsx` | Customer-facing purchase flow (`#/pricing`, `#/pricing/orders`) — **bilingual EN/TH** ผ่าน `src/i18n/dict/` (ไฟล์ละ namespace) + `LanguageContext.tsx` |
 | `src/pages/admin/` / `order-review/` | Admin dashboard + order review |
 | `src/shared/constants/index.ts` | `BANKS`, `detectBankFromCompanyName()`, `DETAIL_COLUMNS`, etc. |
 | `src/shared/lib/storage.ts` | tenant-aware localStorage wrapper (`appKey()`) — ทุกการเข้าถึง localStorage ต้องผ่านตัวนี้ |

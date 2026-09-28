@@ -55,7 +55,7 @@ const TYPE_META: Record<string, { icon: LucideIcon; tone: string }> = {
 type TFn = (key: TKey, vars?: Record<string, string | number>) => string
 
 // Release copy is DATA, not i18n keys — it lives in the content file so a dev
-// ships the note in the same PR as the change without touching dict.ts.
+// ships the note in the same PR as the change without touching i18n/dict/.
 function releaseCopy(n: BellItem, lang: Lang): ReleaseNoteCopy {
   return (n.payload as Record<Lang, ReleaseNoteCopy>)[lang]
 }

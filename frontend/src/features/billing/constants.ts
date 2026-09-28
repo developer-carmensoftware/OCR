@@ -6,7 +6,7 @@
  * is highlighted. Keyed by pack `code` so a price change in the DB never needs a
  * frontend edit, and copy never needs a migration.
  *
- * User-facing copy lives in `i18n/dict.ts` (the pricing surface is bilingual) —
+ * User-facing copy lives in `i18n/dict/` (the pricing surface is bilingual) —
  * do not add rendered strings here or they will be EN-only.
  */
 
@@ -107,7 +107,7 @@ export function planChangeLoss(
  * nothing to warn about.
  *
  * Takes `t` as an argument rather than importing it, so this stays a plain function
- * (no hook) callable from anywhere — and so the copy itself stays in `dict.ts`, per
+ * (no hook) callable from anywhere — and so the copy itself stays in `i18n/dict/`, per
  * this module's no-rendered-strings rule. Both callers reach `SlipUpload`'s single
  * `warning` string; keeping the mapping here means a new loss kind is one edit, not
  * one per call site.

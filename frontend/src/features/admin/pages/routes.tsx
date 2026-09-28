@@ -27,7 +27,7 @@ import type { TKey } from '@/i18n/dict'
  * chain in `main.tsx` mapping the same hashes to the same components. Adding a page
  * meant four edits and forgetting one gave you a nav link to nowhere (or a page
  * nothing linked to). They are one list now, so adding a page is: an entry here, and
- * its `admin.nav.item.*` key in **both** `en` and `th` of `i18n/dict.ts`.
+ * its `admin.nav.item.*` key in **both** `en` and `th` of `features/admin/i18n/nav.ts`.
  *
  * Labels are keys, not strings, so this can be plain module data — `AdminLayout`
  * translates them at render and `ADMIN_ROUTES` ignores them entirely.

@@ -19,7 +19,7 @@ export interface TutorialStepCopy {
 /**
  * A step as a module author writes it: which element to spotlight, an icon, and
  * the copy in every supported language. `Record<Lang, …>` is what makes the
- * compiler ask for Thai, the same guarantee `i18n/dict.ts` gives.
+ * compiler ask for Thai, the same guarantee `i18n/dict/` gives.
  */
 export type TutorialStepDefinition = {
   /**

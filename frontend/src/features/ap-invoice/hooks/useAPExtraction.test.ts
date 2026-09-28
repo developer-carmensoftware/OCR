@@ -66,7 +66,7 @@ const getPdfInfo = vi.mocked(realGetPdfInfo)
 
 // useAPExtraction now pulls copy from the i18n dict via useT(); on error it sets
 // the localized `ap.errProcess` string (English default in tests). Keep this in
-// sync with dict.ts.
+// sync with i18n/dict/.
 const MOCK_T = { errProcess: 'OCR processing error. Please try again.' }
 
 function makeProps(overrides: Record<string, unknown> = {}) {
