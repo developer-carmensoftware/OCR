@@ -1018,6 +1018,18 @@ describe('leaving', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('asks before throwing away a header correction', async () => {
+    // Prefix and description are BU config, uncommitted until approve — the same kind of
+    // work as a re-mapped account, so closing over them has to ask too.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Card fees' } })
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+    expect(await screen.findByText('Leave without posting?')).toBeInTheDocument()
+  })
+
   it('does not ask when nothing has been touched', async () => {
     // A reviewer who opened a document, read it and moved on is not owed a dialog.
     vi.mocked(api.getPending).mockResolvedValue(detail())
