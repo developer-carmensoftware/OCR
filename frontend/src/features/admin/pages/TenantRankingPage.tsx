@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import DataTable, { type Column } from '@/features/admin/components/DataTable'
 import PeriodPicker, { lastDays, periodHours } from '@/features/admin/components/PeriodPicker'
-import { fetchTenantRanking } from '@/shared/api/adminClient'
+import { fetchTenantRanking } from '@/features/admin/api/usage'
 import { useT } from '@/i18n/LanguageContext'
 
 type Metric = 'cost' | 'error_rate' | 'latency' | 'volume'

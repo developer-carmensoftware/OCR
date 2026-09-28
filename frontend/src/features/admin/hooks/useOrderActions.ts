@@ -6,7 +6,7 @@ import {
   updateOrderNote,
   holdBatch,
   type AdminCreditOrder,
-} from '@/shared/api/adminClient'
+} from '@/features/admin/api/orders'
 import { useT } from '@/i18n/LanguageContext'
 
 /** Keep the company name when a mutation endpoint returns it null (no Tenant join). */

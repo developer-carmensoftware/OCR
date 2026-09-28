@@ -5,12 +5,11 @@ import SwapLabel from '@/shared/components/common/SwapLabel'
 import {
   endMaintenanceNow,
   fetchMaintenance,
-  fetchTenants,
   setMaintenanceSchedule,
   setTenantMaintenance,
   type MaintenanceStatus,
-  type TenantRow,
-} from '@/shared/api/adminClient'
+} from '@/features/admin/api/maintenance'
+import { fetchTenants, type TenantRow } from '@/features/admin/api/tenants'
 import { useT } from '@/i18n/LanguageContext'
 
 // Blocks every user — require typing this to arm it (guards against a fat-fingered click).

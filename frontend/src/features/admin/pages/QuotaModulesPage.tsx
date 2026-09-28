@@ -22,7 +22,7 @@ import {
   toggleTenantModule,
   type TenantQuotaOverviewRow,
   type ModuleCatalogEntry,
-} from '@/shared/api/adminClient'
+} from '@/features/admin/api/quotas'
 import { useT } from '@/i18n/LanguageContext'
 
 function todayStr() {

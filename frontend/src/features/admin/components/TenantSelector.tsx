@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { toast } from 'sonner'
-import { fetchTenants } from '@/shared/api/adminClient'
+import { fetchTenants } from '@/features/admin/api/tenants'
 import { useT } from '@/i18n/LanguageContext'
 
 interface Tenant {

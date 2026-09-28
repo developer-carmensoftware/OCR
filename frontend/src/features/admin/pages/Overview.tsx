@@ -7,7 +7,8 @@ import TenantSelector from '@/features/admin/components/TenantSelector'
 import PeriodPicker, { granularityFor, lastDays } from '@/features/admin/components/PeriodPicker'
 import PageHeader from '@/features/admin/components/ui/PageHeader'
 import Card from '@/features/admin/components/ui/Card'
-import { fetchAlerts, fetchUsageSummary, fetchUsageTotals } from '@/shared/api/adminClient'
+import { fetchAlerts } from '@/features/admin/api/monitoring'
+import { fetchUsageSummary, fetchUsageTotals } from '@/features/admin/api/usage'
 import { useT } from '@/i18n/LanguageContext'
 
 function fmtCost(v: number) {

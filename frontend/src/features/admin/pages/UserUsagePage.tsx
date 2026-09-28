@@ -1,7 +1,7 @@
 import DataTable, { type Column } from '@/features/admin/components/DataTable'
 import TenantSelector from '@/features/admin/components/TenantSelector'
 import PeriodPicker, { daysAgo, endOfDay, today } from '@/features/admin/components/PeriodPicker'
-import { fetchUserUsage } from '@/shared/api/adminClient'
+import { fetchUserUsage } from '@/features/admin/api/usage'
 import { useTableQuery } from '@/features/admin/hooks/useTableQuery'
 import { useTableData } from '@/features/admin/hooks/useTableData'
 import { useT } from '@/i18n/LanguageContext'

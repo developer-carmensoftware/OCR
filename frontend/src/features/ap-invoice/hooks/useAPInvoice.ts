@@ -1,57 +1,28 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { useT } from '@/i18n/LanguageContext'
 import { showToast } from '@/shared/lib/toast'
 import { parseNum, fmt, round2 } from '@/shared/lib/format'
 import { saveAPVendorMapping } from '@/shared/api/config'
 import { appKey } from '@/shared/lib/storage'
-import { saveDraft, loadDraft, clearDraft, draftPromptMessage } from '@/shared/lib/draft'
+import { clearDraft } from '@/shared/lib/draft'
 import { useAPExtraction } from './useAPExtraction'
-import type { APLineItem, APDraftState } from './useAPExtraction'
 import { useAPVendor } from './useAPVendor'
 import { useAPValidation, reconcileRows, repairDocFigure } from './useAPValidation'
-import { recalcRow, syncLineTotals, resolveTaxProfileForRate } from '@/shared/lib/apTax'
-import { groupSelected } from '@/features/ap-invoice/lib/apGroup'
+import { useAPDraft } from './useAPDraft'
+import { useAPGrouping } from './useAPGrouping'
+import { applyTaxPatch, matchTaxProfiles, recalcRow, syncLineTotals } from '@/shared/lib/apTax'
 import { isAccountAllowed } from '@/shared/lib/deptAccounts'
 import { useAPSubmission } from './useAPSubmission'
 import { fetchTaxProfiles } from '@/shared/api/carmen'
 import type { TaxProfileItem } from '@/shared/api/carmen'
 import type { ModalState } from '@/shared/types/modal'
 
-/**
- * Snapshot written to localStorage — wizard position plus everything unrecoverable.
- * Changing these fields means bumping DRAFT_VERSION in shared/lib/draft.ts, same commit.
- */
-interface ApDraft extends APDraftState {
-  step: number
-  systemVendor: { code: string; name: string }
-  // The vendor input renders `vendorSearch`, not `systemVendor`, and autoMatchVendor
-  // early-returns on `prev.code` — so without this a restored invoice shows a blank
-  // Vendor field while submitting the right vendor. Both have to be restored together.
-  vendorSearch: string
-  // Without this, ungrouping a restored invoice silently loses the merged source rows.
-  groupSources: Record<string, APLineItem[]>
-}
-
-// Long enough to collapse a burst of typing into one write, short enough that a drop
-// never costs more than the last few characters. lineItems gets a fresh identity on every
-// keystroke, so without this the whole invoice is re-serialized per character on the main
-// thread — tens of KB at 50-100 rows.
-// ponytail: ceiling — unmounting inside this window drops the last edit. Flushing on
-// cleanup would fire on every dependency change and defeat the debounce.
-const DRAFT_SAVE_DEBOUNCE_MS = 400
-
 export function useAPInvoice() {
   const { t } = useT()
 
   const [step, setStep] = useState(1)
   const [modal, setModal] = useState<ModalState>({ show: false })
-  // groupSources maps a _groupId to the original source rows that were merged into that grouped row.
-  // Source rows are always flat (never contain other _groupId rows) so ungroup is always one level.
-  const [groupSources, setGroupSources] = useState<Record<string, APLineItem[]>>({})
-  const groupIdCounter = useRef(0)
-  // StrictMode double-mounts in dev; without this the restore prompt opens twice.
-  const restorePromptedRef = useRef(false)
   const [taxProfiles, setTaxProfiles] = useState<TaxProfileItem[]>([])
 
   const extraction = useAPExtraction({ setStep, setModal })
@@ -77,6 +48,8 @@ export function useAPInvoice() {
     updateHeader: extraction.updateHeader,
   })
 
+  const grouping = useAPGrouping({ extraction, t })
+
   useEffect(() => {
     vendor.loadVendors()
     fetchTaxProfiles()
@@ -84,87 +57,16 @@ export function useAPInvoice() {
       .catch(() => {})
   }, [vendor.loadVendors])
 
-  // Keep an unsent copy on disk. Both session clocks (our JWT and Carmen's token) expire
-  // without warning mid-wizard, and everything above is React state that dies with the
-  // unmount — this is the only thing standing between a drop and a re-scan. AP is the
-  // longer of the two workflows, so it is the one most likely to be caught by it.
-  useEffect(() => {
-    if (step <= 1) return
-    // Step 5 is terminal — the invoice is in Carmen and there is nothing left to recover.
-    // Without this the last write survives until "New Invoice" is clicked, so closing the
-    // tab on the success screen means the next visit offers to restore finished work.
-    // (Credit card is deliberately different: its step 4 is a second Carmen post that
-    // still has to happen, so its draft lives until Finish → resetAll.)
-    if (step >= 5) {
-      clearDraft('ap')
-      return
-    }
-    const id = window.setTimeout(() => {
-      saveDraft<ApDraft>('ap', {
-        step,
-        headerData: extraction.headerData,
-        lineItems: extraction.lineItems,
-        fieldMappings: extraction.fieldMappings,
-        apInvoiceId: extraction.apInvoiceId,
-        warnings: extraction.warnings,
-        isDuplicate: extraction.isDuplicate,
-        systemVendor: vendor.systemVendor,
-        vendorSearch: vendor.vendorSearch,
-        groupSources,
-      })
-    }, DRAFT_SAVE_DEBOUNCE_MS)
-    return () => window.clearTimeout(id)
-  }, [
+  useAPDraft({
     step,
-    extraction.headerData,
-    extraction.lineItems,
-    extraction.fieldMappings,
-    extraction.apInvoiceId,
-    extraction.warnings,
-    extraction.isDuplicate,
-    vendor.systemVendor,
-    vendor.vendorSearch,
-    groupSources,
-  ])
-
-  // Offer the saved invoice back, once, on entry. Never automatic: a silent restore would
-  // bury a fresh scan, and on a shared PC it would surface a colleague's invoice unasked.
-  useEffect(() => {
-    if (restorePromptedRef.current) return
-    restorePromptedRef.current = true
-    const draft = loadDraft<ApDraft>('ap')
-    if (!draft) return
-    setModal({
-      show: true,
-      title: 'Unfinished invoice found',
-      message: draftPromptMessage(
-        draft.data.headerData?.documentNumber || draft.data.headerData?.vendorName,
-        draft.at
-      ),
-      type: 'info',
-      confirmText: 'Restore',
-      cancelText: 'Discard',
-      onConfirm: () => {
-        extraction.restoreDraft(draft.data)
-        vendor.setSystemVendor(draft.data.systemVendor || { code: '', name: '' })
-        // Must accompany setSystemVendor — this is the text the vendor input renders.
-        vendor.setVendorSearch(draft.data.vendorSearch || '')
-        setGroupSources(draft.data.groupSources || {})
-        setStep(draft.data.step)
-        // Step 4 normally gets its chart of accounts from the 3→4 transition
-        // (goToAccount). Landing there directly has to fetch it itself.
-        if (draft.data.step >= 4) submission.loadGLData()
-        setModal({ show: false })
-        showToast('Restored your unfinished invoice', 'success')
-      },
-      onCancel: () => {
-        clearDraft('ap')
-        setModal({ show: false })
-      },
-    })
-    // Mount-only: the prompt answers a question about the past, not about live state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    setStep,
+    setModal,
+    extraction,
+    vendor,
+    groupSources: grouping.groupSources,
+    setGroupSources: grouping.setGroupSources,
+    loadGLData: submission.loadGLData,
+  })
 
   useEffect(() => {
     if (vendor.showVendorDrop) return
@@ -188,28 +90,9 @@ export function useAPInvoice() {
   useEffect(() => {
     if (!taxProfiles.length) return
 
-    extraction.setLineItems(prev => {
-      if (!prev.length) return prev
-      let changed = false
-      const next = prev.map(it => {
-        if (it._taxProfileTouched) return it
-        if (it.taxType === 'None') {
-          if (it.taxProfileCode1 !== '') {
-            changed = true
-            return { ...it, taxProfileCode1: '' }
-          }
-          return it
-        }
-        const rate = parseNum(it.taxPct)
-        const desired = resolveTaxProfileForRate(rate, taxProfiles, vendorTaxProfile)
-        if (it.taxProfileCode1 !== desired) {
-          changed = true
-          return { ...it, taxProfileCode1: desired }
-        }
-        return it
-      })
-      return changed ? next : prev
-    })
+    if (!taxProfiles.length) return
+
+    extraction.setLineItems(prev => matchTaxProfiles(prev, taxProfiles, vendorTaxProfile))
   }, [taxProfiles, extraction.lineItems.length, vendorTaxProfile, extraction.setLineItems])
 
   const confirmMapping = () => {
@@ -461,145 +344,18 @@ export function useAPInvoice() {
     rowIndex: number,
     patch: { taxType?: 'Include' | 'Exclude' | 'None'; taxProfileCode1?: string; taxPct?: string }
   ) => {
-    const rateOf = (code: string) => taxProfiles.find(p => p.code === code)?.rate ?? null
-    const codeForRate = (rate: number) =>
-      taxProfiles.find(p => p.rate != null && Math.abs(p.rate - rate) < 0.01)?.code || ''
-
     const headerTaxType = extraction.headerData.taxType
 
     extraction.setLineItems(prev =>
-      prev.map((it, i) => {
-        if (i !== rowIndex) return it
-        const merged = { ...it, ...patch }
-        const prevType = (it.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
-
-        // Derive the effective taxType, honouring profile-driven None.
-        let taxType = (merged.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
-        if (patch.taxProfileCode1 !== undefined) {
-          if (patch.taxProfileCode1 === 'NONE') {
-            taxType = 'None'
-            merged.taxProfileCode1 = ''
-          } else if (patch.taxProfileCode1 === '') {
-            if (taxType === 'None') {
-              // Restore to the document-level tax type when selecting "—" on a None line
-              taxType = headerTaxType === 'Include' ? 'Include' : 'Exclude'
-            }
-            merged.taxProfileCode1 = ''
-          } else if (taxType === 'None') {
-            // Restore to the document-level tax type (Include/Exclude) when un-Noning a line
-            // by picking a profile; fall back to Exclude if the header is also None/missing.
-            taxType = headerTaxType === 'Include' ? 'Include' : 'Exclude'
-          }
-        }
-
-        if (taxType === 'None') {
-          return recalcRow({ ...merged, taxType: 'None', taxProfileCode1: '', taxPct: '0' })
-        }
-
-        // Pure Include ↔ Exclude toggle (only taxType changed, neither side None): pin the net
-        // subtotal and re-derive tax/total from the rate. recalcRow re-anchors on unitPrice, whose
-        // gross/net meaning differs by tax type, so going through it here would make the line jump
-        // to the stored unitPrice's gross — pinning the subtotal keeps the toggle non-destructive.
-        const isToggle =
-          patch.taxType !== undefined &&
-          patch.taxProfileCode1 === undefined &&
-          patch.taxPct === undefined &&
-          prevType !== 'None'
-        if (isToggle) {
-          const r = Math.max(0, parseNum(merged.taxPct))
-          const sub = round2(merged.lineSubTotal)
-          const taxAmt = round2((sub * r) / 100)
-          return {
-            ...merged,
-            taxType,
-            lineSubTotal: fmt(sub),
-            taxAmt: fmt(taxAmt),
-            lineTotal: fmt(sub + taxAmt),
-          }
-        }
-
-        let code = merged.taxProfileCode1 || ''
-        let rate = parseNum(merged.taxPct)
-        if (patch.taxProfileCode1) {
-          const r = rateOf(code) // profile drives the rate
-          if (r != null) rate = r
-        } else if (patch.taxPct !== undefined) {
-          // Rate drives the profile. When no profile defines this rate, blank the profile (keep the
-          // rate) rather than holding a stale code — the line stays taxable and the UI warns.
-          if (rateOf(code) !== rate) code = codeForRate(rate)
-        }
-        // No `!code` fallback: picking "—" (or un-Noning with no profile) leaves the line taxable
-        // with no specific profile and its current rate — we never silently inject the vendor
-        // default (matches auto-match / grouping / submission, which also dropped that fallback).
-
-        return recalcRow({ ...merged, taxType, taxProfileCode1: code, taxPct: String(rate) })
-      })
+      prev.map((it, i) =>
+        i === rowIndex ? applyTaxPatch(it, patch, taxProfiles, headerTaxType) : it
+      )
     )
   }
 
   // Tax Type select routes through the shared interlock.
   const changeLineTaxType = (rowIndex: number, newTaxType: 'Include' | 'Exclude' | 'None') =>
     applyLineTax(rowIndex, { taxType: newTaxType })
-
-  // Derived: true when any row in the current list is a grouped row.
-  const isGrouped = extraction.lineItems.some(it => it._groupId)
-
-  // Derived: how many rows would be in the list after fully expanding all groups.
-  const originalLineItemsCount = extraction.lineItems.reduce(
-    (n, it) =>
-      n + (it._groupId && groupSources[it._groupId] ? groupSources[it._groupId].length : 1),
-    0
-  )
-
-  // Flatten the source rows behind each selected item. If an item is itself a grouped row we
-  // substitute its original source rows (making nested-group→merge always produce flat sources).
-  const flattenSources = (items: APLineItem[]): APLineItem[] =>
-    items.flatMap(it =>
-      it._groupId && groupSources[it._groupId] ? groupSources[it._groupId] : [it]
-    )
-
-  // Group by description: merge the user-selected rows into named grouped rows.
-  // Items may span multiple tax profiles — each distinct (taxType, profile) becomes one row,
-  // all sharing the user-supplied description. Leaves non-selected rows untouched.
-  const groupByDescription = (indices: number[], description: string): boolean => {
-    const items = extraction.lineItems
-    // Drop duplicate / out-of-range indices: the modal can hand us stale indices captured against a
-    // longer list (a previous group shrank it), and a bad index would surface undefined rows.
-    const sorted = [...new Set(indices)]
-      .filter(i => i >= 0 && i < items.length)
-      .sort((a, b) => a - b)
-    if (sorted.length < 2) return false
-    const selected = sorted.map(i => items[i])
-    const desc = description.trim() || items[sorted[0]]?.description || t('ap.groupedItems')
-    const buckets = groupSelected(selected, desc)
-
-    const newSources: Record<string, APLineItem[]> = {}
-    const absorbedIds = new Set(
-      selected.flatMap(it => (it._groupId ? [it._groupId] : [])) as string[]
-    )
-    const mergedRows: APLineItem[] = buckets.map(({ row, bucket }) => {
-      const gid = `g_${++groupIdCounter.current}`
-      newSources[gid] = flattenSources(bucket)
-      return { ...row, _uid: crypto.randomUUID(), _groupId: gid }
-    })
-
-    setGroupSources(prev => {
-      const next = { ...prev }
-      absorbedIds.forEach(id => delete next[id])
-      Object.assign(next, newSources)
-      return next
-    })
-
-    const drop = new Set(sorted)
-    const insertAt = sorted[0]
-    const next: APLineItem[] = []
-    items.forEach((it, i) => {
-      if (i === insertAt) mergedRows.forEach(r => next.push(r))
-      if (!drop.has(i)) next.push(it)
-    })
-    extraction.setLineItems(next)
-    return true
-  }
 
   // Changing a row's dept to one whose DefaultAccount forbids the current account clears it.
   const updateItemChecked = (idx: number, key: string, val: string) => {
@@ -632,20 +388,11 @@ export function useAPInvoice() {
     })
   }
 
-  const ungroupItems = () => {
-    extraction.setLineItems(prev =>
-      prev.flatMap(it =>
-        it._groupId && groupSources[it._groupId] ? groupSources[it._groupId] : [it]
-      )
-    )
-    setGroupSources({})
-  }
-
   const handleReset = () => {
     extraction.resetExtraction()
     vendor.resetVendor()
     submission.resetGLLoaded()
-    setGroupSources({})
+    grouping.setGroupSources({})
     setStep(1)
     clearDraft('ap')
     setModal({ show: false })
@@ -734,9 +481,9 @@ export function useAPInvoice() {
     selectedPageThumbs: extraction.selectedPageThumbs,
     confirmPageSelection: extraction.confirmPageSelection,
     cancelPageSelection: extraction.cancelPageSelection,
-    isGrouped,
-    groupByDescription,
-    ungroupItems,
-    originalLineItemsCount,
+    isGrouped: grouping.isGrouped,
+    groupByDescription: grouping.groupByDescription,
+    ungroupItems: grouping.ungroupItems,
+    originalLineItemsCount: grouping.originalLineItemsCount,
   }
 }

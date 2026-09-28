@@ -4,7 +4,7 @@ import DataTable, { type Column } from '@/features/admin/components/DataTable'
 import MetricChart from '@/features/admin/components/MetricChart'
 import TenantSelector from '@/features/admin/components/TenantSelector'
 import PeriodPicker, { lastDays, periodHours } from '@/features/admin/components/PeriodPicker'
-import { fetchErrorBreakdown } from '@/shared/api/adminClient'
+import { fetchErrorBreakdown } from '@/features/admin/api/usage'
 import { useT } from '@/i18n/LanguageContext'
 
 type GroupBy = 'module' | 'tenant' | 'endpoint'

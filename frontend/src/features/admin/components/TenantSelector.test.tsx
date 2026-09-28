@@ -12,7 +12,7 @@ vi.mock('@/i18n/LanguageContext', () => ({
 }))
 
 const fetchTenants = vi.fn()
-vi.mock('@/shared/api/adminClient', () => ({
+vi.mock('@/features/admin/api/tenants', () => ({
   fetchTenants: (...a: unknown[]) => fetchTenants(...a),
 }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))

@@ -7,7 +7,7 @@ import {
   fetchTenantDetail,
   type TenantRow,
   type TenantDetail,
-} from '@/shared/api/adminClient'
+} from '@/features/admin/api/tenants'
 import { useTableData } from '@/features/admin/hooks/useTableData'
 import { useT } from '@/i18n/LanguageContext'
 import { fmtDateTime as fmtDate } from '@/shared/lib/date'

@@ -17,7 +17,7 @@ import {
   fetchRoles,
   type AdminUserRow,
   type RoleOption,
-} from '@/shared/api/adminClient'
+} from '@/features/admin/api/users'
 import { useAdminAuth } from '@/shared/contexts/AdminAuthContext'
 import { useT } from '@/i18n/LanguageContext'
 
