@@ -1,16 +1,16 @@
 # Graph Report - OCR  (2026-09-28)
 
 ## Corpus Check
-- 375 files · ~254,360 words
+- 375 files · ~254,368 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1969 nodes · 5380 edges · 150 communities (101 shown, 49 thin omitted)
+- 1969 nodes · 5380 edges · 149 communities (100 shown, 49 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 66 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `967401e4`
+- Built from commit: `3e02383c`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -29,7 +29,7 @@
 - orders.ts
 - CustomModal.tsx
 - CheckoutFlow.tsx
-- InputTaxReconciliation.tsx
+- eslint-plugin-react-hooks
 - useAPSubmission.ts
 - ccJv.ts
 - Pricing.tsx
@@ -158,7 +158,6 @@
 - @testing-library/jest-dom
 - slip.ts
 - tutorial.ts
-- @types/react-dom
 
 ## God Nodes (most connected - your core abstractions)
 1. `useT()` - 227 edges
@@ -187,7 +186,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (150 total, 49 thin omitted)
+## Communities (149 total, 49 thin omitted)
 
 ### Community 0 - "showToast"
 Cohesion: 0.31
@@ -215,7 +214,7 @@ Nodes (22): ACTIVITY_FILTERS, ActivityFilter, ApproveResult, listActivity(), mar
 
 ### Community 6 - "parseNum"
 Cohesion: 0.15
-Nodes (29): AmountSummary(), getAvailableFields(), mountRestored(), TAX_PROFILES, useAPInvoice(), adjustField(), DocRepair, reconcileRows() (+21 more)
+Nodes (34): AmountSummary(), getAvailableFields(), useAPInvoice(), adjustField(), DocRepair, reconcileRows(), repairDocFigure(), EMPTY_HEADER (+26 more)
 
 ### Community 7 - "TutorialModal.tsx"
 Cohesion: 0.10
@@ -245,17 +244,13 @@ Nodes (8): CustomModal(), ModalType, Props, baseProps, TYPE_CONFIG, __resetScrol
 Cohesion: 0.19
 Nodes (13): CheckoutFlow(), itemName(), Props, REQUIRED_BUYER_KEYS, SOURCE_KEY, PACK_META, CheckoutSession, ActiveSubscription (+5 more)
 
-### Community 14 - "InputTaxReconciliation.tsx"
-Cohesion: 0.24
-Nodes (11): InputTaxReconciliation(), handleAddInputTax(), descriptionForBank(), CarmenCodeItem, fetchTaxProfiles(), _parseCarmenHttpError(), submitAPInvoiceToCarmen(), submitInputTax() (+3 more)
-
 ### Community 15 - "useAPSubmission.ts"
-Cohesion: 0.09
-Nodes (30): Props, Props, VendorSearch(), APInvoiceHeader, Args, APExtractionProps, APSubmissionProps, GLAccount (+22 more)
+Cohesion: 0.08
+Nodes (34): Props, Props, VendorSearch(), APInvoiceHeader, Args, APExtractionProps, APSubmissionProps, GLAccount (+26 more)
 
 ### Community 16 - "ccJv.ts"
-Cohesion: 0.13
-Nodes (18): codeToSource(), CONFIG, leg(), rows(), TWO_LINES, buildGljvPayload(), buildJvRows(), COLUMN_FOR_KEY (+10 more)
+Cohesion: 0.14
+Nodes (17): codeToSource(), CONFIG, leg(), rows(), TWO_LINES, buildGljvPayload(), buildJvRows(), COLUMN_FOR_KEY (+9 more)
 
 ### Community 17 - "Pricing.tsx"
 Cohesion: 0.17
@@ -291,7 +286,7 @@ Nodes (15): Props, Props, ActiveScan, MainMappings, MasterAccount, MasterDepartm
 
 ### Community 26 - "devDependencies"
 Cohesion: 0.09
-Nodes (23): autoprefixer, @eslint/js, eslint-plugin-react-hooks, devDependencies, autoprefixer, @eslint/js, eslint-plugin-react-hooks, globals (+15 more)
+Nodes (23): autoprefixer, @eslint/js, devDependencies, autoprefixer, @eslint/js, globals, prettier, @types/node (+15 more)
 
 ### Community 27 - "useMapping.ts"
 Cohesion: 0.13
@@ -343,7 +338,7 @@ Nodes (51): ActivePlanBanner(), ActivityPage, WhatsNew(), BellItem, listNotifica
 
 ### Community 40 - "useAPExtraction.ts"
 Cohesion: 0.07
-Nodes (40): APDraftState, EXTRACTION_STAGES, _fetchExtract(), isNumFld(), NUMERIC_FIELDS, apiFetch, getAPVendorMapping, getPdfInfo (+32 more)
+Nodes (41): APDraftState, EXTRACTION_STAGES, _fetchExtract(), isNumFld(), NUMERIC_FIELDS, apiFetch, getAPVendorMapping, getPdfInfo (+33 more)
 
 ### Community 41 - "MaintenancePage.tsx"
 Cohesion: 0.35
@@ -434,8 +429,8 @@ Cohesion: 0.27
 Nodes (9): adminLogin(), AdminLoginError, LoginResponse, AdminLogin(), classify(), LoginError, LoginErrorKind, mmss() (+1 more)
 
 ### Community 64 - "APLineItem"
-Cohesion: 0.28
-Nodes (10): APGroupModal(), profileLabel(), Props, Args, useAPGrouping(), apGroupKey(), buildGroupedRow(), effectiveTaxProfile() (+2 more)
+Cohesion: 0.19
+Nodes (12): APGroupModal(), profileLabel(), Props, Args, useAPGrouping(), mountRestored(), TAX_PROFILES, apGroupKey() (+4 more)
 
 ### Community 65 - "Carmen AI — OCR & Import System"
 Cohesion: 0.25
@@ -577,11 +572,11 @@ Nodes (25): fetchSessions(), revokeSession(), DataTable(), DataTableProps, Expan
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `useT()` connect `useT` to `APInvoice.tsx`, `adminFetch`, `DetailTable.tsx`, `ReviewQueue.tsx`, `parseNum`, `TutorialModal.tsx`, `screens.tsx`, `DarkModeToggle.tsx`, `orders.ts`, `CustomModal.tsx`, `CheckoutFlow.tsx`, `InputTaxReconciliation.tsx`, `useAPSubmission.ts`, `Pricing.tsx`, `formatThb`, `JvEditor.tsx`, `EmailAutomationPage.tsx`, `bankTransforms.ts`, `MainMappingTable.tsx`, `PendingOrderBanner.test.tsx`, `Overview.tsx`, `OrderActions.tsx`, `QueueRow.tsx`, `AccountingReview.tsx`, `TopLevelConfigSection.tsx`, `FeatureFlows.tsx`, `useMappingData.ts`, `NotificationBell.tsx`, `useAPExtraction.ts`, `MaintenancePage.tsx`, `OrderWorkspace.tsx`, `ReviewDocument.tsx`, `useReviewDocument.ts`, `ExtractionsPage.tsx`, `TenantsPage.tsx`, `APAccountMappingStep.tsx`, `PendingOrderBanner.tsx`, `ManualScan.tsx`, `ArCustomerProfiles.tsx`, `PeriodPicker.tsx`, `shared/api/credits.ts`, `OrderHistory.tsx`, `DocumentPreview.tsx`, `main.tsx`, `AdminLogin.tsx`, `APLineItem`, `LanguageProvider`, `MaintenanceGate.tsx`, `SlipViewer.tsx`, `useOcrWizard`, `TKey`, `CreditsPage.tsx`, `APUploadStep.tsx`, `OrderTable.tsx`, `LLMLogsPage.tsx`, `BankDetectionBanner.tsx`, `AuthContext.tsx`, `DataTable.tsx`?**
+- **Why does `useT()` connect `useT` to `APInvoice.tsx`, `adminFetch`, `DetailTable.tsx`, `ReviewQueue.tsx`, `parseNum`, `TutorialModal.tsx`, `screens.tsx`, `DarkModeToggle.tsx`, `orders.ts`, `CustomModal.tsx`, `CheckoutFlow.tsx`, `useAPSubmission.ts`, `Pricing.tsx`, `formatThb`, `JvEditor.tsx`, `EmailAutomationPage.tsx`, `bankTransforms.ts`, `MainMappingTable.tsx`, `PendingOrderBanner.test.tsx`, `Overview.tsx`, `OrderActions.tsx`, `QueueRow.tsx`, `AccountingReview.tsx`, `TopLevelConfigSection.tsx`, `FeatureFlows.tsx`, `useMappingData.ts`, `NotificationBell.tsx`, `useAPExtraction.ts`, `MaintenancePage.tsx`, `OrderWorkspace.tsx`, `ReviewDocument.tsx`, `useReviewDocument.ts`, `ExtractionsPage.tsx`, `TenantsPage.tsx`, `APAccountMappingStep.tsx`, `PendingOrderBanner.tsx`, `ManualScan.tsx`, `ArCustomerProfiles.tsx`, `PeriodPicker.tsx`, `shared/api/credits.ts`, `OrderHistory.tsx`, `DocumentPreview.tsx`, `main.tsx`, `AdminLogin.tsx`, `APLineItem`, `LanguageProvider`, `MaintenanceGate.tsx`, `SlipViewer.tsx`, `useOcrWizard`, `TKey`, `CreditsPage.tsx`, `APUploadStep.tsx`, `OrderTable.tsx`, `LLMLogsPage.tsx`, `BankDetectionBanner.tsx`, `AuthContext.tsx`, `DataTable.tsx`?**
   _High betweenness centrality (0.224) - this node is a cross-community bridge._
 - **Why does `useOcrWizard()` connect `useOcrWizard` to `showToast`, `useAPExtraction.ts`, `usePdfPasswordPrompt`, `ManualScan.tsx`, `useMapping.ts`, `useOcrExtraction`?**
   _High betweenness centrality (0.014) - this node is a cross-community bridge._
-- **Why does `API` connect `Overview.tsx` to `adminFetch`, `ReviewQueue.tsx`, `api.ts`, `orders.ts`, `InputTaxReconciliation.tsx`, `useAPSubmission.ts`, `EmailAutomationPage.tsx`, `useMapping.ts`, `useOcrSubmission.test.ts`, `NotificationBell.tsx`, `useAPExtraction.ts`, `MaintenancePage.tsx`, `shared/api/credits.ts`, `OrderHistory.tsx`, `AdminLogin.tsx`, `adminAuth.ts`, `CreditsPage.tsx`, `emailAutomation.ts`, `AuthContext.tsx`?**
+- **Why does `API` connect `Overview.tsx` to `AuthContext.tsx`, `adminFetch`, `ReviewQueue.tsx`, `NotificationBell.tsx`, `useAPExtraction.ts`, `MaintenancePage.tsx`, `api.ts`, `orders.ts`, `emailAutomation.ts`, `adminAuth.ts`, `useAPSubmission.ts`, `EmailAutomationPage.tsx`, `shared/api/credits.ts`, `OrderHistory.tsx`, `useMapping.ts`, `useOcrSubmission.test.ts`, `CreditsPage.tsx`, `AdminLogin.tsx`?**
   _High betweenness centrality (0.014) - this node is a cross-community bridge._
 - **What connects `name`, `private`, `type` to the rest of the system?**
   _596 weakly-connected nodes found - possible documentation gaps or missing edges._
@@ -590,4 +585,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `ReviewQueue.tsx` be split into smaller, more focused modules?**
   _Cohesion score 0.1103448275862069 - nodes in this community are weakly interconnected._
 - **Should `parseNum` be split into smaller, more focused modules?**
-  _Cohesion score 0.14634146341463414 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.14589371980676327 - nodes in this community are weakly interconnected._

@@ -1250,58 +1250,51 @@
   }
 }
 
-/* ─── Top-up packs: one segmented rail ───
-   One surface split into four segments, deliberately NOT four more cards: the plan
-   cards above are separate products, a top-up is one product in four quantities.
-   The grid's own background is the hairline (1px gap over --border), so the dividers
-   are right at 1, 2 and 4 columns with no per-child border rules. Mobile-first:
-   rows ≤560px, 2×2 from 561px, one row from 861px.
-   Motion is the system's own, nothing invented: the rail lifts like .panel-card /
-   .plan-card, the segment under the pointer fills like a hovered row, and the content
-   presses like .btn. Entrance comes from features/billing/motion.ts, shared with the
-   plan grid. */
+/* ─── Top-up packs: a row of cards ───
+   Each pack gets its own card, spaced and lifted like .plan-card above (same gap,
+   radius, --shadow-card, hover). The whole card is the button. Mobile-first: rows
+   ≤560px, 2×2 from 561px, 4-up from 861px. Entrance comes from
+   features/billing/motion.ts, shared with the plan grid, on the .pack-cell wrapper. */
 .pack-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1px;
+  gap: 1rem;
   max-width: 420px;
   margin: 0 auto;
-  background: var(--border);
+}
+
+/* Motion wrapper; flex so every card stretches to its row's height. */
+.pack-cell {
+  display: flex;
+}
+
+.pack-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  width: 100%;
+  padding: 0.95rem 1.1rem;
+  background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
-  overflow: hidden;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
   transition:
     transform var(--dur-base) var(--ease-out-premium),
     box-shadow var(--dur-base) var(--ease-out-premium),
     border-color var(--dur-base) var(--ease-out-premium);
 }
 
-.pack-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.85rem;
-  padding: 0.95rem 1.1rem;
-  background: var(--card-bg);
-  border: 0;
-  border-radius: 0;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-out-premium);
-}
-
 @media (hover: hover) and (pointer: fine) {
-  .pack-grid:not(.is-disabled):hover {
+  .pack-card:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: var(--shadow-card-hover);
     border-color: var(--border-hi);
-  }
-
-  .pack-card:hover:not(:disabled) {
-    background: var(--primary-light);
   }
 
   .pack-card:hover:not(:disabled) .pack-card-credits {
@@ -1309,31 +1302,21 @@
   }
 }
 
-/* Also the only press feedback touch gets, since hover is pointer-gated above. */
+/* The card is the button, so it presses like one; 0.98 rather than .btn's 0.97
+   because the surface is much larger. */
 .pack-card:active:not(:disabled) {
-  background: var(--primary-light);
+  transform: scale(0.98);
+  transition-duration: var(--dur-fast);
 }
 
-/* Inset: the rail's overflow: hidden clips an outside ring. */
 .pack-card:focus-visible {
   outline: 2.5px solid var(--primary);
-  outline-offset: -3px;
+  outline-offset: 2px;
 }
 
 .pack-card:disabled {
   opacity: 0.55;
   cursor: default;
-}
-
-/* Press like .btn (0.97), but on the content: the cell stays put, so the hairlines
-   never wobble. */
-.pack-card-id,
-.pack-card-price {
-  transition: transform var(--dur-fast) var(--ease-out-premium);
-}
-
-.pack-card:active:not(:disabled) :is(.pack-card-id, .pack-card-price) {
-  transform: scale(0.97);
 }
 
 .pack-card-id {
@@ -1411,8 +1394,8 @@
   border-radius: var(--radius-pill);
 }
 
-/* Segments: centered columns. The top padding reserves the badge row on every
-   segment, so the four price lines stay level whether or not a badge is present. */
+/* Cards: centered columns. The top padding reserves the badge row on every card,
+   so the four price lines stay level whether or not a badge is present. */
 @media (min-width: 561px) {
   .pack-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1420,7 +1403,6 @@
   }
 
   .pack-card {
-    position: relative; /* anchors the badge */
     flex-direction: column;
     justify-content: flex-start;
     gap: 0.55rem;
