@@ -19,7 +19,7 @@ import {
   type EmailDocumentRow,
   type EmailIngestHealth,
   type EmailPollResult,
-} from '@/shared/api/adminClient'
+} from '@/features/admin/api/email'
 import { useT } from '@/i18n/LanguageContext'
 import type { TKey } from '@/i18n/dict'
 import { fmtDateTime } from '@/shared/lib/date'

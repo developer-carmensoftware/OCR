@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react'
 import { useAdminAuth } from '@/shared/contexts/AdminAuthContext'
-import { adminLogin, AdminLoginError } from '@/shared/api/adminClient'
+import { adminLogin, AdminLoginError } from '@/features/admin/api/auth'
 import { useT } from '@/i18n/LanguageContext'
 import logo from '@/assets/logo.png'
 

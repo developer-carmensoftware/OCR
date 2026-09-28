@@ -11,7 +11,7 @@ import {
   fetchCreditLedger,
   topupCredits,
   type CreditLedgerEntry,
-} from '@/shared/api/adminClient'
+} from '@/features/admin/api/credits'
 import '@/styles/components/admin-credits.css'
 import { useT } from '@/i18n/LanguageContext'
 

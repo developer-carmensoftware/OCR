@@ -4,7 +4,7 @@ import DataTable, { type Column } from '@/features/admin/components/DataTable'
 import PeriodPicker, { granularityFor, today } from '@/features/admin/components/PeriodPicker'
 import MetricChart from '@/features/admin/components/MetricChart'
 import TenantSelector from '@/features/admin/components/TenantSelector'
-import { fetchUsageSummary } from '@/shared/api/adminClient'
+import { fetchUsageSummary } from '@/features/admin/api/usage'
 import { useT } from '@/i18n/LanguageContext'
 
 interface UsageRow {

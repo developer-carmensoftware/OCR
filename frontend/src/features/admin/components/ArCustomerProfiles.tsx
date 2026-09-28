@@ -7,7 +7,7 @@ import {
   syncArProfiles,
   updateArProfile,
   type ArCustomerProfile,
-} from '@/shared/api/adminClient'
+} from '@/features/admin/api/orders'
 
 interface ArCustomerProfilesState {
   profiles: ArCustomerProfile[]

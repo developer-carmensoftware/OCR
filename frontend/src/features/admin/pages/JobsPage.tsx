@@ -1,6 +1,6 @@
 import DataTable, { type Column } from '@/features/admin/components/DataTable'
 import PeriodPicker, { daysAgo, endOfDay, today } from '@/features/admin/components/PeriodPicker'
-import { fetchJobs } from '@/shared/api/adminClient'
+import { fetchJobs } from '@/features/admin/api/monitoring'
 import { useTableQuery } from '@/features/admin/hooks/useTableQuery'
 import { useTableData } from '@/features/admin/hooks/useTableData'
 import { useT } from '@/i18n/LanguageContext'

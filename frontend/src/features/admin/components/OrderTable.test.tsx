@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import type { AdminCreditOrder } from '@/shared/api/adminClient'
+import type { AdminCreditOrder } from '@/features/admin/api/orders'
 
 vi.mock('@/i18n/LanguageContext', () => ({
   useT: () => ({

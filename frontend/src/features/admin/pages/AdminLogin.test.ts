@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { classify, mmss } from './AdminLogin'
-import { AdminLoginError } from '@/shared/api/adminClient'
+import { AdminLoginError } from '@/features/admin/api/auth'
 
 describe('classify', () => {
   it('maps each status the backend can return', () => {

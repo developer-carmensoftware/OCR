@@ -3,20 +3,23 @@ import { toast } from 'sonner'
 import { AlertTriangle, Check, Coins, Copy } from 'lucide-react'
 import ProformaDocument from '@/shared/components/ProformaDocument'
 import DataTable, { type Column } from './DataTable'
-import { STAGE_KEY, STAGE_TONE, timeAgo } from '@/shared/lib/orderHelpers'
+import { timeAgo } from '@/shared/lib/orderHelpers'
+import { STAGE_KEY, STAGE_TONE } from '@/features/admin/lib/orderStage'
 import { SlipViewer } from './SlipViewer'
 import { OrderActions, fmtDateTime } from './OrderActions'
 import { useOrderActions } from '@/features/admin/hooks'
 import {
-  fetchAdminOrderDocuments,
   fetchCreditBalance,
   fetchCreditLedger,
+  type CreditLedgerEntry,
+} from '@/features/admin/api/credits'
+import {
+  fetchAdminOrderDocuments,
   getOrderSlipUrl,
-  orderStage,
   listCreditOrders,
   type AdminCreditOrder,
-  type CreditLedgerEntry,
-} from '@/shared/api/adminClient'
+} from '@/features/admin/api/orders'
+import { orderStage } from '@/features/admin/lib/orderStage'
 import type { BillingDocument, PaymentInfo } from '@/shared/api/credits'
 import { formatThb, whtDeduction } from '@/shared/lib/money'
 import { useT } from '@/i18n/LanguageContext'

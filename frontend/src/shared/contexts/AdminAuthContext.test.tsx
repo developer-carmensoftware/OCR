@@ -1,9 +1,9 @@
 import { render, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as client from '@/shared/api/adminClient'
+import * as client from '@/shared/api/adminAuth'
 import { AdminAuthProvider } from './AdminAuthContext'
 
-vi.mock('@/shared/api/adminClient', () => ({
+vi.mock('@/shared/api/adminAuth', () => ({
   adminMe: vi.fn(),
   adminLogout: vi.fn(),
   getAdminToken: vi.fn(() => 'admin-jwt'),

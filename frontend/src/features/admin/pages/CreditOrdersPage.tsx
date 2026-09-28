@@ -16,7 +16,7 @@ import {
   type AdminCreditOrder,
   type AdminOrderStatus,
   type KpiSummary,
-} from '@/shared/api/adminClient'
+} from '@/features/admin/api/orders'
 import type { PaymentInfo } from '@/shared/api/credits'
 import { useT } from '@/i18n/LanguageContext'
 import '@/styles/pages/pricing.css'

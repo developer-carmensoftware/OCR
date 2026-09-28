@@ -1,7 +1,7 @@
 import { CircleDollarSign, Clock, Layers, Wallet } from 'lucide-react'
 import { useT } from '@/i18n/LanguageContext'
 import { formatThb } from '@/shared/lib/money'
-import type { KpiSummary } from '@/shared/api/adminClient'
+import type { KpiSummary } from '@/features/admin/api/orders'
 
 export default function OrderKpiCards({ kpi }: { kpi: KpiSummary | null }) {
   const { t } = useT()
