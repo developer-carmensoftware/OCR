@@ -191,7 +191,7 @@ class _Patches:
             patch.object(pipeline, "_open_or_fail", self.open_or_fail),
             patch.object(ingest.es, "foreign_tax_id", self.foreign_tax_id),
             patch.object(pipeline, "_possibly_posted", self.possibly_posted),
-            patch.object(ingest.es, "mark_token_unverified", self.mark_token_unverified),
+            patch.object(ingest.credential, "mark_token_unverified", self.mark_token_unverified),
             patch.object(pipeline, "_post_input_tax", self.post_input_tax),
             patch.object(pipeline, "finalize_extraction", AsyncMock(return_value=self.extracted)),
             patch.object(pipeline, "mark_task_failed", AsyncMock()),
@@ -1254,8 +1254,10 @@ async def _route(
         _patch_sessions(_session_factory(db)),
         patch.object(ingest.es, "resolve_by_tag", resolve),
         patch.object(ingest.es, "is_entitled", AsyncMock(return_value=entitled)),
-        patch.object(ingest.es, "rule_passwords", MagicMock(return_value=["pw"])),
-        patch.object(ingest.es, "posting_target", AsyncMock(return_value=("tok", "https://h"))),
+        patch.object(ingest.credential, "rule_passwords", MagicMock(return_value=["pw"])),
+        patch.object(
+            ingest.credential, "posting_target", AsyncMock(return_value=("tok", "https://h"))
+        ),
         patch.object(ingest.es, "record_gmail_code", record or AsyncMock()),
         patch.object(ingest.es, "record_gmail_confirmed", confirmed or AsyncMock()),
         patch.object(ingest, "auto_confirm_forwarding", follow),
@@ -2939,7 +2941,9 @@ def _approve_patches(db, *, carmen_result, carmen_side_effect=None, tax_note=Non
     with (
         _patch_sessions(_session_factory(db)),
         patch.object(ingest.es, "get_settings", AsyncMock(return_value=MagicMock())),
-        patch.object(ingest.es, "posting_target", AsyncMock(return_value=("bu-tok", "https://bu"))),
+        patch.object(
+            ingest.credential, "posting_target", AsyncMock(return_value=("bu-tok", "https://bu"))
+        ),
         patch.object(review, "get_accounting_config", AsyncMock(return_value=_config())),
         patch.object(review, "build_gljv_payload", MagicMock(return_value={"JvhSeq": -1})),
         patch.object(review.carmen, "post_gljv", post),

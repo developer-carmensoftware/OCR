@@ -205,6 +205,7 @@ def test_a_bus_pdf_passwords_are_never_pooled_with_the_neighbours(real_engine, t
     """`rule_passwords` reads one BU's active rules. A password leaking into the other
     BU's attempt list would open documents that BU has no business opening."""
     from app.database import async_session
+    from app.services.email_automation import credential
     from app.services.email_automation import ingest_settings as es
 
     async def _set_password(tid, plain):
@@ -226,7 +227,7 @@ def test_a_bus_pdf_passwords_are_never_pooled_with_the_neighbours(real_engine, t
     async def _passwords(tag):
         async with async_session() as db:
             row = await es.resolve_by_tag(db, tag)
-            return es.rule_passwords(row)
+            return credential.rule_passwords(row)
 
     run(_set_password(tenants.a, "ALPHA-SECRET"))
     try:
@@ -393,12 +394,13 @@ def test_the_posting_credential_is_the_receiving_bus_own(tenants):
     """Approve and auto-post both re-read `posting_target`. If it ever resolved to the
     wrong BU, one customer's JV would post into another's Carmen."""
     from app.database import async_session
+    from app.services.email_automation import credential
     from app.services.email_automation import ingest_settings as es
 
     async def _target(tag):
         async with async_session() as db:
             row = await es.resolve_by_tag(db, tag)
-            return await es.posting_target(db, row)
+            return await credential.posting_target(db, row)
 
     a_token, a_uri = run(_target(ALPHA_TAG))
     b_token, b_uri = run(_target(BETA_TAG))

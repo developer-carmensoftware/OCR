@@ -58,7 +58,7 @@ Each is traceable to the code that implements it.
 | FR-9 | Gmail's forwarding-confirmation handshake is completed automatically — no support call needed | `auto_confirm_forwarding()` (`email_automation/imap.py:674`) |
 | FR-10 | The feature requires an active monthly package, checked both when the BU switches it on and on every poll (a lapsed package doesn't rewrite settings) | `is_entitled()` gate in `save_settings()` and `_process_message()` |
 | FR-11 | **A document the BU was charged for stays reviewable.** A refusal after a successful extraction parks with its reason recorded, so the reading it paid for can be corrected and posted rather than discarded | `_park_or_finish()` in `_run_document` — decision-log [#22](06-decision-log.md), [§13](07-human-in-the-loop.md) |
-| FR-12 | **The queue shows everything that wants a human in one chip**, whether it needs a decision or a settings change, and a row nobody will act on can be put away so the pile can reach zero | `_chip_expr()` (`credit_card_activity.py`), `POST /activity/{id}/dismiss`, `email_documents.dismissed_at` |
+| FR-12 | **The queue shows everything that wants a human in one chip**, whether it needs a decision or a settings change, and a row nobody will act on can be put away so the pile can reach zero | `_chip_expr()` (`services/credit_card/activity.py`), `POST /activity/{id}/dismiss`, `email_documents.dismissed_at` |
 | FR-13 | **The reviewer sees the whole of what an approval files** before pressing it: the JV, and the input-tax record with the tax invoice it is filed against | `ReviewDocument.tsx` + `InputTaxPanel.tsx`, built from `build_input_tax_payload` field by field |
 | FR-14 | The page answers "what has the robot been doing today" without a reader having to filter for it, and never opens on an empty view while work is owed | `today` chip + the fall-through in `useReviewQueue` |
 | FR-15 | **Posted and Not posted count only what the BU was charged for**, and every attachment the system has ever looked at — charged or not, forwarded or scanned by hand — is findable under `All`, so "did my statement arrive?" is answerable without anyone reading the database | `_chip_expr()`'s `uncharged` arm (`credit_card_activity.py`), the `All` chip — decision-log [#23](06-decision-log.md), [§14](07-human-in-the-loop.md) |
@@ -71,7 +71,7 @@ Each is traceable to the code that implements it.
   [02-architecture.md](02-architecture.md#diagram-7--gate-ladder-and-the-cost-boundary).
 - **Tenant isolation.** One BU's PDF passwords are never tried against another BU's file —
   the tag establishes ownership before any file is opened (`rule_passwords()`,
-  `email_automation/ingest_settings.py:565`).
+  `email_automation/credential.py:46`).
 - **Secret handling.** PDF passwords and the Carmen posting token are Fernet-encrypted at
   rest, never returned by any endpoint, and identified in logs/support only by a
   fingerprint (first 8 hex of a SHA-256 hash).

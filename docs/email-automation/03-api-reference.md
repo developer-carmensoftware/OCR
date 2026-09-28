@@ -71,7 +71,7 @@ without that anti-join one forwarded statement is listed under each source.
 
 **`filter` is `all` · `today` · `review` · `success` · `unposted`**; unknown falls back to
 `all`. All five have a chip on screen. They are **not** a grouping of statuses —
-`_chip_expr()` in `credit_card_activity.py` is the single definition, as a SQL `CASE` the
+`_chip_expr()` in `services/credit_card/activity.py` is the single definition, as a SQL `CASE` the
 list filters on and the counts group by:
 
 | chip | what is in it |
@@ -183,8 +183,8 @@ user's login for a problem that isn't theirs.
 }
 ```
 
-Validation codes, all raised from `save_settings()` / `set_token()`
-(`email_automation/ingest_settings.py`):
+Validation codes, all raised from `save_settings()` (`email_automation/ingest_settings.py`) /
+`set_token()` (`email_automation/credential.py`):
 
 | Code | Field | Meaning |
 |---|---|---|

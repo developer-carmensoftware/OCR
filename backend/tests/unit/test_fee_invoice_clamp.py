@@ -1,5 +1,5 @@
 """
-Unit tests for the fee-invoice normalizer + BAY tax fill in credit_card_service.
+Unit tests for the fee-invoice normalizer + BAY tax fill in credit_card/postprocess.
 
 QA findings (CA-4): the LLM frequently swaps or omits the amount fields on the
 fee-invoice formats (KTC Amount↔Net, GHL Net↔Commission, SiamPay commission/tax
@@ -9,7 +9,7 @@ arithmetic, not re-OCR'd.
 
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services.credit_card.extraction import (
+from app.services.credit_card.postprocess import (
     _ASSUMED_RATE,
     _FEE_UNALLOCATED,
     _NEGATIVE_UNSUPPORTED,

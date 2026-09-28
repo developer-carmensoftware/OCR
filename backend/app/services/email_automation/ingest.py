@@ -72,6 +72,7 @@ from app.database import async_session
 from app.models.enums import AlertSeverity, JobStatus
 from app.models.identity import Tenant
 from app.models.observability import JobRun
+from app.services.email_automation import credential
 from app.services.email_automation import ingest_settings as es
 from app.services.email_automation.imap import (
     auto_confirm_forwarding,
@@ -479,9 +480,9 @@ async def _process_message(
         enabled_at = row.enabled_at
         owner_emails = list(row.owner_emails or [])
         rules = list(row.rules or [])
-        passwords = es.rule_passwords(row)
+        passwords = credential.rule_passwords(row)
         auto_post = bool(row.auto_post)
-        carmen_token, carmen_uri = await es.posting_target(db, row)
+        carmen_token, carmen_uri = await credential.posting_target(db, row)
 
         # Backpressure. Every document costs a credit at extraction and may then wait for a
         # human — so a BU that stops reading its queue would keep paying for a pile nobody

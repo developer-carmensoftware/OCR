@@ -17,6 +17,7 @@ import pytest
 
 from app.exceptions import ConflictError, FieldValidationError
 from app.models.schemas.email_automation import RuleIn, SettingsIn
+from app.services.email_automation import credential
 from app.services.email_automation import ingest_settings as es
 
 
@@ -465,15 +466,15 @@ async def test_rule_passwords_and_posting_target_round_trip():
         carmen_token_enc=encrypt_carmen_token("carmen-tok-abc", key),
         carmen_uri="https://hotel.carmenwork.com",
     )
-    assert es.rule_passwords(row) == ["1234"]  # inactive rule's password excluded
-    token, uri = await es.posting_target(_db_scalar(None), row)
+    assert credential.rule_passwords(row) == ["1234"]  # inactive rule's password excluded
+    token, uri = await credential.posting_target(_db_scalar(None), row)
     assert (token, uri) == ("carmen-tok-abc", "https://hotel.carmenwork.com")
 
 
 @pytest.mark.asyncio
 async def test_posting_target_falls_back_to_tenant_host_when_uri_unset():
     row = _fake_row(carmen_token_enc=None, carmen_uri=None)
-    _, uri = await es.posting_target(_db_scalar("hotel.carmenwork.com"), row)
+    _, uri = await credential.posting_target(_db_scalar("hotel.carmenwork.com"), row)
     assert uri == "https://hotel.carmenwork.com"
 
 
@@ -484,11 +485,11 @@ async def test_posting_target_dev_token_only_in_debug(monkeypatch):
     row = _fake_row(carmen_token_enc=None, carmen_uri="https://hotel.carmenwork.com")
 
     monkeypatch.setattr(es.app_settings, "app_debug", True)
-    token, _ = await es.posting_target(_db_scalar(None), row)
+    token, _ = await credential.posting_target(_db_scalar(None), row)
     assert token == "dev-tok-xyz"
 
     monkeypatch.setattr(es.app_settings, "app_debug", False)
-    token, _ = await es.posting_target(_db_scalar(None), row)
+    token, _ = await credential.posting_target(_db_scalar(None), row)
     assert token == ""  # empty → the caller parks the document instead of guessing
 
 
@@ -497,7 +498,7 @@ async def test_posting_target_dev_token_only_in_debug(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_set_token_stores_encrypted_plus_fingerprint_never_plaintext(monkeypatch):
-    monkeypatch.setattr(es, "verify_token", AsyncMock(return_value=None))
+    monkeypatch.setattr(credential, "verify_token", AsyncMock(return_value=None))
     row = _fake_row(
         carmen_token_enc=None,
         carmen_uri=None,
@@ -508,10 +509,12 @@ async def test_set_token_stores_encrypted_plus_fingerprint_never_plaintext(monke
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=[_exec(scalar_one_or_none=row)])
 
-    saved = await es.set_token(db, _tenant_with_host(), "crm_svc_secret", "https://h", "apikey:x")
+    saved = await credential.set_token(
+        db, _tenant_with_host(), "crm_svc_secret", "https://h", "apikey:x"
+    )
 
     assert saved.carmen_token_enc and saved.carmen_token_enc != "crm_svc_secret"
-    assert saved.carmen_token_fp == es.fingerprint("crm_svc_secret")
+    assert saved.carmen_token_fp == credential.fingerprint("crm_svc_secret")
     assert saved.carmen_token_verified_at is not None
     assert saved.updated_by == "apikey:x"
 
@@ -531,7 +534,7 @@ async def test_set_token_stores_nothing_when_carmen_rejects_it(monkeypatch):
     db.execute = AsyncMock(side_effect=[_exec(scalar_one_or_none=row)])
 
     with pytest.raises(FieldValidationError):
-        await es.set_token(db, _tenant_with_host(), "bad-token", "https://h", "apikey:x")
+        await credential.set_token(db, _tenant_with_host(), "bad-token", "https://h", "apikey:x")
     assert row.carmen_token_enc is None
     db.commit.assert_not_awaited()
 
@@ -547,7 +550,7 @@ def test_token_status_never_contains_the_token_value():
         carmen_token_fp="9c1f3a2b",
         carmen_token_verified_at=None,
     )
-    body = es.token_status(row)
+    body = credential.token_status(row)
     assert body["configured"] is True
     assert body["fingerprint"] == "9c1f3a2b"
     assert "crm_svc_secret" not in str(body)

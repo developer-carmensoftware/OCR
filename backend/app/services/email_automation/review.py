@@ -23,11 +23,13 @@ from app.context import current_carmen_uri, current_tenant_id
 from app.database import async_session
 from app.exceptions import CarmenServiceError, ConflictError, NotFoundError, ValidationError
 from app.models.business import CreditCard
-from app.models.email_automation import EmailDocument
+from app.models.email_automation import EmailDocument, shown_attachment
 from app.models.identity import Tenant
 from app.models.schemas import ExtractedCreditCardData
+from app.models.schemas.email_automation import ReviewDocument
 from app.services.credit_card.accounting_config import get_accounting_config
-from app.services.credit_card.jv import build_gljv_payload
+from app.services.credit_card.jv import build_gljv_payload, num, r2
+from app.services.email_automation import credential
 from app.services.email_automation import ingest_settings as es
 from app.services.email_automation.ledger import _finish, _mark_submitted
 from app.services.email_automation.pipeline import _post_input_tax
@@ -173,7 +175,7 @@ async def approve_document(
             tenant = await db.get(Tenant, uuid.UUID(tenant_id))
             settings_row = await es.get_settings(db, tenant) if tenant else None
             carmen_token, carmen_uri = (
-                await es.posting_target(db, settings_row) if settings_row else ("", "")
+                await credential.posting_target(db, settings_row) if settings_row else ("", "")
             )
 
         if not carmen_token:
@@ -336,3 +338,49 @@ async def _stamp_reviewer(
                 await db.commit()
     except Exception:  # noqa: BLE001 — the decision is already recorded; this is metadata
         logger.exception("[email] Could not stamp the reviewer on %s", ledger_id)
+
+
+# ── The queue row: one parked document as both review screens list it ─────────
+
+
+def _summarise(row: EmailDocument) -> dict:
+    """The parts of a queue row that come out of the stored payload rather than a column.
+
+    A row whose payload has gone (a race with someone else's approve, or a status that
+    moved underneath us) still renders — with zeroes, not a 500. The queue's job is to
+    show the reviewer what is waiting, and one unreadable row must not blank the page.
+    """
+    payload = row.review_payload or {}
+    extracted = payload.get("extracted") or {}
+    details = extracted.get("details") or []
+    return {
+        "doc_date": extracted.get("doc_date"),
+        # Gross, which is what lands on the credit side of the JV.
+        "total": r2(sum(num(d.get("pay_amt")) for d in details)),
+        "line_count": len(details),
+        "flags": list(payload.get("flags") or []),
+        # Which payment types nothing could map. The review screen turns these into empty
+        # pickers; it cannot re-derive them, because the config it would diff against has
+        # moved on since the document parked.
+        "unmapped": list(payload.get("unmapped") or []),
+        "guessed": list(payload.get("guessed") or []),
+    }
+
+
+def to_review_row(row: EmailDocument) -> ReviewDocument:
+    """Public: `credit_card/activity.py` lists these rows beside manual scans and must
+    build them the same way, or the two screens disagree about one document."""
+    return ReviewDocument(
+        id=str(row.id),
+        created_at=row.created_at,
+        attachment=shown_attachment(row.attachment),
+        status=row.status,
+        bank_code=row.bank_code,
+        doc_no=row.doc_no,
+        jv_no=row.jv_no,
+        reason_code=row.reason_code,
+        error_message=row.error_message,
+        reviewed_by_name=row.reviewed_by_name,
+        reviewed_at=row.reviewed_at,
+        **_summarise(row),
+    )
