@@ -30,7 +30,11 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
     adminMe()
       .then(setAdmin)
-      .catch(() => clearAdminToken())
+      // Deliberately not clearing the token here. A 401 already does, through the
+      // `admin:unauthorized` event below (adminFetch dispatches it); anything else — a
+      // 429 from reloading fast, a 5xx, the network — says nothing about the token, and
+      // clearing it logged the admin out on the next reload for no reason.
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
