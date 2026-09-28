@@ -1253,44 +1253,72 @@
 /* ─── Top-up packs: one segmented rail ───
    One surface split into four segments, deliberately NOT four more cards: the plan
    cards above are separate products, a top-up is one product in four quantities.
-   The grid's own background is the hairline (1px gap over --border), so the dividers
-   are right at 1, 2 and 4 columns with no per-child border rules. Mobile-first:
-   rows ≤560px, 2×2 from 561px, one row from 861px. */
+   Segments are transparent so the hover highlight (.pack-glide) can travel beneath
+   them; each draws its own right + bottom hairline, and the rail's overflow clips
+   the ones that land on its outer edge, so the dividers are right at 1, 2 and 4
+   columns. Mobile-first: rows ≤560px, 2×2 from 561px, one row from 861px. */
 .pack-grid {
+  position: relative; /* offsetParent for the glide's measurements */
+  isolation: isolate;
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1px;
   max-width: 420px;
   margin: 0 auto;
-  background: var(--border);
+  background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
   overflow: hidden;
 }
 
+/* One highlight for the whole rail, moved by PackList to the segment under the mouse.
+   ease-out so it answers the pointer at once; the first entry fades in on the spot
+   (data-instant) rather than sliding in from wherever it last was. */
+.pack-glide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  background: var(--primary-light);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 240ms var(--ease-out),
+    opacity 150ms ease;
+}
+
+.pack-glide[data-on] {
+  opacity: 1;
+}
+
+.pack-glide[data-instant] {
+  transition: opacity 150ms ease;
+}
+
 .pack-card {
+  position: relative;
+  z-index: 1; /* above the glide */
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.85rem;
   padding: 0.95rem 1.1rem;
-  background: var(--card-bg);
+  background: transparent;
   border: 0;
   border-radius: 0;
+  box-shadow:
+    1px 0 0 var(--border),
+    0 1px 0 var(--border);
   font: inherit;
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease);
+  transition: background-color var(--dur-fast) ease;
 }
 
-.pack-card:hover:not(:disabled) {
-  background: var(--primary-light);
-}
-
+/* The pressed tint is also the only feedback touch gets, since the glide is mouse-only. */
 .pack-card:active:not(:disabled) {
-  background: color-mix(in oklch, var(--primary) 12%, var(--card-bg));
+  background: color-mix(in oklch, var(--primary) 8%, transparent);
 }
 
 /* Inset: the rail's overflow: hidden clips an outside ring. */
@@ -1302,6 +1330,16 @@
 .pack-card:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+/* Press: the content gives, the cell stays put, so the hairlines never wobble. */
+.pack-card-id,
+.pack-card-price {
+  transition: transform 160ms var(--ease-out);
+}
+
+.pack-card:active:not(:disabled) :is(.pack-card-id, .pack-card-price) {
+  transform: scale(0.97);
 }
 
 .pack-card-id {
@@ -1316,11 +1354,13 @@
   letter-spacing: -0.01em;
   line-height: 1.1;
   color: var(--text);
-  transition: color var(--dur-fast) var(--ease);
+  transition: color var(--dur-fast) ease;
 }
 
-.pack-card:hover:not(:disabled) .pack-card-credits {
-  color: var(--primary);
+@media (hover: hover) and (pointer: fine) {
+  .pack-card:hover:not(:disabled) .pack-card-credits {
+    color: var(--primary);
+  }
 }
 
 .pack-card-unit {
@@ -1392,7 +1432,6 @@
   }
 
   .pack-card {
-    position: relative; /* anchors the badge */
     flex-direction: column;
     justify-content: flex-start;
     gap: 0.55rem;
