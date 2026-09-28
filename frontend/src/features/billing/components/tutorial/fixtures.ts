@@ -6,14 +6,20 @@
  * changes under us, the build breaks here instead of the tutorial quietly
  * drawing something the product no longer looks like.
  *
- * Numbers match the live catalog (`credit_packs` after
- * `20260909000000_add_lite_plan.sql`). The buyer is a made-up company — never
- * put a real customer's name or tax ID in teaching material. The seller block
- * and bank details are Carmen's own and are printed on every real proforma.
+ * **Prices are not made up here.** The tour draws the live catalog the pricing
+ * page has already loaded, and the sample proforma/order below take their amounts
+ * from a real plan. `DEMO_PLANS` / `DEMO_PACKS` are test data only — the tour never
+ * renders them, so they may lag the database without anyone seeing it.
+ *
+ * The buyer is a made-up company — never put a real customer's name or tax ID in
+ * teaching material. The seller block and bank details are Carmen's own and are
+ * printed on every real proforma.
  */
 
 import type { BillingDocument, CreditOrder, CreditPack, PaymentInfo } from '@/shared/api/credits'
+import { PLAN_META } from '@/features/billing/constants'
 
+/** Test data only (see header). */
 export const DEMO_PLANS: CreditPack[] = [
   {
     code: 'sub_lite',
@@ -49,6 +55,7 @@ export const DEMO_PLANS: CreditPack[] = [
   },
 ]
 
+/** Test data only (see header). */
 export const DEMO_PACKS: CreditPack[] = [
   { code: 'pack_micro', kind: 'topup', credits: 100, price_thb: 450, sort_order: 10 },
   { code: 'pack_small', kind: 'topup', credits: 500, price_thb: 2000, sort_order: 11 },
@@ -66,32 +73,45 @@ export const DEMO_BUYER = {
   email: 'billing@example.com',
 }
 
-/** Growth monthly: 990 + 7% VAT = 1,059.30. */
-export const DEMO_PROFORMA: BillingDocument = {
-  id: 'demo-proforma',
-  doc_type: 'proforma',
-  number: 'AI-202608-0003',
-  issue_date: '2026-08-14',
-  seller_name: 'บริษัท คาร์เมน ซอฟต์แวร์ จำกัด',
-  seller_tax_id: '0105562202751',
-  seller_address: '891/24-25 ถนนพระราม 3 แขวงบางโพงพาง เขตยานนาวา กรุงเทพมหานคร 10120',
-  seller_branch: 'สำนักงานใหญ่',
-  buyer_name: DEMO_BUYER.name,
-  buyer_tax_id: DEMO_BUYER.tax_id,
-  buyer_address: DEMO_BUYER.address,
-  buyer_branch: DEMO_BUYER.branch,
-  buyer_email: DEMO_BUYER.email,
-  buyer_contact_name: DEMO_BUYER.contact_name,
-  buyer_tel: DEMO_BUYER.tel,
-  pack_code: 'sub_growth',
-  description: 'Growth Plan — 500 credits/month',
-  credits: 500,
-  subtotal: 990,
-  vat_rate: 7,
-  vat_amount: 69.3,
-  total: 1059.3,
-  currency: 'THB',
-  created_at: '2026-08-14T03:00:00Z',
+/** 7% is Thai VAT law, not a catalog price; everything else comes from `plan`. */
+const VAT_PCT = 7
+
+/** `plan`'s monthly price plus VAT, to the satang — what its proforma would bill. */
+function billed(plan: CreditPack) {
+  const vat = Math.round(plan.price_thb * VAT_PCT) / 100
+  return { subtotal: plan.price_thb, vat, total: Math.round((plan.price_thb + vat) * 100) / 100 }
+}
+
+/** A proforma for one month of `plan`, as the checkout would issue it. */
+export function demoProforma(plan: CreditPack): BillingDocument {
+  const { subtotal, vat, total } = billed(plan)
+  const name = PLAN_META[plan.code]?.name ?? plan.code
+  return {
+    id: 'demo-proforma',
+    doc_type: 'proforma',
+    number: 'AI-202608-0003',
+    issue_date: '2026-08-14',
+    seller_name: 'บริษัท คาร์เมน ซอฟต์แวร์ จำกัด',
+    seller_tax_id: '0105562202751',
+    seller_address: '891/24-25 ถนนพระราม 3 แขวงบางโพงพาง เขตยานนาวา กรุงเทพมหานคร 10120',
+    seller_branch: 'สำนักงานใหญ่',
+    buyer_name: DEMO_BUYER.name,
+    buyer_tax_id: DEMO_BUYER.tax_id,
+    buyer_address: DEMO_BUYER.address,
+    buyer_branch: DEMO_BUYER.branch,
+    buyer_email: DEMO_BUYER.email,
+    buyer_contact_name: DEMO_BUYER.contact_name,
+    buyer_tel: DEMO_BUYER.tel,
+    pack_code: plan.code,
+    description: `${name} Plan — ${plan.credits} credits/month`,
+    credits: plan.credits,
+    subtotal,
+    vat_rate: VAT_PCT,
+    vat_amount: vat,
+    total,
+    currency: 'THB',
+    created_at: '2026-08-14T03:00:00Z',
+  }
 }
 
 export const DEMO_PAYMENT_INFO: PaymentInfo = {
@@ -105,16 +125,18 @@ export const DEMO_PAYMENT_INFO: PaymentInfo = {
   seller_phone: '66 2 284 0429',
 }
 
-/** One unpaid order, which is what makes PendingOrderBanner render at all. */
-export const DEMO_ORDER: CreditOrder = {
-  id: 'demo-order',
-  pack_code: 'sub_growth',
-  credits: 500,
-  amount_thb: 1059.3,
-  billing_period: 'monthly',
-  status: 'in_progress',
-  created_at: '2026-08-14T03:00:00Z',
-  expires_at: '2026-08-28T03:00:00Z',
+/** One unpaid order for `plan`, which is what makes PendingOrderBanner render at all. */
+export function demoOrder(plan: CreditPack): CreditOrder {
+  return {
+    id: 'demo-order',
+    pack_code: plan.code,
+    credits: plan.credits,
+    amount_thb: billed(plan).total,
+    billing_period: 'monthly',
+    status: 'in_progress',
+    created_at: '2026-08-14T03:00:00Z',
+    expires_at: '2026-08-28T03:00:00Z',
+  }
 }
 
 /**

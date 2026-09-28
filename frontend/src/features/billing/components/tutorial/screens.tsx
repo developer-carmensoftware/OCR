@@ -3,7 +3,8 @@
  *
  * These are not drawings of the product — they mount the product. `PlanCard`,
  * `PackList`, `StepWizard`, `ProformaDocument` and `PendingOrderBanner` are the
- * same components `#/pricing` renders, fed sample data from ./fixtures.ts; where
+ * same components `#/pricing` renders, fed the live catalog the page has already
+ * loaded (so every price is the database's) and sample data from ./fixtures.ts; where
  * a component is too coupled to mount (CheckoutFlow owns a fetch and a hook
  * whose phase has no prop), the markup is rebuilt on its real class names. So
  * the tour uses the app's tokens, type, spacing and dark mode by construction,
@@ -27,19 +28,12 @@ import ProformaDocument from '@/shared/components/ProformaDocument'
 import StepWizard from '@/shared/components/common/StepWizard'
 import { Spot } from '@/shared/components/tutorial'
 import { useT } from '@/i18n/LanguageContext'
-import { PLAN_META } from '@/features/billing/constants'
+import { PLAN_META, annualSavePct } from '@/features/billing/constants'
+import type { CreditPack } from '@/shared/api/credits'
 import { formatThb } from '@/shared/lib/money'
 import logo from '@/assets/logo.png'
-import {
-  DEMO_BUYER,
-  DEMO_ORDER,
-  DEMO_PACKS,
-  DEMO_PAYMENT_INFO,
-  DEMO_PLANS,
-  DEMO_PROFORMA,
-  DEMO_SLIP,
-  noop,
-} from './fixtures'
+import { DEMO_BUYER, DEMO_PAYMENT_INFO, DEMO_SLIP, demoOrder, demoProforma, noop } from './fixtures'
+import type { TourCatalog } from './purchase'
 
 /* ── Page chrome ───────────────────────────────────────────────────────────── */
 
@@ -166,8 +160,9 @@ function BuyChipFigure() {
 
 /* ── 2 · the catalog (two steps share it) ──────────────────────────────────── */
 
-function CatalogFigure() {
+function CatalogFigure({ plans, packs }: TourCatalog) {
   const { t } = useT()
+  const savePct = annualSavePct(plans)
   return (
     <div className="pricing-page">
       <PricingHeader>
@@ -194,7 +189,11 @@ function CatalogFigure() {
               <div className="segmented-control" style={{ margin: 0, width: '22rem' }}>
                 <span className="segmented-btn">
                   {t('plan.billingAnnual')}
-                  <span className="seg-save-pill">{t('plan.saveAnnualPct', { pct: 10 })}</span>
+                  {savePct != null && (
+                    <span className="seg-save-pill">
+                      {t('plan.saveAnnualPct', { pct: savePct })}
+                    </span>
+                  )}
                 </span>
                 <span className="segmented-btn active">{t('plan.billingMonthly')}</span>
                 <span
@@ -204,7 +203,7 @@ function CatalogFigure() {
               </div>
             </div>
             <div className="plan-grid plan-grid--4">
-              {DEMO_PLANS.map(pack => (
+              {plans.map(pack => (
                 <PlanCard
                   key={pack.code}
                   pack={pack}
@@ -225,7 +224,7 @@ function CatalogFigure() {
               <p className="pricing-section-sub">{t('pricing.topupSub')}</p>
               <p className="pricing-note">{t('pricing.topupNote')}</p>
             </div>
-            <PackList packs={DEMO_PACKS} onSelect={noop} />
+            <PackList packs={packs} onSelect={noop} />
           </section>
         </Spot>
       </main>
@@ -257,7 +256,7 @@ function CheckoutField({
   )
 }
 
-function BillingFigure() {
+function BillingFigure({ plan }: { plan: CreditPack }) {
   const { t } = useT()
   const steps = [
     { n: 1, label: t('checkout.step1') },
@@ -318,15 +317,17 @@ function BillingFigure() {
               <aside className="checkout-summary">
                 <h4 className="checkout-summary-title">{t('checkout.summaryTitle')}</h4>
                 <div className="checkout-summary-row">
-                  <span>Growth</span>
-                  <span className="text-mono">500 {t('plan.docsPerMonthSuffix')}</span>
+                  <span>{PLAN_META[plan.code]?.name ?? plan.code}</span>
+                  <span className="text-mono">
+                    {plan.credits.toLocaleString()} {t('plan.docsPerMonthSuffix')}
+                  </span>
                 </div>
                 <div className="checkout-summary-row checkout-summary-kind">
                   <span>{t('checkout.kindMonthly')}</span>
                 </div>
                 <div className="checkout-summary-total">
                   <span>{t('checkout.totalDue')}</span>
-                  <span className="text-mono">฿{formatThb(990, true)}</span>
+                  <span className="text-mono">฿{formatThb(plan.price_thb, true)}</span>
                 </div>
                 <p className="checkout-vat-note">{t('checkout.vatNote')}</p>
                 <p className="checkout-vat-note">{t('checkout.finalTotalNote')}</p>
@@ -352,7 +353,7 @@ function BillingFigure() {
  * the slip on the pending-order banner (figure 5) and shows nothing here that it
  * never explains.
  */
-function PaymentFigure() {
+function PaymentFigure({ plan }: { plan: CreditPack }) {
   const { t } = useT()
   const steps = [
     { n: 1, label: t('checkout.step1') },
@@ -369,7 +370,7 @@ function PaymentFigure() {
               selector, since the figure mounts that component rather than
               redrawing it. */}
           <div className="checkout-pay">
-            <ProformaDocument doc={DEMO_PROFORMA} paymentInfo={DEMO_PAYMENT_INFO} />
+            <ProformaDocument doc={demoProforma(plan)} paymentInfo={DEMO_PAYMENT_INFO} />
           </div>
         </div>
       </div>
@@ -387,7 +388,7 @@ function PaymentFigure() {
  * shows the **Confirm payment** button rather than an empty drop zone; the
  * canvas is `inert`, so nothing here could pick one.
  */
-function ResumeFigure() {
+function ResumeFigure({ plan }: { plan: CreditPack }) {
   return (
     <div className="pricing-page">
       <PricingHeader>
@@ -396,7 +397,7 @@ function ResumeFigure() {
       <main className="pricing-main">
         <Spot id="pending-order">
           <PendingOrderBanner
-            orders={[DEMO_ORDER]}
+            orders={[demoOrder(plan)]}
             onChanged={noop}
             paymentInfo={DEMO_PAYMENT_INFO}
             initialSlipFile={DEMO_SLIP}
@@ -407,14 +408,20 @@ function ResumeFigure() {
   )
 }
 
-/** Figures in tour order; a step names one by index. */
-export const PURCHASE_FIGURES = [
-  <BuyChipFigure key="1" />,
-  <CatalogFigure key="2" />,
-  <BillingFigure key="3" />,
-  <PaymentFigure key="4" />,
-  <ResumeFigure key="5" />,
-]
+/**
+ * Figures in tour order; a step names one by index. The sample order is for Growth
+ * (the tier the page recommends), or the first plan if the catalog has none.
+ */
+export function purchaseFigures(catalog: TourCatalog) {
+  const plan = catalog.plans.find(p => p.code === 'sub_growth') ?? catalog.plans[0]
+  return [
+    <BuyChipFigure key="1" />,
+    <CatalogFigure key="2" {...catalog} />,
+    plan ? <BillingFigure key="3" plan={plan} /> : null,
+    plan ? <PaymentFigure key="4" plan={plan} /> : null,
+    plan ? <ResumeFigure key="5" plan={plan} /> : null,
+  ]
+}
 
 /**
  * Each figure's page width. The credit-card module lays out in `.app-container`

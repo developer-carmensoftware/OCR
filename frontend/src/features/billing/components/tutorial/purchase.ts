@@ -25,6 +25,11 @@
  * proforma, pays days later through their own finance process and comes back, so
  * the pending-order banner is the path they actually use — not the slip card the
  * checkout still renders under the invoice.
+ *
+ * **No price is typed in this file.** The plan and top-up lines, and the annual
+ * discount, are written from the live catalog by `purchaseTutorial()`, so a reprice
+ * is a database row and the tour follows it. (It used to list them by hand, and had
+ * already dropped Lite and Micro by the time that was noticed.)
  */
 
 import {
@@ -38,6 +43,9 @@ import {
   Scale,
 } from 'lucide-react'
 import type { TutorialStepDefinition } from '@/shared/components/tutorial'
+import { PLAN_META, annualSavePct, perDoc } from '@/features/billing/constants'
+import { formatThb } from '@/shared/lib/money'
+import type { CreditPack } from '@/shared/api/credits'
 
 /**
  * A step, plus which of `PURCHASE_FIGURES` illustrates it (1-based).
@@ -48,7 +56,7 @@ import type { TutorialStepDefinition } from '@/shared/components/tutorial'
  */
 export type PurchaseStep = TutorialStepDefinition & { screen: number }
 
-export const PURCHASE_TUTORIAL: PurchaseStep[] = [
+const STEPS: PurchaseStep[] = [
   {
     screen: 1,
     icon: LayoutDashboard,
@@ -113,24 +121,12 @@ export const PURCHASE_TUTORIAL: PurchaseStep[] = [
     en: {
       title: 'Monthly Plans',
       heading: 'Choose a Monthly Plan',
-      body: [
-        'The system bills and resets the quota every month (nothing carries over).',
-        '• **Discount:** paying a year in advance takes **10%** off.',
-        '• **Starter:** 200 documents / month (฿490 / month)',
-        '• **Growth:** 500 documents / month (฿990 / month)',
-        '• **Professional:** 1,500 documents / month (฿2,490 / month)',
-      ],
+      body: ['The system bills and resets the quota every month (nothing carries over).'],
     },
     th: {
       title: 'แพ็กเกจรายเดือน',
       heading: 'เลือกแพ็กเกจรายเดือน',
-      body: [
-        'ระบบจะตัดยอดและรีเซ็ตโควตาใหม่ทุกเดือน (ไม่มีการทบยอดคงเหลือ)',
-        '• **ส่วนลด:** การเลือกชำระล่วงหน้าแบบรายปี จะได้รับส่วนลด **10%**',
-        '• **Starter:** 200 เอกสาร / เดือน (฿490 / เดือน)',
-        '• **Growth:** 500 เอกสาร / เดือน (฿990 / เดือน)',
-        '• **Professional:** 1,500 เอกสาร / เดือน (฿2,490 / เดือน)',
-      ],
+      body: ['ระบบจะตัดยอดและรีเซ็ตโควตาใหม่ทุกเดือน (ไม่มีการทบยอดคงเหลือ)'],
     },
   },
   {
@@ -140,22 +136,12 @@ export const PURCHASE_TUTORIAL: PurchaseStep[] = [
     en: {
       title: 'Top-Up Credits',
       heading: 'Choose Top-Up Credits',
-      body: [
-        'A one-time purchase of quota that never expires (1 credit covers 1 document page).',
-        '• **500 Credits:** ฿2,000 (฿4.00 per page on average)',
-        '• **2,500 Credits:** ฿7,500 (฿3.00 per page on average)',
-        '• **10,000 Credits:** ฿20,000 (฿2.00 per page on average)',
-      ],
+      body: ['A one-time purchase of quota that never expires (1 credit covers 1 document page).'],
     },
     th: {
       title: 'เติมเครดิต',
       heading: 'เลือกแพ็กเกจเติมเครดิต',
-      body: [
-        'ซื้อโควตาแบบครั้งเดียว ไม่มีวันหมดอายุ (โดย 1 เครดิต เท่ากับเอกสาร 1 หน้า)',
-        '• **500 เครดิต:** ฿2,000 (เฉลี่ย ฿4.00/หน้า)',
-        '• **2,500 เครดิต:** ฿7,500 (เฉลี่ย ฿3.00/หน้า)',
-        '• **10,000 เครดิต:** ฿20,000 (เฉลี่ย ฿2.00/หน้า)',
-      ],
+      body: ['ซื้อโควตาแบบครั้งเดียว ไม่มีวันหมดอายุ (โดย 1 เครดิต เท่ากับเอกสาร 1 หน้า)'],
     },
   },
   {
@@ -244,3 +230,57 @@ export const PURCHASE_TUTORIAL: PurchaseStep[] = [
     },
   },
 ]
+
+/** The catalog the page behind the tour has already loaded. */
+export interface TourCatalog {
+  plans: CreditPack[]
+  packs: CreditPack[]
+}
+
+/**
+ * The price lines a step appends to its approved copy, per language — same wording
+ * the reviewed copy used, one line per catalog row. Null for steps that quote no price.
+ */
+function priceLines(spot: string | undefined, { plans, packs }: TourCatalog) {
+  if (spot === 'monthly-plans') {
+    const pct = annualSavePct(plans)
+    const name = (p: CreditPack) => PLAN_META[p.code]?.name ?? p.code
+    const docs = (p: CreditPack) => p.credits.toLocaleString('en-US')
+    const price = (p: CreditPack) => formatThb(p.price_thb)
+    return {
+      en: [
+        ...(pct ? [`• **Discount:** paying a year in advance takes **${pct}%** off.`] : []),
+        ...plans.map(p => `• **${name(p)}:** ${docs(p)} documents / month (฿${price(p)} / month)`),
+      ],
+      th: [
+        ...(pct ? [`• **ส่วนลด:** การเลือกชำระล่วงหน้าแบบรายปี จะได้รับส่วนลด **${pct}%**`] : []),
+        ...plans.map(p => `• **${name(p)}:** ${docs(p)} เอกสาร / เดือน (฿${price(p)} / เดือน)`),
+      ],
+    }
+  }
+  if (spot === 'topup-credits') {
+    const credits = (p: CreditPack) => p.credits.toLocaleString('en-US')
+    const price = (p: CreditPack) => formatThb(p.price_thb)
+    const rate = (p: CreditPack) => formatThb(perDoc(p.price_thb, p.credits), true)
+    return {
+      en: packs.map(
+        p => `• **${credits(p)} Credits:** ฿${price(p)} (฿${rate(p)} per page on average)`
+      ),
+      th: packs.map(p => `• **${credits(p)} เครดิต:** ฿${price(p)} (เฉลี่ย ฿${rate(p)}/หน้า)`),
+    }
+  }
+  return null
+}
+
+/** The tour's steps, with every price written from `catalog`. */
+export function purchaseTutorial(catalog: TourCatalog): PurchaseStep[] {
+  return STEPS.map(step => {
+    const lines = priceLines(step.spot, catalog)
+    if (!lines) return step
+    return {
+      ...step,
+      en: { ...step.en, body: [...step.en.body, ...lines.en] },
+      th: { ...step.th, body: [...step.th.body, ...lines.th] },
+    }
+  })
+}

@@ -766,3 +766,58 @@ def test_order_reviewer_can_work_the_queue_but_not_credit_balances():
             kwargs = {"json": {}} if method == "post" else {}
             resp = getattr(client, method)(f"{BASE}{path}", headers=AUTH, **kwargs)
             assert resp.status_code == 403, f"{method} {path} leaked to order_reviewer"
+
+
+# ── GET /admin/credit-packs ───────────────────────────────────────────────────
+
+
+def _catalog_pack(code, kind, credits, price_thb, sort_order):
+    row = MagicMock()
+    row.code = code
+    row.kind = kind
+    row.credits = credits
+    row.price_thb = Decimal(str(price_thb))
+    row.price_annual_thb = None
+    row.sort_order = sort_order
+    row.is_active = True
+    row.description = f"{credits} credits"
+    return row
+
+
+def _catalog_db(rows):
+    scalars_result = MagicMock()
+    scalars_result.all.return_value = rows
+    execute_result = MagicMock()
+    execute_result.scalars.return_value = scalars_result
+    mock_db = make_mock_db()
+    mock_db.execute = AsyncMock(return_value=execute_result)
+    return mock_db
+
+
+def test_admin_credit_packs_returns_the_live_catalog_with_prices():
+    """The Credits page's top-up menu labels come from here, so the prices must be the
+    database's — the menu used to hardcode them and drifted (฿1,200 shown for ฿2,000)."""
+    mock_db = _catalog_db(
+        [
+            _catalog_pack("sub_starter", "subscription", 200, 490.0, 1),
+            _catalog_pack("pack_micro", "topup", 100, 450.0, 10),
+        ]
+    )
+
+    with make_admin_test_client(mock_db) as client:
+        resp = client.get(f"{BASE}/credit-packs", headers=AUTH)
+
+    assert resp.status_code == 200
+    body = {p["code"]: p for p in resp.json()}
+    assert body["pack_micro"]["price_thb"] == 450.0
+    assert body["pack_micro"]["price_annual_thb"] is None
+    assert body["sub_starter"]["price_annual_thb"] == 5292.0  # same annual_price() as /packs
+
+
+def test_admin_credit_packs_needs_quotas_read():
+    mock_db = _catalog_db([])
+
+    with make_admin_test_client(mock_db, perms={"orders:read"}) as client:
+        resp = client.get(f"{BASE}/credit-packs", headers=AUTH)
+
+    assert resp.status_code == 403

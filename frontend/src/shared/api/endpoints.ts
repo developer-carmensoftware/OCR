@@ -140,6 +140,7 @@ export const API = {
     tenant: (tenantId: string) => `${V1}/admin/tenants/${tenantId}`,
     errorBreakdown: `${V1}/admin/error-breakdown`,
     extractionFailures: `${V1}/admin/extraction-failures`,
+    creditPacks: `${V1}/admin/credit-packs`,
     tenantCredits: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits`,
     tenantCreditsLedger: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/ledger`,
     tenantCreditsTopup: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/topup`,

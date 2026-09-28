@@ -15,6 +15,7 @@ Billing model — two pools, and only two:
   grant_credits()        — add/subtract credits + write ledger (caller owns txn)
   grant_signup_credits() — the one-time new-tenant grant (caller owns txn)
   get_credit_balance()   — current balance for a tenant (for /auth/usage)
+  list_active_packs()    — the purchasable catalog, the one source of every price shown
 """
 
 import logging
@@ -37,6 +38,7 @@ from app.models.orm import (
     TenantCredit,
     TenantSubscription,
 )
+from app.models.schemas import CreditPackResponse
 from app.utils.list_query import ListQuery, apply_list_query
 from app.utils.pagination import paginate
 
@@ -61,6 +63,33 @@ def annual_price(monthly: Decimal | float | str) -> Decimal:
     return (Decimal(str(monthly)) * 12 * (1 - ANNUAL_DISCOUNT)).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
+
+
+async def list_active_packs(db: AsyncSession) -> list[CreditPackResponse]:
+    """The purchasable catalog — plans and top-ups, in display order, each plan with
+    its annual price filled in.
+
+    The one read behind both the buyer's GET /credits/packs and the admin top-up menu,
+    so no screen carries its own copy of a price: a reprice is a DB row, nothing else.
+    """
+    rows = (
+        (
+            await db.execute(
+                select(CreditPack)
+                .where(CreditPack.is_active == True)  # noqa: E712
+                .order_by(CreditPack.sort_order, CreditPack.credits)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    out: list[CreditPackResponse] = []
+    for p in rows:
+        resp = CreditPackResponse.model_validate(p)
+        if p.kind == "subscription":
+            resp.price_annual_thb = float(annual_price(str(p.price_thb)))
+        out.append(resp)
+    return out
 
 
 def proration_credit(

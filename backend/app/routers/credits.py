@@ -39,7 +39,7 @@ from app.services.billing import promptpay as promptpay_service
 from app.services.billing import slip_storage as storage_service
 from app.services.billing.slip_storage import StorageError
 from app.services.shared import carmen as carmen_service
-from app.services.shared.credits import annual_price
+from app.services.shared.credits import annual_price, list_active_packs
 from app.services.shared.file import FileService
 from app.utils.image_processing import resize_if_needed
 from app.utils.pagination import paginate
@@ -64,25 +64,8 @@ async def list_packs(
     _session: SessionInfo = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ):
-    """List active top-up packs, cheapest first."""
-    rows = (
-        (
-            await db.execute(
-                select(CreditPack)
-                .where(CreditPack.is_active == True)  # noqa: E712
-                .order_by(CreditPack.sort_order, CreditPack.credits)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    out: list[CreditPackResponse] = []
-    for p in rows:
-        resp = CreditPackResponse.model_validate(p)
-        if p.kind == "subscription":
-            resp.price_annual_thb = float(annual_price(str(p.price_thb)))
-        out.append(resp)
-    return out
+    """The active catalog (plans and top-ups) in display order."""
+    return await list_active_packs(db)
 
 
 @router.get("/company-profile", response_model=CompanyProfileResponse)

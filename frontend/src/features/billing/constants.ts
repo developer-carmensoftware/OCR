@@ -11,6 +11,7 @@
  */
 
 import type { TKey } from '@/i18n/dict'
+import type { CreditPack } from '@/shared/api/credits'
 
 export interface PackPresentation {
   /** Display name, e.g. 'Standard'. */
@@ -73,6 +74,17 @@ export const SALES_CONTACT = {
 export function perDoc(priceThb: number, docs: number): number {
   if (!docs) return 0
   return priceThb / docs
+}
+
+/**
+ * The annual discount in whole percent, read off the catalog (the backend's
+ * `annual_price()` owns the rule and sends `price_annual_thb`); null when no plan
+ * carries an annual price. Same for every tier, so the first one that has it answers.
+ */
+export function annualSavePct(plans: CreditPack[]): number | null {
+  const p = plans.find(pl => pl.price_annual_thb != null && pl.price_thb)
+  if (!p?.price_annual_thb) return null
+  return Math.round((1 - p.price_annual_thb / 12 / p.price_thb) * 100)
 }
 
 /**
