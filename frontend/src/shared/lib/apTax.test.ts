@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { recalcRow, syncLineTotals } from './apTax'
+import { applyTaxPatch, matchTaxProfiles, recalcRow, syncLineTotals } from './apTax'
 import { parseNum } from './format'
 import type { APLineItem } from '@/features/ap-invoice/hooks/useAPExtraction'
 
@@ -131,5 +131,48 @@ describe('parity with backend post-process output', () => {
     )
     expect(parseNum(r.lineSubTotal)).toBeCloseTo(-190, 2)
     expect(parseNum(r.lineTotal)).toBeCloseTo(-190, 2)
+  })
+})
+
+const PROFILES = [
+  { code: 'V7', rate: 7 },
+  { code: 'V7B', rate: 7 },
+  { code: 'V10', rate: 10 },
+] as Parameters<typeof matchTaxProfiles>[1]
+
+describe('matchTaxProfiles', () => {
+  // The effect that calls this re-runs on every line change; returning a fresh array when
+  // nothing moved would set state, re-render and run it again — forever.
+  it('returns the same array when every line already holds its profile', () => {
+    const prev = [row({ taxProfileCode1: 'V7' }), row({ taxType: 'None', taxProfileCode1: '' })]
+    expect(matchTaxProfiles(prev, PROFILES, undefined)).toBe(prev)
+  })
+
+  it("prefers the vendor's profile among same-rate ones, and never touches an edited line", () => {
+    const prev = [
+      row({ taxProfileCode1: 'V7' }),
+      row({ taxProfileCode1: 'X', _taxProfileTouched: '1' }),
+    ]
+    const next = matchTaxProfiles(prev, PROFILES, 'V7B')
+    expect(next.map(r => r.taxProfileCode1)).toEqual(['V7B', 'X'])
+  })
+})
+
+describe('applyTaxPatch', () => {
+  it('picking NONE makes the line non-VAT and clears its profile', () => {
+    const r = applyTaxPatch(
+      row({ taxProfileCode1: 'V7' }),
+      { taxProfileCode1: 'NONE' },
+      PROFILES,
+      'Exclude'
+    )
+    expect([r.taxType, r.taxProfileCode1, parseNum(r.taxAmt)]).toEqual(['None', '', 0])
+  })
+
+  it('a profile drives the rate; a rate with no profile keeps the rate and blanks the profile', () => {
+    const v10 = applyTaxPatch(row({}), { taxProfileCode1: 'V10' }, PROFILES, 'Exclude')
+    expect(parseNum(v10.taxPct)).toBe(10)
+    const r = applyTaxPatch(row({ taxProfileCode1: 'V7' }), { taxPct: '9' }, PROFILES, 'Exclude')
+    expect([parseNum(r.taxPct), r.taxProfileCode1]).toEqual([9, ''])
   })
 })

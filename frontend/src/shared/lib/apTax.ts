@@ -90,3 +90,115 @@ export function syncLineTotals(items: APLineItem[]): APLineItem[] {
     lineTotal: fmt(round2(i.lineSubTotal) + round2(i.taxAmt)),
   }))
 }
+
+/**
+ * The tax-profile auto-match, as a pure pass over the rows: each untouched taxable line
+ * gets the profile for its rate (the vendor's own among same-rate ones), a None line has
+ * its profile cleared. Returns `prev` itself when nothing changed, which is what stops the
+ * effect that calls it from looping. See useAPInvoice for when it runs.
+ */
+export function matchTaxProfiles(
+  prev: APLineItem[],
+  taxProfiles: TaxProfileItem[],
+  vendorTaxProfile: string | undefined
+): APLineItem[] {
+  if (!prev.length) return prev
+  let changed = false
+  const next = prev.map(it => {
+    if (it._taxProfileTouched) return it
+    if (it.taxType === 'None') {
+      if (it.taxProfileCode1 !== '') {
+        changed = true
+        return { ...it, taxProfileCode1: '' }
+      }
+      return it
+    }
+    const rate = parseNum(it.taxPct)
+    const desired = resolveTaxProfileForRate(rate, taxProfiles, vendorTaxProfile)
+    if (it.taxProfileCode1 !== desired) {
+      changed = true
+      return { ...it, taxProfileCode1: desired }
+    }
+    return it
+  })
+  return changed ? next : prev
+}
+
+/**
+ * One line's tax fields after the user changed one of them — the interlock behind every
+ * tax <select> in the AP review table. See useAPInvoice's applyLineTax for the rules.
+ */
+export function applyTaxPatch(
+  it: APLineItem,
+  patch: { taxType?: 'Include' | 'Exclude' | 'None'; taxProfileCode1?: string; taxPct?: string },
+  taxProfiles: TaxProfileItem[],
+  headerTaxType: string | undefined
+): APLineItem {
+  const rateOf = (code: string) => taxProfiles.find(p => p.code === code)?.rate ?? null
+  const codeForRate = (rate: number) =>
+    taxProfiles.find(p => p.rate != null && Math.abs(p.rate - rate) < 0.01)?.code || ''
+
+  const merged = { ...it, ...patch }
+  const prevType = (it.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
+
+  // Derive the effective taxType, honouring profile-driven None.
+  let taxType = (merged.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
+  if (patch.taxProfileCode1 !== undefined) {
+    if (patch.taxProfileCode1 === 'NONE') {
+      taxType = 'None'
+      merged.taxProfileCode1 = ''
+    } else if (patch.taxProfileCode1 === '') {
+      if (taxType === 'None') {
+        // Restore to the document-level tax type when selecting "—" on a None line
+        taxType = headerTaxType === 'Include' ? 'Include' : 'Exclude'
+      }
+      merged.taxProfileCode1 = ''
+    } else if (taxType === 'None') {
+      // Restore to the document-level tax type (Include/Exclude) when un-Noning a line
+      // by picking a profile; fall back to Exclude if the header is also None/missing.
+      taxType = headerTaxType === 'Include' ? 'Include' : 'Exclude'
+    }
+  }
+
+  if (taxType === 'None') {
+    return recalcRow({ ...merged, taxType: 'None', taxProfileCode1: '', taxPct: '0' })
+  }
+
+  // Pure Include ↔ Exclude toggle (only taxType changed, neither side None): pin the net
+  // subtotal and re-derive tax/total from the rate. recalcRow re-anchors on unitPrice, whose
+  // gross/net meaning differs by tax type, so going through it here would make the line jump
+  // to the stored unitPrice's gross — pinning the subtotal keeps the toggle non-destructive.
+  const isToggle =
+    patch.taxType !== undefined &&
+    patch.taxProfileCode1 === undefined &&
+    patch.taxPct === undefined &&
+    prevType !== 'None'
+  if (isToggle) {
+    const r = Math.max(0, parseNum(merged.taxPct))
+    const sub = round2(merged.lineSubTotal)
+    const taxAmt = round2((sub * r) / 100)
+    return {
+      ...merged,
+      taxType,
+      lineSubTotal: fmt(sub),
+      taxAmt: fmt(taxAmt),
+      lineTotal: fmt(sub + taxAmt),
+    }
+  }
+
+  let code = merged.taxProfileCode1 || ''
+  let rate = parseNum(merged.taxPct)
+  if (patch.taxProfileCode1) {
+    const r = rateOf(code) // profile drives the rate
+    if (r != null) rate = r
+  } else if (patch.taxPct !== undefined) {
+    // Rate drives the profile. When no profile defines this rate, blank the profile (keep the
+    // rate) rather than holding a stale code — the line stays taxable and the UI warns.
+    if (rateOf(code) !== rate) code = codeForRate(rate)
+  }
+  // No `!code` fallback: picking "—" (or un-Noning with no profile) leaves the line taxable
+  // with no specific profile and its current rate — we never silently inject the vendor
+  // default (matches auto-match / grouping / submission, which also dropped that fallback).
+
+  return recalcRow({ ...merged, taxType, taxProfileCode1: code, taxPct: String(rate) })
+}
