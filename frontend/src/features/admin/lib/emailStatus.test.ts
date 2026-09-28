@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pollMessage, relativeAge, statusTone } from './EmailAutomationPage'
+import { pollMessage, relativeAge, statusTone } from './emailStatus'
 
 /**
  * The poll answers with four different shapes and only one of them is a summary. The
