@@ -1,6 +1,6 @@
 """Shared bulk id -> display-name lookups for admin list/aggregate endpoints."""
 
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.business import OcrSession
@@ -13,9 +13,14 @@ async def tenant_name_map(db: AsyncSession, tenant_ids: list) -> dict[str, str]:
     ids = [str(t) for t in tenant_ids if t]
     if not ids:
         return {}
+    # Compared as text, not bound as UUIDs. Observability tables keep tenant_id as a plain
+    # string, and cluster-wide rows carry "system" (llm/client.py, the email poll's
+    # unrouted/beyond-window alerts). Bound as a UUID, one such id failed the whole query —
+    # a 500 on /admin/alerts, and so on Overview and Anomalies, for as long as a system
+    # alert stayed open. As text it simply matches no tenant, which is the answer.
     result = await db.execute(
         select(Tenant.id, Tenant.name, Tenant.bu_code).where(
-            Tenant.id.in_(ids), Tenant.deleted_at.is_(None)
+            cast(Tenant.id, String).in_(ids), Tenant.deleted_at.is_(None)
         )
     )
     return {str(r.id): f"{r.name} ({r.bu_code})" for r in result.mappings().all()}
