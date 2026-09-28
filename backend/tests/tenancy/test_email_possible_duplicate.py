@@ -13,7 +13,7 @@ import uuid
 import pytest
 from sqlalchemy import text
 
-from app.services.email_automation import ingest
+from app.services.email_automation import ledger
 
 # `real_engine` / `tenants` come from conftest.py in this directory — see the note in
 # test_email_approve_integrity.py on why they are not imported.
@@ -45,11 +45,11 @@ async def test_near_duplicate_lookup_is_scoped_to_the_tenant_and_the_date(real_e
         )
     try:
         # the F-7 case: same BU, same date, the printed number inside the posted one
-        assert await ingest._possibly_posted(str(tenants.a), READ, "04/11/2025") == POSTED
+        assert await ledger._possibly_posted(str(tenants.a), READ, "04/11/2025") == POSTED
         # another BU's posted document is never this BU's duplicate
-        assert await ingest._possibly_posted(str(tenants.b), READ, "04/11/2025") is None
+        assert await ledger._possibly_posted(str(tenants.b), READ, "04/11/2025") is None
         # a different date is a different statement
-        assert await ingest._possibly_posted(str(tenants.a), READ, "05/11/2025") is None
+        assert await ledger._possibly_posted(str(tenants.a), READ, "05/11/2025") is None
     finally:
         async with real_engine.begin() as conn:
             await conn.execute(text("delete from credit_cards where task_id = :t"), {"t": task})

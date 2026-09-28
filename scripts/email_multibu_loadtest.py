@@ -18,10 +18,12 @@ the envelope, never against the strings `run_ingest` returns.
 `_poll_lock` skips an overlapping poll, so "many BUs at once" is one queue in production.
 The cron fires every 10 minutes; this measures how many documents fit in that.
 
-Nothing is posted to Carmen. Five functions of `carmen_service` are patched **at the name
-`email_ingest_service` imported them under**, so no HTTP request leaves this process for
-Carmen — while the LLM, `consume_document`/`refund_document`, the ledger and every DB
-write run for real, because that is what is being measured.
+Nothing is posted to Carmen. The two posts are patched on `app.services.shared.carmen`
+itself (the email_automation package only ever calls them through that module — see
+`dry_run_patches`) and the three GL-master reads on `pipeline`, where they are bound, so no
+HTTP request leaves this process for Carmen — while the LLM, `consume_document`/
+`refund_document`, the ledger and every DB write run for real, because that is what is
+being measured.
 
 `foreign_tax_id` is patched to None for the matrix on purpose: real bank documents print a
 real customer's TIN, which is very likely registered to the dev BU already, and every
@@ -387,12 +389,18 @@ class DryRun:
 def dry_run_patches(rec: DryRun, *, fake_extract: bool) -> list:
     """Patch the five Carmen calls, the tax-ID cross-check, and the mailbox folder.
 
-    Everything is patched on `email_ingest_service` itself, which is where the names were
-    imported to — patching `carmen_service` would leave this module's own references bound
-    to the originals.
+    The two posts (and the vision call) are patched on their **source** modules,
+    `shared.carmen` and `credit_card.ocr`: the email_automation package reaches them only
+    as `carmen.post_gljv(...)` / `ocr_service.extract_stateless(...)`, never as a bound
+    name — `tests/unit/test_layout.py` fails the build if that ever changes — so one patch
+    here covers the pipeline and the approve path alike, wherever either one lives. The
+    three GL-master reads and the suggester ARE bound names in `pipeline.py`, so they are
+    patched there, where `_run_document` looks them up.
     """
     from app.context import current_carmen_uri, current_tenant_id
-    from app.services.email_automation import ingest
+    from app.services.credit_card import ocr as ocr_service
+    from app.services.email_automation import ingest, pipeline
+    from app.services.shared import carmen
 
     async def _post_gljv(payload, token):
         rec.jvs.append(
@@ -425,11 +433,11 @@ def dry_run_patches(rec: DryRun, *, fake_extract: bool) -> list:
         return None
 
     patches = [
-        patch.object(ingest.carmen, "post_gljv", _post_gljv),
-        patch.object(ingest.carmen, "post_input_tax", _post_input_tax),
-        patch.object(ingest, "get_account_codes", _accounts),
-        patch.object(ingest, "get_departments", _departments),
-        patch.object(ingest, "get_tax_profiles", _tax_profiles),
+        patch.object(carmen, "post_gljv", _post_gljv),
+        patch.object(carmen, "post_input_tax", _post_input_tax),
+        patch.object(pipeline, "get_account_codes", _accounts),
+        patch.object(pipeline, "get_departments", _departments),
+        patch.object(pipeline, "get_tax_profiles", _tax_profiles),
         patch.object(ingest.es, "foreign_tax_id", _no_conflict),
         patch.object(ingest.settings, "imap_folder", FOLDER),
     ]
@@ -438,8 +446,8 @@ def dry_run_patches(rec: DryRun, *, fake_extract: bool) -> list:
         # has never mapped goes on to the suggestion model, and `--dry-check` promises to
         # cost nothing. `fill_missing_mappings` still writes what this returns, so the
         # "second document of the same type is deterministic" path is still exercised.
-        patches.append(patch.object(ingest.ocr_service, "extract_stateless", _canned_extract))
-        patches.append(patch.object(ingest, "_suggest_missing_mappings", _canned_suggest))
+        patches.append(patch.object(ocr_service, "extract_stateless", _canned_extract))
+        patches.append(patch.object(pipeline, "_suggest_missing_mappings", _canned_suggest))
     return patches
 
 
