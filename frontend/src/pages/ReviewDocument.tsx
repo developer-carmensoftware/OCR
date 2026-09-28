@@ -1,37 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertCircle, AlertTriangle, CheckCircle2, ExternalLink, Loader2, X } from 'lucide-react'
-import CustomModal from '../components/common/CustomModal'
-import SwapLabel from '../components/common/SwapLabel'
-import JvHeaderCard from '../components/credit-card/JvHeaderCard'
-import InputTaxPanel from '../components/credit-card/InputTaxPanel'
-import type { DetailRow } from '../components/credit-card/DetailTable'
-import JvEditor, { type JvState, type Overrides } from '../components/credit-card/JvEditor'
-import { useT } from '../i18n/LanguageContext'
-import { useAccountingConfig } from '../hooks/credit-card'
-import { useScrollLock } from '../hooks/useScrollLock'
-import { showToast } from '../lib/toast'
-import { fmt } from '../lib/format'
-import { toExtractedRows } from '../lib/api/ocr'
-import { normalizeDateStringToCE } from '../lib/date'
-import { applyJvAmount, type JvRow } from '../lib/ccJv'
+import CustomModal from '@/components/common/CustomModal'
+import SwapLabel from '@/components/common/SwapLabel'
+import JvHeaderCard from '@/components/credit-card/JvHeaderCard'
+import InputTaxPanel from '@/components/credit-card/InputTaxPanel'
+import type { DetailRow } from '@/components/credit-card/DetailTable'
+import JvEditor, { type JvState, type Overrides } from '@/components/credit-card/JvEditor'
+import { useT } from '@/i18n/LanguageContext'
+import { useAccountingConfig } from '@/hooks/credit-card'
+import { useScrollLock } from '@/hooks/useScrollLock'
+import { showToast } from '@/lib/toast'
+import { fmt } from '@/lib/format'
+import { toExtractedRows } from '@/lib/api/ocr'
+import { normalizeDateStringToCE } from '@/lib/date'
+import { applyJvAmount, type JvRow } from '@/lib/ccJv'
 import {
   FIX,
   fixLinkProps,
   stopText,
   warningText,
   type ExtractionWarning,
-} from '../lib/reviewReasons'
-import { patchAccountingConfig } from '../lib/api/config'
+} from '@/lib/reviewReasons'
+import { patchAccountingConfig } from '@/lib/api/config'
 import {
   approveDocument,
   getPending,
   rejectDocument,
   type ItxOverrides,
   type ReviewDocumentDetail,
-} from '../lib/api/emailReview'
-import { detectBankFromExtracted } from '../constants/banks'
-import type { BankCode } from '../types/api'
+} from '@/lib/api/emailReview'
+import { detectBankFromExtracted } from '@/constants/banks'
+import type { BankCode } from '@/types/api'
 
 interface Props {
   id: string

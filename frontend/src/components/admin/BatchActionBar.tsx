@@ -1,8 +1,8 @@
 import { createPortal } from 'react-dom'
 import { m, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Loader2, X, type LucideIcon } from 'lucide-react'
-import { useT } from '../../i18n/LanguageContext'
-import type { TKey } from '../../i18n/dict'
+import { useT } from '@/i18n/LanguageContext'
+import type { TKey } from '@/i18n/dict'
 
 export interface BatchAction {
   key: string

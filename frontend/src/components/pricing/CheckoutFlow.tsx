@@ -2,23 +2,23 @@ import { useEffect, useState } from 'react'
 import { m } from 'framer-motion'
 import { ArrowLeft, CheckCircle2, ShieldCheck, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import StepWizard from '../common/StepWizard'
-import CustomModal from '../common/CustomModal'
+import StepWizard from '@/components/common/StepWizard'
+import CustomModal from '@/components/common/CustomModal'
 import ProformaDocument from './ProformaDocument'
 import SlipUpload from './SlipUpload'
-import { useCheckout, type CheckoutSession } from '../../hooks/credits'
-import { PLAN_META, PACK_META, planChangeLoss, planChangeWarning } from '../../constants/billing'
-import { formatThb } from '../../lib/money'
-import { useT } from '../../i18n/LanguageContext'
-import type { TKey } from '../../i18n/dict'
-import type { ActiveSubscription } from '../../lib/api/auth'
+import { useCheckout, type CheckoutSession } from '@/hooks/credits'
+import { PLAN_META, PACK_META, planChangeLoss, planChangeWarning } from '@/constants/billing'
+import { formatThb } from '@/lib/money'
+import { useT } from '@/i18n/LanguageContext'
+import type { TKey } from '@/i18n/dict'
+import type { ActiveSubscription } from '@/lib/api/auth'
 import {
   getPaymentInfo,
   type BillingPeriod,
   type BuyerInfo,
   type CreditPack,
   type PaymentInfo,
-} from '../../lib/api/credits'
+} from '@/lib/api/credits'
 
 function itemName(code: string): string {
   return PLAN_META[code]?.name ?? PACK_META[code]?.name ?? code

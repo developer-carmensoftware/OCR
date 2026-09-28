@@ -2,7 +2,7 @@ import { useReducer } from 'react'
 import { createPortal } from 'react-dom'
 import { m, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Loader2, X } from 'lucide-react'
-import { useT } from '../../i18n/LanguageContext'
+import { useT } from '@/i18n/LanguageContext'
 import { REJECT_PRESETS, REJECT_OTHER } from './OrderActions'
 
 interface State {

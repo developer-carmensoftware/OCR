@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import CustomModal from './CustomModal'
-import { useT } from '../../i18n/LanguageContext'
-import type { TKey } from '../../i18n/dict'
-import { OCR_BANK_MAP } from '../../constants/banks'
-import { getCarmenUrl } from '../../lib/url'
-import type { BankCode } from '../../types/api'
-import type { BellItem } from '../../lib/api/notifications'
-import '../../styles/components/notification-bell.css'
+import { useT } from '@/i18n/LanguageContext'
+import type { TKey } from '@/i18n/dict'
+import { OCR_BANK_MAP } from '@/constants/banks'
+import { getCarmenUrl } from '@/lib/url'
+import type { BankCode } from '@/types/api'
+import type { BellItem } from '@/lib/api/notifications'
+import '@/styles/components/notification-bell.css'
 
 /**
  * What a `document_posted` / `document_failed` / `document_blocked` bell row opens.

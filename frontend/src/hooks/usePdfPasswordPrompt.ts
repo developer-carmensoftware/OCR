@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { PDF_PASSWORD_REQUIRED, type ApiError } from '../lib/api/ocr'
+import { PDF_PASSWORD_REQUIRED, type ApiError } from '@/lib/api/ocr'
 
 /**
  * CustomModal-compatible payload the host modal system renders. The two wizards

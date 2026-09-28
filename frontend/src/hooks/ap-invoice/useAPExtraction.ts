@@ -1,31 +1,31 @@
 import { useState, useRef, useEffect } from 'react'
 import type React from 'react'
-import { useT } from '../../i18n/LanguageContext'
-import { apiFetch, fetchTimeout, getStoredToken } from '../../lib/api/client'
-import { API } from '../../lib/api/endpoints'
-import { getUsage } from '../../lib/api/auth'
-import type { ExtractionWarning } from '../../lib/reviewReasons'
-import { computeUsageStats } from '../../lib/usage'
-import { getAPVendorMapping } from '../../lib/api/config'
+import { useT } from '@/i18n/LanguageContext'
+import { apiFetch, fetchTimeout, getStoredToken } from '@/lib/api/client'
+import { API } from '@/lib/api/endpoints'
+import { getUsage } from '@/lib/api/auth'
+import type { ExtractionWarning } from '@/lib/reviewReasons'
+import { computeUsageStats } from '@/lib/usage'
+import { getAPVendorMapping } from '@/lib/api/config'
 import {
   getPdfInfo,
   getFilePreview,
   PDF_PASSWORD_REQUIRED,
   type ApiError,
   type PdfInfoResult,
-} from '../../lib/api/ocr'
-import { usePdfPasswordPrompt } from '../usePdfPasswordPrompt'
-import { imagesToPdf, MAX_MULTI_IMAGES } from '../../lib/imagesToPdf'
-import { selectedPagesToPdfUrl } from '../../lib/pdfPages'
-import { sanitizedPdfUrl } from '../../lib/pdfPreview'
-import { toast } from '../../lib/toast'
-import { appKey } from '../../lib/storage'
-import { checkFilesSize } from '../../lib/fileValidation'
-import { fmt } from '../../lib/format'
-import { EMPTY_HEADER, DEFAULT_MAPPINGS } from '../../constants/apInvoice'
-import type { APInvoiceHeader, APColumnKey, APFieldKey } from '../../constants/apInvoice'
-import type { ModalState } from '../../types/modal'
-import type { APLineItem } from '../../types/ap'
+} from '@/lib/api/ocr'
+import { usePdfPasswordPrompt } from '@/hooks/usePdfPasswordPrompt'
+import { imagesToPdf, MAX_MULTI_IMAGES } from '@/lib/imagesToPdf'
+import { selectedPagesToPdfUrl } from '@/lib/pdfPages'
+import { sanitizedPdfUrl } from '@/lib/pdfPreview'
+import { toast } from '@/lib/toast'
+import { appKey } from '@/lib/storage'
+import { checkFilesSize } from '@/lib/fileValidation'
+import { fmt } from '@/lib/format'
+import { EMPTY_HEADER, DEFAULT_MAPPINGS } from '@/constants/apInvoice'
+import type { APInvoiceHeader, APColumnKey, APFieldKey } from '@/constants/apInvoice'
+import type { ModalState } from '@/types/modal'
+import type { APLineItem } from '@/types/ap'
 
 export type { APLineItem }
 

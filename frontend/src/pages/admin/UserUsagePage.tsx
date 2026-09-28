@@ -1,10 +1,10 @@
-import DataTable, { type Column } from '../../components/admin/DataTable'
-import TenantSelector from '../../components/admin/TenantSelector'
-import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
-import { fetchUserUsage } from '../../lib/api/adminClient'
-import { useTableQuery } from '../../hooks/admin/useTableQuery'
-import { useTableData } from '../../hooks/admin/useTableData'
-import { useT } from '../../i18n/LanguageContext'
+import DataTable, { type Column } from '@/components/admin/DataTable'
+import TenantSelector from '@/components/admin/TenantSelector'
+import PeriodPicker, { daysAgo, endOfDay, today } from '@/components/admin/PeriodPicker'
+import { fetchUserUsage } from '@/lib/api/adminClient'
+import { useTableQuery } from '@/hooks/admin/useTableQuery'
+import { useTableData } from '@/hooks/admin/useTableData'
+import { useT } from '@/i18n/LanguageContext'
 
 interface UserRow {
   carmen_user_id: string

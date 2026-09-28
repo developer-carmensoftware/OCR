@@ -6,8 +6,8 @@ import {
   updateOrderNote,
   holdBatch,
   type AdminCreditOrder,
-} from '../../lib/api/adminClient'
-import { useT } from '../../i18n/LanguageContext'
+} from '@/lib/api/adminClient'
+import { useT } from '@/i18n/LanguageContext'
 
 /** Keep the company name when a mutation endpoint returns it null (no Tenant join). */
 function withName(updated: AdminCreditOrder, prev: AdminCreditOrder): AdminCreditOrder {

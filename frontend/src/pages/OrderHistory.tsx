@@ -1,27 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ShoppingBag, ArrowRight, Loader2, CalendarClock } from 'lucide-react'
 import { toast } from 'sonner'
-import AppHeader from '../components/common/AppHeader'
-import Pager from '../components/common/Pager'
-import { useRowsPerPage } from '../hooks/useRowsPerPage'
-import { useT } from '../i18n/LanguageContext'
-import OrderStatusBadge from '../components/pricing/OrderStatusBadge'
-import PendingOrderBanner from '../components/pricing/PendingOrderBanner'
-import ProformaDocument from '../components/pricing/ProformaDocument'
-import { getUsage, type ActiveSubscription } from '../lib/api/auth'
-import { getStoredToken } from '../lib/api/client'
-import { useOrderHistory } from '../hooks/credits'
+import AppHeader from '@/components/common/AppHeader'
+import Pager from '@/components/common/Pager'
+import { useRowsPerPage } from '@/hooks/useRowsPerPage'
+import { useT } from '@/i18n/LanguageContext'
+import OrderStatusBadge from '@/components/pricing/OrderStatusBadge'
+import PendingOrderBanner from '@/components/pricing/PendingOrderBanner'
+import ProformaDocument from '@/components/pricing/ProformaDocument'
+import { getUsage, type ActiveSubscription } from '@/lib/api/auth'
+import { getStoredToken } from '@/lib/api/client'
+import { useOrderHistory } from '@/hooks/credits'
 import {
   getOrderDocuments,
   getPaymentInfo,
   type BillingDocument,
   type CreditOrder,
   type PaymentInfo,
-} from '../lib/api/credits'
-import { catalogName, isSubscriptionCode } from '../constants/billing'
-import { formatThb } from '../lib/money'
-import { formatDate } from '../lib/date'
-import '../styles/pages/pricing.css'
+} from '@/lib/api/credits'
+import { catalogName, isSubscriptionCode } from '@/constants/billing'
+import { formatThb } from '@/lib/money'
+import { formatDate } from '@/lib/date'
+import '@/styles/pages/pricing.css'
 
 function OrderRow({
   order,

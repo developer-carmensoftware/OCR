@@ -10,9 +10,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { AuthProvider, useAuth, type AuthUser } from './AuthContext'
-import { appKey, setActiveTenant } from '../lib/storage'
+import { appKey, setActiveTenant } from '@/lib/storage'
 
-vi.mock('../lib/api/auth', () => ({ revokeSession: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/lib/api/auth', () => ({ revokeSession: vi.fn().mockResolvedValue(undefined) }))
 
 const A: AuthUser = {
   carmen_user_id: 'u-a',

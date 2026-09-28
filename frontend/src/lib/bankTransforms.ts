@@ -1,6 +1,6 @@
-import { BANK_SOURCE_MAP, OCR_BANK_MAP, BANK_INFO } from '../constants/banks'
-import type { BankCode, BankDisplayName } from '../types/api'
-import type { BankInfo } from '../constants/banks'
+import { BANK_SOURCE_MAP, OCR_BANK_MAP, BANK_INFO } from '@/constants/banks'
+import type { BankCode, BankDisplayName } from '@/types/api'
+import type { BankInfo } from '@/constants/banks'
 
 export interface NormalizedConfig {
   isApi: boolean

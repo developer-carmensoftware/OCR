@@ -1,5 +1,5 @@
 import { CheckCheck, Sparkles, RefreshCw, Loader2 } from 'lucide-react'
-import { useT } from '../../i18n/LanguageContext'
+import { useT } from '@/i18n/LanguageContext'
 
 interface Props {
   onSuggest: () => void

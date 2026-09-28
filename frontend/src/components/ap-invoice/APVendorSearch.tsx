@@ -1,9 +1,9 @@
 import { User, CheckCircle2, AlertTriangle, Plus, RotateCw, Search, Info } from 'lucide-react'
-import Badge from '../common/Badge'
-import Tooltip from '../common/Tooltip'
-import { getCarmenUrl } from '../../lib/url'
-import { useT } from '../../i18n/LanguageContext'
-import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
+import Badge from '@/components/common/Badge'
+import Tooltip from '@/components/common/Tooltip'
+import { getCarmenUrl } from '@/lib/url'
+import { useT } from '@/i18n/LanguageContext'
+import type { Vendor } from '@/hooks/ap-invoice/useAPVendor'
 import type React from 'react'
 
 interface Props {

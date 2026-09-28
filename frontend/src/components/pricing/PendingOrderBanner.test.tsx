@@ -1,19 +1,19 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { LanguageProvider } from '../../i18n/LanguageContext'
+import { LanguageProvider } from '@/i18n/LanguageContext'
 import PendingOrderBanner from './PendingOrderBanner'
-import type { CreditOrder } from '../../lib/api/credits'
-import type { ActiveSubscription } from '../../lib/api/auth'
+import type { CreditOrder } from '@/lib/api/credits'
+import type { ActiveSubscription } from '@/lib/api/auth'
 
-vi.mock('../../lib/api/credits', () => ({
+vi.mock('@/lib/api/credits', () => ({
   uploadSlip: vi.fn().mockResolvedValue(undefined),
   cancelOrder: vi.fn().mockResolvedValue(undefined),
   getOrderDocuments: vi.fn().mockResolvedValue([]),
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { uploadSlip } from '../../lib/api/credits'
+import { uploadSlip } from '@/lib/api/credits'
 
 beforeAll(() => {
   if (!window.matchMedia) {

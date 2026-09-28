@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import DataTable, { type Column } from '../../components/admin/DataTable'
-import PeriodPicker, { granularityFor, today } from '../../components/admin/PeriodPicker'
-import MetricChart from '../../components/admin/MetricChart'
-import TenantSelector from '../../components/admin/TenantSelector'
-import { fetchUsageSummary } from '../../lib/api/adminClient'
-import { useT } from '../../i18n/LanguageContext'
+import DataTable, { type Column } from '@/components/admin/DataTable'
+import PeriodPicker, { granularityFor, today } from '@/components/admin/PeriodPicker'
+import MetricChart from '@/components/admin/MetricChart'
+import TenantSelector from '@/components/admin/TenantSelector'
+import { fetchUsageSummary } from '@/lib/api/adminClient'
+import { useT } from '@/i18n/LanguageContext'
 
 interface UsageRow {
   date: string

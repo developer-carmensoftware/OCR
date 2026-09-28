@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { m, AnimatePresence, useAnimationControls, useReducedMotion } from 'framer-motion'
 import { CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Eye, EyeOff } from 'lucide-react'
-import { useT } from '../../i18n/LanguageContext'
-import { useScrollLock } from '../../hooks/useScrollLock'
+import { useT } from '@/i18n/LanguageContext'
+import { useScrollLock } from '@/hooks/useScrollLock'
 
 type ModalType = 'info' | 'success' | 'warning' | 'error' | 'loading'
 

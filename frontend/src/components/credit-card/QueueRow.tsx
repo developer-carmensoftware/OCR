@@ -1,10 +1,10 @@
 import { ExternalLink } from 'lucide-react'
-import { useT } from '../../i18n/LanguageContext'
-import { glFieldLabel, glFieldList } from '../../lib/glFieldLabels'
-import { FIX, fixLinkProps, stopText } from '../../lib/reviewReasons'
-import { getCarmenUrl } from '../../lib/url'
-import type { ReviewDocument } from '../../lib/api/emailReview'
-import type { TKey } from '../../i18n/dict'
+import { useT } from '@/i18n/LanguageContext'
+import { glFieldLabel, glFieldList } from '@/lib/glFieldLabels'
+import { FIX, fixLinkProps, stopText } from '@/lib/reviewReasons'
+import { getCarmenUrl } from '@/lib/url'
+import type { ReviewDocument } from '@/lib/api/emailReview'
+import type { TKey } from '@/i18n/dict'
 
 /**
  * The reason line, in priority order. One phrase, never a list.

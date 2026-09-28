@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import DataTable, { type Column } from '../../components/admin/DataTable'
-import MetricChart from '../../components/admin/MetricChart'
-import TenantSelector from '../../components/admin/TenantSelector'
-import PeriodPicker, { lastDays, periodHours } from '../../components/admin/PeriodPicker'
-import { fetchErrorBreakdown } from '../../lib/api/adminClient'
-import { useT } from '../../i18n/LanguageContext'
+import DataTable, { type Column } from '@/components/admin/DataTable'
+import MetricChart from '@/components/admin/MetricChart'
+import TenantSelector from '@/components/admin/TenantSelector'
+import PeriodPicker, { lastDays, periodHours } from '@/components/admin/PeriodPicker'
+import { fetchErrorBreakdown } from '@/lib/api/adminClient'
+import { useT } from '@/i18n/LanguageContext'
 
 type GroupBy = 'module' | 'tenant' | 'endpoint'
 

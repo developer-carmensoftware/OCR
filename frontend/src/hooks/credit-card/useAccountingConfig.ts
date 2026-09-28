@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
-import { getAccountingConfig } from '../../lib/api/config'
-import { appKey, readAccountingConfig, type AccountingConfig } from '../../lib/storage'
-import type { FieldMapping } from '../../types/api'
+import { getAccountingConfig } from '@/lib/api/config'
+import { appKey, readAccountingConfig, type AccountingConfig } from '@/lib/storage'
+import type { FieldMapping } from '@/types/api'
 
 // Shape and storage key live together in lib/storage; re-exported because several
 // credit-card modules already import the type from here.

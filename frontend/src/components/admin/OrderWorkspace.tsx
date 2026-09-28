@@ -1,12 +1,12 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, Check, Coins, Copy } from 'lucide-react'
-import ProformaDocument from '../pricing/ProformaDocument'
+import ProformaDocument from '@/components/pricing/ProformaDocument'
 import DataTable, { type Column } from './DataTable'
-import { STAGE_KEY, STAGE_TONE, timeAgo } from '../../lib/orderHelpers'
+import { STAGE_KEY, STAGE_TONE, timeAgo } from '@/lib/orderHelpers'
 import { SlipViewer } from './SlipViewer'
 import { OrderActions, fmtDateTime } from './OrderActions'
-import { useOrderActions } from '../../hooks/admin'
+import { useOrderActions } from '@/hooks/admin'
 import {
   fetchAdminOrderDocuments,
   fetchCreditBalance,
@@ -16,10 +16,10 @@ import {
   listCreditOrders,
   type AdminCreditOrder,
   type CreditLedgerEntry,
-} from '../../lib/api/adminClient'
-import type { BillingDocument, PaymentInfo } from '../../lib/api/credits'
-import { formatThb, whtDeduction } from '../../lib/money'
-import { useT } from '../../i18n/LanguageContext'
+} from '@/lib/api/adminClient'
+import type { BillingDocument, PaymentInfo } from '@/lib/api/credits'
+import { formatThb, whtDeduction } from '@/lib/money'
+import { useT } from '@/i18n/LanguageContext'
 
 function num(v: string | number | null): number {
   return typeof v === 'string' ? Number(v) : (v ?? 0)

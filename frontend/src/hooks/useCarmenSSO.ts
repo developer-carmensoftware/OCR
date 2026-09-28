@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { useAuth } from '../contexts/AuthContext'
-import { exchangeSSOToken } from '../lib/api/auth'
-import { CARMEN_RAW_TOKEN_KEY } from '../lib/api/client'
+import { useAuth } from '@/contexts/AuthContext'
+import { exchangeSSOToken } from '@/lib/api/auth'
+import { CARMEN_RAW_TOKEN_KEY } from '@/lib/api/client'
 
 export interface CarmenSSOState {
   exchanging: boolean

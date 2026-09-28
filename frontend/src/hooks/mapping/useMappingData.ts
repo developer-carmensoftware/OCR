@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { fetchAccountCodes, fetchDepartments, fetchGLPrefixes } from '../../lib/api/carmen'
-import { parseDefaultAccount } from '../../lib/deptAccounts'
+import { fetchAccountCodes, fetchDepartments, fetchGLPrefixes } from '@/lib/api/carmen'
+import { parseDefaultAccount } from '@/lib/deptAccounts'
 
 export interface MasterAccount {
   code: string

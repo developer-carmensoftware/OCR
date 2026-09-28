@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { LanguageProvider } from '../../i18n/LanguageContext'
+import { LanguageProvider } from '@/i18n/LanguageContext'
 import FeatureFlows from './FeatureFlows'
 
 describe('FeatureFlows accordion', () => {

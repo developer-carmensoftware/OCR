@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react'
 import { Loader2, AlertTriangle, Shield, Circle, Clock } from 'lucide-react'
-import { useAuth, EXPIRED_FLAG_KEY } from '../../contexts/AuthContext'
-import { useCarmenSSO } from '../../hooks/useCarmenSSO'
-import { getCarmenUrl } from '../../lib/url'
-import logo from '../../assets/logo.png'
-import '../../styles/components/auth-screen.css'
+import { useAuth, EXPIRED_FLAG_KEY } from '@/contexts/AuthContext'
+import { useCarmenSSO } from '@/hooks/useCarmenSSO'
+import { getCarmenUrl } from '@/lib/url'
+import logo from '@/assets/logo.png'
+import '@/styles/components/auth-screen.css'
 
 const DEV_BYPASS = import.meta.env.VITE_DEV_AUTH_BYPASS === 'true'
 

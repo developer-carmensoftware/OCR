@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import DataTable, { type Column } from '../../components/admin/DataTable'
-import PeriodPicker, { lastDays, periodHours } from '../../components/admin/PeriodPicker'
-import { fetchTenantRanking } from '../../lib/api/adminClient'
-import { useT } from '../../i18n/LanguageContext'
+import DataTable, { type Column } from '@/components/admin/DataTable'
+import PeriodPicker, { lastDays, periodHours } from '@/components/admin/PeriodPicker'
+import { fetchTenantRanking } from '@/lib/api/adminClient'
+import { useT } from '@/i18n/LanguageContext'
 
 type Metric = 'cost' | 'error_rate' | 'latency' | 'volume'
 

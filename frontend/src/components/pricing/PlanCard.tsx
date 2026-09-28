@@ -8,10 +8,10 @@ import {
   Building2,
   type LucideIcon,
 } from 'lucide-react'
-import { formatThb } from '../../lib/money'
-import { ENTERPRISE, perDoc, type PackPresentation } from '../../constants/billing'
-import { useT } from '../../i18n/LanguageContext'
-import type { BillingPeriod, CreditPack } from '../../lib/api/credits'
+import { formatThb } from '@/lib/money'
+import { ENTERPRISE, perDoc, type PackPresentation } from '@/constants/billing'
+import { useT } from '@/i18n/LanguageContext'
+import type { BillingPeriod, CreditPack } from '@/lib/api/credits'
 
 interface PlanCardProps {
   pack: CreditPack

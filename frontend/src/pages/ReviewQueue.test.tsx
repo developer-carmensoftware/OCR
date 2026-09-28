@@ -1,13 +1,13 @@
 import type React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { LanguageProvider } from '../i18n/LanguageContext'
+import { LanguageProvider } from '@/i18n/LanguageContext'
 import ReviewQueue from './ReviewQueue'
-import type { ReviewDocument } from '../lib/api/emailReview'
+import type { ReviewDocument } from '@/lib/api/emailReview'
 
-vi.mock('../lib/api/emailReview', async importOriginal => ({
+vi.mock('@/lib/api/emailReview', async importOriginal => ({
   // ACTIVITY_FILTERS is data the page iterates, not a call to stub.
-  ...(await importOriginal<typeof import('../lib/api/emailReview')>()),
+  ...(await importOriginal<typeof import('@/lib/api/emailReview')>()),
   listActivity: vi.fn(),
   // Unstubbed this reaches apiFetch in jsdom. The hook fires it whenever the chip on
   // screen is holding something nobody has looked at.
@@ -15,12 +15,12 @@ vi.mock('../lib/api/emailReview', async importOriginal => ({
 }))
 // The chrome needs AuthProvider and pulls credits over the network. Neither has anything
 // to do with which of its states this page picks, which is what these tests are about.
-vi.mock('../components/common/UsageIndicator', () => ({ default: () => null }))
-vi.mock('../components/common/AppHeader', () => ({
+vi.mock('@/components/common/UsageIndicator', () => ({ default: () => null }))
+vi.mock('@/components/common/AppHeader', () => ({
   default: ({ children }: { children?: React.ReactNode }) => <header>{children}</header>,
 }))
 
-const api = await import('../lib/api/emailReview')
+const api = await import('@/lib/api/emailReview')
 
 function doc(over: Partial<ReviewDocument> = {}): ReviewDocument {
   return {

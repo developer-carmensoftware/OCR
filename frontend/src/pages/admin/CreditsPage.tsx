@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Coins } from 'lucide-react'
-import DataTable, { type Column } from '../../components/admin/DataTable'
-import TenantSelector from '../../components/admin/TenantSelector'
-import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
-import { useTableQuery } from '../../hooks/admin/useTableQuery'
+import DataTable, { type Column } from '@/components/admin/DataTable'
+import TenantSelector from '@/components/admin/TenantSelector'
+import PeriodPicker, { daysAgo, endOfDay, today } from '@/components/admin/PeriodPicker'
+import { useTableQuery } from '@/hooks/admin/useTableQuery'
 import {
   adjustCredits,
   fetchCreditBalance,
   fetchCreditLedger,
   topupCredits,
   type CreditLedgerEntry,
-} from '../../lib/api/adminClient'
-import '../../styles/components/admin-credits.css'
-import { useT } from '../../i18n/LanguageContext'
+} from '@/lib/api/adminClient'
+import '@/styles/components/admin-credits.css'
+import { useT } from '@/i18n/LanguageContext'
 
 // Mirrors the active top-up credit_packs catalog (see migration 219).
 function getPacks(t: ReturnType<typeof useT>['t']) {

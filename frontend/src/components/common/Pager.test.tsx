@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 
-vi.mock('../../i18n/LanguageContext', () => ({
+vi.mock('@/i18n/LanguageContext', () => ({
   useT: () => ({ t: (k: string) => k }),
 }))
 

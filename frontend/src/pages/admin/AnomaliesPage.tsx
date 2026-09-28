@@ -1,12 +1,12 @@
 import { toast } from 'sonner'
-import TenantSelector from '../../components/admin/TenantSelector'
-import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
-import Pager from '../../components/common/Pager'
-import { fetchAlerts, resolveAlert } from '../../lib/api/adminClient'
-import { useTableQuery } from '../../hooks/admin/useTableQuery'
-import { useTableData } from '../../hooks/admin/useTableData'
-import { useT } from '../../i18n/LanguageContext'
-import { fmtDateTime } from '../../lib/date'
+import TenantSelector from '@/components/admin/TenantSelector'
+import PeriodPicker, { daysAgo, endOfDay, today } from '@/components/admin/PeriodPicker'
+import Pager from '@/components/common/Pager'
+import { fetchAlerts, resolveAlert } from '@/lib/api/adminClient'
+import { useTableQuery } from '@/hooks/admin/useTableQuery'
+import { useTableData } from '@/hooks/admin/useTableData'
+import { useT } from '@/i18n/LanguageContext'
+import { fmtDateTime } from '@/lib/date'
 
 interface Alert {
   id: number

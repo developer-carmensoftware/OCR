@@ -1,7 +1,7 @@
 import { IdCard } from 'lucide-react'
-import { HEADER_LABELS } from '../../constants'
-import DateInput from '../common/DateInput'
-import { useT } from '../../i18n/LanguageContext'
+import { HEADER_LABELS } from '@/constants'
+import DateInput from '@/components/common/DateInput'
+import { useT } from '@/i18n/LanguageContext'
 
 interface Props {
   headerData: Record<string, string>

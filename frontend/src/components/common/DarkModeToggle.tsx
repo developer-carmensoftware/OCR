@@ -1,6 +1,6 @@
 import { Moon, Sun } from 'lucide-react'
-import { useDarkMode } from '../../hooks/useDarkMode'
-import { useT } from '../../i18n/LanguageContext'
+import { useDarkMode } from '@/hooks/useDarkMode'
+import { useT } from '@/i18n/LanguageContext'
 
 /** Square icon button that flips the app between light and dark themes.
  *

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { listOrders, OPEN_ORDER_STATUSES, type CreditOrder } from '../../lib/api/credits'
-import { useT } from '../../i18n/LanguageContext'
+import { listOrders, OPEN_ORDER_STATUSES, type CreditOrder } from '@/lib/api/credits'
+import { useT } from '@/i18n/LanguageContext'
 
 interface OrderHistoryState {
   /** Every open order (in_progress/on_hold) — never paged; see below. */

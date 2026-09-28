@@ -3,7 +3,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 
 // Fixed content: the real file changes with every user-visible release, and this
 // test is about the merge/seen logic, not about what shipped on any given day.
-vi.mock('../../content/releaseNotes', () => ({
+vi.mock('@/content/releaseNotes', () => ({
   RELEASE_NOTES: [
     { date: '2026-07-20', en: { title: 'New', items: ['a'] }, th: { title: 'ใหม่', items: ['ก'] } },
     { date: '2026-07-10', en: { title: 'Old', items: ['b'] }, th: { title: 'เก่า', items: ['ข'] } },
@@ -11,19 +11,19 @@ vi.mock('../../content/releaseNotes', () => ({
   LATEST_RELEASE: '2026-07-20',
 }))
 
-vi.mock('../../contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ isAuthenticated: true }),
 }))
 
 const listNotifications = vi.fn()
 const markNotificationsRead = vi.fn()
-vi.mock('../../lib/api/notifications', () => ({
+vi.mock('@/lib/api/notifications', () => ({
   listNotifications: (...a: unknown[]) => listNotifications(...a),
   markNotificationsRead: (...a: unknown[]) => markNotificationsRead(...a),
 }))
 
 const { useNotifications } = await import('./useNotifications')
-const { markReleaseSeen } = await import('../../lib/releaseNotesSeen')
+const { markReleaseSeen } = await import('@/lib/releaseNotesSeen')
 
 const SERVER_ROW = {
   id: 'uuid-1',

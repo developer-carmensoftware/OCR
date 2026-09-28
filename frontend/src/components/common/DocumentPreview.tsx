@@ -10,7 +10,7 @@ import {
   FileImage,
   File,
 } from 'lucide-react'
-import { useT } from '../../i18n/LanguageContext'
+import { useT } from '@/i18n/LanguageContext'
 
 interface SelectedPageThumb {
   thumb: string

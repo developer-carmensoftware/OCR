@@ -6,7 +6,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 // in the table on each sort click. The slot is now always present and sized in CSS;
 // what a refactor would quietly break is the empty span, so it gets pinned here.
 
-vi.mock('../../i18n/LanguageContext', () => ({
+vi.mock('@/i18n/LanguageContext', () => ({
   useT: () => ({ t: (k: string) => k }),
 }))
 

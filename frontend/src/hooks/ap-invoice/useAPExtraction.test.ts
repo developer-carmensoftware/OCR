@@ -2,22 +2,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useAPExtraction } from './useAPExtraction'
 
-vi.mock('../../lib/api/client', () => ({
+vi.mock('@/lib/api/client', () => ({
   apiFetch: vi.fn(),
   // Real fetchTimeout returns { signal, clear }; the hook destructures both on
   // every runOCR call, so the mock must too or it throws before apiFetch runs.
   fetchTimeout: vi.fn(() => ({ signal: new AbortController().signal, clear: vi.fn() })),
   getStoredToken: vi.fn(() => 'test-token'),
 }))
-vi.mock('../../lib/api/config', () => ({ getAPVendorMapping: vi.fn() }))
-vi.mock('../../lib/api/auth', () => ({ getUsage: vi.fn() }))
+vi.mock('@/lib/api/config', () => ({ getAPVendorMapping: vi.fn() }))
+vi.mock('@/lib/api/auth', () => ({ getUsage: vi.fn() }))
 // Only getPdfInfo is stubbed — PDF_PASSWORD_REQUIRED and the rest stay real so the
 // error-code branches keep testing the real marker.
-vi.mock('../../lib/api/ocr', async importOriginal => ({
-  ...(await importOriginal<typeof import('../../lib/api/ocr')>()),
+vi.mock('@/lib/api/ocr', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/lib/api/ocr')>()),
   getPdfInfo: vi.fn(),
 }))
-vi.mock('../../lib/toast', () => ({
+vi.mock('@/lib/toast', () => ({
   showToast: vi.fn(),
   toast: {
     success: vi.fn(),
@@ -29,11 +29,11 @@ vi.mock('../../lib/toast', () => ({
     loading: vi.fn(() => 'toast-id'),
   },
 }))
-vi.mock('../../lib/format', () => ({
+vi.mock('@/lib/format', () => ({
   fmt: vi.fn((v: unknown) => (v !== undefined && v !== '' ? String(v) : '')),
   parseNum: vi.fn((v: unknown) => parseFloat(String(v).replace(/,/g, '')) || 0),
 }))
-vi.mock('../../constants/apInvoice', () => ({
+vi.mock('@/constants/apInvoice', () => ({
   EMPTY_HEADER: {
     vendorName: '',
     vendorTaxId: '',
@@ -50,12 +50,12 @@ vi.mock('../../constants/apInvoice', () => ({
   DEFAULT_MAPPINGS: {},
 }))
 
-import { apiFetch as realApiFetch } from '../../lib/api/client'
-import { getAPVendorMapping as realGetAPVendorMapping } from '../../lib/api/config'
-import { getUsage as realGetUsage } from '../../lib/api/auth'
-import { getPdfInfo as realGetPdfInfo } from '../../lib/api/ocr'
-import { toast } from '../../lib/toast'
-import { appKey } from '../../lib/storage'
+import { apiFetch as realApiFetch } from '@/lib/api/client'
+import { getAPVendorMapping as realGetAPVendorMapping } from '@/lib/api/config'
+import { getUsage as realGetUsage } from '@/lib/api/auth'
+import { getPdfInfo as realGetPdfInfo } from '@/lib/api/ocr'
+import { toast } from '@/lib/toast'
+import { appKey } from '@/lib/storage'
 
 const apiFetch = vi.mocked(realApiFetch)
 const getAPVendorMapping = vi.mocked(realGetAPVendorMapping)

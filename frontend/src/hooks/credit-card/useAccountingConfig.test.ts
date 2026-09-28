@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { useAccountingConfig } from './useAccountingConfig'
 
-vi.mock('../../lib/api/config', () => ({ getAccountingConfig: vi.fn() }))
+vi.mock('@/lib/api/config', () => ({ getAccountingConfig: vi.fn() }))
 
-import { getAccountingConfig as realGetAccountingConfig } from '../../lib/api/config'
-import { appKey } from '../../lib/storage'
+import { getAccountingConfig as realGetAccountingConfig } from '@/lib/api/config'
+import { appKey } from '@/lib/storage'
 
 const getAccountingConfig = vi.mocked(realGetAccountingConfig)
 

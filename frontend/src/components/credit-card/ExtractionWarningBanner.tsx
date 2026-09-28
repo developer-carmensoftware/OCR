@@ -1,6 +1,6 @@
 import { TriangleAlert } from 'lucide-react'
-import { useT } from '../../i18n/LanguageContext'
-import { warningText, type ExtractionWarning } from '../../lib/reviewReasons'
+import { useT } from '@/i18n/LanguageContext'
+import { warningText, type ExtractionWarning } from '@/lib/reviewReasons'
 
 interface Props {
   /** Strings are what documents extracted before the codes existed still carry. */

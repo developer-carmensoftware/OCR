@@ -1,4 +1,4 @@
-import type { BankCode, BankDisplayName } from '../types/api'
+import type { BankCode, BankDisplayName } from '@/types/api'
 
 export interface BankInfo {
   name: string

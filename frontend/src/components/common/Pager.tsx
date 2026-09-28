@@ -1,8 +1,8 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useT } from '../../i18n/LanguageContext'
+import { useT } from '@/i18n/LanguageContext'
 import InlineSelect from './InlineSelect'
-import { ROWS_PER_PAGE } from '../../hooks/useRowsPerPage'
-import '../../styles/components/pager.css'
+import { ROWS_PER_PAGE } from '@/hooks/useRowsPerPage'
+import '@/styles/components/pager.css'
 
 /** A constant, so it is built once rather than on every render of every table's pager. */
 const SIZE_OPTIONS = ROWS_PER_PAGE.map(n => ({ value: String(n), label: String(n) }))

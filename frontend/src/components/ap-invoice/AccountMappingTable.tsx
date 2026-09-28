@@ -1,10 +1,10 @@
 import { Check, X, Database } from 'lucide-react'
-import { SkeletonRow } from '../common/Skeleton'
-import CustomSearchSelect from '../common/CustomSearchSelect'
-import AISuggestBar from '../common/AISuggestBar'
-import { useT } from '../../i18n/LanguageContext'
-import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
-import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
+import { SkeletonRow } from '@/components/common/Skeleton'
+import CustomSearchSelect from '@/components/common/CustomSearchSelect'
+import AISuggestBar from '@/components/common/AISuggestBar'
+import { useT } from '@/i18n/LanguageContext'
+import { allowedAccountsForDept, isAccountAllowed } from '@/lib/deptAccounts'
+import type { APLineItem } from '@/hooks/ap-invoice/useAPExtraction'
 
 interface GLAccount {
   code: string

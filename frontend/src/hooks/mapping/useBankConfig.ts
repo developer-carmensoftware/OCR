@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react'
-import { getAccountingConfig } from '../../lib/api/config'
+import { getAccountingConfig } from '@/lib/api/config'
 import {
   detectBankFromCompanyName,
   BANK_INFO,
   BANK_CODE_MAP,
   BANK_SOURCE_MAP,
-} from '../../constants/banks'
-import { normalizeConfigShape, codeToDisplayName } from '../../lib/bankTransforms'
-import { appKey, readAccountingConfig } from '../../lib/storage'
-import type { BankDisplayName, FieldMapping } from '../../types/api'
-import type { CompanyData } from '../../lib/bankTransforms'
+} from '@/constants/banks'
+import { normalizeConfigShape, codeToDisplayName } from '@/lib/bankTransforms'
+import { appKey, readAccountingConfig } from '@/lib/storage'
+import type { BankDisplayName, FieldMapping } from '@/types/api'
+import type { CompanyData } from '@/lib/bankTransforms'
 
 export interface BankConfigHook {
   bank: BankDisplayName | ''

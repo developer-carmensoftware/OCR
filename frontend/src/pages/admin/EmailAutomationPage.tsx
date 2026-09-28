@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { CheckCheck, ChevronDown, ChevronRight, Inbox, Loader2, Mailbox, Timer } from 'lucide-react'
 import { toast } from 'sonner'
-import DataTable, { type Column } from '../../components/admin/DataTable'
-import KPICard from '../../components/admin/KPICard'
-import TenantSelector from '../../components/admin/TenantSelector'
-import PeriodPicker, { daysAgo } from '../../components/admin/PeriodPicker'
-import PageHeader from '../../components/admin/ui/PageHeader'
-import Tabs from '../../components/admin/ui/Tabs'
-import Badge from '../../components/common/Badge'
-import EmptyState from '../../components/admin/ui/EmptyState'
+import DataTable, { type Column } from '@/components/admin/DataTable'
+import KPICard from '@/components/admin/KPICard'
+import TenantSelector from '@/components/admin/TenantSelector'
+import PeriodPicker, { daysAgo } from '@/components/admin/PeriodPicker'
+import PageHeader from '@/components/admin/ui/PageHeader'
+import Tabs from '@/components/admin/ui/Tabs'
+import Badge from '@/components/common/Badge'
+import EmptyState from '@/components/admin/ui/EmptyState'
 import {
   fetchEmailBusinessUnits,
   fetchEmailDocuments,
@@ -19,10 +19,10 @@ import {
   type EmailDocumentRow,
   type EmailIngestHealth,
   type EmailPollResult,
-} from '../../lib/api/adminClient'
-import { useT } from '../../i18n/LanguageContext'
-import type { TKey } from '../../i18n/dict'
-import { fmtDateTime } from '../../lib/date'
+} from '@/lib/api/adminClient'
+import { useT } from '@/i18n/LanguageContext'
+import type { TKey } from '@/i18n/dict'
+import { fmtDateTime } from '@/lib/date'
 
 /**
  * What happened to the mail a customer forwarded.

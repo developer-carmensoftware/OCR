@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
-import { SpotProvider } from '../../tutorial/Spot'
-import { spotTarget } from '../../tutorial/useCamera'
+import { SpotProvider } from '@/components/tutorial/Spot'
+import { spotTarget } from '@/components/tutorial/useCamera'
 import { PURCHASE_FIGURES } from './screens'
-import { PURCHASE_TUTORIAL } from '../../../content/tutorials/purchase'
+import { PURCHASE_TUTORIAL } from '@/content/tutorials/purchase'
 
 const FOCUS_STEPS = PURCHASE_TUTORIAL.map((s, i) => ({ ...s, n: i + 1 })).filter(s => s.spot)
 

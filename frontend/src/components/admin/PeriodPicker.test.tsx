@@ -18,7 +18,7 @@ import {
  * silently drops the day they asked for.
  */
 
-vi.mock('../../i18n/LanguageContext', () => ({
+vi.mock('@/i18n/LanguageContext', () => ({
   useT: () => ({ t: (k: string) => k }),
 }))
 

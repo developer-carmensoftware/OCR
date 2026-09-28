@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import { toast } from 'sonner'
-import { fetchTenants } from '../../lib/api/adminClient'
-import { useT } from '../../i18n/LanguageContext'
+import { fetchTenants } from '@/lib/api/adminClient'
+import { useT } from '@/i18n/LanguageContext'
 
 interface Tenant {
   id: string

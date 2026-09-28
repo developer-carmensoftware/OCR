@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { LanguageProvider } from '../i18n/LanguageContext'
+import { LanguageProvider } from '@/i18n/LanguageContext'
 
 // Fixed content: the real file changes with every user-visible release, and this
 // is about the page behaviour, not about what shipped on a given day.
-vi.mock('../content/releaseNotes', () => ({
+vi.mock('@/content/releaseNotes', () => ({
   RELEASE_NOTES: [
     {
       date: '2026-07-20',
@@ -33,12 +33,12 @@ vi.mock('../content/releaseNotes', () => ({
   LATEST_RELEASE: '2026-07-20',
 }))
 
-vi.mock('../contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ isAuthenticated: false }),
 }))
 
 const { default: WhatsNew } = await import('./WhatsNew')
-const { readReleaseSeen } = await import('../lib/releaseNotesSeen')
+const { readReleaseSeen } = await import('@/lib/releaseNotesSeen')
 
 beforeEach(() => {
   localStorage.clear()

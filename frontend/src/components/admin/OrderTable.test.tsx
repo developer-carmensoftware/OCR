@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import type { AdminCreditOrder } from '../../lib/api/adminClient'
+import type { AdminCreditOrder } from '@/lib/api/adminClient'
 
-vi.mock('../../i18n/LanguageContext', () => ({
+vi.mock('@/i18n/LanguageContext', () => ({
   useT: () => ({
     t: (k: string, vars?: Record<string, unknown>) => (vars ? `${k}:${JSON.stringify(vars)}` : k),
     lang: 'en',

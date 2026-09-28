@@ -1,9 +1,9 @@
 import React, { useRef, useState } from 'react'
 import { UploadCloud, Loader2, FileCheck2, X, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
-import CustomModal from '../common/CustomModal'
-import { useT } from '../../i18n/LanguageContext'
-import { MAX_FILE_SIZE_MB } from '../../lib/fileValidation'
+import CustomModal from '@/components/common/CustomModal'
+import { useT } from '@/i18n/LanguageContext'
+import { MAX_FILE_SIZE_MB } from '@/lib/fileValidation'
 
 const ACCEPTED = ['image/jpeg', 'image/png', 'application/pdf']
 const MAX_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024

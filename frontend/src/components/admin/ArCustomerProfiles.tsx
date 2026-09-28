@@ -1,13 +1,13 @@
 import { useEffect, useCallback, useReducer } from 'react'
 import { toast } from 'sonner'
 import { Check, Pencil, RefreshCw, Search, X } from 'lucide-react'
-import { useT } from '../../i18n/LanguageContext'
+import { useT } from '@/i18n/LanguageContext'
 import {
   listArProfiles,
   syncArProfiles,
   updateArProfile,
   type ArCustomerProfile,
-} from '../../lib/api/adminClient'
+} from '@/lib/api/adminClient'
 
 interface ArCustomerProfilesState {
   profiles: ArCustomerProfile[]

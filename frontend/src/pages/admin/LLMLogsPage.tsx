@@ -1,11 +1,11 @@
-import DataTable, { type Column } from '../../components/admin/DataTable'
-import TenantSelector from '../../components/admin/TenantSelector'
-import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
-import { fetchLLMLogs } from '../../lib/api/adminClient'
-import { useTableQuery } from '../../hooks/admin/useTableQuery'
-import { useTableData } from '../../hooks/admin/useTableData'
-import { useT } from '../../i18n/LanguageContext'
-import { fmtDateTime } from '../../lib/date'
+import DataTable, { type Column } from '@/components/admin/DataTable'
+import TenantSelector from '@/components/admin/TenantSelector'
+import PeriodPicker, { daysAgo, endOfDay, today } from '@/components/admin/PeriodPicker'
+import { fetchLLMLogs } from '@/lib/api/adminClient'
+import { useTableQuery } from '@/hooks/admin/useTableQuery'
+import { useTableData } from '@/hooks/admin/useTableData'
+import { useT } from '@/i18n/LanguageContext'
+import { fmtDateTime } from '@/lib/date'
 
 interface LogRow {
   id: string

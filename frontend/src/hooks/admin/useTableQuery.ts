@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ServerTable, SortDir } from '../../components/admin/DataTable'
-import { readRowsPerPage, writeRowsPerPage } from '../useRowsPerPage'
+import type { ServerTable, SortDir } from '@/components/admin/DataTable'
+import { readRowsPerPage, writeRowsPerPage } from '@/hooks/useRowsPerPage'
 
 /**
  * Filters, sort, and page for one admin table — held in the URL rather than in

@@ -12,12 +12,7 @@
  * and bank details are Carmen's own and are printed on every real proforma.
  */
 
-import type {
-  BillingDocument,
-  CreditOrder,
-  CreditPack,
-  PaymentInfo,
-} from '../../../lib/api/credits'
+import type { BillingDocument, CreditOrder, CreditPack, PaymentInfo } from '@/lib/api/credits'
 
 export const DEMO_PLANS: CreditPack[] = [
   {

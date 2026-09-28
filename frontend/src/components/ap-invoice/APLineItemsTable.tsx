@@ -1,15 +1,15 @@
 import { useMemo, useState } from 'react'
 import { LayoutList } from 'lucide-react'
-import { useT } from '../../i18n/LanguageContext'
-import Card from '../common/Card'
+import { useT } from '@/i18n/LanguageContext'
+import Card from '@/components/common/Card'
 import APGroupModal from './APGroupModal'
 import APTableHeader from './APTableHeader'
 import APTableRow from './APTableRow'
 import APTableFooter from './APTableFooter'
 import type { TaxTypeValue } from './TaxTypeDropdown'
-import type { APColumnKey } from '../../constants/apInvoice'
-import type { TaxProfileItem } from '../../lib/api/carmen'
-import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
+import type { APColumnKey } from '@/constants/apInvoice'
+import type { TaxProfileItem } from '@/lib/api/carmen'
+import type { APLineItem } from '@/hooks/ap-invoice/useAPExtraction'
 
 interface Props {
   lineItems: Array<Record<string, string | undefined>>

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { LanguageProvider } from '../../i18n/LanguageContext'
+import { LanguageProvider } from '@/i18n/LanguageContext'
 import SlipUpload from './SlipUpload'
 
 // framer-motion's useReducedMotion reads window.matchMedia, which jsdom lacks.

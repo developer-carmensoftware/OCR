@@ -7,12 +7,12 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
  * native <datalist> type-ahead over 500.
  */
 
-vi.mock('../../i18n/LanguageContext', () => ({
+vi.mock('@/i18n/LanguageContext', () => ({
   useT: () => ({ t: (k: string) => k }),
 }))
 
 const fetchTenants = vi.fn()
-vi.mock('../../lib/api/adminClient', () => ({
+vi.mock('@/lib/api/adminClient', () => ({
   fetchTenants: (...a: unknown[]) => fetchTenants(...a),
 }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))

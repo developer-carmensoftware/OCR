@@ -9,7 +9,7 @@ import {
   type CreateOrderResponse,
   type CreditPack,
   type QrPayload,
-} from '../../lib/api/credits'
+} from '@/lib/api/credits'
 
 export type CheckoutPhase = 'buyer' | 'pay' | 'done'
 

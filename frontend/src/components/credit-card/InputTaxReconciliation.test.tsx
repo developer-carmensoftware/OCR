@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import InputTaxReconciliation from './InputTaxReconciliation'
-import { submitInputTax, fetchTaxProfiles } from '../../lib/api/carmen'
-import { getAccountingConfig } from '../../lib/api/config'
-import type { BankCode } from '../../types/api'
+import { submitInputTax, fetchTaxProfiles } from '@/lib/api/carmen'
+import { getAccountingConfig } from '@/lib/api/config'
+import type { BankCode } from '@/types/api'
 
-vi.mock('../../lib/api/carmen', () => ({
+vi.mock('@/lib/api/carmen', () => ({
   submitInputTax: vi.fn(),
   fetchTaxProfiles: vi.fn(),
 }))
-vi.mock('../../lib/api/config', () => ({ getAccountingConfig: vi.fn() }))
+vi.mock('@/lib/api/config', () => ({ getAccountingConfig: vi.fn() }))
 
 // framer-motion's useReducedMotion (inside CustomModal) reads window.matchMedia.
 beforeAll(() => {

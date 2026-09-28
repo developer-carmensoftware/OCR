@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { computeUsageStats } from '../../lib/usage'
-import type { UsageData } from '../../lib/api/auth'
+import { computeUsageStats } from '@/lib/usage'
+import type { UsageData } from '@/lib/api/auth'
 
 type Usage = UsageData['usage']
 

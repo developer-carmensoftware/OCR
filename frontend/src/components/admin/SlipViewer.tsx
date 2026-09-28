@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 
 import { ExternalLink, Maximize2, RotateCw, ZoomIn, ZoomOut } from 'lucide-react'
-import { useT } from '../../i18n/LanguageContext'
+import { useT } from '@/i18n/LanguageContext'
 
 function slipIsPdf(url: string): boolean {
   return /\.pdf$/i.test(url.split('?')[0])

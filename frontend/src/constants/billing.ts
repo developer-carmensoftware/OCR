@@ -10,7 +10,7 @@
  * do not add rendered strings here or they will be EN-only.
  */
 
-import type { TKey } from '../i18n/dict'
+import type { TKey } from '@/i18n/dict'
 
 export interface PackPresentation {
   /** Display name, e.g. 'Standard'. */

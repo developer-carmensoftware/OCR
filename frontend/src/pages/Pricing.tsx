@@ -1,31 +1,31 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
 import { X, MessageCircle, Phone, Mail, GraduationCap } from 'lucide-react'
-import AppHeader from '../components/common/AppHeader'
-import { useT } from '../i18n/LanguageContext'
-import { PlanCard, EnterpriseCard } from '../components/pricing/PlanCard'
-import PackList from '../components/pricing/PackList'
-import FeatureFlows from '../components/pricing/FeatureFlows'
-import CheckoutFlow from '../components/pricing/CheckoutFlow'
-import PendingOrderBanner from '../components/pricing/PendingOrderBanner'
+import AppHeader from '@/components/common/AppHeader'
+import { useT } from '@/i18n/LanguageContext'
+import { PlanCard, EnterpriseCard } from '@/components/pricing/PlanCard'
+import PackList from '@/components/pricing/PackList'
+import FeatureFlows from '@/components/pricing/FeatureFlows'
+import CheckoutFlow from '@/components/pricing/CheckoutFlow'
+import PendingOrderBanner from '@/components/pricing/PendingOrderBanner'
 import {
   usePricingCatalog,
   useOrderHistory,
   loadPersistedCheckout,
   clearPersistedCheckout,
   type CheckoutSession,
-} from '../hooks/credits'
-import { PLAN_META, SALES_CONTACT } from '../constants/billing'
+} from '@/hooks/credits'
+import { PLAN_META, SALES_CONTACT } from '@/constants/billing'
 import {
   getPaymentInfo,
   type BillingPeriod,
   type CreditPack,
   type PaymentInfo,
-} from '../lib/api/credits'
-import { getUsage, type ActiveSubscription } from '../lib/api/auth'
-import { getStoredToken } from '../lib/api/client'
-import { useEntrance } from '../lib/useEntrance'
-import '../styles/pages/pricing.css'
+} from '@/lib/api/credits'
+import { getUsage, type ActiveSubscription } from '@/lib/api/auth'
+import { getStoredToken } from '@/lib/api/client'
+import { useEntrance } from '@/lib/useEntrance'
+import '@/styles/pages/pricing.css'
 
 function ContactDialog({ onClose }: { onClose: () => void }) {
   const { t } = useT()
@@ -108,7 +108,7 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
 
 // Six mock screens of the whole purchase flow — a lot of markup for something
 // most visits never open. Loaded when the Tutorial button is pressed.
-const PurchaseTutorial = lazy(() => import('../components/pricing/tutorial/PurchaseTutorial'))
+const PurchaseTutorial = lazy(() => import('@/components/pricing/tutorial/PurchaseTutorial'))
 
 const containerVariants = {
   hidden: { opacity: 0 },

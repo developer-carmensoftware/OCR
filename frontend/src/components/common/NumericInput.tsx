@@ -1,5 +1,5 @@
 import type { InputHTMLAttributes } from 'react'
-import { sanitizeNumericInput } from '../../lib/numeric'
+import { sanitizeNumericInput } from '@/lib/numeric'
 
 interface NumericInputProps extends Omit<
   InputHTMLAttributes<HTMLInputElement>,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import CustomModal from '../../components/common/CustomModal'
-import SwapLabel from '../../components/common/SwapLabel'
+import CustomModal from '@/components/common/CustomModal'
+import SwapLabel from '@/components/common/SwapLabel'
 import {
   endMaintenanceNow,
   fetchMaintenance,
@@ -10,8 +10,8 @@ import {
   setTenantMaintenance,
   type MaintenanceStatus,
   type TenantRow,
-} from '../../lib/api/adminClient'
-import { useT } from '../../i18n/LanguageContext'
+} from '@/lib/api/adminClient'
+import { useT } from '@/i18n/LanguageContext'
 
 // Blocks every user — require typing this to arm it (guards against a fat-fingered click).
 const CONFIRM_WORD = 'MAINTENANCE'

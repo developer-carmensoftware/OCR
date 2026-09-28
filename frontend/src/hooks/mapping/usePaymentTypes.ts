@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
-import { appKey } from '../../lib/storage'
-import type { FieldMapping } from '../../types/api'
+import { appKey } from '@/lib/storage'
+import type { FieldMapping } from '@/types/api'
 
 export interface PaymentTypesHook {
   paymentAmount: Record<string, FieldMapping>

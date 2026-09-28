@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react'
-import { useAdminAuth } from '../../contexts/AdminAuthContext'
-import { adminLogin, AdminLoginError } from '../../lib/api/adminClient'
-import { useT } from '../../i18n/LanguageContext'
-import logo from '../../assets/logo.png'
+import { useAdminAuth } from '@/contexts/AdminAuthContext'
+import { adminLogin, AdminLoginError } from '@/lib/api/adminClient'
+import { useT } from '@/i18n/LanguageContext'
+import logo from '@/assets/logo.png'
 
 /** What went wrong, in terms the person at the keyboard can act on. */
 type LoginErrorKind = 'invalid' | 'locked' | 'noAccess' | 'network' | 'generic'

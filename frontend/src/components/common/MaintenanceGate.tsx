@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { CalendarClock, Wrench, X } from 'lucide-react'
-import { getStoredToken, resolveUrl } from '../../lib/api/client'
-import { useT } from '../../i18n/LanguageContext'
+import { getStoredToken, resolveUrl } from '@/lib/api/client'
+import { useT } from '@/i18n/LanguageContext'
 
 interface Props {
   children: ReactNode

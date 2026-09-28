@@ -2,27 +2,27 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useOcrSubmission } from './useOcrSubmission'
 import type { JvRow } from './useOcrSubmission'
-import type { AccountingConfigResponse } from '../../types/api'
+import type { AccountingConfigResponse } from '@/types/api'
 
 // ─── module mocks ─────────────────────────────────────────────────────────────
-vi.mock('../../lib/api/carmen', () => ({ submitToCarmen: vi.fn() }))
-vi.mock('../../lib/api/feedback', () => ({
+vi.mock('@/lib/api/carmen', () => ({ submitToCarmen: vi.fn() }))
+vi.mock('@/lib/api/feedback', () => ({
   logCorrections: vi.fn(),
   diffCorrections: vi.fn(),
 }))
-vi.mock('../../lib/api/config', () => ({ getAccountingConfig: vi.fn() }))
-vi.mock('../../lib/url', () => ({
+vi.mock('@/lib/api/config', () => ({ getAccountingConfig: vi.fn() }))
+vi.mock('@/lib/url', () => ({
   getCarmenUrl: vi.fn((p: string) => `https://carmen.test/#${p}`),
 }))
-vi.mock('../../lib/toast', () => ({ showToast: vi.fn() }))
+vi.mock('@/lib/toast', () => ({ showToast: vi.fn() }))
 
-import { submitToCarmen as realSubmitToCarmen } from '../../lib/api/carmen'
+import { submitToCarmen as realSubmitToCarmen } from '@/lib/api/carmen'
 import {
   logCorrections as realLogCorrections,
   diffCorrections as realDiffCorrections,
-} from '../../lib/api/feedback'
-import { getAccountingConfig as realGetAccountingConfig } from '../../lib/api/config'
-import { showToast as realShowToast } from '../../lib/toast'
+} from '@/lib/api/feedback'
+import { getAccountingConfig as realGetAccountingConfig } from '@/lib/api/config'
+import { showToast as realShowToast } from '@/lib/toast'
 
 const submitToCarmen = vi.mocked(realSubmitToCarmen)
 const logCorrections = vi.mocked(realLogCorrections)

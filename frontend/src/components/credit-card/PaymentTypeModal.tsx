@@ -10,14 +10,14 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react'
-import CustomSearchSelect from '../common/CustomSearchSelect'
-import AISuggestBar from '../common/AISuggestBar'
-import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
-import '../../styles/components/payment-modal.css'
-import type { FieldMapping } from '../../types/api'
-import type { MasterAccount, MasterDepartment } from '../../hooks/mapping/useMappingData'
-import type { ActiveScan } from '../../hooks/mapping/useMapping'
-import type { Suggestion } from '../../hooks/mapping/useMappingSuggestions'
+import CustomSearchSelect from '@/components/common/CustomSearchSelect'
+import AISuggestBar from '@/components/common/AISuggestBar'
+import { allowedAccountsForDept, isAccountAllowed } from '@/lib/deptAccounts'
+import '@/styles/components/payment-modal.css'
+import type { FieldMapping } from '@/types/api'
+import type { MasterAccount, MasterDepartment } from '@/hooks/mapping/useMappingData'
+import type { ActiveScan } from '@/hooks/mapping/useMapping'
+import type { Suggestion } from '@/hooks/mapping/useMappingSuggestions'
 
 interface Props {
   isAmountModalOpen: boolean

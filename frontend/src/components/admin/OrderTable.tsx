@@ -9,14 +9,14 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { orderStage, type AdminCreditOrder, type OrderStage } from '../../lib/api/adminClient'
-import Pager from '../common/Pager'
-import { useRowsPerPage } from '../../hooks/useRowsPerPage'
-import { formatThb } from '../../lib/money'
-import { formatDateToDDMMYYYY } from '../../lib/date'
-import { useT } from '../../i18n/LanguageContext'
-import type { TKey } from '../../i18n/dict'
-import { STAGE_TONE } from '../../lib/orderHelpers'
+import { orderStage, type AdminCreditOrder, type OrderStage } from '@/lib/api/adminClient'
+import Pager from '@/components/common/Pager'
+import { useRowsPerPage } from '@/hooks/useRowsPerPage'
+import { formatThb } from '@/lib/money'
+import { formatDateToDDMMYYYY } from '@/lib/date'
+import { useT } from '@/i18n/LanguageContext'
+import type { TKey } from '@/i18n/dict'
+import { STAGE_TONE } from '@/lib/orderHelpers'
 import BatchActionBar from './BatchActionBar'
 import VoidReasonModal from './VoidReasonModal'
 

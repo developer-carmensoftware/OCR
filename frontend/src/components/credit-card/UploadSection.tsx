@@ -1,7 +1,7 @@
 import React from 'react'
 import { UploadCloud, FolderOpen, Info, Loader2 } from 'lucide-react'
-import { useT } from '../../i18n/LanguageContext'
-import type { TKey } from '../../i18n/dict'
+import { useT } from '@/i18n/LanguageContext'
+import type { TKey } from '@/i18n/dict'
 
 interface Props {
   onFileChange: (e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList } }) => void

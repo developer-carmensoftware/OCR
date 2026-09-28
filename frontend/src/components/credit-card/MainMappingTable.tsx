@@ -9,19 +9,19 @@ import {
   History,
   ChevronRight,
 } from 'lucide-react'
-import CustomSearchSelect from '../common/CustomSearchSelect'
-import { glFieldLabel } from '../../lib/glFieldLabels'
-import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
-import AISuggestBar from '../common/AISuggestBar'
-import Badge from '../common/Badge'
-import type { FieldMapping } from '../../types/api'
-import type { MasterAccount, MasterDepartment } from '../../hooks/mapping/useMappingData'
-import type { MainMappings, ActiveScan } from '../../hooks/mapping/useMapping'
+import CustomSearchSelect from '@/components/common/CustomSearchSelect'
+import { glFieldLabel } from '@/lib/glFieldLabels'
+import { allowedAccountsForDept, isAccountAllowed } from '@/lib/deptAccounts'
+import AISuggestBar from '@/components/common/AISuggestBar'
+import Badge from '@/components/common/Badge'
+import type { FieldMapping } from '@/types/api'
+import type { MasterAccount, MasterDepartment } from '@/hooks/mapping/useMappingData'
+import type { MainMappings, ActiveScan } from '@/hooks/mapping/useMapping'
 import type {
   MainMappingKey,
   Suggestion,
   SuggestionSource,
-} from '../../hooks/mapping/useMappingSuggestions'
+} from '@/hooks/mapping/useMappingSuggestions'
 
 interface Props {
   masterAccounts: MasterAccount[]

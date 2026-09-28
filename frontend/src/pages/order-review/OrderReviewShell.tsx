@@ -1,10 +1,10 @@
 import { LogOut } from 'lucide-react'
-import logo from '../../assets/logo.png'
-import { useAdminAuth } from '../../contexts/AdminAuthContext'
-import { useT } from '../../i18n/LanguageContext'
-import DarkModeToggle from '../../components/common/DarkModeToggle'
-import LanguageToggle from '../../components/common/LanguageToggle'
-import CreditOrdersPage from '../admin/CreditOrdersPage'
+import logo from '@/assets/logo.png'
+import { useAdminAuth } from '@/contexts/AdminAuthContext'
+import { useT } from '@/i18n/LanguageContext'
+import DarkModeToggle from '@/components/common/DarkModeToggle'
+import LanguageToggle from '@/components/common/LanguageToggle'
+import CreditOrdersPage from '@/pages/admin/CreditOrdersPage'
 
 /**
  * Standalone shell for the Order Review console — its own page, separate from the

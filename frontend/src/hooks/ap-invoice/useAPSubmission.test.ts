@@ -3,17 +3,17 @@ import { renderHook, act } from '@testing-library/react'
 import type React from 'react'
 import { useAPSubmission } from './useAPSubmission'
 import type { APLineItem } from './useAPExtraction'
-import type { APInvoiceHeader } from '../../constants/apInvoice'
+import type { APInvoiceHeader } from '@/constants/apInvoice'
 import type { Vendor } from './useAPVendor'
-import type { CarmenCodeItem } from '../../lib/api/carmen'
+import type { CarmenCodeItem } from '@/lib/api/carmen'
 
-vi.mock('../../lib/api/carmen', () => ({
+vi.mock('@/lib/api/carmen', () => ({
   fetchAccountCodes: vi.fn(),
   fetchDepartments: vi.fn(),
   submitAPInvoiceToCarmen: vi.fn(),
 }))
-vi.mock('../../lib/api/client', () => ({ apiFetch: vi.fn() }))
-vi.mock('../../lib/toast', () => ({
+vi.mock('@/lib/api/client', () => ({ apiFetch: vi.fn() }))
+vi.mock('@/lib/toast', () => ({
   showToast: vi.fn(),
   toast: {
     success: vi.fn(),
@@ -25,10 +25,10 @@ vi.mock('../../lib/toast', () => ({
     loading: vi.fn(() => 'toast-id'),
   },
 }))
-vi.mock('../../lib/format', () => ({
+vi.mock('@/lib/format', () => ({
   parseNum: vi.fn((v: unknown) => parseFloat(String(v).replace(/,/g, '')) || 0),
 }))
-vi.mock('../../lib/date', () => ({
+vi.mock('@/lib/date', () => ({
   parseDateToISO: vi.fn(() => '2024-05-15T00:00:00.000Z'),
   normalizeYearToCE: vi.fn((y: string | number) => {
     const val = parseInt(String(y), 10)
@@ -40,9 +40,9 @@ import {
   fetchAccountCodes as realFetchAccountCodes,
   fetchDepartments as realFetchDepartments,
   submitAPInvoiceToCarmen as realSubmitAPInvoiceToCarmen,
-} from '../../lib/api/carmen'
-import { apiFetch as realApiFetch } from '../../lib/api/client'
-import { showToast, toast } from '../../lib/toast'
+} from '@/lib/api/carmen'
+import { apiFetch as realApiFetch } from '@/lib/api/client'
+import { showToast, toast } from '@/lib/toast'
 
 const fetchAccountCodes = vi.mocked(realFetchAccountCodes)
 const fetchDepartments = vi.mocked(realFetchDepartments)

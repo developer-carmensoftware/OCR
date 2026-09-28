@@ -1,6 +1,6 @@
 import { apiFetch, fetchTimeout } from './client'
 import { API } from './endpoints'
-import type { ExtractionWarning } from '../reviewReasons'
+import type { ExtractionWarning } from '@/lib/reviewReasons'
 
 // Backend LLM timeout is 120s × up to 3 attempts. We cap the client at 150s so
 // the user gets a clear error instead of waiting indefinitely.

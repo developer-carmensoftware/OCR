@@ -6,7 +6,7 @@ import {
   clearAdminToken,
   getAdminToken,
   storeAdminToken,
-} from '../lib/api/adminClient'
+} from '@/lib/api/adminClient'
 
 interface AdminAuthContextValue {
   admin: AdminUser | null

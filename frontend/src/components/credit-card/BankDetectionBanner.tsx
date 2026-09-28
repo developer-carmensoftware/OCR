@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Landmark, ChevronDown, RotateCw, CircleCheck, CircleHelp } from 'lucide-react'
-import { BANKS, BANK_THAI_NAMES } from '../../constants'
-import { useT } from '../../i18n/LanguageContext'
-import type { BankCode } from '../../types/api'
+import { BANKS, BANK_THAI_NAMES } from '@/constants'
+import { useT } from '@/i18n/LanguageContext'
+import type { BankCode } from '@/types/api'
 
 const BANK_LOGOS = Object.fromEntries(
   ['BBL', 'KBANK', 'SCB'].map(k => [

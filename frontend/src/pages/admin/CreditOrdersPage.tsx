@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Building2, FileText } from 'lucide-react'
-import OrderTable, { type TabKey } from '../../components/admin/OrderTable'
-import OrderDrawer from '../../components/admin/OrderDrawer'
-import OrderKpiCards from '../../components/admin/OrderKpiCards'
-import ArCustomerProfiles from '../../components/admin/ArCustomerProfiles'
+import OrderTable, { type TabKey } from '@/components/admin/OrderTable'
+import OrderDrawer from '@/components/admin/OrderDrawer'
+import OrderKpiCards from '@/components/admin/OrderKpiCards'
+import ArCustomerProfiles from '@/components/admin/ArCustomerProfiles'
 import {
   approveOrder,
   fetchAdminPaymentInfo,
@@ -16,11 +16,11 @@ import {
   type AdminCreditOrder,
   type AdminOrderStatus,
   type KpiSummary,
-} from '../../lib/api/adminClient'
-import type { PaymentInfo } from '../../lib/api/credits'
-import { useT } from '../../i18n/LanguageContext'
-import '../../styles/pages/pricing.css'
-import '../../styles/components/admin-credit-orders.css'
+} from '@/lib/api/adminClient'
+import type { PaymentInfo } from '@/lib/api/credits'
+import { useT } from '@/i18n/LanguageContext'
+import '@/styles/pages/pricing.css'
+import '@/styles/components/admin-credit-orders.css'
 
 // Two main tabs: the unified Orders table (all statuses) + Customer Mapping.
 type MainTab = 'orders' | 'mapping'

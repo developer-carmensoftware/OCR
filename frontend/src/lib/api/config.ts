@@ -1,6 +1,6 @@
 import { apiFetch } from './client'
 import { API } from './endpoints'
-import type { AccountingConfigRequest, AccountingConfigResponse } from '../../types/api'
+import type { AccountingConfigRequest, AccountingConfigResponse } from '@/types/api'
 
 /** Wire shape: the PUT body is a flat {column: field} map; the GET wraps it. */
 export type APVendorMapping = Record<string, string>

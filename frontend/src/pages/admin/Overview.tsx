@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Bell, Bot, Coins, FileText, AlertCircle, Send, TrendingUp, BarChart3 } from 'lucide-react'
-import KPICard from '../../components/admin/KPICard'
-import MetricChart from '../../components/admin/MetricChart'
-import TenantSelector from '../../components/admin/TenantSelector'
-import PeriodPicker, { granularityFor, lastDays } from '../../components/admin/PeriodPicker'
-import PageHeader from '../../components/admin/ui/PageHeader'
-import Card from '../../components/admin/ui/Card'
-import { fetchAlerts, fetchUsageSummary, fetchUsageTotals } from '../../lib/api/adminClient'
-import { useT } from '../../i18n/LanguageContext'
+import KPICard from '@/components/admin/KPICard'
+import MetricChart from '@/components/admin/MetricChart'
+import TenantSelector from '@/components/admin/TenantSelector'
+import PeriodPicker, { granularityFor, lastDays } from '@/components/admin/PeriodPicker'
+import PageHeader from '@/components/admin/ui/PageHeader'
+import Card from '@/components/admin/ui/Card'
+import { fetchAlerts, fetchUsageSummary, fetchUsageTotals } from '@/lib/api/adminClient'
+import { useT } from '@/i18n/LanguageContext'
 
 function fmtCost(v: number) {
   return `$${v.toFixed(4)}`

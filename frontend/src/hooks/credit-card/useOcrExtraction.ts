@@ -1,17 +1,13 @@
 import { useState, useEffect } from 'react'
 import type React from 'react'
-import {
-  EMPTY_DETAIL_ROW,
-  detectBankFromCompanyName,
-  detectBankFromExtracted,
-} from '../../constants'
-import { extractFromFile } from '../../lib/api/ocr'
-import { showToast } from '../../lib/toast'
-import { appKey, readAccountingConfig, writeAccountingConfig } from '../../lib/storage'
-import type { ModalConfig } from '../useModal'
-import type { BankCode } from '../../types/api'
-import { normalizeDateStringToCE } from '../../lib/date'
-import type { ExtractionWarning } from '../../lib/reviewReasons'
+import { EMPTY_DETAIL_ROW, detectBankFromCompanyName, detectBankFromExtracted } from '@/constants'
+import { extractFromFile } from '@/lib/api/ocr'
+import { showToast } from '@/lib/toast'
+import { appKey, readAccountingConfig, writeAccountingConfig } from '@/lib/storage'
+import type { ModalConfig } from '@/hooks/useModal'
+import type { BankCode } from '@/types/api'
+import { normalizeDateStringToCE } from '@/lib/date'
+import type { ExtractionWarning } from '@/lib/reviewReasons'
 
 export interface HeaderData {
   DateProcessed: string

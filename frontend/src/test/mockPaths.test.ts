@@ -1,5 +1,5 @@
 /**
- * Every `vi.mock('<relative path>')` in the suite must resolve to a real file.
+ * Every `vi.mock('<relative or @/ path>')` in the suite must resolve to a real file.
  *
  * Vitest does not error on a wrong mock path — if the spec a mock names does not
  * resolve, it silently falls through to the REAL module instead of the mock, so the
@@ -10,7 +10,7 @@
  *
  * This scans every test file's raw source (without executing it, so none of its own
  * mocks or side effects run) for `vi.mock('spec', ...)` calls and checks each
- * relative spec against the project's real file tree.
+ * relative or `@/` (= `src/`, see vite.config.ts) spec against the project's real file tree.
  */
 import { describe, expect, it } from 'vitest'
 
@@ -30,6 +30,7 @@ const MOCK_CALL = /\bvi\.mock\(\s*(['"])(.+?)\1/g
 
 /** Collapse a relative spec against the mocking file's own directory, filesystem-path style. */
 function resolveSpec(fromFile: string, spec: string): string {
+  if (spec.startsWith('@/')) return '/src/' + spec.slice(2)
   const dir = fromFile.slice(0, fromFile.lastIndexOf('/'))
   const parts = dir.split('/').concat(spec.split('/'))
   const out: string[] = []
@@ -57,11 +58,11 @@ const mockCases = Object.entries(TEST_SOURCES).flatMap(([file, src]) =>
     .map(m => m[2])
     // Bare specifiers (npm packages, e.g. 'sonner') resolve through node_modules, not
     // the project tree — nothing here to check.
-    .filter(spec => spec.startsWith('.'))
+    .filter(spec => spec.startsWith('.') || spec.startsWith('@/'))
     .map(spec => ({ file, spec, resolved: resolveSpec(file, spec) }))
 )
 
-describe('every vi.mock() relative path resolves to a real file', () => {
+describe('every vi.mock() project path resolves to a real file', () => {
   it('found vi.mock() calls to check (sanity: this scan is not accidentally empty)', () => {
     expect(mockCases.length).toBeGreaterThan(10)
   })

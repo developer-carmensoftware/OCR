@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useT } from '../../i18n/LanguageContext'
-import type { TKey } from '../../i18n/dict'
+import { useT } from '@/i18n/LanguageContext'
+import type { TKey } from '@/i18n/dict'
 
 /**
  * Fetch one admin table's rows. The companion to `useTableQuery`, which owns the

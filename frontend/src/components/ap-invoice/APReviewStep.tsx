@@ -9,21 +9,21 @@ import {
   ArrowLeft,
   ArrowRight,
 } from 'lucide-react'
-import Card from '../common/Card'
-import type { ExtractionWarning } from '../../lib/reviewReasons'
-import DateInput from '../common/DateInput'
+import Card from '@/components/common/Card'
+import type { ExtractionWarning } from '@/lib/reviewReasons'
+import DateInput from '@/components/common/DateInput'
 import VendorSearch from './APVendorSearch'
 import AmountSummary from './APAmountSummary'
-import ExtractionWarningBanner from '../credit-card/ExtractionWarningBanner'
+import ExtractionWarningBanner from '@/components/credit-card/ExtractionWarningBanner'
 import APLineItemsTable from './APLineItemsTable'
-import { parseNum } from '../../constants/apInvoice'
-import { useT } from '../../i18n/LanguageContext'
-import type { TKey } from '../../i18n/dict'
+import { parseNum } from '@/constants/apInvoice'
+import { useT } from '@/i18n/LanguageContext'
+import type { TKey } from '@/i18n/dict'
 import type { TaxTypeValue } from './TaxTypeDropdown'
-import type { APColumnKey } from '../../constants/apInvoice'
-import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
-import type { APInvoiceHeader } from '../../constants/apInvoice'
-import type { TaxProfileItem } from '../../lib/api/carmen'
+import type { APColumnKey } from '@/constants/apInvoice'
+import type { Vendor } from '@/hooks/ap-invoice/useAPVendor'
+import type { APInvoiceHeader } from '@/constants/apInvoice'
+import type { TaxProfileItem } from '@/lib/api/carmen'
 
 interface Ctrl {
   // Backend extraction warnings (e.g. the VAT reading could not be confirmed).

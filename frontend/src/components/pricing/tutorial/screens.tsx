@@ -20,16 +20,16 @@
  */
 
 import { ChevronRight, Coins, Languages, ShieldCheck, UploadCloud } from 'lucide-react'
-import { PlanCard, EnterpriseCard } from '../PlanCard'
-import PackList from '../PackList'
-import PendingOrderBanner from '../PendingOrderBanner'
-import ProformaDocument from '../ProformaDocument'
-import StepWizard from '../../common/StepWizard'
-import { Spot } from '../../tutorial'
-import { useT } from '../../../i18n/LanguageContext'
-import { PLAN_META } from '../../../constants/billing'
-import { formatThb } from '../../../lib/money'
-import logo from '../../../assets/logo.png'
+import { PlanCard, EnterpriseCard } from '@/components/pricing/PlanCard'
+import PackList from '@/components/pricing/PackList'
+import PendingOrderBanner from '@/components/pricing/PendingOrderBanner'
+import ProformaDocument from '@/components/pricing/ProformaDocument'
+import StepWizard from '@/components/common/StepWizard'
+import { Spot } from '@/components/tutorial'
+import { useT } from '@/i18n/LanguageContext'
+import { PLAN_META } from '@/constants/billing'
+import { formatThb } from '@/lib/money'
+import logo from '@/assets/logo.png'
 import {
   DEMO_BUYER,
   DEMO_ORDER,

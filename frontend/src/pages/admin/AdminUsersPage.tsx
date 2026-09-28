@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, UserCog } from 'lucide-react'
 import { toast } from 'sonner'
-import DataTable, { type Column } from '../../components/admin/DataTable'
-import CustomModal from '../../components/common/CustomModal'
-import PageHeader from '../../components/admin/ui/PageHeader'
-import Card from '../../components/admin/ui/Card'
-import Switch from '../../components/admin/ui/Switch'
-import Button from '../../components/admin/ui/Button'
-import EmptyState from '../../components/admin/ui/EmptyState'
+import DataTable, { type Column } from '@/components/admin/DataTable'
+import CustomModal from '@/components/common/CustomModal'
+import PageHeader from '@/components/admin/ui/PageHeader'
+import Card from '@/components/admin/ui/Card'
+import Switch from '@/components/admin/ui/Switch'
+import Button from '@/components/admin/ui/Button'
+import EmptyState from '@/components/admin/ui/EmptyState'
 import {
   fetchAdminUsers,
   createAdminUser,
@@ -17,9 +17,9 @@ import {
   fetchRoles,
   type AdminUserRow,
   type RoleOption,
-} from '../../lib/api/adminClient'
-import { useAdminAuth } from '../../contexts/AdminAuthContext'
-import { useT } from '../../i18n/LanguageContext'
+} from '@/lib/api/adminClient'
+import { useAdminAuth } from '@/contexts/AdminAuthContext'
+import { useT } from '@/i18n/LanguageContext'
 
 export default function AdminUsersPage() {
   const { t } = useT()

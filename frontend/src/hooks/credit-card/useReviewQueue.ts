@@ -4,7 +4,7 @@ import {
   markChipSeen,
   type ActivityFilter,
   type ReviewDocument,
-} from '../../lib/api/emailReview'
+} from '@/lib/api/emailReview'
 /** Where the page opens before the counts have said otherwise. */
 const TODAY: ActivityFilter = 'today'
 

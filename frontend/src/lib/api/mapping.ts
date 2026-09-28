@@ -1,6 +1,6 @@
 import { apiFetch } from './client'
 import { API } from './endpoints'
-import type { SuggestRequest, SuggestPaymentTypesRequest, FieldMapping } from '../../types/api'
+import type { SuggestRequest, SuggestPaymentTypesRequest, FieldMapping } from '@/types/api'
 
 export interface SuggestResponse {
   commission?: FieldMapping | null

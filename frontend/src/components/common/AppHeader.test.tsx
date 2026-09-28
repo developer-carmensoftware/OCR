@@ -7,7 +7,7 @@ import { render, screen } from '@testing-library/react'
 // old failure mode was silent (the logo spilled under the bell and the header's
 // overflow: hidden clipped it).
 
-vi.mock('../../contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ isAuthenticated: false }),
 }))
 

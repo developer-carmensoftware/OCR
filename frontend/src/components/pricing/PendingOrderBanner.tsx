@@ -1,8 +1,8 @@
 import { useReducer } from 'react'
 import { AlertTriangle, Clock, ChevronDown, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useT } from '../../i18n/LanguageContext'
-import CustomModal from '../common/CustomModal'
+import { useT } from '@/i18n/LanguageContext'
+import CustomModal from '@/components/common/CustomModal'
 import ProformaDocument from './ProformaDocument'
 import SlipUpload from './SlipUpload'
 import {
@@ -12,16 +12,16 @@ import {
   type BillingDocument,
   type CreditOrder,
   type PaymentInfo,
-} from '../../lib/api/credits'
+} from '@/lib/api/credits'
 import {
   catalogName,
   isSubscriptionCode,
   planChangeLoss,
   planChangeWarning,
-} from '../../constants/billing'
-import type { ActiveSubscription } from '../../lib/api/auth'
-import { formatThb } from '../../lib/money'
-import { formatDate } from '../../lib/date'
+} from '@/constants/billing'
+import type { ActiveSubscription } from '@/lib/api/auth'
+import { formatThb } from '@/lib/money'
+import { formatDate } from '@/lib/date'
 
 // ── OrderRow state ────────────────────────────────────────────────────────────
 

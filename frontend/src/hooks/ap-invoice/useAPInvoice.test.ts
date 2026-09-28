@@ -24,29 +24,29 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useAPInvoice } from './useAPInvoice'
 import type { APLineItem } from './useAPExtraction'
-import { saveDraft, loadDraft } from '../../lib/draft'
+import { saveDraft, loadDraft } from '@/lib/draft'
 
-vi.mock('../../lib/api/client', () => ({
+vi.mock('@/lib/api/client', () => ({
   apiFetch: vi.fn(async () => ({ ok: true, json: async () => ({ Data: [] }) })),
   fetchTimeout: vi.fn(() => ({ signal: new AbortController().signal, clear: vi.fn() })),
   getStoredToken: vi.fn(() => 'test-token'),
 }))
-vi.mock('../../lib/api/config', () => ({
+vi.mock('@/lib/api/config', () => ({
   getAPVendorMapping: vi.fn(async () => null),
   saveAPVendorMapping: vi.fn(async () => undefined),
 }))
-vi.mock('../../lib/api/auth', () => ({ getUsage: vi.fn(async () => null) }))
-vi.mock('../../lib/api/ocr', async importOriginal => ({
-  ...(await importOriginal<typeof import('../../lib/api/ocr')>()),
+vi.mock('@/lib/api/auth', () => ({ getUsage: vi.fn(async () => null) }))
+vi.mock('@/lib/api/ocr', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/lib/api/ocr')>()),
   getPdfInfo: vi.fn(),
 }))
-vi.mock('../../lib/api/carmen', () => ({
+vi.mock('@/lib/api/carmen', () => ({
   fetchTaxProfiles: vi.fn(async () => TAX_PROFILES),
   fetchAccountCodes: vi.fn(async () => []),
   fetchDepartments: vi.fn(async () => []),
   submitAPInvoiceToCarmen: vi.fn(),
 }))
-vi.mock('../../lib/toast', () => ({
+vi.mock('@/lib/toast', () => ({
   showToast: vi.fn(),
   toast: Object.assign(vi.fn(), {
     success: vi.fn(),
@@ -58,7 +58,7 @@ vi.mock('../../lib/toast', () => ({
     loading: vi.fn(() => 'toast-id'),
   }),
 }))
-vi.mock('../../i18n/LanguageContext', () => {
+vi.mock('@/i18n/LanguageContext', () => {
   // `t` MUST be a stable reference across renders, exactly like the real
   // LanguageContext (its own `t` is `useCallback(..., [lang])`). useAPVendor's
   // `autoMatchVendor` closes over `t` in its own `useCallback`, which useAPInvoice

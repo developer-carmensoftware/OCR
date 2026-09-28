@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import AppHeader from '../components/common/AppHeader'
-import { useT } from '../i18n/LanguageContext'
-import { RELEASE_NOTES } from '../content/releaseNotes'
-import { markReleaseSeen, readReleaseSeen, WHATS_NEW_RETURN_KEY } from '../lib/releaseNotesSeen'
-import { formatDate } from '../lib/date'
-import '../styles/pages/whats-new.css'
+import AppHeader from '@/components/common/AppHeader'
+import { useT } from '@/i18n/LanguageContext'
+import { RELEASE_NOTES } from '@/content/releaseNotes'
+import { markReleaseSeen, readReleaseSeen, WHATS_NEW_RETURN_KEY } from '@/lib/releaseNotesSeen'
+import { formatDate } from '@/lib/date'
+import '@/styles/pages/whats-new.css'
 
 /**
  * Release history. Entered from the notification bell, which carries the unread

@@ -2,19 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { useEmailSettings } from './useEmailSettings'
 
-vi.mock('../../lib/api/emailAutomation', async importOriginal => ({
+vi.mock('@/lib/api/emailAutomation', async importOriginal => ({
   // EmailApiError is thrown and instanceof-checked by the hook, not stubbed.
-  ...(await importOriginal<typeof import('../../lib/api/emailAutomation')>()),
+  ...(await importOriginal<typeof import('@/lib/api/emailAutomation')>()),
   getSettings: vi.fn(),
   getBankCodes: vi.fn(),
   getToken: vi.fn(),
   saveSettings: vi.fn(),
 }))
-vi.mock('../../contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ user: { uri: 'https://hotel.carmenwork.com', bu: 'hq' } }),
 }))
 
-import * as api from '../../lib/api/emailAutomation'
+import * as api from '@/lib/api/emailAutomation'
 
 const SETTINGS = {
   host: 'hotel.carmenwork.com',

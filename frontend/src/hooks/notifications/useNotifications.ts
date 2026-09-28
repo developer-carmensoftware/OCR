@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   listNotifications,
   markNotificationsRead,
   type BellItem,
   type Notification,
-} from '../../lib/api/notifications'
-import { RELEASE_NOTES } from '../../content/releaseNotes'
-import { markReleaseSeen, readReleaseSeen, RELEASE_SEEN_EVENT } from '../../lib/releaseNotesSeen'
+} from '@/lib/api/notifications'
+import { RELEASE_NOTES } from '@/content/releaseNotes'
+import { markReleaseSeen, readReleaseSeen, RELEASE_SEEN_EVENT } from '@/lib/releaseNotesSeen'
 
 // ponytail: 5 min, not 60s. Nothing here is time-critical — a bell row appears
 // only after an admin touches an order — and the focus listener below already

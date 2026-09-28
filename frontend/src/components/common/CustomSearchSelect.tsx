@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { useT } from '../../i18n/LanguageContext'
+import { useT } from '@/i18n/LanguageContext'
 
 export interface SelectOption {
   code: string

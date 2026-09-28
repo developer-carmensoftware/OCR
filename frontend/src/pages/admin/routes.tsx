@@ -18,7 +18,7 @@ import {
   Wrench,
   Zap,
 } from 'lucide-react'
-import type { TKey } from '../../i18n/dict'
+import type { TKey } from '@/i18n/dict'
 
 /**
  * The admin dashboard's pages — sidebar entry and route, declared once.

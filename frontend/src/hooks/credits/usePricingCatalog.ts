@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getCreditPacks, type CreditPack } from '../../lib/api/credits'
+import { getCreditPacks, type CreditPack } from '@/lib/api/credits'
 
 interface CatalogState {
   plans: CreditPack[]

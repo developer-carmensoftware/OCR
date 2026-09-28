@@ -1,5 +1,5 @@
 import { getCarmenUrl } from './url'
-import type { TKey } from '../i18n/dict'
+import type { TKey } from '@/i18n/dict'
 
 /**
  * Why the pipeline stopped, and where a person goes to unstop it.

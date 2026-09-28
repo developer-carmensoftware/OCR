@@ -1,9 +1,9 @@
 import { parseNum } from './format'
 import { parseDateToISO, normalizeYearToCE } from './date'
-import type { APLineItem } from '../types/ap'
-import type { APInvoiceHeader } from '../constants/apInvoice'
+import type { APLineItem } from '@/types/ap'
+import type { APInvoiceHeader } from '@/constants/apInvoice'
 import type { TaxProfileItem } from './api/carmen'
-import type { Vendor } from '../hooks/ap-invoice/useAPVendor'
+import type { Vendor } from '@/hooks/ap-invoice/useAPVendor'
 
 function addDays(isoDate: string, days: number): string {
   const d = new Date(isoDate)

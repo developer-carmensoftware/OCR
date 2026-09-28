@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ShoppingCart } from 'lucide-react'
-import { LanguageProvider } from '../../i18n/LanguageContext'
+import { LanguageProvider } from '@/i18n/LanguageContext'
 import TutorialModal, { boldify } from './TutorialModal'
 import { Spot } from './Spot'
 import type { TutorialStep } from './types'

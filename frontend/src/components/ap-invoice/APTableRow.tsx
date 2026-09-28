@@ -1,12 +1,12 @@
 import { Fragment } from 'react'
 import { Trash2 } from 'lucide-react'
-import { isNumFld, parseNum } from '../../constants/apInvoice'
-import NumericInput from '../common/NumericInput'
-import InlineSelect from '../common/InlineSelect'
-import type { InlineSelectOption } from '../common/InlineSelect'
+import { isNumFld, parseNum } from '@/constants/apInvoice'
+import NumericInput from '@/components/common/NumericInput'
+import InlineSelect from '@/components/common/InlineSelect'
+import type { InlineSelectOption } from '@/components/common/InlineSelect'
 import type { TaxTypeValue } from './TaxTypeDropdown'
-import type { APColumnKey } from '../../constants/apInvoice'
-import type { TaxProfileItem } from '../../lib/api/carmen'
+import type { APColumnKey } from '@/constants/apInvoice'
+import type { TaxProfileItem } from '@/lib/api/carmen'
 
 const TAX_TYPE_OPTIONS: InlineSelectOption[] = [
   { value: 'Include', label: 'Include', accent: 'amber' },

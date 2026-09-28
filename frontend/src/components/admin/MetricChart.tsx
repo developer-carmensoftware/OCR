@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import type { MetricChartProps } from './MetricChartImpl'
-import { useT } from '../../i18n/LanguageContext'
+import { useT } from '@/i18n/LanguageContext'
 
 const LazyMetricChart = lazy(() => import('./MetricChartImpl'))
 

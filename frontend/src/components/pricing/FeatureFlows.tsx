@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { useT } from '../../i18n/LanguageContext'
-import { BANKS } from '../../constants'
-import type { TKey } from '../../i18n/dict'
+import { useT } from '@/i18n/LanguageContext'
+import { BANKS } from '@/constants'
+import type { TKey } from '@/i18n/dict'
 import {
   CreditCard,
   ReceiptText,

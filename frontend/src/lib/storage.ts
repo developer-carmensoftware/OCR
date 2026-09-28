@@ -15,7 +15,7 @@
  * adding it to APP_STORAGE_BASES.
  */
 
-import type { FieldMapping } from '../types/api'
+import type { FieldMapping } from '@/types/api'
 
 // Base names of every app-owned, tenant-scoped localStorage key.
 const APP_STORAGE_BASES = [

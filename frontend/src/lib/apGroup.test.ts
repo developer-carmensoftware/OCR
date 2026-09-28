@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { effectiveTaxProfile, buildGroupedRow, groupSelected } from './apGroup'
 import { parseNum } from './format'
-import type { APLineItem } from '../hooks/ap-invoice/useAPExtraction'
+import type { APLineItem } from '@/hooks/ap-invoice/useAPExtraction'
 
 const row = (over: Partial<APLineItem>): APLineItem => ({
   description: 'Item',

@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { List, Calculator } from 'lucide-react'
-import { DETAIL_COLUMNS, DETAIL_LABELS } from '../../constants'
-import type { DetailColumn } from '../../constants/fields'
-import NumericInput from '../common/NumericInput'
-import { useT } from '../../i18n/LanguageContext'
-import { fmt, parseNum } from '../../lib/format'
+import { DETAIL_COLUMNS, DETAIL_LABELS } from '@/constants'
+import type { DetailColumn } from '@/constants/fields'
+import NumericInput from '@/components/common/NumericInput'
+import { useT } from '@/i18n/LanguageContext'
+import { fmt, parseNum } from '@/lib/format'
 
 export interface DetailRow {
   Transaction?: string

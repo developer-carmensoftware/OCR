@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import type { Lang } from '../../i18n/dict'
+import type { Lang } from '@/i18n/dict'
 
 /** One step's narration, in one language. */
 export interface TutorialStepCopy {

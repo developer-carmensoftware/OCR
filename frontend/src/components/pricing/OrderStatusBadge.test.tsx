@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { LanguageProvider } from '../../i18n/LanguageContext'
+import { LanguageProvider } from '@/i18n/LanguageContext'
 import OrderStatusBadge from './OrderStatusBadge'
 
 // `paid` and `complete` deliberately render identically: `complete` only means the

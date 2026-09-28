@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { ChevronLeft, FileText } from 'lucide-react'
 import DocumentPreview from './DocumentPreview'
-import { useT } from '../../i18n/LanguageContext'
+import { useT } from '@/i18n/LanguageContext'
 
 interface SelectedPageThumb {
   thumb: string

@@ -1,8 +1,8 @@
-import { parseNum, round2, fmt } from '../../lib/format'
-import { getAvailableFields } from '../../constants/apInvoice'
+import { parseNum, round2, fmt } from '@/lib/format'
+import { getAvailableFields } from '@/constants/apInvoice'
 import type { APLineItem } from './useAPExtraction'
-import type { APInvoiceHeader } from '../../constants/apInvoice'
-import type { TKey } from '../../i18n/dict'
+import type { APInvoiceHeader } from '@/constants/apInvoice'
+import type { TKey } from '@/i18n/dict'
 
 interface APValidationProps {
   headerData: APInvoiceHeader

@@ -10,14 +10,14 @@ import {
   ArrowRight,
   Wallet,
 } from 'lucide-react'
-import '../styles/pages/home.css'
-import logo from '../assets/logo.png'
-import DarkModeToggle from '../components/common/DarkModeToggle'
-import UsageIndicator from '../components/common/UsageIndicator'
-import LanguageToggle from '../components/common/LanguageToggle'
-import { useT } from '../i18n/LanguageContext'
-import type { TKey } from '../i18n/dict'
-import { useEntrance } from '../lib/useEntrance'
+import '@/styles/pages/home.css'
+import logo from '@/assets/logo.png'
+import DarkModeToggle from '@/components/common/DarkModeToggle'
+import UsageIndicator from '@/components/common/UsageIndicator'
+import LanguageToggle from '@/components/common/LanguageToggle'
+import { useT } from '@/i18n/LanguageContext'
+import type { TKey } from '@/i18n/dict'
+import { useEntrance } from '@/lib/useEntrance'
 
 interface TagConfig {
   labelKey: TKey
