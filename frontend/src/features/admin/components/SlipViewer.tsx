@@ -22,7 +22,14 @@ function SlipSkeleton() {
 }
 
 /** Slip viewer: zoom / pan / rotate for images; native iframe for PDFs. */
-export function SlipViewer({ url, error }: { url: string | null; error: boolean }) {
+export function SlipViewer({
+  url,
+  error,
+}: {
+  url: string | null
+  /** 'missing' = the file is gone from storage (only reachable when the order has a slip). */
+  error: false | 'missing' | 'failed'
+}) {
   const { t } = useT()
   const [scale, setScale] = useState(1)
   const [rot, setRot] = useState(0)
@@ -36,7 +43,12 @@ export function SlipViewer({ url, error }: { url: string | null; error: boolean 
   }
 
   if (!url) {
-    if (error) return <div className="orev-slip-fallback">{t('orev.slip.errFallback')}</div>
+    if (error)
+      return (
+        <div className="orev-slip-fallback">
+          {t(error === 'missing' ? 'orev.slip.missing' : 'orev.slip.errFallback')}
+        </div>
+      )
     return <SlipSkeleton />
   }
 

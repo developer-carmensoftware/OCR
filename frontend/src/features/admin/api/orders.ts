@@ -104,7 +104,13 @@ export async function listCreditOrders(
 /** Short-lived (300s) signed URL for the uploaded payment slip. */
 export async function getOrderSlipUrl(id: string): Promise<{ signed_url: string }> {
   const res = await adminFetch(API.admin.creditOrderSlipUrl(id))
-  if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to load slip'))
+  if (!res.ok) {
+    // The status travels with the error: 404 is a file storage no longer has, which the
+    // drawer explains, as opposed to a storage failure it can only call "unavailable".
+    const err = new Error(await unwrapDetail(res, 'Failed to load slip'))
+    ;(err as Error & { status?: number }).status = res.status
+    throw err
+  }
   return res.json()
 }
 

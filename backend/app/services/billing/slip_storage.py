@@ -21,6 +21,7 @@ import re
 import httpx
 
 from app.config import settings
+from app.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -87,13 +88,17 @@ async def upload_slip(
     # the external service's multipart/Content-Disposition.
     filename = f"{_safe_name(order_id)}.{_ALLOWED_SLIP_TYPES[content_type]}"
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            f"{_base_url()}/Upload",
-            files={"file": (filename, data, content_type)},
-            data={"path": path},
-            headers=_headers(),
-        )
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{_base_url()}/Upload",
+                files={"file": (filename, data, content_type)},
+                data={"path": path},
+                headers=_headers(),
+            )
+    except httpx.HTTPError as exc:
+        logger.error("slip upload failed: %s", exc)
+        raise StorageError("Storage unreachable") from exc
 
     if resp.status_code not in (200, 201):
         logger.error("slip upload failed: status=%d body=%s", resp.status_code, resp.text[:200])
@@ -115,14 +120,26 @@ async def signed_url(key: str, ttl_seconds: int = 3600) -> str:
 
     `key` is the fileId returned by upload_slip. FileService fixes the URL TTL at
     ~1 hour; `ttl_seconds` is informational only (used for the caller's expires_in).
-    Returns the presigned URL string. Raises StorageError on failure.
+    Returns the presigned URL string. Raises NotFoundError when FileService has no
+    such file — every slip uploaded before the 2026-07-13 move to FileService, whose
+    Supabase-era key (`{tenant}/{order}.{ext}`) was never carried over — and
+    StorageError when the service itself fails, which the router reports as a 502.
     """
     if not settings.file_service_url or not settings.file_service_api_key:
         raise StorageError("Storage not configured")
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{_base_url()}/Files/{key}", headers=_headers())
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(f"{_base_url()}/Files/{key}", headers=_headers())
+    except httpx.HTTPError as exc:
+        logger.error("signed URL failed: %s", exc)
+        raise StorageError("Storage unreachable") from exc
 
+    if resp.status_code == 404:
+        # A missing file, not a failing server: a 404 here would otherwise surface as
+        # a 502 and count against #/admin/errors every time an old order is opened.
+        logger.warning("slip file not in storage: key=%s", key)
+        raise NotFoundError("Slip file not found in storage")
     if resp.status_code != 200:
         logger.error("signed URL failed: status=%d body=%s", resp.status_code, resp.text[:200])
         raise StorageError(f"Could not generate signed URL ({resp.status_code})")
