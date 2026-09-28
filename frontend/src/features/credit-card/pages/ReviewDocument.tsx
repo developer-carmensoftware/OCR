@@ -627,8 +627,16 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   bank={bankCode}
                   prefix={prefix}
                   description={description}
-                  onPrefix={setPrefix}
-                  onDescription={setDescription}
+                  // Header corrections are the reviewer's work as much as an amount is — BU
+                  // config, lost on close like everything else here until approve.
+                  onPrefix={v => {
+                    setDirty(true)
+                    setPrefix(v)
+                  }}
+                  onDescription={v => {
+                    setDirty(true)
+                    setDescription(v)
+                  }}
                 />
               </section>
 
