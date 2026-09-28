@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import SessionInfo, get_current_session
 from app.database import get_db
 from app.exceptions import NotFoundError
-from app.models.email_automation import EmailDocument, shown_attachment
+from app.models.email_automation import EmailDocument
 from app.models.identity import Tenant
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.common import Page
@@ -35,7 +35,6 @@ from app.models.schemas.email_automation import (
     ReviewDocumentDetail,
     ReviewStatus,
 )
-from app.services.credit_card.jv import num, r2
 from app.services.email_automation import ingest_settings as es
 from app.services.email_automation import review
 from app.utils.pagination import paginate
@@ -64,49 +63,6 @@ TABS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _summarise(row: EmailDocument) -> dict:
-    """The parts of a queue row that come out of the stored payload rather than a column.
-
-    A row whose payload has gone (a race with someone else's approve, or a status that
-    moved underneath us) still renders — with zeroes, not a 500. The queue's job is to
-    show the reviewer what is waiting, and one unreadable row must not blank the page.
-    """
-    payload = row.review_payload or {}
-    extracted = payload.get("extracted") or {}
-    details = extracted.get("details") or []
-    return {
-        "doc_date": extracted.get("doc_date"),
-        # Gross, which is what lands on the credit side of the JV.
-        "total": r2(sum(num(d.get("pay_amt")) for d in details)),
-        "line_count": len(details),
-        "flags": list(payload.get("flags") or []),
-        # Which payment types nothing could map. The review screen turns these into empty
-        # pickers; it cannot re-derive them, because the config it would diff against has
-        # moved on since the document parked.
-        "unmapped": list(payload.get("unmapped") or []),
-        "guessed": list(payload.get("guessed") or []),
-    }
-
-
-def to_review_row(row: EmailDocument) -> ReviewDocument:
-    """Public: `credit_card_activity.py` lists these rows beside manual scans and must
-    build them the same way, or the two screens disagree about one document."""
-    return ReviewDocument(
-        id=str(row.id),
-        created_at=row.created_at,
-        attachment=shown_attachment(row.attachment),
-        status=row.status,
-        bank_code=row.bank_code,
-        doc_no=row.doc_no,
-        jv_no=row.jv_no,
-        reason_code=row.reason_code,
-        error_message=row.error_message,
-        reviewed_by_name=row.reviewed_by_name,
-        reviewed_at=row.reviewed_at,
-        **_summarise(row),
-    )
-
-
 @router.get("/documents", response_model=Page[ReviewDocument])
 async def list_documents(
     tab: str = Query("review", description="review | posted | problem | skipped"),
@@ -133,7 +89,7 @@ async def list_documents(
     )
     rows, total = await paginate(db, stmt, limit, offset)
     return Page[ReviewDocument](
-        total=total, limit=limit, offset=offset, data=[to_review_row(r) for r in rows]
+        total=total, limit=limit, offset=offset, data=[review.to_review_row(r) for r in rows]
     )
 
 
@@ -160,10 +116,10 @@ async def get_pending(
         raise NotFoundError("This document is not waiting for review")
     payload = row.review_payload or {}
     return ReviewDocumentDetail(
-        **to_review_row(row).model_dump(),
+        **review.to_review_row(row).model_dump(),
         extracted=payload.get("extracted") or {},
         # Read here rather than in `_summarise`: the list endpoint and
-        # `credit_card_activity.py` share that helper, and the dept/acc codes are only
+        # `credit_card/activity.py` share that helper, and the dept/acc codes are only
         # ever wanted by the screen that lets someone edit them.
         suggested=payload.get("suggested") or {},
     )

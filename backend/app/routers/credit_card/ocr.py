@@ -2,9 +2,9 @@
 OCR API Routes — thin HTTP layer.
 
 Business logic lives in:
-  app/services/ocr_service.py          — stateless extract + task listing
-  app/services/credit_card_service.py  — finalize_extraction / mark_task_failed
-  app/services/task_service.py         — shared OCRTask creation
+  app/services/credit_card/ocr.py         — stateless extract + task listing
+  app/services/credit_card/extraction.py  — finalize_extraction / mark_task_failed
+  app/services/shared/task.py             — shared OCRTask creation
 """
 
 import asyncio

@@ -71,7 +71,7 @@ without that anti-join one forwarded statement is listed under each source.
 
 **`filter` is `all` · `today` · `review` · `success` · `unposted`**; unknown falls back to
 `all`. All five have a chip on screen. They are **not** a grouping of statuses —
-`_chip_expr()` in `credit_card_activity.py` is the single definition, as a SQL `CASE` the
+`_chip_expr()` in `services/credit_card/activity.py` is the single definition, as a SQL `CASE` the
 list filters on and the counts group by:
 
 | chip | what is in it |
