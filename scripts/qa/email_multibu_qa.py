@@ -4,14 +4,14 @@ the database, never from a summary a phase prints — the property under test is
 document can never land in another's ledger, task, LLM log, mapping or JV", and the only
 way to disprove that honestly is to look at the rows.
 
-    python scripts/email_multibu_qa.py preflight
-    python scripts/email_multibu_qa.py setup
-    python scripts/email_multibu_qa.py send --wave 1
-    python scripts/email_multibu_qa.py poll
-    python scripts/email_multibu_qa.py verify
-    python scripts/email_multibu_qa.py probes
-    python scripts/email_multibu_qa.py report
-    python scripts/email_multibu_qa.py teardown
+    python scripts/qa/email_multibu_qa.py preflight
+    python scripts/qa/email_multibu_qa.py setup
+    python scripts/qa/email_multibu_qa.py send --wave 1
+    python scripts/qa/email_multibu_qa.py poll
+    python scripts/qa/email_multibu_qa.py verify
+    python scripts/qa/email_multibu_qa.py probes
+    python scripts/qa/email_multibu_qa.py report
+    python scripts/qa/email_multibu_qa.py teardown
 
 Re-test of the 2026-09-24 fixes (F-1, F-3, F-6, DEF-1/DEF-2), with a fresh state file:
 
@@ -60,7 +60,7 @@ from unittest.mock import patch
 import asyncpg
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/<qa|dev|ops>/this.py -> repo root
 load_dotenv(ROOT / "backend" / ".env")
 sys.path.insert(0, str(ROOT / "backend"))
 

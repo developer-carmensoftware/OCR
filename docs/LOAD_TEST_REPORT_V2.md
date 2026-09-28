@@ -1,7 +1,7 @@
 # Load Test Report V2 — Multi-Key Capacity Pool
 
 **Date:** 2026-06-09
-**Tester:** automated (`scripts/load_test_v2.py`)
+**Tester:** automated (`scripts/qa/load_test_v2.py`)
 **Endpoint tested:** `POST /api/v1/ocr/extract` (credit-card, single PNG)
 **Backend:** 1 uvicorn worker, remote Supabase DB (ap-northeast-1)
 **LLM provider:** OpenRouter — `google/gemini-2.5-flash-lite`
@@ -155,18 +155,18 @@ Based on ramp results:
 
 ## Appendix: Script
 
-`backend/scripts/load_test_v2.py` — modes: `health`, `ramp`, `valve`, `distribution`, `cleanup`
+`scripts/qa/load_test_v2.py` — modes: `health`, `ramp`, `valve`, `distribution`, `cleanup`
 
 ```bash
 # Health check (verify keys)
-python scripts/load_test_v2.py --mode health
+python scripts/qa/load_test_v2.py --mode health
 
 # Ramp test
-python scripts/load_test_v2.py --mode ramp --label single-key
+python scripts/qa/load_test_v2.py --mode ramp --label single-key
 
 # Valve test
-python scripts/load_test_v2.py --mode valve --burst 12 --hold 12
+python scripts/qa/load_test_v2.py --mode valve --burst 12 --hold 12
 
 # Cleanup test data
-python scripts/load_test_v2.py --mode cleanup
+python scripts/qa/load_test_v2.py --mode cleanup
 ```

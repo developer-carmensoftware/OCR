@@ -1,9 +1,9 @@
 """Put a test mail back the way the pipeline found it, so a poll will process it again.
 
-    python scripts/reset_email_test.py                     # last hour, dry run
-    python scripts/reset_email_test.py --apply
-    python scripts/reset_email_test.py --doc-no 210726E00035291 --apply
-    python scripts/reset_email_test.py --minutes 180 --apply --unread
+    python scripts/dev/reset_email_test.py                     # last hour, dry run
+    python scripts/dev/reset_email_test.py --apply
+    python scripts/dev/reset_email_test.py --doc-no 210726E00035291 --apply
+    python scripts/dev/reset_email_test.py --minutes 180 --apply --unread
 
 Re-forwarding a document is not enough to re-test it: three separate guards remember it,
 and each one is doing its job in production.
@@ -35,7 +35,7 @@ from pathlib import Path
 import asyncpg
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/<qa|dev|ops>/this.py -> repo root
 load_dotenv(ROOT / "backend" / ".env")
 
 # Attachment names are frequently Thai and the Windows console is cp1252, which raised
@@ -47,7 +47,7 @@ DSN = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://
 DSN = DSN.replace(":5432/", ":6543/")  # transaction pooler — see the EMAXCONNSESSION note
 
 # The one project these scripts must never touch. Same guard as
-# scripts/email_multibu_loadtest.py — everything below is safe on dev and
+# scripts/qa/email_multibu_loadtest.py — everything below is safe on dev and
 # unforgivable on prod.
 PROD_PROJECT_REF = "lhlncsjqxttcdegkqvid"
 if PROD_PROJECT_REF in DSN:

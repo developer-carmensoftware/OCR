@@ -87,5 +87,5 @@ this folder adds the two cron-only routes neither of the above documents.
 | `backend/app/models/schemas/email_automation.py` | Request payloads: `RuleIn`, `SettingsIn`, `TokenIn` |
 | `frontend/src/features/email-settings/pages/EmailSettings.tsx` + `frontend/src/hooks/email-settings/` + `frontend/src/features/email-settings/api/emailAutomation.ts` | The internal test surface at `#/email-settings` — see [02-architecture.md](02-architecture.md#frontend-surface) |
 | `frontend/src/features/credit-card/pages/ReviewQueue.tsx` + `ReviewDocument.tsx` + `features/credit-card/hooks/useReviewQueue.ts` + `features/credit-card/api/emailReview.ts` | The customer-facing queue at `#/CreditCardOCR` and the review page behind it |
-| `scripts/email_ingest_e2e.py` | End-to-end script against the real dev mailbox + database |
+| `scripts/qa/email_ingest_e2e.py` | End-to-end script against the real dev mailbox + database |
 | `supabase/migrations/20260803000000_email_automation.sql` and eight migrations after it | Schema — full lineage in [04-data-model.md](04-data-model.md#migration-lineage) |

@@ -1,7 +1,7 @@
 """Email Automation — end-to-end pipeline test against the real mailbox and dev DB.
 
-    python scripts/email_ingest_e2e.py            # 19 free cases, no credit/LLM/Carmen
-    python scripts/email_ingest_e2e.py --paid     # + 4 cases that extract, park, and post
+    python scripts/qa/email_ingest_e2e.py            # 19 free cases, no credit/LLM/Carmen
+    python scripts/qa/email_ingest_e2e.py --paid     # + 4 cases that extract, park, and post
 
 Fixtures are **APPENDed** into the IMAP folder rather than sent over SMTP: `Delivered-To`
 is the header the router reads, and appending is the only way to write it. The two real
@@ -39,7 +39,7 @@ from pathlib import Path
 import asyncpg
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/<qa|dev|ops>/this.py -> repo root
 load_dotenv(ROOT / "backend" / ".env")
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -65,7 +65,7 @@ QUOTED = f'"{FOLDER}"' if " " in FOLDER and not FOLDER.startswith('"') else FOLD
 DSN = os.environ["DATABASE_URL"].replace(":5432/", ":6543/")
 
 # The one project these scripts must never touch. Same guard as
-# scripts/email_multibu_loadtest.py — everything below is safe on dev and
+# scripts/qa/email_multibu_loadtest.py — everything below is safe on dev and
 # unforgivable on prod.
 PROD_PROJECT_REF = "lhlncsjqxttcdegkqvid"
 if PROD_PROJECT_REF in DSN:

@@ -1,8 +1,8 @@
 """Mint a browser session so a real browser can open the app without Carmen SSO.
 
-    python scripts/seed_browser_session.py                 # dev.carmen4.com / carmencloud
-    python scripts/seed_browser_session.py --bu carmen
-    python scripts/seed_browser_session.py --revoke        # kill the sessions this wrote
+    python scripts/dev/seed_browser_session.py                 # dev.carmen4.com / carmencloud
+    python scripts/dev/seed_browser_session.py --bu carmen
+    python scripts/dev/seed_browser_session.py --revoke        # kill the sessions this wrote
 
 Every authenticated endpoint goes through `get_current_session`, which needs a live
 `ocr_sessions` row — a correctly signed JWT on its own gets 401 "Session not found or
@@ -35,7 +35,7 @@ from pathlib import Path
 import asyncpg
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/<qa|dev|ops>/this.py -> repo root
 load_dotenv(ROOT / "backend" / ".env")
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -43,7 +43,7 @@ DSN = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://
 DSN = DSN.replace(":5432/", ":6543/")  # transaction pooler — see the EMAXCONNSESSION note
 
 # The one project these scripts must never touch. Same guard as
-# scripts/email_multibu_loadtest.py — everything below is safe on dev and
+# scripts/qa/email_multibu_loadtest.py — everything below is safe on dev and
 # unforgivable on prod.
 PROD_PROJECT_REF = "lhlncsjqxttcdegkqvid"
 if PROD_PROJECT_REF in DSN:
@@ -130,7 +130,7 @@ async def main() -> int:
         print("Open http://localhost:3010, run this in the DevTools console, then reload:\n")
         # sessionStorage, not localStorage — that is where lib/api/client.ts reads it.
         print(f"sessionStorage.setItem('ocr_access_token', '{token}'); location.hash = '#/pricing'")
-        print("\nWhen finished:  python scripts/seed_browser_session.py --revoke")
+        print("\nWhen finished:  python scripts/dev/seed_browser_session.py --revoke")
         return 0
     finally:
         await conn.close()

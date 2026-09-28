@@ -1,14 +1,14 @@
 """
 Generate sample PDFs for testing the encrypted-PDF flow.
 
-Creates four files under backend/scripts/test_pdfs/:
+Creates four files under scripts/qa/test_pdfs/:
   1. credit_card_locked.pdf   — 1 page, user password "1234"  (credit card statement)
   2. ap_invoice_locked.pdf    — 1 page, user password "1234"  (AP invoice)
   3. multipage_locked.pdf     — 3 pages, user password "1234" (tests page selector + password)
   4. owner_only.pdf           — 1 page, NO user password but owner-locked (must open with no prompt)
 
 Run from the backend dir with the venv active:
-    python scripts/make_test_pdfs.py
+    python scripts/qa/make_test_pdfs.py
 
 PyMuPDF (fitz) is already a project dependency.
 """

@@ -1,9 +1,9 @@
 """Email Automation — many documents, many BUs, one mailbox. Dry run, real LLM.
 
-    python scripts/email_multibu_loadtest.py --mode batch --bus 5 --dry-check
-    python scripts/email_multibu_loadtest.py --mode batch --bus 5 > report.md
-    python scripts/email_multibu_loadtest.py --mode concurrent --levels 1,2,4,8
-    python scripts/email_multibu_loadtest.py --mode cleanup
+    python scripts/qa/email_multibu_loadtest.py --mode batch --bus 5 --dry-check
+    python scripts/qa/email_multibu_loadtest.py --mode batch --bus 5 > report.md
+    python scripts/qa/email_multibu_loadtest.py --mode concurrent --levels 1,2,4,8
+    python scripts/qa/email_multibu_loadtest.py --mode cleanup
 
 Two questions nothing else in this repo answers.
 
@@ -61,7 +61,7 @@ from unittest.mock import patch
 import asyncpg
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/<qa|dev|ops>/this.py -> repo root
 load_dotenv(ROOT / "backend" / ".env")
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -76,7 +76,7 @@ FOLDER = "LoadTest"
 DOCS_DIR = ROOT / "backend" / "example_field"
 DOC_SUFFIXES = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".heic")
 
-# Scratch tenants share the host pattern `backend/scripts/load_test_v2.py --mode cleanup`
+# Scratch tenants share the host pattern `scripts/qa/load_test_v2.py --mode cleanup`
 # already knows, so its sweep keeps working as a second net.
 HOST_PREFIX = "loadtest-"
 HOST_SUFFIX = ".local"
@@ -146,7 +146,7 @@ def guard() -> None:
 async def sql(query: str, *args):
     """One connection per statement, port 6543, no prepared statements.
 
-    Same shape as `scripts/email_ingest_e2e.py`: Supavisor caps the project at 15 session
+    Same shape as `scripts/qa/email_ingest_e2e.py`: Supavisor caps the project at 15 session
     connections and the app's own pool (5+5) is already open inside this process, so a
     long-lived second pool here is how you produce EMAXCONNSESSION instead of a report.
     """

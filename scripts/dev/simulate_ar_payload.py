@@ -6,10 +6,10 @@ Reproduces the real math (app.utils.tax.vat_on_top) and the real payload shape
 (app.services.billing.ar_posting.post_ar_entry), so you can eyeball the numbers
 without pulling them out of network devtools.
 
-Usage (cd backend, venv active):
-    python scripts/simulate_ar_payload.py                  # default: sub_starter, 490 THB net
-    python scripts/simulate_ar_payload.py --price 990
-    python scripts/simulate_ar_payload.py --price 490 --pack "Starter Plan — 200 credits/month"
+Usage (repo root, backend venv active):
+    python scripts/dev/simulate_ar_payload.py                  # default: sub_starter, 490 THB net
+    python scripts/dev/simulate_ar_payload.py --price 990
+    python scripts/dev/simulate_ar_payload.py --price 490 --pack "Starter Plan — 200 credits/month"
 """
 
 import argparse
@@ -24,7 +24,7 @@ try:
 except Exception:
     pass
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app.utils.tax import vat_on_top  # noqa: E402
 

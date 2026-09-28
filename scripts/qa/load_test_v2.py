@@ -22,12 +22,12 @@ Modes
 Run (PowerShell), paths use / to stay escape-clean:
   $env:PYTHONIOENCODING='utf-8'
   # 0. health — verify both keys
-  backend/venv/Scripts/python.exe backend/scripts/load_test_v2.py --mode health
+  backend/venv/Scripts/python.exe scripts/qa/load_test_v2.py --mode health
   # 1. single-key backend, then:
-  backend/venv/Scripts/python.exe backend/scripts/load_test_v2.py --mode ramp --label single-key
+  backend/venv/Scripts/python.exe scripts/qa/load_test_v2.py --mode ramp --label single-key
   # 2. multi-key backend, then:
-  backend/venv/Scripts/python.exe backend/scripts/load_test_v2.py --mode ramp --label multi-key
-  backend/venv/Scripts/python.exe backend/scripts/load_test_v2.py --mode distribution --since-min 20
+  backend/venv/Scripts/python.exe scripts/qa/load_test_v2.py --mode ramp --label multi-key
+  backend/venv/Scripts/python.exe scripts/qa/load_test_v2.py --mode distribution --since-min 20
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ from jose import jwt
 
 BACKEND_URL = "http://127.0.0.1:8010"
 EXTRACT_PATH = "/api/v1/credit-card/extract?bank_code=BBL"
-IMAGE_PATH = Path(__file__).resolve().parent.parent / "example_field" / "BBLbank.png"
+IMAGE_PATH = Path(__file__).resolve().parents[2] / "backend" / "example_field" / "BBLbank.png"
 
 DEFAULT_RAMP = [1, 2, 4, 8, 12, 16, 24, 32]
 HOLD_SECONDS = 12.0
@@ -61,7 +61,7 @@ MAX_P95_SEC = 30.0
 P95_MULTIPLIER_OF_BASELINE = 4.0
 REQUEST_TIMEOUT = 120.0
 
-ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+ENV_PATH = Path(__file__).resolve().parents[2] / "backend" / ".env"
 
 
 # ── DB helpers (asyncpg / Postgres) ───────────────────────────────────────────

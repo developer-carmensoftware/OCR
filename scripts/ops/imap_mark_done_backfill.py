@@ -1,9 +1,9 @@
 """One-off: bring an existing ingest mailbox onto the `$OcrDone` queue. Run once per mailbox,
 before the poll that reads `NOT KEYWORD $OcrDone` is deployed against it.
 
-    python scripts/imap_mark_done_backfill.py                 # dry run: counts only
-    python scripts/imap_mark_done_backfill.py --apply
-    python scripts/imap_mark_done_backfill.py --apply --seen-as-done
+    python scripts/ops/imap_mark_done_backfill.py                 # dry run: counts only
+    python scripts/ops/imap_mark_done_backfill.py --apply
+    python scripts/ops/imap_mark_done_backfill.py --apply --seen-as-done
 
 Why it exists. The poll used to take `SEARCH UNSEEN` as its queue; it now takes "everything
 without `email_imap.DONE_FLAG`" (F-1, 2026-09-24 QA — a person reading the mailbox made
@@ -33,7 +33,7 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/<qa|dev|ops>/this.py -> repo root
 sys.path.insert(0, str(ROOT / "backend"))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 

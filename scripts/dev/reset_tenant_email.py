@@ -1,9 +1,9 @@
 """Put one BU back to before it ever had email automation, so the whole pipeline can be
 re-tested from the purchase screen.
 
-    python scripts/reset_tenant_email.py --host dev.carmen4.com --bu carmencloud
-    python scripts/reset_tenant_email.py --host dev.carmen4.com --bu carmencloud --apply
-    python scripts/reset_tenant_email.py --host dev.carmen4.com --bu carmencloud --apply --keep-tag
+    python scripts/dev/reset_tenant_email.py --host dev.carmen4.com --bu carmencloud
+    python scripts/dev/reset_tenant_email.py --host dev.carmen4.com --bu carmencloud --apply
+    python scripts/dev/reset_tenant_email.py --host dev.carmen4.com --bu carmencloud --apply --keep-tag
 
 This is the wider sibling of `reset_email_test.py`: that one replays a single mail, this
 one clears the BU's whole email-automation state. What it removes, and why each one:
@@ -86,7 +86,7 @@ def _settings_plan(keep_settings: bool, keep_tag: bool) -> tuple[str, str | None
 
 
 def _self_check() -> None:
-    """python scripts/reset_tenant_email.py --self-check — the branch above, nothing else."""
+    """python scripts/dev/reset_tenant_email.py --self-check — the branch above, nothing else."""
     assert _settings_plan(True, False) == ("keep", None)
     assert _settings_plan(True, True) == ("keep", None), "--keep-settings wins over --keep-tag"
     verb, sql = _settings_plan(False, True)

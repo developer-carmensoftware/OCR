@@ -1,8 +1,8 @@
 """Fill a BU's review queue with believable documents, so the screens can be looked at.
 
-    python scripts/seed_review_queue.py                    # dev.carmen4.com / carmencloud
-    python scripts/seed_review_queue.py --bu carmen
-    python scripts/seed_review_queue.py --clear            # remove what this script wrote
+    python scripts/dev/seed_review_queue.py                    # dev.carmen4.com / carmencloud
+    python scripts/dev/seed_review_queue.py --bu carmen
+    python scripts/dev/seed_review_queue.py --clear            # remove what this script wrote
 
 Every status the ledger can hold and every `reason_code` in the taxonomy, because each one
 renders differently: a pending row reads its amount out of `review_payload`, a resolved row
@@ -35,14 +35,14 @@ from pathlib import Path
 import asyncpg
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # scripts/<qa|dev|ops>/this.py -> repo root
 load_dotenv(ROOT / "backend" / ".env")
 
 DSN = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
 DSN = DSN.replace(":5432/", ":6543/")  # transaction pooler — see the EMAXCONNSESSION note
 
 # The one project these scripts must never touch. Same guard as
-# scripts/email_multibu_loadtest.py — everything below is safe on dev and
+# scripts/qa/email_multibu_loadtest.py — everything below is safe on dev and
 # unforgivable on prod.
 PROD_PROJECT_REF = "lhlncsjqxttcdegkqvid"
 if PROD_PROJECT_REF in DSN:

@@ -94,8 +94,8 @@ The poll reads "mail without `$OcrDone`", not `UNSEEN`. On a mailbox that predat
 nothing carries the flag yet, so **before the first poll of the new code** run:
 
 ```bash
-python scripts/imap_mark_done_backfill.py            # dry run: counts only
-python scripts/imap_mark_done_backfill.py --apply
+python scripts/ops/imap_mark_done_backfill.py            # dry run: counts only
+python scripts/ops/imap_mark_done_backfill.py --apply
 ```
 
 It flags every mail older than the hold window done — no poll can reach those, and without
@@ -174,7 +174,7 @@ limit 50;
 | A BU fails with `carmen_rejected` | Carmen read the JV and declined it — the `error_message` carries Carmen's own `Code` and text | Read the row's message first: it is Carmen's verdict verbatim, not our summary of it. Before 2026-08-28 this reason also absorbed every HTTP-level refusal, so older rows saying "Carmen rejected the JV" with no detail are usually dead tokens, not bad JVs |
 | `gmail_confirmed_at` stays null despite the customer insisting they set up the forward | Google changed the confirmation link format — `auto_confirm_forwarding()` targets an undocumented interface | Check application logs for `"Could not follow the confirmation link"`; this is the one failure mode that breaks silently by design |
 | A BU switched the feature back on and the mail from the off period is not posted | **Expected since 2026-08-18.** Mail older than `enabled_at` is recorded `skipped / ingest_paused` and never scanned: switching the feature off means the customer keyed those documents by hand, and a manual Carmen entry is invisible to the duplicate guard, so replaying the backlog posted everything twice | Filter `#/admin/email` on reason `ingest_paused` — that list *is* the set of documents they must key themselves. To ingest one anyway: re-send it (a fresh arrival time), since the `$OcrDone` flag and the ledger row both make the original a no-op |
-| A BU switched the feature back on and nothing arrives at all | Their mail was held while off and `IMAP_HOLD_DAYS` has since passed, or it was deleted / moved out of the polled label. Reading it no longer matters (since 2026-09-25 the queue is `$OcrDone`, not `\Seen`) | If the messages are still in the label they are either past the window (send them again) or already carry `$OcrDone` — `scripts/reset_email_test.py --unread` clears it on dev. Held mail writes no `email_documents` row by design (a ledger row would dedupe it out of ever being retried), so the only live signal is the `held` count in the poll toast on `#/admin/email` |
+| A BU switched the feature back on and nothing arrives at all | Their mail was held while off and `IMAP_HOLD_DAYS` has since passed, or it was deleted / moved out of the polled label. Reading it no longer matters (since 2026-09-25 the queue is `$OcrDone`, not `\Seen`) | If the messages are still in the label they are either past the window (send them again) or already carry `$OcrDone` — `scripts/dev/reset_email_test.py --unread` clears it on dev. Held mail writes no `email_documents` row by design (a ledger row would dedupe it out of ever being retried), so the only live signal is the `held` count in the poll toast on `#/admin/email` |
 | A customer forwarded something and there is no row at all | Their attachment was a type this module cannot read (`.xlsx`, `.rar`, a `.zip` of CSVs), or the mail named no file whatsoever | Filter `#/admin/email` on reason `unsupported_attachment` — since 2026-08-18 a mail whose every attachment was refused writes one `skipped` row per rejected filename, free. **Still no row?** Then the mail named no file at all (a "your statement is ready" notice), or it never reached us: check `unrouted` on that poll and the raw `Delivered-To` header |
 | A credit was charged but nothing posted | Look at the `email_documents` row for that message — `reason_code` explains exactly which post-charge gate stopped it | Query as above; cross-reference against [04-data-model.md's taxonomy](04-data-model.md#reason_code-taxonomy) for whether it should have refunded |
 
@@ -186,18 +186,18 @@ limit 50;
 | `backend/tests/unit/test_email_ingest_pipeline.py` | Happy path, `submitted_at` stamping, AI GL-mapping fill, refund behaviour, Carmen decline vs. transport failure, owner-address gate, no-rule-match cost, tax-ID parking, atomic claim dedupe, tag routing, Gmail confirm + off-Google link refusal, `run_ingest` summary/`job_runs`/unrouted alert, magic-byte gate, attachment cap, folder quoting, UID-not-sequence-number addressing, crash-mid-poll hand-back, unsupported-attachment rows, duplicate-filename disambiguation, beyond-window counting |
 | `backend/tests/unit/test_email_settings_service.py` | Validation matrix, encrypted-password round trip, dev-token-only-in-debug, token never echoed, entitlement gates, SSRF origin, pattern requirement, bank-TIN rejection, tag lifecycle |
 | `backend/tests/integration/test_email_automation_router.py` | `_caller` shapes, rate limiting, rejection memoization, `_resolve` proof semantics, `_tenant_host` spellings, route wiring |
-| `scripts/email_multibu_loadtest.py` | Many documents from many BUs in one batch, against the dev DB and a real LLM: per-BU attribution of every row written, exact charging, tokens and USD per document, serial poll throughput vs the 10-minute tick, a concurrency probe, and the overlapping-poll guard. Carmen is a dry run — five `carmen_service` calls are patched, nothing is posted |
+| `scripts/qa/email_multibu_loadtest.py` | Many documents from many BUs in one batch, against the dev DB and a real LLM: per-BU attribution of every row written, exact charging, tokens and USD per document, serial poll throughput vs the 10-minute tick, a concurrency probe, and the overlapping-poll guard. Carmen is a dry run — five `carmen_service` calls are patched, nothing is posted |
 
 ### Multi-BU load test
 
 ```bash
 # 1. put real bank documents in backend/example_field/  (gitignored)
 # 2. stop uvicorn — Supavisor caps the project at 15 connections
-python scripts/email_multibu_loadtest.py --mode batch --bus 5 --gates --dry-check   # free rehearsal
-python scripts/email_multibu_loadtest.py --mode batch --bus 5 --gates > report.md   # real LLM
-python scripts/email_multibu_loadtest.py --mode concurrent --levels 1,2,4,8
-python scripts/email_multibu_loadtest.py --mode overlap
-python scripts/email_multibu_loadtest.py --mode cleanup     # only if a run died mid-way
+python scripts/qa/email_multibu_loadtest.py --mode batch --bus 5 --gates --dry-check   # free rehearsal
+python scripts/qa/email_multibu_loadtest.py --mode batch --bus 5 --gates > report.md   # real LLM
+python scripts/qa/email_multibu_loadtest.py --mode concurrent --levels 1,2,4,8
+python scripts/qa/email_multibu_loadtest.py --mode overlap
+python scripts/qa/email_multibu_loadtest.py --mode cleanup     # only if a run died mid-way
 ```
 
 `--dry-check` swaps both LLM calls for canned answers, so the harness itself can be proven
@@ -217,7 +217,7 @@ If the process hangs silently at startup rather than failing, that's usually a s
 Windows `Winmgmt` service on this machine, not a test problem — restart the service rather
 than debugging the test suite.
 
-**`scripts/email_ingest_e2e.py`** runs 17 free-path and 3 paid-path cases against the real
+**`scripts/qa/email_ingest_e2e.py`** runs 17 free-path and 3 paid-path cases against the real
 dev mailbox and database. It delivers test messages with IMAP `APPEND` rather than SMTP
 (there is no SMTP send path in this codebase) specifically so it can write a `Delivered-To`
 header the way a real inbound hop would. It asserts the free-path run leaves
