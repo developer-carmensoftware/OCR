@@ -1,0 +1,176 @@
+import { useState } from 'react'
+import { List, Calculator } from 'lucide-react'
+import { DETAIL_COLUMNS, DETAIL_LABELS } from '@/shared/constants'
+import type { DetailColumn } from '@/shared/constants/fields'
+import NumericInput from '@/shared/components/common/NumericInput'
+import { useT } from '@/i18n/LanguageContext'
+import { fmt, parseNum } from '@/shared/lib/format'
+
+export interface DetailRow {
+  Transaction?: string
+  PayAmt?: string
+  CommisAmt?: string
+  TaxAmt?: string
+  Total?: string
+  _uid?: string
+  [key: string]: string | undefined
+}
+
+interface Props {
+  details: DetailRow[]
+  onUpdate?: (rowIndex: number, col: string, value: string) => void
+  onAddRow?: () => void
+  onDeleteRow?: (index: number) => void
+  readOnly?: boolean
+  /**
+   * Row indices whose columns do not reconcile (gross ≠ commission + tax + net).
+   *
+   * The review screen marks the line that is wrong rather than putting a warning in a
+   * header above the table: the reviewer's next action is on that row, and a summary one
+   * line up makes them count rows to find it.
+   */
+  badRows?: ReadonlySet<number>
+}
+
+const AMOUNT_FIELDS: DetailColumn[] = ['PayAmt', 'CommisAmt', 'TaxAmt', 'Total']
+
+// Blank/null amount cells render as "0.00" (missing value = 0). For non-empty input
+// delegates to fmt() from shared/lib/format.
+function formatAmount(value: unknown): string {
+  const str = String(value ?? '')
+    .replace(/,/g, '')
+    .trim()
+  if (str === '') return fmt(0)
+  const num = parseFloat(str)
+  if (isNaN(num)) return str
+  return fmt(num)
+}
+
+function sumColumn(details: DetailRow[], col: string): number {
+  return details.reduce((sum, row) => sum + parseNum(row[col]), 0)
+}
+
+function RenderLabel({ label }: { label: string }) {
+  if (label.includes('<br>')) {
+    const parts = label.split('<br>')
+    const primary = parts[0]
+    const secondaryRaw = parts[1] || ''
+    const match = secondaryRaw.match(/<span[^>]*>(.*?)<\/span>/)
+    const secondary = match ? match[1] : secondaryRaw
+    return (
+      <>
+        {primary}
+        <br />
+        <span style={{ fontSize: '0.8em', color: '#666' }}>{secondary}</span>
+      </>
+    )
+  }
+  return <>{label}</>
+}
+
+export default function DetailTable({
+  details,
+  onUpdate,
+  onAddRow: _onAddRow,
+  onDeleteRow: _onDeleteRow,
+  readOnly,
+  badRows,
+}: Props) {
+  const { t } = useT()
+  const [focusedCell, setFocusedCell] = useState<{ row: number; col: string } | null>(null)
+
+  return (
+    <>
+      <div className="data-card">
+        <div className="card-title">
+          <div className="card-title-left">
+            <List size={16} /> {t('cc.details')}
+          </div>
+          <span className="row-count">
+            {details.length} {t('cc.items')}
+          </span>
+        </div>
+        <div className="card-body-flush table-wrapper">
+          <table className="data-table">
+            <thead>
+              <tr>
+                {DETAIL_COLUMNS.map(col => {
+                  const labelHtml = DETAIL_LABELS[col] || col
+                  const labelText = labelHtml.replace(/<[^>]*>/g, ' ').trim()
+                  return (
+                    <th key={col} scope="col" aria-label={labelText}>
+                      <RenderLabel label={labelHtml} />
+                    </th>
+                  )
+                })}
+              </tr>
+            </thead>
+            <tbody className="stagger-rows">
+              {details.map((row, rowIdx) => (
+                <tr
+                  key={row._uid ?? rowIdx}
+                  className={badRows?.has(rowIdx) ? 'detail-row--bad' : undefined}
+                >
+                  {DETAIL_COLUMNS.map(col => {
+                    const isAmountField = AMOUNT_FIELDS.includes(col)
+                    const isEditing = focusedCell?.row === rowIdx && focusedCell?.col === col
+                    const displayValue =
+                      isAmountField && !isEditing
+                        ? formatAmount(row[col])
+                        : String(row[col] ?? '').replace(/,/g, '')
+                    return (
+                      <td key={col}>
+                        {isAmountField ? (
+                          <NumericInput
+                            aria-label={col}
+                            className="detail-input"
+                            value={displayValue}
+                            readOnly={readOnly}
+                            onFocus={() => !readOnly && setFocusedCell({ row: rowIdx, col })}
+                            onBlur={() => setFocusedCell(null)}
+                            onChange={v => !readOnly && onUpdate?.(rowIdx, col, v)}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            aria-label={col}
+                            className="detail-input"
+                            value={displayValue}
+                            readOnly={readOnly}
+                            onChange={e => !readOnly && onUpdate?.(rowIdx, col, e.target.value)}
+                          />
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="data-card total-summary-card">
+        <div className="card-title">
+          <div className="card-title-left">
+            <Calculator size={16} /> {t('cc.totalSummary')}
+          </div>
+        </div>
+        <div className="card-body">
+          <div className="total-summary-grid">
+            {AMOUNT_FIELDS.map(col => {
+              const label = DETAIL_LABELS[col] ? DETAIL_LABELS[col].split('<br>')[0] : col
+              const total = sumColumn(details, col)
+              return (
+                <div key={col} className="total-summary-item">
+                  <div className="total-summary-label">{label}</div>
+                  <div className="total-summary-value">{fmt(total)}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}

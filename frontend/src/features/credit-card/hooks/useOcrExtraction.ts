@@ -1,0 +1,425 @@
+import { useState, useEffect } from 'react'
+import type React from 'react'
+import {
+  EMPTY_DETAIL_ROW,
+  detectBankFromCompanyName,
+  detectBankFromExtracted,
+} from '@/shared/constants'
+import { extractFromFile } from '@/shared/api/ocr'
+import { showToast } from '@/shared/lib/toast'
+import { appKey, readAccountingConfig, writeAccountingConfig } from '@/shared/lib/storage'
+import type { ModalConfig } from '@/shared/hooks/useModal'
+import type { BankCode } from '@/shared/types/api'
+import { normalizeDateStringToCE } from '@/shared/lib/date'
+import type { ExtractionWarning } from '@/shared/lib/reviewReasons'
+
+export interface HeaderData {
+  DateProcessed: string
+  BankName: string
+  DocName: string
+  CompanyName: string
+  DocDate: string
+  DocNo: string
+  MerchantName: string
+  MerchantId: string
+  BankCompanyName: string
+  BranchNo: string
+  [key: string]: string
+}
+
+export interface DetailRow {
+  Transaction: string
+  PayAmt: string
+  CommisAmt: string
+  TaxAmt: string
+  Total: string
+  _uid: string
+  [key: string]: string
+}
+
+interface OcrExtractionProps {
+  showModal: (config: Omit<ModalConfig, 'show'>) => void
+  closeModal: () => void
+  setStep: (step: number) => void
+  clearFiles: () => void
+  fileInputRef: React.RefObject<HTMLInputElement | null>
+}
+
+export interface OcrExtractionHook {
+  loading: boolean
+  status: string
+  elapsed: number
+  extractionStatus: string
+  bank: BankCode | ''
+  setBank: React.Dispatch<React.SetStateAction<BankCode | ''>>
+  cardId: string | null
+  headerData: HeaderData | Record<string, string>
+  details: DetailRow[]
+  warnings: (ExtractionWarning | string)[]
+  originalDetails: DetailRow[]
+  originalHeader: HeaderData | Record<string, string>
+  processFile: (filesToProcess: File[], pdfPassword?: string) => Promise<void>
+  reExtract: (files: File[], bankType?: string, pdfPassword?: string) => Promise<void>
+  updateHeader: (key: string, value: string) => void
+  updateDetail: (rowIndex: number, col: string, value: string) => void
+  addRow: () => void
+  deleteRow: (index: number) => void
+  resetExtractionState: () => void
+  applyExtractedData: (ext: Record<string, unknown>, _taskId?: string | null) => void
+  restoreDraft: (snapshot: OcrDraftState) => void
+}
+
+/**
+ * The part of the wizard that has to survive a session drop. Everything else is either
+ * re-derivable (Carmen lookups, the mapping localStorage) or unserializable (the File
+ * and its object-URL preview — restoring shows an empty preview pane, by design).
+ *
+ * `originalHeader`/`originalDetails` are not redundant with the live values: they are the
+ * baseline useOcrSubmission diffs to build correction feedback. Drop them from the
+ * snapshot and every restored document logs its whole content as user corrections.
+ */
+export interface OcrDraftState {
+  bank: BankCode | ''
+  cardId: string | null
+  headerData: Record<string, string>
+  details: DetailRow[]
+  warnings: (ExtractionWarning | string)[]
+  originalHeader: Record<string, string>
+  originalDetails: DetailRow[]
+}
+
+const EXTRACTION_STAGES = [
+  { at: 0, text: 'Reading document…' },
+  { at: 6, text: 'Analysing document structure…' },
+  { at: 13, text: 'Extracting transactions and amounts…' },
+  { at: 22, text: 'Almost done…' },
+  { at: 35, text: 'Complex document — still working…' },
+]
+
+/**
+ * Persists bank code + detail rows for the mapping step (`ocr_wizard_state`) and merges the
+ * vendor company/branch into `accountingConfig` so the GL-mapping page pre-fills correctly.
+ *
+ * Exported because the email review modal opens the same mapping page for a document the
+ * wizard never touched. Without this write that page has no idea which payment types it is
+ * being asked about, and opens with nothing to map — which is the bug it was.
+ *
+ * Pure side effect, no React state, so it lives outside the hook.
+ */
+export function persistScanForMapping(
+  ext: Record<string, unknown>,
+  // Loose on purpose: the review modal holds `DetailTable`'s row type, whose fields are
+  // optional. This only serialises them.
+  detailsList: Array<Record<string, string | undefined>>,
+  // The review modal knows the bank from the ledger row — the pipeline's own detection,
+  // already decided — so it says so rather than letting this re-guess from the payload.
+  bankCode?: string
+): void {
+  try {
+    const bank =
+      bankCode ||
+      detectBankFromExtracted(ext as Record<string, string | null | undefined>) ||
+      detectBankFromCompanyName(ext.bank_company_name as string) ||
+      ''
+    localStorage.setItem(appKey('ocr_wizard_state'), JSON.stringify({ bank, details: detailsList }))
+  } catch {
+    /* ignore */
+  }
+
+  if (ext.bank_company_name || ext.branch_no) {
+    const company = { ...(readAccountingConfig().company ?? {}) }
+    if (ext.bank_company_name) company.name = ext.bank_company_name as string
+    if (ext.branch_no) company.branch = ext.branch_no as string
+    // detectBankFromCompanyName already returns the display name accountingConfig.bank stores
+    // (a stale BANK_CODE_TO_NAME[code] lookup here previously never matched, so this was dead).
+    const detectedBankName = detectBankFromCompanyName(ext.bank_company_name as string)
+    writeAccountingConfig({ company, ...(detectedBankName ? { bank: detectedBankName } : {}) })
+  }
+}
+
+export function useOcrExtraction({
+  showModal,
+  closeModal,
+  setStep,
+  clearFiles,
+  fileInputRef: _fileInputRef,
+}: OcrExtractionProps): OcrExtractionHook {
+  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState('')
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    if (!loading) {
+      setElapsed(0)
+      return
+    }
+    const id = window.setInterval(() => setElapsed(s => s + 1), 1000)
+    return () => clearInterval(id)
+  }, [loading])
+
+  const extractionStatus = loading
+    ? ([...EXTRACTION_STAGES].reverse().find(s => elapsed >= s.at)?.text ??
+      EXTRACTION_STAGES[0].text)
+    : status
+  const [bank, setBank] = useState<BankCode | ''>('')
+  const [cardId, setCardId] = useState<string | null>(null)
+  const [headerData, setHeaderData] = useState<Record<string, string>>({})
+  const [details, setDetails] = useState<DetailRow[]>([])
+  const [warnings, setWarnings] = useState<(ExtractionWarning | string)[]>([])
+  const [originalDetails, setOriginalDetails] = useState<DetailRow[]>([])
+  const [originalHeader, setOriginalHeader] = useState<Record<string, string>>({})
+
+  function applyExtractedData(ext: Record<string, unknown>, _taskId: string | null = null) {
+    setCardId((ext.id as string) || null)
+    const header: Record<string, string> = {
+      DateProcessed: new Date().toLocaleDateString('en-GB'),
+      BankName: (ext.bank_name as string) || '',
+      DocName: (ext.doc_name as string) || '',
+      CompanyName: (ext.company_name as string) || '',
+      DocDate: normalizeDateStringToCE((ext.doc_date as string) || ''),
+      DocNo: (ext.doc_no as string) || '',
+      MerchantName: (ext.merchant_name as string) || '',
+      MerchantId: (ext.merchant_id as string) || '',
+      BankCompanyName: (ext.bank_company_name as string) || '',
+      BranchNo: (ext.branch_no as string) || '',
+    }
+    setHeaderData(header)
+    const rawDetails = (ext.details as Array<Record<string, string>> | undefined) || []
+    const detailsList: DetailRow[] = (
+      rawDetails.length ? rawDetails : [{ ...EMPTY_DETAIL_ROW }]
+    ).map(row => ({ ...EMPTY_DETAIL_ROW, ...row, _uid: crypto.randomUUID() }))
+    setDetails(detailsList)
+    setWarnings((ext.warnings as (ExtractionWarning | string)[] | undefined) || [])
+    setOriginalDetails(structuredClone(detailsList))
+    setOriginalHeader(structuredClone(header))
+    persistScanForMapping(ext, detailsList)
+  }
+
+  function showDuplicateModal(docNo: string) {
+    showModal({
+      title: 'Duplicate Document Found',
+      message: `Document number ${docNo} is already saved in the system.\nCannot import duplicate document.`,
+      type: 'error',
+      confirmText: 'OK',
+      onConfirm: () => {
+        closeModal()
+        setStep(1)
+        clearFiles()
+      },
+    })
+  }
+
+  async function processFile(filesToProcess: File[], pdfPassword?: string) {
+    if (!filesToProcess || filesToProcess.length === 0) {
+      showModal({
+        title: 'No Document File Found',
+        message: 'Please select an image or PDF file to process.',
+        type: 'warning',
+        confirmText: 'OK',
+        onConfirm: closeModal,
+      })
+      return
+    }
+    setLoading(true)
+    setStatus('AI is extracting data from document...')
+    try {
+      const ext = await extractFromFile(filesToProcess[0], undefined, pdfPassword)
+      if (ext.is_duplicate) {
+        setStatus('Duplicate document found')
+        showDuplicateModal(ext.doc_no)
+        return
+      }
+      applyExtractedData(ext as unknown as Record<string, unknown>)
+      setBank(
+        (detectBankFromExtracted(ext as unknown as Record<string, string>) || '') as BankCode | ''
+      )
+      setStatus('Data extracted successfully ✓')
+      setStep(2)
+      showToast(
+        `Successfully extracted ${filesToProcess.length} ${filesToProcess.length === 1 ? 'file' : 'files'} — please review and edit`,
+        'success'
+      )
+    } catch (err) {
+      const e = err as { status?: number; message: string }
+      if (e.status === 402) {
+        showModal({
+          title: 'Out of Documents',
+          message:
+            'You have no documents left — your plan allowance is spent and your credit balance is empty. Buy a credit pack to continue — credits never expire.',
+          type: 'warning',
+          confirmText: 'Buy Credits',
+          onConfirm: () => {
+            closeModal()
+            window.dispatchEvent(new Event('ocr:open-topup'))
+            setStep(1)
+            clearFiles()
+          },
+        })
+      } else if (e.status === 408) {
+        showModal({
+          title: 'Extraction Timed Out',
+          message:
+            'The server took too long to process this document. This may happen with large or complex documents — please try again.',
+          type: 'warning',
+          confirmText: 'Try Again',
+          onConfirm: () => {
+            closeModal()
+            setStep(1)
+            clearFiles()
+          },
+        })
+      } else if (e.status === 429) {
+        showModal({
+          title: 'Too Many Requests',
+          message: 'You are sending requests too quickly. Please slow down and try again shortly.',
+          type: 'warning',
+          confirmText: 'Acknowledge',
+          onConfirm: () => {
+            closeModal()
+            setStep(1)
+            clearFiles()
+          },
+        })
+      } else if (e.status === 403) {
+        // ModuleDisabled — e.message already carries the backend `detail` (shared/api/ocr.ts).
+        showModal({
+          title: 'Module unavailable',
+          message:
+            e.message || 'This module is turned off for your account. Contact your administrator.',
+          type: 'warning',
+          confirmText: 'Close',
+          onConfirm: () => {
+            closeModal()
+            clearFiles()
+          },
+        })
+      } else if (e.status === 401) {
+        // AuthContext handles the "session expired" toast + state reset via ocr:unauthorized.
+        clearFiles()
+      } else if (!e.status && (e as unknown as Error).message === 'Failed to fetch') {
+        showModal({
+          title: 'Connection Error',
+          message: 'Could not reach the server — please check your network and try again.',
+          type: 'warning',
+          confirmText: 'Close',
+          onConfirm: () => {
+            closeModal()
+            clearFiles()
+          },
+        })
+      } else {
+        setStatus(e.message)
+        showModal({
+          title: 'Error Occurred',
+          message: `Failed to extract data: ${e.message}`,
+          type: 'error',
+          confirmText: 'Close',
+          onConfirm: closeModal,
+        })
+      }
+      setStep(1)
+    } finally {
+      setLoading(false)
+      window.dispatchEvent(new Event('ocr:quota-refresh'))
+    }
+  }
+
+  async function reExtract(files: File[], bankType?: string, pdfPassword?: string) {
+    if (!files || files.length === 0) return
+    setLoading(true)
+    setStatus(`Re-extracting with ${bankType || 'auto-detect'}...`)
+    try {
+      const ext = await extractFromFile(files[0], bankType || undefined, pdfPassword)
+      applyExtractedData(ext as unknown as Record<string, unknown>)
+      setBank(
+        (bankType || detectBankFromExtracted(ext as unknown as Record<string, string>) || '') as
+          BankCode | ''
+      )
+      showToast(`Re-extracted successfully${bankType ? ` with ${bankType}` : ''}`, 'success')
+    } catch (err) {
+      const e = err as { message: string }
+      showModal({
+        title: 'Re-extract Failed',
+        message: `Failed to re-extract: ${e.message}`,
+        type: 'error',
+        confirmText: 'Close',
+        onConfirm: closeModal,
+      })
+    } finally {
+      setLoading(false)
+      setStatus('')
+      window.dispatchEvent(new Event('ocr:quota-refresh'))
+    }
+  }
+
+  function updateHeader(key: string, value: string) {
+    setHeaderData(prev => ({ ...prev, [key]: value }))
+  }
+
+  function updateDetail(rowIndex: number, col: string, value: string) {
+    setDetails(prev => prev.map((row, i) => (i === rowIndex ? { ...row, [col]: value } : row)))
+  }
+
+  function addRow() {
+    setDetails(prev => [...prev, { ...EMPTY_DETAIL_ROW, _uid: crypto.randomUUID() }])
+  }
+
+  function deleteRow(index: number) {
+    setDetails(prev => prev.filter((_, i) => i !== index))
+  }
+
+  /**
+   * Put a saved snapshot back. Deliberately not routed through applyExtractedData():
+   * that takes the raw API shape, mints fresh `_uid`s (breaking row identity the user
+   * already edited against) and re-writes the mapping-page handoff — none of which is
+   * wanted when the data is already in UI shape.
+   */
+  function restoreDraft(snapshot: OcrDraftState) {
+    // `?? []` / `?? {}` are not paranoia about our own writer: a snapshot outlives a deploy,
+    // and an undefined collection here throws on the next render with no way for the user
+    // to clear it. DRAFT_VERSION in shared/lib/draft.ts is the primary gate; this is the backstop.
+    setBank(snapshot.bank || '')
+    setCardId(snapshot.cardId ?? null)
+    setHeaderData(snapshot.headerData ?? {})
+    setDetails(snapshot.details ?? [])
+    setWarnings(snapshot.warnings ?? [])
+    setOriginalHeader(snapshot.originalHeader ?? {})
+    setOriginalDetails(snapshot.originalDetails ?? [])
+    setStatus('Restored from your last session')
+  }
+
+  function resetExtractionState() {
+    setStatus('')
+    setHeaderData({})
+    setDetails([])
+    setWarnings([])
+    setOriginalDetails([])
+    setOriginalHeader({})
+    setBank('')
+    setCardId(null)
+  }
+
+  return {
+    loading,
+    status,
+    elapsed,
+    extractionStatus,
+    bank,
+    setBank,
+    cardId,
+    headerData,
+    details,
+    warnings,
+    originalDetails,
+    originalHeader,
+    processFile,
+    reExtract,
+    updateHeader,
+    updateDetail,
+    addRow,
+    deleteRow,
+    resetExtractionState,
+    applyExtractedData,
+    restoreDraft,
+  }
+}

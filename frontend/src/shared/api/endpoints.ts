@@ -1,0 +1,175 @@
+/**
+ * Single source of truth for backend API paths.
+ *
+ * Grouped by module so a future namespace change touches one place instead of
+ * being scattered across lib/api/*.ts and hooks. Parameterized routes are
+ * exposed as builder functions.
+ *
+ * History: the app began as a single "credit card OCR" tool, so paths once lived
+ * under /api/v1/ocr/*. They are now module-coherent:
+ *   credit card  → /api/v1/credit-card/*
+ *   AP invoice   → /api/v1/ap-invoice/*
+ *   Carmen (ERP) → /api/v1/carmen/*   (shared by both modules)
+ */
+
+const V1 = '/api/v1'
+
+export const API = {
+  auth: {
+    exchange: `${V1}/auth/exchange`,
+    session: `${V1}/auth/session`,
+    usage: `${V1}/auth/usage`,
+  },
+
+  creditCard: {
+    extract: `${V1}/credit-card/extract`,
+    // The module landing page's list: email documents AND manual scans, one envelope.
+    // Deliberately not under /email — it outgrew that prefix the day Source became a column.
+    activity: `${V1}/credit-card/activity`,
+    // "somebody in this BU has now looked at that chip". A POST rather than a flag on the
+    // GET above: a read that writes would let a prefetch or a retry put the dot out.
+    activitySeen: `${V1}/credit-card/activity/seen`,
+    tasks: `${V1}/credit-card/tasks`,
+    task: (taskId: string) => `${V1}/credit-card/tasks/${taskId}`,
+    mapping: {
+      suggest: `${V1}/credit-card/mapping/suggest`,
+      suggestPaymentTypes: `${V1}/credit-card/mapping/suggest-payment-types`,
+    },
+  },
+
+  apInvoice: {
+    extract: `${V1}/ap-invoice/extract`,
+    suggest: `${V1}/ap-invoice/suggest`,
+  },
+
+  // The review queue this BU owns. Session JWT — distinct from `/api/v1/carmen/*`,
+  // which is the settings API Carmen's own server calls with a raw Carmen token.
+  emailReview: {
+    documents: `${V1}/email/documents`,
+    document: (id: string) => `${V1}/email/documents/${id}`,
+    approve: (id: string) => `${V1}/email/documents/${id}/approve`,
+    reject: (id: string) => `${V1}/email/documents/${id}/reject`,
+  },
+
+  // Carmen ERP proxy — shared by BOTH credit card and AP invoice flows.
+  carmen: {
+    accountCodes: `${V1}/carmen/account-codes`,
+    departments: `${V1}/carmen/departments`,
+    glPrefix: `${V1}/carmen/gl-prefix`,
+    taxProfiles: `${V1}/carmen/tax-profiles`,
+    vendors: `${V1}/carmen/vendors`,
+    gljv: `${V1}/carmen/gljv`,
+    invoice: `${V1}/carmen/invoice`,
+    inputTax: `${V1}/carmen/input-tax`,
+  },
+
+  // Email Automation settings. Same /carmen prefix, but a different world: these are
+  // the endpoints *Carmen* calls, authenticated with the user's raw Carmen token
+  // rather than our session JWT. See features/email-settings/api/emailAutomation.ts.
+  emailAutomation: {
+    bankCodes: `${V1}/carmen/bank-codes`,
+    settings: `${V1}/carmen/settings`,
+    // `uri` is the full Carmen origin the login exchange already handed back — the
+    // backend takes its hostname. Nothing here sends a bare host.
+    settingsFor: (uri: string, bu: string) =>
+      `${V1}/carmen/settings?uri=${encodeURIComponent(uri)}&bu=${encodeURIComponent(bu)}`,
+    token: `${V1}/carmen/settings/token`,
+    tokenFor: (uri: string, bu: string) =>
+      `${V1}/carmen/settings/token?uri=${encodeURIComponent(uri)}&bu=${encodeURIComponent(bu)}`,
+  },
+
+  config: {
+    // One path, two verbs: PUT is a FULL REPLACE (it wipes every column and mapping
+    // entry the body omits), PATCH writes only what it names. Anything correcting one
+    // field while a colleague may have the config open must use PATCH.
+    accounting: `${V1}/config/accounting`,
+    apMapping: (vendorTaxId: string) =>
+      `${V1}/config/ap-mapping/${encodeURIComponent(vendorTaxId)}`,
+  },
+
+  credits: {
+    packs: `${V1}/credits/packs`,
+    companyProfile: `${V1}/credits/company-profile`,
+    paymentInfo: `${V1}/credits/payment-info`,
+    orders: `${V1}/credits/orders`,
+    order: (orderId: string) => `${V1}/credits/orders/${orderId}`,
+    orderSlip: (orderId: string) => `${V1}/credits/orders/${orderId}/slip`,
+    orderCancel: (orderId: string) => `${V1}/credits/orders/${orderId}/cancel`,
+    orderDocuments: (orderId: string) => `${V1}/credits/orders/${orderId}/documents`,
+  },
+
+  notifications: {
+    list: `${V1}/notifications`,
+    markRead: `${V1}/notifications/mark-read`,
+  },
+
+  feedback: {
+    corrections: `${V1}/feedback/corrections`,
+  },
+
+  consent: {
+    record: `${V1}/consent`,
+    status: (version: string) => `${V1}/consent/status?version=${encodeURIComponent(version)}`,
+  },
+
+  files: {
+    pdfInfo: `${V1}/files/pdf-info`,
+    preview: `${V1}/files/preview`,
+  },
+
+  admin: {
+    login: `${V1}/admin/auth/login`,
+    me: `${V1}/admin/auth/me`,
+    logout: `${V1}/admin/auth/logout`,
+    usageSummary: `${V1}/admin/usage-summary`,
+    usageTotals: `${V1}/admin/usage-summary/totals`,
+    tenantRanking: `${V1}/admin/tenant-ranking`,
+    userUsage: `${V1}/admin/user-usage`,
+    llmUsage: `${V1}/admin/llm-usage`,
+    performanceLogs: `${V1}/admin/performance-logs`,
+    alerts: `${V1}/admin/alerts`,
+    resolveAlert: (alertId: number | string) => `${V1}/admin/alerts/${alertId}/resolve`,
+    jobs: `${V1}/admin/jobs`,
+    maintenance: `${V1}/admin/maintenance`,
+    maintenanceSchedule: `${V1}/admin/maintenance/schedule`,
+    maintenanceEnd: `${V1}/admin/maintenance/end`,
+    tenantMaintenance: (tenantId: string) => `${V1}/admin/maintenance/tenant/${tenantId}`,
+    sessions: `${V1}/admin/sessions`,
+    session: (sessionId: string) => `${V1}/admin/sessions/${sessionId}`,
+    tenants: `${V1}/admin/tenants`,
+    tenant: (tenantId: string) => `${V1}/admin/tenants/${tenantId}`,
+    errorBreakdown: `${V1}/admin/error-breakdown`,
+    extractionFailures: `${V1}/admin/extraction-failures`,
+    tenantCredits: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits`,
+    tenantCreditsLedger: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/ledger`,
+    tenantCreditsTopup: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/topup`,
+    tenantCreditsAdjust: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/adjust`,
+    paymentInfo: `${V1}/admin/payment-info`,
+    creditOrders: `${V1}/admin/credit-orders`,
+    creditOrderSlipUrl: (id: string) => `${V1}/admin/credit-orders/${id}/slip-url`,
+    creditOrderApprove: (id: string) => `${V1}/admin/credit-orders/${id}/approve`,
+    creditOrderReject: (id: string) => `${V1}/admin/credit-orders/${id}/reject`,
+    creditOrderNote: (id: string) => `${V1}/admin/credit-orders/${id}/hold`,
+    creditOrderCancel: (id: string) => `${V1}/admin/credit-orders/${id}/cancel`,
+    creditOrderDocuments: (id: string) => `${V1}/admin/credit-orders/${id}/documents`,
+    creditOrdersPostAr: `${V1}/admin/credit-orders/post-ar`,
+    creditOrdersHoldBatch: `${V1}/admin/credit-orders/hold-batch`,
+    creditOrdersKpi: `${V1}/admin/credit-orders/kpi`,
+    arProfiles: `${V1}/admin/ar-customer-profiles`,
+    arProfile: (id: string) => `${V1}/admin/ar-customer-profiles/${id}`,
+    arProfilesSync: `${V1}/admin/ar-customer-profiles/sync`,
+    quotaOverview: `${V1}/admin/quotas/overview`,
+    tenantModule: (tenantId: string, moduleId: string) =>
+      `${V1}/admin/tenants/${tenantId}/modules/${moduleId}`,
+    emailDocuments: `${V1}/admin/email-ingest/documents`,
+    emailHealth: `${V1}/admin/email-ingest/health`,
+    emailBusinessUnits: `${V1}/admin/email-ingest/business-units`,
+    emailPoll: `${V1}/admin/email-ingest/poll`,
+    emailConfirmations: `${V1}/admin/email-ingest/confirmations`,
+    adminUsers: `${V1}/admin/admin-users`,
+    adminUser: (userId: string) => `${V1}/admin/admin-users/${userId}`,
+    adminUserPasswordReset: (userId: string) => `${V1}/admin/admin-users/${userId}/password-reset`,
+    adminUserRoles: (userId: string) => `${V1}/admin/admin-users/${userId}/roles`,
+    roles: `${V1}/admin/roles`,
+  },
+} as const

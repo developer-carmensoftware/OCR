@@ -1,0 +1,132 @@
+import type { ReactNode } from 'react'
+import { Loader2, AlertTriangle, Shield, Circle, Clock } from 'lucide-react'
+import { useAuth, EXPIRED_FLAG_KEY } from '@/shared/contexts/AuthContext'
+import { useCarmenSSO } from '@/shared/hooks/useCarmenSSO'
+import { getCarmenUrl } from '@/shared/lib/url'
+import logo from '@/assets/logo.png'
+import '@/styles/components/auth-screen.css'
+
+const DEV_BYPASS = import.meta.env.VITE_DEV_AUTH_BYPASS === 'true'
+
+interface ProtectedRouteProps {
+  children: ReactNode
+}
+
+export default function ProtectedRoute({ children }: ProtectedRouteProps) {
+  const { isAuthenticated, loading } = useAuth() as { isAuthenticated: boolean; loading: boolean }
+  const { exchanging, error } = useCarmenSSO()
+
+  if (DEV_BYPASS) return <>{children}</>
+
+  if (loading || exchanging) return <AuthScreen state="loading" />
+  if (error) return <AuthScreen state="error" message={error} />
+  if (!isAuthenticated)
+    return <AuthScreen state={sessionExpired() ? 'expired' : 'unauthenticated'} />
+
+  return <>{children}</>
+}
+
+/** True when this screen follows a session that died under the user (AuthContext). */
+function sessionExpired(): boolean {
+  try {
+    return sessionStorage.getItem(EXPIRED_FLAG_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+type AuthState = 'loading' | 'error' | 'unauthenticated' | 'expired'
+
+interface AuthScreenProps {
+  state: AuthState
+  message?: string | null
+}
+
+interface BadgeConfig {
+  label: string
+}
+interface StateConfig {
+  Icon: React.ElementType
+  iconClass?: string
+  title: string
+  subtitle: string
+  badge: BadgeConfig | null
+}
+
+function AuthScreen({ state, message }: AuthScreenProps) {
+  const configs: Record<AuthState, StateConfig> = {
+    loading: {
+      Icon: Loader2,
+      iconClass: 'animate-spin',
+      title: 'Authenticating',
+      subtitle: 'Verifying your session with Carmen...',
+      badge: null,
+    },
+    error: {
+      Icon: AlertTriangle,
+      title: 'Authentication Failed',
+      subtitle: message || 'An error occurred. Please try again.',
+      badge: {
+        label: 'Auth Error',
+      },
+    },
+    unauthenticated: {
+      Icon: Shield,
+      title: 'Access via Carmen',
+      subtitle: 'This system must be accessed through the Carmen web interface.',
+      badge: {
+        label: 'Authentication Required',
+      },
+    },
+    // Same wall, different story: this user was working a second ago. Say what ended
+    // and that their document is waiting, or the screen reads like the work is gone.
+    expired: {
+      Icon: Clock,
+      title: 'Session Ended',
+      subtitle:
+        'Your Carmen session timed out. Any unsubmitted document has been saved — reopen this module from Carmen and choose Restore to carry on.',
+      badge: {
+        label: 'Session Expired',
+      },
+    },
+  }
+  const config = configs[state]
+
+  return (
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <img src={logo} alt="Carmen Cloud AI" className="auth-brand-logo" />
+          <span className="auth-brand-text">
+            Carmen <strong className="auth-brand-highlight">AI</strong>
+          </span>
+        </div>
+        <div className="auth-divider" />
+        <div className={`auth-icon-container auth-icon-container--${state}`}>
+          <config.Icon size={24} strokeWidth={1.75} className={config.iconClass} />
+        </div>
+        <h2 className="auth-title">{config.title}</h2>
+        <p className="auth-subtitle">{config.subtitle}</p>
+        {config.badge && (
+          <div className={`auth-badge auth-badge--${state}`}>
+            <Circle size={6} fill="currentColor" strokeWidth={0} />
+            {config.badge.label}
+          </div>
+        )}
+        {state === 'loading' && (
+          <div className="auth-progress-track">
+            <div className="auth-progress-bar" />
+          </div>
+        )}
+        {state !== 'loading' && (
+          <a href={getCarmenUrl('/')} className="auth-btn">
+            Go to Carmen
+          </a>
+        )}
+      </div>
+      <p className="auth-footer">Carmen Cloud AI Automation Platform</p>
+    </div>
+  )
+}
+
+import type React from 'react'

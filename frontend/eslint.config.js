@@ -54,6 +54,29 @@ export default [
     },
   },
   {
+    // The admin dashboard stays out of the customer bundle: main.tsx reaches it only through
+    // `lazy(() => import(...))`, which this rule does not see. A static import from anywhere
+    // else would pull the whole dashboard into the main chunk. Type-only imports are erased
+    // at build time, so they are allowed.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/features/admin/**'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/admin/**', '**/admin'],
+              allowTypeImports: true,
+              message:
+                'Only features/admin may import features/admin statically — reach it via lazy(() => import(...)), or move what you need to shared/.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['src/test/**', '**/*.test.*'],
     rules: {
       'no-unused-vars': 'off',

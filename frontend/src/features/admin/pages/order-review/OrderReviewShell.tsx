@@ -1,0 +1,56 @@
+import { LogOut } from 'lucide-react'
+import logo from '@/assets/logo.png'
+import { useAdminAuth } from '@/shared/contexts/AdminAuthContext'
+import { useT } from '@/i18n/LanguageContext'
+import DarkModeToggle from '@/shared/components/common/DarkModeToggle'
+import LanguageToggle from '@/shared/components/common/LanguageToggle'
+import CreditOrdersPage from '@/features/admin/pages/CreditOrdersPage'
+
+/**
+ * Standalone shell for the Order Review console — its own page, separate from the
+ * admin dashboard (no admin sidebar). Reuses the admin auth/session: the backend
+ * endpoints require the admin `orders` permission, so a reviewer signs in at the
+ * shared admin login and is returned here. An account holding only the
+ * `order_reviewer` role can reach this page and nothing else.
+ */
+export default function OrderReviewShell() {
+  const { admin, logout } = useAdminAuth()
+  const { t } = useT()
+
+  const handleLogout = async () => {
+    await logout()
+    window.location.hash = '/admin/login'
+  }
+
+  return (
+    <div className="orev-app">
+      <header className="orev-app-header">
+        <div className="orev-app-brand">
+          <span className="orev-app-logo" aria-hidden="true">
+            <img src={logo} alt="" className="orev-app-logo-img" />
+          </span>
+          <span className="orev-app-title">{t('orev.title')}</span>
+        </div>
+        <div className="orev-app-user">
+          <LanguageToggle />
+          <DarkModeToggle />
+          <span className="orev-app-email" title={admin?.username}>
+            {admin?.username}
+          </span>
+          <button
+            type="button"
+            className="orev-app-logout"
+            onClick={handleLogout}
+            aria-label={t('orev.logout')}
+            title={t('orev.logout')}
+          >
+            <LogOut size={15} strokeWidth={2} />
+          </button>
+        </div>
+      </header>
+      <main className="orev-app-main">
+        <CreditOrdersPage />
+      </main>
+    </div>
+  )
+}

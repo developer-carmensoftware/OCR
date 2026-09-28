@@ -1,0 +1,210 @@
+import { Calculator, RotateCw, Wrench, AlertTriangle } from 'lucide-react'
+import Badge from '@/shared/components/common/Badge'
+import Card from '@/shared/components/common/Card'
+import NumericInput from '@/shared/components/common/NumericInput'
+import { fmt, round2 } from '@/features/ap-invoice/constants'
+import { useT } from '@/i18n/LanguageContext'
+import type { APInvoiceHeader } from '@/features/ap-invoice/constants'
+
+interface Sums {
+  lineSubTotal: number
+  discount: number
+  tax: number
+  lineTotal: number
+}
+interface Targets {
+  subTotal: number
+  discount: number
+  tax: number
+}
+interface Diffs {
+  isSubDiff: boolean
+  isDiscDiff: boolean
+  isTaxDiff: boolean
+  isGrandDiff: boolean
+  isDocInconsistent: boolean
+}
+
+interface Props {
+  sums: Sums
+  targets: Targets
+  diffs: Diffs
+  headerData: APInvoiceHeader
+  updateHeader: (key: string, val: string) => void
+  blurHeader: (key: string, val: string) => void
+  adjustField: (tgt: unknown, sumCur: unknown, itemKey: string) => void
+  onFixDoc: () => void
+}
+
+interface SummaryRowProps {
+  label: string
+  isDiff: boolean
+  // While the document is internally inconsistent, a per-field Adjust would drag the (corroborated)
+  // table value onto the misread document value — the exact trap. Hide it and steer to the repair.
+  hideAdjust?: boolean
+  tableVal: string
+  tableClassName?: string
+  docVal: string
+  // Optional: a row with no meaningful plug target (Discount) simply omits it.
+  onAdjust?: () => void
+  onChange: (v: string) => void
+  onBlur: (v: string) => void
+}
+
+function SummaryRow({
+  label,
+  isDiff,
+  hideAdjust,
+  tableVal,
+  tableClassName,
+  docVal,
+  onAdjust,
+  onChange,
+  onBlur,
+}: SummaryRowProps) {
+  const { t } = useT()
+  return (
+    <div className="ap-summary-row">
+      <span className="ap-summary-label">{label}</span>
+      <div className="ap-summary-values">
+        {isDiff && !hideAdjust && onAdjust && (
+          <button type="button" className="ap-adjust-btn" onClick={onAdjust}>
+            <RotateCw size={14} /> {t('ap.adjust')}
+          </button>
+        )}
+        <span className={`ap-sum-from-table ${isDiff ? 'diff' : ''} ${tableClassName || ''}`}>
+          {tableVal}
+        </span>
+        <NumericInput
+          className={`ap-sum-from-doc ${isDiff ? 'diff' : ''}`}
+          aria-label={label}
+          value={docVal}
+          onChange={onChange}
+          onBlur={onBlur}
+        />
+      </div>
+    </div>
+  )
+}
+
+export default function AmountSummary({
+  sums,
+  targets,
+  diffs,
+  headerData,
+  updateHeader,
+  blurHeader,
+  adjustField,
+  onFixDoc,
+}: Props) {
+  const { t } = useT()
+  const { lineSubTotal, discount, tax, lineTotal } = sums
+  // targets.discount is intentionally unread — the Discount row has no Adjust.
+  const { subTotal: tgtSub, tax: tgtTax } = targets
+  const { isSubDiff, isDiscDiff, isTaxDiff, isGrandDiff, isDocInconsistent } = diffs
+
+  return (
+    <Card
+      className="ap-summary-card"
+      icon={<Calculator size={16} />}
+      title={t('ap.summaryAccount')}
+      right={
+        <div className="ap-summary-badges">
+          <Badge variant="success" pill={false}>
+            {t('ap.sumFromTable')}
+          </Badge>
+          <Badge variant="info" pill={false}>
+            {t('ap.sumFromDoc')}
+          </Badge>
+        </div>
+      }
+    >
+      <div className="card-body">
+        {isDocInconsistent && (
+          // The document's own figures don't add up — the signature of a misread digit. Offer a
+          // one-click repair here (before the per-field Adjust buttons can drag the corroborated
+          // table value to the misread document value).
+          <div className="ap-doc-fix-banner">
+            <AlertTriangle size={15} className="ap-doc-fix-icon" />
+            <span className="ap-doc-fix-text">{t('ap.docInconsistentHint')}</span>
+            <button type="button" className="ap-doc-fix-btn" onClick={onFixDoc}>
+              <Wrench size={13} /> {t('ap.fixDocFigures')}
+            </button>
+          </div>
+        )}
+        <SummaryRow
+          label={t('ap.subTotal')}
+          isDiff={isSubDiff}
+          hideAdjust={isDocInconsistent}
+          tableVal={fmt(lineSubTotal)}
+          docVal={headerData.subTotal}
+          onAdjust={() => adjustField(tgtSub, lineSubTotal, 'lineSubTotal')}
+          onChange={v => updateHeader('subTotal', v)}
+          onBlur={v => blurHeader('subTotal', v)}
+        />
+        {/* No Adjust here on purpose. Discount is a display figure — Carmen has no line
+            discount field and the payload no longer reads discountAmt — so there is
+            nothing to reconcile TO. The button used to write the difference onto
+            whichever row happened to be last (often the deposit row), inventing a
+            discount that row never had just to make two display numbers agree. The
+            diff still shows; it no longer gates submit either. */}
+        <SummaryRow
+          label={t('ap.discount')}
+          isDiff={isDiscDiff}
+          tableVal={fmt(discount)}
+          docVal={headerData.totalDiscount}
+          onChange={v => updateHeader('totalDiscount', v)}
+          onBlur={v => blurHeader('totalDiscount', v)}
+          tableClassName={isDiscDiff ? '' : 'ap-sum-discount-no-diff'}
+        />
+        <SummaryRow
+          label={t('ap.tax')}
+          isDiff={isTaxDiff}
+          hideAdjust={isDocInconsistent}
+          tableVal={fmt(tax)}
+          docVal={headerData.taxAmount}
+          onAdjust={() => adjustField(tgtTax, tax, 'taxAmt')}
+          onChange={v => updateHeader('taxAmount', v)}
+          onBlur={v => blurHeader('taxAmount', v)}
+        />
+        <div className="ap-grand-total-row">
+          <span className="ap-grand-total-label">{t('ap.grandTotal')}</span>
+          <div className="ap-summary-values">
+            {isGrandDiff && isDocInconsistent ? (
+              // The document's own figures don't add up (sub + tax ≠ grand): reconciling line items
+              // can never clear this, so offer the document repair instead of an Adjust that loops.
+              <button
+                type="button"
+                className="ap-adjust-btn"
+                title={t('ap.docInconsistent')}
+                onClick={onFixDoc}
+              >
+                <Wrench size={14} /> {t('ap.fixDocFigures')}
+              </button>
+            ) : (
+              isGrandDiff && (
+                <button
+                  type="button"
+                  className="ap-adjust-btn"
+                  onClick={() => adjustField(round2(headerData.grandTotal), lineTotal, 'lineTotal')}
+                >
+                  <RotateCw size={14} /> {t('ap.adjust')}
+                </button>
+              )
+            )}
+            <span className={`ap-grand-total-table-val ${isGrandDiff ? 'diff' : ''}`}>
+              {fmt(lineTotal)}
+            </span>
+            <NumericInput
+              className={`ap-sum-from-doc grand-total ${isGrandDiff ? 'diff' : ''}`}
+              aria-label={t('ap.grandTotal')}
+              value={headerData.grandTotal}
+              onChange={v => updateHeader('grandTotal', v)}
+              onBlur={v => blurHeader('grandTotal', v)}
+            />
+          </div>
+        </div>
+      </div>
+    </Card>
+  )
+}

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -9,6 +10,10 @@ const appVersion = readFileSync(new URL('../VERSION', import.meta.url), 'utf8').
 export default defineConfig({
   base: './',
   plugins: [react()],
+  // `@/x` = `src/x` — the same mapping tsconfig.json's `paths` declares for the type checker.
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },

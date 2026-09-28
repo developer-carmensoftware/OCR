@@ -5,7 +5,7 @@
  * One flat object keyed by short namespaced keys. `en` is the source of truth;
  * `th` is typed as `Record<TKey, string>` so TS errors if a Thai string is
  * missing. Tier brand names (Free/Starter/Standard/…) are NOT here — they read
- * as product names and stay in `constants/billing.ts`.
+ * as product names and stay in `features/billing/constants.ts`.
  *
  * `{var}` placeholders are filled by `t(key, vars)` in LanguageContext.
  */
@@ -980,7 +980,7 @@ const en = {
   // Not "belongs to another company". A BU's register holds an array of tax IDs, so a
   // document carrying one that is not in it has not been proven to belong to anyone else —
   // it just did not match. The claim the row can actually support is the weaker one, and
-  // the number itself rides in on `error_message` (see WITH_DETAIL in lib/reviewReasons).
+  // the number itself rides in on `error_message` (see WITH_DETAIL in shared/lib/reviewReasons).
   'review.rcTaxIdMismatch': 'Registered Tax ID does not match the document',
   // The fallback only. A live row prints its own detail instead — "already posted to
   // Carmen" or "a copy is already waiting for review" — because those are two situations
@@ -1064,7 +1064,7 @@ const en = {
   'notif.reason.unknown': 'The document could not be processed.',
 
   // What's New — release history page (#/whats-new), entered from the bell.
-  // The release copy itself is data in content/releaseNotes.ts, not keys.
+  // The release copy itself is data in shared/content/releaseNotes.ts, not keys.
   'whatsnew.title': "What's new",
   'whatsnew.subtitle': 'Updates to Carmen AI Automation, newest first.',
   'whatsnew.new': 'New',
