@@ -468,7 +468,7 @@ async def _toggle_carmencloud_auto_post(state: dict, value: bool) -> None:
     from app.database import async_session
     from app.models.identity import Tenant
     from app.models.schemas.email_automation import RuleIn, SettingsIn
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     snap = state["snapshot"]["carmencloud"]
     rules = [
@@ -1415,7 +1415,7 @@ async def phase_toggle(args) -> None:
         print("  S6 allowance restored")
     elif args.action == "s6-backlog-fill":
         # Q-09: synthetic rows (run-tagged, wiped with S6) up to the cap.
-        from app.services.email_ingest_service import REVIEW_BACKLOG_CAP
+        from app.services.email_automation.ingest import REVIEW_BACKLOG_CAP
 
         s6 = state["bus"]["S6"]["tenant_id"]
         have = (
@@ -1462,13 +1462,13 @@ class DispatchRecord:
 
 def dispatch_patches(records: list[DispatchRecord], dry_delay: float = 0.0) -> list:
     from app.context import current_carmen_uri, current_tenant_id
-    from app.services import email_ingest_service as ingest
+    from app.services.email_automation import ingest
 
     def _fp(token: str) -> str:
         return hashlib.sha256((token or "").encode()).hexdigest()[:8]
 
-    real_post_gljv = ingest.post_gljv
-    real_post_tax = ingest.post_input_tax
+    real_post_gljv = ingest.carmen.post_gljv
+    real_post_tax = ingest.carmen.post_input_tax
     real_accounts = ingest.get_account_codes
     real_depts = ingest.get_departments
     real_tax_profiles = ingest.get_tax_profiles
@@ -1551,8 +1551,8 @@ def dispatch_patches(records: list[DispatchRecord], dry_delay: float = 0.0) -> l
         return await real_tax_profiles(token)
 
     return [
-        patch.object(ingest, "post_gljv", _gljv),
-        patch.object(ingest, "post_input_tax", _tax),
+        patch.object(ingest.carmen, "post_gljv", _gljv),
+        patch.object(ingest.carmen, "post_input_tax", _tax),
         patch.object(ingest, "get_account_codes", _accounts),
         patch.object(ingest, "get_departments", _departments),
         patch.object(ingest, "get_tax_profiles", _profiles),
@@ -1566,7 +1566,7 @@ async def phase_poll(args) -> None:
     guard()
     state = load_state()
     from app.config import settings as app_settings
-    from app.services import email_ingest_service as ingest
+    from app.services.email_automation import ingest
 
     records: list[DispatchRecord] = []
     total_summary: dict[str, int] = {}
@@ -1958,7 +1958,7 @@ async def real_client(
 
     with (
         patch(
-            "app.services.usage_service.fetch_openrouter_pricing",
+            "app.services.shared.pricing_cache.fetch_openrouter_pricing",
             new_callable=AsyncMock,
         ),
         patch("app.lifecycle._perf_flush_loop", new_callable=AsyncMock),
@@ -2052,8 +2052,8 @@ async def phase_review(_args) -> None:
         "\n## Q-03 — one real approve through the real HTTP app (edits a GL account)\n"
     )
     from app.database import async_session
-    from app.services.accounting_config_service import get_accounting_config
-    from app.services.cc_jv import build_jv_rows
+    from app.services.credit_card.accounting_config import get_accounting_config
+    from app.services.credit_card.jv import build_jv_rows
 
     # R1 (carmen) was the intended BU for this — but every real fixture document under its
     # own tax ID (BBL/SCB/SCB2, all "Kimberly Co., Ltd.") already exists in carmen's real,
@@ -2252,7 +2252,7 @@ async def phase_fixcheck(_args) -> None:
     guard()
     state = load_state()
     b = state["bus"]
-    from app.services.email_imap import DONE_FLAG
+    from app.services.email_automation.imap import DONE_FLAG
 
     msgs = {m["id"]: m for m in state["messages"] if m.get("wave") == "fixcheck"}
     results: dict[str, dict] = {}
@@ -2337,8 +2337,8 @@ async def phase_fixcheck(_args) -> None:
     else:
         from app.database import async_session
         from app.models.schemas.ocr import ExtractedDetailRow
-        from app.services.accounting_config_service import get_accounting_config
-        from app.services.cc_jv import build_jv_rows
+        from app.services.credit_card.accounting_config import get_accounting_config
+        from app.services.credit_card.jv import build_jv_rows
 
         doc_id, s4 = doc[0]["id"], b["S4"]
         payload = doc[0]["review_payload"]
@@ -2491,7 +2491,7 @@ async def phase_r2check(args) -> None:
     """E-06 / Q-09, read back after each poll: held = no row, no charge, not done."""
     guard()
     state = load_state()
-    from app.services.email_imap import DONE_FLAG
+    from app.services.email_automation.imap import DONE_FLAG
 
     s6 = state["bus"]["S6"]["tenant_id"]
     case = {"e06": "r2-e06", "q09": "r2-q09"}[args.stage.split("-")[0]]
@@ -2553,8 +2553,8 @@ async def phase_approve_real(args) -> None:
 
     from app.database import async_session
     from app.models.schemas.ocr import ExtractedDetailRow
-    from app.services.accounting_config_service import get_accounting_config
-    from app.services.cc_jv import build_jv_rows
+    from app.services.credit_card.accounting_config import get_accounting_config
+    from app.services.credit_card.jv import build_jv_rows
 
     d = doc[0]
     payload = d["review_payload"]
@@ -2719,7 +2719,7 @@ async def phase_s07_creds(_args) -> None:
     from app.auth.session import decrypt_carmen_token
     from app.config import settings as app_settings
     from app.main import app
-    from app.services.admin_auth_service import get_admin_jwt_secret
+    from app.services.admin.auth import get_admin_jwt_secret
 
     b = state["bus"]
     host = "https://dev.carmen4.com"
@@ -2830,7 +2830,7 @@ async def phase_s07_creds(_args) -> None:
 async def phase_probes(_args) -> None:
     guard()
     from app.config import settings as app_settings
-    from app.services import email_ingest_service as ingest
+    from app.services.email_automation import ingest
 
     print(
         "## O-02 — two concurrent run_ingest() calls must not both process the batch\n"

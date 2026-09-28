@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.models.billing import UserNotification
-from app.services import notification_service
+from app.services.shared import notification as notification_service
 
 
 def _notif(tenant_id, *, type_="approved", read_at=None, order_id=None):

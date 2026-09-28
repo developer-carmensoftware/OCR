@@ -27,7 +27,7 @@ from sqlalchemy import text
 
 from app.exceptions import ConflictError, ValidationError
 from app.models.schemas.ocr import ExtractedCreditCardData
-from app.services import email_ingest_service as ingest
+from app.services.email_automation import ingest
 
 # `real_engine` and `tenants` are pytest fixtures pytest finds via conftest.py in this
 # same directory — no import needed, and importing them would shadow the fixture-injected
@@ -169,7 +169,7 @@ def _approve_env(*, post_delay: float = 0.0, result=None):
         patch.object(
             ingest.es, "posting_target", AsyncMock(return_value=("tok", "https://fake.invalid"))
         ),
-        patch.object(ingest, "post_gljv", _post),
+        patch.object(ingest.carmen, "post_gljv", _post),
         patch.object(ingest, "_post_input_tax", AsyncMock(return_value=None)),
     ]
 

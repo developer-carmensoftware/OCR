@@ -9,7 +9,7 @@ Carmen, which is worse than the record that was never created.
 from types import SimpleNamespace
 
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services.cc_input_tax import build_input_tax_payload, resolve_tax_profile
+from app.services.credit_card.input_tax import build_input_tax_payload, resolve_tax_profile
 
 PROFILES = {
     "Data": [

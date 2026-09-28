@@ -38,8 +38,8 @@ from app.models.schemas.email_automation import (
     QueueSeenIn,
     QueueSeenOut,
 )
-from app.routers.email_review import to_review_row
-from app.services.tenant_lookup import username_map
+from app.routers.email_automation.review import to_review_row
+from app.services.shared.tenant_lookup import username_map
 
 router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card Activity"])
 

@@ -36,20 +36,18 @@ from app.models.schemas import (
     RejectRequest,
     TopupRequest,
 )
-from app.services import (  # noqa: F401
-    ar_posting_service,
-    credit_order_service,
-    notification_service,
-    storage_service,
-)
-from app.services import billing_document_service as bds
-from app.services.credit_service import (
+from app.services.billing import ar_posting as ar_posting_service  # noqa: F401
+from app.services.billing import documents as bds
+from app.services.billing import orders as credit_order_service
+from app.services.billing import slip_storage as storage_service  # noqa: F401
+from app.services.billing.slip_storage import StorageError
+from app.services.shared import notification as notification_service
+from app.services.shared.credits import (
     adjust_balance,
     get_credit_balance,
     get_ledger,
     topup_order,
 )
-from app.services.storage_service import StorageError
 
 # ar_posting_service and storage_service are unused directly here (their calls now
 # live in credit_order_service) but stay imported under this module's name because

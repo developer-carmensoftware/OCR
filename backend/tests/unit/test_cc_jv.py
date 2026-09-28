@@ -11,7 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services.cc_jv import (
+from app.services.credit_card.jv import (
     BANK_SOURCE_MAP,
     build_gljv_payload,
     build_jv_rows,

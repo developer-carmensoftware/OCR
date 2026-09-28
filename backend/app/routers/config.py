@@ -24,8 +24,8 @@ from app.models.schemas import (
     AccountingConfigResponse,
     ConfigPatchRequest,
 )
-from app.services import accounting_config_service as svc
-from app.services.carmen_service import CarmenAPIError, get_departments
+from app.services.credit_card import accounting_config as svc
+from app.services.shared.carmen import CarmenAPIError, get_departments
 from app.utils.gl_filter import parse_default_account
 
 logger = logging.getLogger(__name__)

@@ -84,32 +84,23 @@ from app.models.identity import Tenant
 from app.models.observability import JobRun
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractionWarning
-from app.services import anomaly_service, notification_service, ocr_service
-from app.services import email_settings_service as es
-from app.services import gl_suggestion_service as gl
-from app.services.accounting_config_service import (
+from app.services.credit_card import gl_suggestion as gl
+from app.services.credit_card import ocr as ocr_service
+from app.services.credit_card.accounting_config import (
     description_for,
     get_accounting_config,
 )
-from app.services.carmen_service import (
-    CarmenAPIError,
-    get_account_codes,
-    get_departments,
-    get_tax_profiles,
-    post_gljv,
-    post_input_tax,
-)
-from app.services.cc_input_tax import build_input_tax_payload
-from app.services.cc_jv import (
+from app.services.credit_card.extraction import finalize_extraction, mark_task_failed
+from app.services.credit_card.input_tax import build_input_tax_payload
+from app.services.credit_card.jv import (
     build_gljv_payload,
     build_jv_rows,
     num,
     r2,
     unmapped_payment_types,
 )
-from app.services.credit_card_service import finalize_extraction, mark_task_failed
-from app.services.credit_service import consume_document, refund_document
-from app.services.email_imap import (
+from app.services.email_automation import ingest_settings as es
+from app.services.email_automation.imap import (
     auto_confirm_forwarding,
     fetch_confirmations,
     fetch_pending,
@@ -122,8 +113,18 @@ from app.services.email_imap import (
     tag_from_recipients,
     unique_names,
 )
-from app.services.module_gate import assert_module_enabled
-from app.services.task_service import create_task
+from app.services.shared import anomaly as anomaly_service
+from app.services.shared import carmen
+from app.services.shared import notification as notification_service
+from app.services.shared.carmen import (
+    CarmenAPIError,
+    get_account_codes,
+    get_departments,
+    get_tax_profiles,
+)
+from app.services.shared.credits import consume_document, refund_document
+from app.services.shared.module_gate import assert_module_enabled
+from app.services.shared.task import create_task
 from app.utils.bank_detect import detect_bank_code
 from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
@@ -1198,7 +1199,7 @@ async def _run_document(
         payload = build_gljv_payload(
             rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
         )
-        result = await post_gljv(payload, carmen_token)
+        result = await carmen.post_gljv(payload, carmen_token)
         if not result or result.get("Code", -1) != 0:
             raise _Skip("carmen_rejected", _carmen_verdict(result))
 
@@ -1356,7 +1357,7 @@ async def _post_input_tax(
                 # tell the customer the VAT is theirs to add by hand.
                 logger.warning("[email] %s (%s)", skipped, extracted.doc_no)
             return skipped
-        result = await post_input_tax(payload, carmen_token)
+        result = await carmen.post_input_tax(payload, carmen_token)
     except Exception as exc:
         logger.exception("[email] Input tax failed for %s", extracted.doc_no)
         return f"Input tax not recorded: {exc}"
@@ -2068,7 +2069,7 @@ async def approve_document(
             rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
         )
         try:
-            result = await post_gljv(payload, carmen_token)
+            result = await carmen.post_gljv(payload, carmen_token)
         except CarmenAPIError as exc:
             # Transport, not judgement: the JV's fate is genuinely unknown. The document
             # stays reviewable, but the message has to say so — a reviewer told only

@@ -18,7 +18,7 @@ from fastapi import HTTPException
 
 from app.auth.admin_session import AdminPrincipal
 from app.exceptions import RequestRateLimitExceeded
-from app.routers.email_automation import Caller, _caller, _resolve
+from app.routers.email_automation.settings_api import Caller, _caller, _resolve
 from tests.integration.conftest import make_test_client
 
 BASE = "/api/v1/carmen"
@@ -103,7 +103,7 @@ async def test_caller_empty_header_is_401():
 @pytest.mark.asyncio
 async def test_caller_rate_limits_the_carmen_token_path(_fresh_limiters):
     """This path makes an outbound call before the caller is known to be genuine."""
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     req = _request(ip="198.51.100.7")
     with pytest.raises(RequestRateLimitExceeded):
@@ -134,7 +134,7 @@ async def test_implausible_tokens_are_rejected_before_any_work(token):
 def _fresh_limiters():
     """The limiters are module-level and shared, so a test that fills one has to
     hand it back empty — otherwise it decides the outcome of whatever runs next."""
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     for limiter in (mod._settings_limiter, mod._probe_ceiling):
         limiter._calls.clear()
@@ -147,7 +147,7 @@ def _fresh_limiters():
 async def test_a_global_ceiling_limits_probes_regardless_of_source_ip(_fresh_limiters):
     """Per-IP is the wrong axis for distributed traffic, and the outbound call lands
     on the customer's Carmen — so there is a ceiling that ignores who is asking."""
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     with pytest.raises(RequestRateLimitExceeded):
         for i in range(mod._probe_ceiling._max + 1):
@@ -159,7 +159,7 @@ async def test_a_global_ceiling_limits_probes_regardless_of_source_ip(_fresh_lim
 
 @pytest.mark.asyncio
 async def test_a_rejected_token_is_remembered_so_replaying_it_is_free():
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     mod._rejected.clear()
     validate = AsyncMock(side_effect=HTTPException(401, "Carmen token rejected"))
@@ -177,7 +177,7 @@ async def test_a_rejected_token_is_remembered_so_replaying_it_is_free():
 @pytest.mark.asyncio
 async def test_an_unreachable_carmen_is_not_remembered_as_a_rejection():
     """502 means we could not ask — caching that would turn an outage into a lockout."""
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     mod._rejected.clear()
     validate = AsyncMock(side_effect=HTTPException(502, "Cannot reach Carmen"))
@@ -195,7 +195,7 @@ async def test_an_unreachable_carmen_is_not_remembered_as_a_rejection():
 @pytest.mark.asyncio
 async def test_a_valid_token_is_never_cached():
     """A token Carmen accepted may be revoked a minute later; a stale yes is a hole."""
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     validate = AsyncMock()
     with (
@@ -210,7 +210,9 @@ async def test_a_valid_token_is_never_cached():
 
 @pytest.mark.asyncio
 async def test_caller_valid_admin_bearer_returns_actor():
-    with patch("app.routers.email_automation.decode_admin_principal", return_value=_admin()):
+    with patch(
+        "app.routers.email_automation.settings_api.decode_admin_principal", return_value=_admin()
+    ):
         caller = await _caller(_request(), authorization="Bearer sometoken")
     assert caller.actor == "admin:alice"
     assert caller.carmen_token is None  # operator path — nothing to prove against Carmen
@@ -220,7 +222,7 @@ async def test_caller_valid_admin_bearer_returns_actor():
 @pytest.mark.asyncio
 async def test_caller_invalid_admin_bearer_is_401():
     with patch(
-        "app.routers.email_automation.decode_admin_principal",
+        "app.routers.email_automation.settings_api.decode_admin_principal",
         side_effect=HTTPException(401, "Invalid or expired admin token"),
     ):
         with pytest.raises(HTTPException) as exc:
@@ -245,7 +247,8 @@ async def test_a_signed_admin_token_authorises_nothing_on_its_own(perms):
     reach it either. That is why the gate is `configs:write` and not `configs:read`.
     """
     with patch(
-        "app.routers.email_automation.decode_admin_principal", return_value=_admin(perms=perms)
+        "app.routers.email_automation.settings_api.decode_admin_principal",
+        return_value=_admin(perms=perms),
     ):
         with pytest.raises(HTTPException) as exc:
             await _caller(_request(), authorization="Bearer sometoken")
@@ -259,7 +262,7 @@ async def test_a_signed_admin_token_authorises_nothing_on_its_own(perms):
 @pytest.mark.asyncio
 async def test_resolve_proves_the_token_against_the_host_in_the_payload():
     """uri/bu are caller-supplied, so they are what the token is checked against."""
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     tenant = _tenant()
     validate = AsyncMock()
@@ -284,7 +287,7 @@ async def test_a_token_valid_for_the_host_may_act_on_any_bu_under_it():
     resolves whichever BU the payload asks for. Confirmed live on dev 2026-09-25 — a carmen
     token read carmencloud's settings and got a carmencloud session. Pinned so that tightening
     or loosening this is a visible decision, not a side effect."""
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     other_bu = _tenant(bu="bkk01")
     validate = AsyncMock()
@@ -303,7 +306,7 @@ async def test_a_token_valid_for_the_host_may_act_on_any_bu_under_it():
 
 @pytest.mark.asyncio
 async def test_resolve_rejects_a_token_carmen_does_not_accept():
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     with (
         patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
@@ -321,7 +324,7 @@ async def test_resolve_rejects_a_token_carmen_does_not_accept():
 @pytest.mark.asyncio
 async def test_resolve_keeps_unreachable_carmen_distinct_from_a_bad_token():
     """502 vs 401 is the difference between 'your server is down' and 'log in again'."""
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     with (
         patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
@@ -338,7 +341,7 @@ async def test_resolve_keeps_unreachable_carmen_distinct_from_a_bad_token():
 
 @pytest.mark.asyncio
 async def test_resolve_skips_the_probe_for_the_admin_path():
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     validate = AsyncMock()
     with (
@@ -358,7 +361,7 @@ async def test_resolve_skips_the_probe_for_the_admin_path():
 
 @pytest.mark.asyncio
 async def test_resolve_refuses_a_scoped_admin_reaching_another_tenant():
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     tenant = _tenant()
     with patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant):
@@ -369,7 +372,7 @@ async def test_resolve_refuses_a_scoped_admin_reaching_another_tenant():
 
 @pytest.mark.asyncio
 async def test_resolve_allows_a_scoped_admin_on_its_own_tenant():
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     tenant = _tenant()
     with patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant):
@@ -380,7 +383,7 @@ async def test_resolve_allows_a_scoped_admin_on_its_own_tenant():
 @pytest.mark.asyncio
 async def test_resolve_allows_a_global_admin_anywhere():
     """`tenant_scope == ""` is what `AdminPrincipal.is_global` means — unchanged."""
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     tenant = _tenant()
     with patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant):
@@ -392,7 +395,7 @@ async def test_resolve_allows_a_global_admin_anywhere():
 async def test_resolve_refuses_an_admin_caller_carrying_no_principal():
     """No scope recorded must never read as "every tenant" — that is the failure mode
     the whole fix is about, so the missing-principal case is refused, not defaulted."""
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     with patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()):
         with pytest.raises(HTTPException) as exc:
@@ -420,7 +423,7 @@ def test_every_spelling_of_the_origin_gives_one_lookup_key(value):
     This is the same derivation `/auth/exchange` ran when it created the tenant row
     (`urlparse(...).hostname`), which is why the two always agree.
     """
-    from app.routers.email_automation import _tenant_host
+    from app.routers.email_automation.settings_api import _tenant_host
 
     assert _tenant_host(value) == "hotelgroup.carmenwork.com"
 
@@ -429,7 +432,7 @@ def test_every_spelling_of_the_origin_gives_one_lookup_key(value):
 def test_a_value_that_names_no_host_is_left_to_the_lookup(value):
     """No exception here: anything that matches no tenant is already a 400, and that
     is the only honest answer — we cannot tell a typo from a BU that never signed in."""
-    from app.routers.email_automation import _tenant_host
+    from app.routers.email_automation.settings_api import _tenant_host
 
     assert _tenant_host(value) == value.strip().lower()
 
@@ -441,7 +444,7 @@ async def test_the_token_is_proved_against_the_tenants_own_origin_not_the_uri_se
     reach `validate_token`, or a token proven against one Carmen could be posted
     to another.
     """
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     tenant = _tenant()
     validate = AsyncMock()
@@ -460,7 +463,7 @@ async def test_the_token_is_proved_against_the_tenants_own_origin_not_the_uri_se
 async def test_an_unknown_origin_never_reaches_carmen():
     """The lookup is the gate: no tenant, no outbound request at all."""
     from app.exceptions import ValidationError
-    from app.routers import email_automation as mod
+    from app.routers.email_automation import settings_api as mod
 
     validate = AsyncMock()
     with (
@@ -489,7 +492,7 @@ def test_get_settings_401_without_authorization_header():
 def test_get_settings_reaches_handler_for_both_auth_styles():
     """Overrides `_caller` (proven independently above) to isolate route wiring."""
     from app.main import app
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     # make_test_client() clears dependency_overrides itself on exit, so no manual
     # cleanup is needed (and would double-clear / KeyError if attempted here).
@@ -533,8 +536,8 @@ def test_get_notifications_401_without_authorization_header():
 def test_get_notifications_reaches_handler_and_answers_a_bare_bool():
     """A badge, not a feed — the full list stays the in-app bell's endpoint."""
     from app.main import app
-    from app.services import email_settings_service as es
-    from app.services import notification_service
+    from app.services.email_automation import ingest_settings as es
+    from app.services.shared import notification as notification_service
 
     app.dependency_overrides[_caller] = lambda: _admin_caller()
     with (
@@ -555,8 +558,8 @@ def test_get_notifications_passes_since_through_to_the_service():
     """The cursor is the caller's, so it has to survive the route unchanged —
     without it the answer is 'has unread', which never clears for an unattended BU."""
     from app.main import app
-    from app.services import email_settings_service as es
-    from app.services import notification_service
+    from app.services.email_automation import ingest_settings as es
+    from app.services.shared import notification as notification_service
 
     app.dependency_overrides[_caller] = lambda: _admin_caller()
     has_notification = AsyncMock(return_value=False)
@@ -583,8 +586,8 @@ def test_storing_a_token_targets_only_the_tenants_own_origin():
     one handed to `set_token` — and therefore stored and later posted with — is the
     tenant's own."""
     from app.main import app
-    from app.routers import email_automation as mod
-    from app.services import email_settings_service as es
+    from app.routers.email_automation import settings_api as mod
+    from app.services.email_automation import ingest_settings as es
 
     app.dependency_overrides[_caller] = lambda: _admin_caller()
     tenant = _tenant()
@@ -617,7 +620,7 @@ def test_bank_codes_401_without_authorization_header():
 
 def test_bank_codes_reaches_handler_and_returns_the_service_list():
     from app.main import app
-    from app.services import email_settings_service as es
+    from app.services.email_automation import ingest_settings as es
 
     app.dependency_overrides[_caller] = lambda: _admin_caller()
     banks = [{"code": "BBL", "name": "Bangkok Bank"}, {"code": "KTC", "name": "Krungthai Card"}]

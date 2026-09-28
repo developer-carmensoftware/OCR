@@ -152,7 +152,7 @@ def build_gljv_payload(
     config: Any,
 ) -> dict:
     """JV rows + accounting config → the exact body useOcrSubmission.ts posts."""
-    from app.services.accounting_config_service import description_for
+    from app.services.credit_card.accounting_config import description_for
 
     # Per-bank wording when the BU set one, else the BU's single description — the
     # input-tax record built from the same statement resolves it the same way, so

@@ -8,7 +8,7 @@ from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.schemas import LoginRequest, LoginResponse
 from app.routers.admin.deps import get_current_admin
-from app.services import admin_auth_service as svc
+from app.services.admin import auth as svc
 from app.utils.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ async def admin_login(
 
         raise HTTPException(status_code=exc.status_code, detail=str(exc))
 
-    from app.services.audit_service import AuditAction, log_admin_action
+    from app.services.shared.audit import AuditAction, log_admin_action
 
     await log_admin_action(
         admin_user_id=str(admin.id),
@@ -70,7 +70,7 @@ async def admin_me(admin: AdminPrincipal = Depends(get_current_admin)):
 
 @router.post("/logout")
 async def admin_logout(admin: AdminPrincipal = Depends(get_current_admin)):
-    from app.services.audit_service import AuditAction, log_admin_action
+    from app.services.shared.audit import AuditAction, log_admin_action
 
     await log_admin_action(
         admin_user_id=admin.admin_id,

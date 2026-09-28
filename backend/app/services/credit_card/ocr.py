@@ -14,7 +14,7 @@ from app.context import current_tenant_id
 from app.exceptions import ValidationError
 from app.models.orm import OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
-from app.services.llm_service import extract_from_image
+from app.services.credit_card.vision import extract_from_image
 from app.utils.image_processing import resize_if_needed
 from app.utils.pdf_utils import (
     MAX_PAGES_PER_CALL,

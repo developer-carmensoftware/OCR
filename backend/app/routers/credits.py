@@ -34,11 +34,13 @@ from app.models.schemas import (
     QrPayloadResponse,
     SlipUploadResponse,
 )
-from app.services import billing_document_service as bds
-from app.services import carmen_service, promptpay_service, storage_service
-from app.services.credit_service import annual_price
-from app.services.file_service import FileService
-from app.services.storage_service import StorageError
+from app.services.billing import documents as bds
+from app.services.billing import promptpay as promptpay_service
+from app.services.billing import slip_storage as storage_service
+from app.services.billing.slip_storage import StorageError
+from app.services.shared import carmen as carmen_service
+from app.services.shared.credits import annual_price
+from app.services.shared.file import FileService
 from app.utils.image_processing import resize_if_needed
 from app.utils.pagination import paginate
 from app.utils.tax import vat_on_top

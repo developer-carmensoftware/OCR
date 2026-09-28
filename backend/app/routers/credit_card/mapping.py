@@ -15,9 +15,9 @@ from app.models.schemas import (
     SuggestPaymentTypesRequest,
     SuggestRequest,
 )
-from app.services import gl_suggestion_service as map_gl
-from app.services.accounting_config_service import get_accounting_config
-from app.services.mapping_history_service import (
+from app.services.credit_card import gl_suggestion as map_gl
+from app.services.credit_card.accounting_config import get_accounting_config
+from app.services.credit_card.mapping_history import (
     BYPASS_THRESHOLD,
     get_confirmed_mappings,
 )

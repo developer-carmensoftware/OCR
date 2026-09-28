@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services import pricing_cache_service as pcs
+from app.services.shared import pricing_cache as pcs
 
 
 @pytest.fixture(autouse=True)

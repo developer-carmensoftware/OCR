@@ -13,8 +13,8 @@ from app.config import settings
 from app.database import get_db
 from app.exceptions import ValidationError
 from app.models.observability import OutboundCallLog
-from app.services import usage_analytics_service as svc
-from app.services.tenant_lookup import username_map
+from app.services.admin import usage_analytics as svc
+from app.services.shared.tenant_lookup import username_map
 
 from ._query import ListQuery, list_query
 from .deps import require_permission

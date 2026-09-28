@@ -29,7 +29,7 @@ def _jv(desc: str, dept: str, acc: str) -> dict:
 
 def _patch_jv_rows(rows: list[dict]):
     """Patch the Carmen JV fetch + clear the module cache for a clean read."""
-    from app.services import mapping_history_service as svc
+    from app.services.credit_card import mapping_history as svc
 
     svc._CACHE.clear()
     return patch.object(svc, "get_jv_by_source", new_callable=AsyncMock, return_value=rows)
@@ -46,7 +46,7 @@ class TestGetConfirmedMappings:
     @pytest.mark.asyncio
     async def test_returns_empty_without_source_or_token(self):
         set_context(TENANT_ID)
-        from app.services.mapping_history_service import get_confirmed_mappings
+        from app.services.credit_card.mapping_history import get_confirmed_mappings
 
         assert await get_confirmed_mappings("BBL", ["Input Tax"], "", "tok") == {}
         assert await get_confirmed_mappings("BBL", ["Input Tax"], "acbb", "") == {}
@@ -54,7 +54,7 @@ class TestGetConfirmedMappings:
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_jv_history(self):
         set_context(TENANT_ID)
-        from app.services.mapping_history_service import get_confirmed_mappings
+        from app.services.credit_card.mapping_history import get_confirmed_mappings
 
         with _patch_jv_rows([]):
             result = await get_confirmed_mappings(
@@ -71,7 +71,7 @@ class TestGetConfirmedMappings:
             _jv("Input Tax", "GEN", "1022005"),
             _jv("Credit card commission", "GEN", "6080008"),
         ]
-        from app.services.mapping_history_service import get_confirmed_mappings
+        from app.services.credit_card.mapping_history import get_confirmed_mappings
 
         with _patch_jv_rows(rows):
             result = await get_confirmed_mappings(
@@ -96,7 +96,7 @@ class TestGetConfirmedMappings:
             _jv("Bank Account", "GEN", "1011001"),
             _jv("Bank Account", "GEN", "1011001"),
         ]
-        from app.services.mapping_history_service import get_confirmed_mappings
+        from app.services.credit_card.mapping_history import get_confirmed_mappings
 
         with _patch_jv_rows(rows):
             result = await get_confirmed_mappings("BBL", ["Bank Account"], "acbb", "tok")
@@ -107,7 +107,7 @@ class TestGetConfirmedMappings:
     async def test_matches_payment_type_label(self):
         set_context(TENANT_ID)
         rows = [_jv("VSA-INT-P", "GEN", "1021004")]
-        from app.services.mapping_history_service import get_confirmed_mappings
+        from app.services.credit_card.mapping_history import get_confirmed_mappings
 
         with _patch_jv_rows(rows):
             result = await get_confirmed_mappings("BBL", ["VSA-INT-P"], "acbb", "tok")
@@ -121,7 +121,7 @@ class TestGetConfirmedMappings:
 
 
 def test_bypass_threshold_is_3():
-    from app.services.mapping_history_service import BYPASS_THRESHOLD
+    from app.services.credit_card.mapping_history import BYPASS_THRESHOLD
 
     assert BYPASS_THRESHOLD == 3
 
@@ -155,11 +155,11 @@ class TestSuggestEndpoint:
 
         with (
             patch(
-                "app.routers.mapping.get_confirmed_mappings",
+                "app.routers.credit_card.mapping.get_confirmed_mappings",
                 new_callable=AsyncMock,
                 return_value=history_data,
             ),
-            patch("app.routers.mapping.map_gl.suggest_fixed_fields") as mock_llm,
+            patch("app.routers.credit_card.mapping.map_gl.suggest_fixed_fields") as mock_llm,
             make_test_client(db) as client,
         ):
             resp = client.post(
@@ -191,12 +191,12 @@ class TestSuggestEndpoint:
 
         with (
             patch(
-                "app.routers.mapping.get_confirmed_mappings",
+                "app.routers.credit_card.mapping.get_confirmed_mappings",
                 new_callable=AsyncMock,
                 return_value=history_data,
             ),
             patch(
-                "app.routers.mapping.map_gl.suggest_fixed_fields",
+                "app.routers.credit_card.mapping.map_gl.suggest_fixed_fields",
                 new_callable=AsyncMock,
                 return_value=ai_return,
             ) as mock_llm,
@@ -230,12 +230,12 @@ class TestSuggestEndpoint:
 
         with (
             patch(
-                "app.routers.mapping.get_confirmed_mappings",
+                "app.routers.credit_card.mapping.get_confirmed_mappings",
                 new_callable=AsyncMock,
                 return_value=history_data,
             ),
             patch(
-                "app.routers.mapping.map_gl.suggest_fixed_fields",
+                "app.routers.credit_card.mapping.map_gl.suggest_fixed_fields",
                 new_callable=AsyncMock,
                 return_value=ai_return,
             ),
@@ -263,12 +263,12 @@ class TestSuggestEndpoint:
 
         with (
             patch(
-                "app.routers.mapping.get_confirmed_mappings",
+                "app.routers.credit_card.mapping.get_confirmed_mappings",
                 new_callable=AsyncMock,
                 return_value={},
             ),
             patch(
-                "app.routers.mapping.map_gl.suggest_fixed_fields",
+                "app.routers.credit_card.mapping.map_gl.suggest_fixed_fields",
                 new_callable=AsyncMock,
                 return_value=ai_return,
             ) as mock_llm,
@@ -300,11 +300,14 @@ class TestSuggestEndpoint:
 
         with (
             patch(
-                "app.routers.mapping.get_confirmed_mappings",
+                "app.routers.credit_card.mapping.get_confirmed_mappings",
                 new_callable=AsyncMock,
                 return_value=history_data,
             ),
-            patch("app.routers.mapping.map_gl.suggest_fixed_fields", side_effect=capture_suggest),
+            patch(
+                "app.routers.credit_card.mapping.map_gl.suggest_fixed_fields",
+                side_effect=capture_suggest,
+            ),
             make_test_client(db) as client,
         ):
             client.post(f"{BASE_URL}/suggest", json=self._suggest_body(), headers=AUTH_HEADERS)
@@ -337,11 +340,11 @@ class TestSuggestPaymentTypesEndpoint:
 
         with (
             patch(
-                "app.routers.mapping.get_confirmed_mappings",
+                "app.routers.credit_card.mapping.get_confirmed_mappings",
                 new_callable=AsyncMock,
                 return_value=history_data,
             ),
-            patch("app.routers.mapping.map_gl.suggest_payment_types") as mock_llm,
+            patch("app.routers.credit_card.mapping.map_gl.suggest_payment_types") as mock_llm,
             make_test_client(db) as client,
         ):
             resp = client.post(
@@ -367,12 +370,12 @@ class TestSuggestPaymentTypesEndpoint:
 
         with (
             patch(
-                "app.routers.mapping.get_confirmed_mappings",
+                "app.routers.credit_card.mapping.get_confirmed_mappings",
                 new_callable=AsyncMock,
                 return_value=history_data,
             ),
             patch(
-                "app.routers.mapping.map_gl.suggest_payment_types",
+                "app.routers.credit_card.mapping.map_gl.suggest_payment_types",
                 new_callable=AsyncMock,
                 return_value=ai_return,
             ),
@@ -396,12 +399,12 @@ class TestSuggestPaymentTypesEndpoint:
 
         with (
             patch(
-                "app.routers.mapping.get_confirmed_mappings",
+                "app.routers.credit_card.mapping.get_confirmed_mappings",
                 new_callable=AsyncMock,
                 return_value={},
             ),
             patch(
-                "app.routers.mapping.map_gl.suggest_payment_types",
+                "app.routers.credit_card.mapping.map_gl.suggest_payment_types",
                 new_callable=AsyncMock,
                 return_value=ai_return,
             ) as mock_llm,

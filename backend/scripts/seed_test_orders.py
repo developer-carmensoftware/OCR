@@ -51,8 +51,8 @@ from sqlalchemy import delete, select  # noqa: E402
 from app.database import async_session  # noqa: E402
 from app.models.enums import BillingDocumentType, CreditOrderStatus  # noqa: E402
 from app.models.orm import BillingDocument, CreditOrder, CreditPack, Tenant  # noqa: E402
-from app.services import billing_document_service as bds  # noqa: E402
-from app.services.credit_service import annual_price  # noqa: E402
+from app.services.billing import documents as bds  # noqa: E402
+from app.services.shared.credits import annual_price  # noqa: E402
 from app.utils.tax import vat_on_top  # noqa: E402
 
 SEED_TAG = "SEED_TEST"  # payment_ref marker — the only handle cleanup needs

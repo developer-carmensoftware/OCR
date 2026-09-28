@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.admin_session import AdminPrincipal
 from app.exceptions import ConflictError, NotFoundError, ValidationError
 from app.models.admin import AdminUser, AdminUserRole, Role
-from app.services.admin_auth_service import hash_password
-from app.services.audit_service import AuditAction, log_admin_action
+from app.services.admin.auth import hash_password
+from app.services.shared.audit import AuditAction, log_admin_action
 
 SUPER_ADMIN_ROLE_ID = "super_admin"
 

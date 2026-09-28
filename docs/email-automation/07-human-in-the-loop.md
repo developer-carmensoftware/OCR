@@ -62,7 +62,7 @@ Every row here was decided in the design session, not inferred.
 
 ## 3. The cut
 
-One place in [`email_ingest_service.py`](../../backend/app/services/email_ingest_service.py).
+One place in [`email_automation/ingest.py`](../../backend/app/services/email_automation/ingest.py).
 Everything above line 767 is unchanged: the gate ladder still runs in full, still charges,
 still auto-fills missing GL mappings, still parks on `tax_id_mismatch` or `mapping_incomplete`
 (the latter now parks *for review* rather than failing, with review on — §10 #30).
@@ -938,7 +938,7 @@ introduced the worse half of it.
 | # | Change | Why |
 |---|---|---|
 | 45 | **Only `Needs review` carries a count.** `Posted` and `Not posted` lost theirs. | Backpressure caps pending at 50, so `Needs review` lives in 0–50 and falls as it is worked. The other two are lifetime totals that never fall: at four figures the number is furniture, on screen every day for ever, and nothing anyone can act on. The size of the list is in the `Pager` once the chip is open, which is where it answers something. The old comment's defence — *"a count that disappears makes the strip reflow"* — argued for printing a **zero**, not for the number existing; it still holds on the one chip that has one, and the other two cannot reflow because they never have a number to lose. |
-| 46 | **`ATTENTION_WINDOW` = 7 days.** The dot counts anomalies from the last week, not from all time. `counts` stays unwindowed. | #43 widened the dot to cover every failure — and `email_ingest_service.py` says `ponytail: single pass, no retry of a failed document`, with the mail already `\Seen`. A failed row is therefore terminal: fixing the filename rule today does not clear the 46 `no_rule_match` rows behind it. As written, #43's dot would have been lit for ever on any BU that has ever had a bad week, which is a warning nobody reads by the third day — including the day something new breaks. Seven days because these documents arrive monthly: long enough to notice and fix before next month's statement, short enough that the dot means "recently" rather than "ever". The window lives in `_counts_stmt`, asserted against compiled SQL (`test_the_dot_only_looks_at_the_last_week`) because a mock DB executes no date predicate. |
+| 46 | **`ATTENTION_WINDOW` = 7 days.** The dot counts anomalies from the last week, not from all time. `counts` stays unwindowed. | #43 widened the dot to cover every failure — and `email_automation/ingest.py` says `ponytail: single pass, no retry of a failed document`, with the mail already `\Seen`. A failed row is therefore terminal: fixing the filename rule today does not clear the 46 `no_rule_match` rows behind it. As written, #43's dot would have been lit for ever on any BU that has ever had a bad week, which is a warning nobody reads by the third day — including the day something new breaks. Seven days because these documents arrive monthly: long enough to notice and fix before next month's statement, short enough that the dot means "recently" rather than "ever". The window lives in `_counts_stmt`, asserted against compiled SQL (`test_the_dot_only_looks_at_the_last_week`) because a mock DB executes no date predicate. |
 
 Both are the same rule, and it is worth stating once: **a number on this page has to be able
 to go down.** It is what killed §6's `· 8 posted today` (#40) and it is what these two
@@ -1192,7 +1192,7 @@ support conversation this creates — *"it used to post everything"*. The honest
 the switch itself, which now names what still stops rather than promising that nothing does.
 
 The volume is bounded by how often a reading is imperfect, not by document count: on the
-banks measured, all seven `warnings` sites in `credit_card_service.py` are exception paths
+banks measured, all seven `warnings` sites in `credit_card/extraction.py` are exception paths
 (assumed VAT rate, reconciliation drift, negative amounts, no fee lines found), and
 `mapping_guessed` fires once per *new payment type* — the guess is saved, so the second
 document carrying it is clean and posts.
@@ -1351,7 +1351,7 @@ rule good for one document, with the date and "Gross Amount" going into the cust
 `finalize_extraction`, **after** the normalizers (they match on the raw label —
 `_is_summary_row` reads "TOTAL") and before anything treats the string as a key. Both entry
 paths run through there, so the wizard and the pipeline cannot disagree about what the key
-is, and neither `cc_jv.py` nor its `ccJv.ts` twin had to move.
+is, and neither `credit_card/jv.py` nor its `ccJv.ts` twin had to move.
 
 Digits otherwise survive, for the reason `_fold` already leaves them alone: this BU has both
 `04-4100-03 SiamPay` and `04-4100-04 SiamPay`, one character apart and different accounts.
@@ -1473,8 +1473,8 @@ logos and unreadable files are gone from both chips, and still in `All`.
 
 A wording pass over every string the queue can print, read end to end for the first time.
 The column is fed from four places that had never been compared: `reasonFor`'s flag ladder,
-the `review.rc*` dictionary, `error_message` written by `email_ingest_service.py`, and
-`cc_input_tax.py`'s skip reasons. Three of the findings are defects, not taste.
+the `review.rc*` dictionary, `error_message` written by `email_automation/ingest.py`, and
+`credit_card/input_tax.py`'s skip reasons. Three of the findings are defects, not taste.
 
 ### The defects
 

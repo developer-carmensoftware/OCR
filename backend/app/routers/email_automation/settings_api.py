@@ -51,10 +51,10 @@ from app.routers.admin.deps import decode_admin_principal, require_maintenance_a
 # into a shared module is a real refactor, not a move — do it when something else
 # needs them too.
 from app.routers.auth import validate_token, validate_uri
-from app.services import email_ingest_service as ingest
-from app.services import email_settings_service as es
-from app.services import notification_service
-from app.services.rate_limit_service import InMemoryRateLimiter
+from app.services.email_automation import ingest
+from app.services.email_automation import ingest_settings as es
+from app.services.shared import notification as notification_service
+from app.services.shared.rate_limit import InMemoryRateLimiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/carmen", tags=["Email Automation"])

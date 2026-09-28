@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.exceptions import ModuleDisabled
-from app.services import module_gate
+from app.services.shared import module_gate
 from tests.conftest import set_context
 
 

@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.context import current_document_ref, current_ocr_session_id
-from app.services import audit_service as aud
+from app.services.shared import audit as aud
 
 
 @pytest.fixture(autouse=True)

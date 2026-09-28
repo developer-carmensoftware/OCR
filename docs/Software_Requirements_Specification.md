@@ -637,7 +637,7 @@ sequenceDiagram
 
 > **Removed 2026-07-06.** The generic `/api/v1/tools` registry (agent-style invocation
 > by name) had no callers and was deleted. GL suggestion is served directly by
-> `routers/mapping.py` → `services/gl_suggestion_service.py`. Restore from git history
+> `routers/mapping.py` → `services/credit_card/gl_suggestion.py`. Restore from git history
 > if an agent layer is reintroduced.
 
 ---
@@ -1023,7 +1023,7 @@ ALLOWED_CARMEN_HOSTS=carmen.example.com
 | **Duplicate check on submitted only** | Allows editing before submit; duplicate check only applies to finalized (submitted_at NOT NULL) records |
 | **AI-first mapping** | Mapping page auto-triggers AI suggest on bank selection |
 | **localStorage caching** | Avoid re-fetching master data every step; user can modify offline |
-| **Carmen proxy in backend** | `carmen.py` router + `carmen_service.py` — avoid frontend CORS issues, centralize authorization, SSRF protection |
+| **Carmen proxy in backend** | `carmen.py` router + `shared/carmen.py` — avoid frontend CORS issues, centralize authorization, SSRF protection |
 | **Frontend path constants** | `src/lib/api/endpoints.ts` — all `/api/v1/*` paths in one place; adding a module = one new section, not scattered grep changes |
 | **Safe migrations** | Supabase CLI owns the schema (`supabase/migrations/*.sql`, `supabase db push`) — files are append-only and idempotent; never edit applied files |
 | **Background jobs in Postgres** | pg_cron + pg_partman own analytics/retention/billing sweeps — survives Render free-tier sleep; app-side has only the perf-log flush loop |

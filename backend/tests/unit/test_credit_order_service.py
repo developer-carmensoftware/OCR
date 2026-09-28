@@ -14,7 +14,7 @@ import pytest
 
 from app.exceptions import ConflictError, NotFoundError
 from app.models.enums import CreditOrderStatus
-from app.services import credit_order_service as cos
+from app.services.billing import orders as cos
 from tests.conftest import make_mock_db
 
 

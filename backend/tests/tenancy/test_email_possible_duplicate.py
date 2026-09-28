@@ -13,7 +13,7 @@ import uuid
 import pytest
 from sqlalchemy import text
 
-from app.services import email_ingest_service as ingest
+from app.services.email_automation import ingest
 
 # `real_engine` / `tenants` come from conftest.py in this directory — see the note in
 # test_email_approve_integrity.py on why they are not imported.

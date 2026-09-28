@@ -23,8 +23,9 @@ _DOMAINS = {"email_automation", "credit_card", "ap_invoice", "billing", "admin"}
 # Carmen/LLM calls email_automation must route through the module, not a bound name —
 # see "Patch ที่ค้างต้องพังเสียงดัง" in the refactor plan: a dry-run script (e.g.
 # scripts/email_multibu_qa.py) stubs Carmen by patching the module attribute
-# (`ingest.post_gljv = ...`), and a `from ...carmen import post_gljv` binding inside the
-# package would silently escape that patch and post a real JV during a "dry run".
+# (`patch.object(ingest.carmen, "post_gljv", ...)`), and a `from ...carmen import
+# post_gljv` binding inside the package would silently escape that patch and post a
+# real JV during a "dry run".
 _MUST_STAY_QUALIFIED = {"post_gljv", "post_input_tax", "extract_stateless"}
 
 

@@ -12,7 +12,7 @@ import re
 import time
 
 from app.context import current_tenant_id
-from app.services.carmen_service import CarmenAPIError, get_vendor_invoices
+from app.services.shared.carmen import CarmenAPIError, get_vendor_invoices
 from app.utils.prompt_safety import sanitize_prompt_text
 
 logger = logging.getLogger(__name__)

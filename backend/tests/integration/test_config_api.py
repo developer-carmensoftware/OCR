@@ -322,7 +322,7 @@ def test_carmen_being_unreachable_does_not_block_a_correction(monkeypatch):
     """The JV is about to be posted through Carmen anyway, which is where a genuinely bad
     pair gets caught. Refusing here would strand the reviewer on our outage."""
     from app.routers import config as router
-    from app.services.carmen_service import CarmenAPIError
+    from app.services.shared.carmen import CarmenAPIError
 
     async def depts(_token):
         raise CarmenAPIError(503, "upstream down")

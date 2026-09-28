@@ -20,7 +20,7 @@ Shared vars this feature also depends on:
 
 | Var | Role here |
 |---|---|
-| `MAX_FILE_SIZE_MB` | The IMAP `SEARCH … SMALLER` byte cap — the only size limit the ingest path has, since the interactive-upload size check in `file_service.py` is never called from this path |
+| `MAX_FILE_SIZE_MB` | The IMAP `SEARCH … SMALLER` byte cap — the only size limit the ingest path has, since the interactive-upload size check in `shared/file.py` is never called from this path |
 | `SESSION_ENCRYPTION_KEY` | Fernet key for both secrets stored in `email_ingest_settings` (PDF passwords, Carmen token) |
 | `INTERNAL_JOB_TOKEN` | Bearer token both `/email-ingest/*` routes accept via `require_maintenance_auth` |
 | `ALLOWED_CARMEN_HOSTS` | SSRF allowlist — also gates the Settings API itself; a host not on the list gets `422 invalid_uri` on every call for that BU |

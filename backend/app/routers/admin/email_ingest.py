@@ -29,9 +29,9 @@ from app.models.business import OCRTask
 from app.models.email_automation import EmailDocument, EmailIngestSettings, shown_attachment
 from app.models.identity import Tenant
 from app.models.observability import JobRun
-from app.services import email_ingest_service as ingest
-from app.services import email_settings_service as es
-from app.services.tenant_lookup import tenant_name_map
+from app.services.email_automation import ingest
+from app.services.email_automation import ingest_settings as es
+from app.services.shared.tenant_lookup import tenant_name_map
 
 from .deps import require_permission
 

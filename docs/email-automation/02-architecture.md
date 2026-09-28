@@ -190,7 +190,7 @@ exactly as it used to be left unread.
 
 ## Diagram 6 — one document, happy path
 
-The exact order from `_run_document()` (`email_ingest_service.py:675`). This ordering is
+The exact order from `_run_document()` (`email_automation/ingest.py:675`). This ordering is
 deliberate — every step before "first charge" is free, and everything before "first LLM
 spend" is a database read, not a network call to a model.
 
@@ -344,14 +344,14 @@ posted), or an identical document is already waiting. See the taxonomy in
 [04-data-model.md](04-data-model.md#reason_code-taxonomy).
 
 The other four are terminal. There is still no retry sweep — `attempts` is always written as
-`1` (`ponytail` note, `email_ingest_service.py:35`); what changed is not that failures are
+`1` (`ponytail` note, `email_automation/ingest.py:35`); what changed is not that failures are
 retried but that most of them were never failures, and a person can now finish them
 (see [05-operations.md](05-operations.md#known-gaps--roadmap)).
 
 ## Trust model of mail headers
 
 Routing reads three delivery headers plus a `Received:` fallback (`_DELIVERY_HEADERS`,
-`_RECEIVED_FOR`, `email_ingest_service.py:119-132`) — **never `To:`**. On an auto-forward,
+`_RECEIVED_FOR`, `email_automation/ingest.py:119-132`) — **never `To:`**. On an auto-forward,
 `To:` is still the *customer's own mailbox address*, not the ingest address, because a
 forward preserves the original envelope's display headers. Reading it would route every
 real auto-forward nowhere.
@@ -376,7 +376,7 @@ A cron job has no HTTP request, so nothing has populated the ContextVars that
 `carmen_service`, `consume_document`, `assert_module_enabled` and `log_llm_usage` normally
 read from request middleware. `_process_attachment()` sets `current_tenant_id` and
 `current_carmen_uri` itself before calling into the shared pipeline, and resets them in a
-`finally` (`email_ingest_service.py:654-672`). Anyone adding a new step to the pipeline that
+`finally` (`email_automation/ingest.py:654-672`). Anyone adding a new step to the pipeline that
 calls shared service code needs to know these vars exist and are already set — don't thread
 `tenant_id` through as an extra parameter where the rest of the codebase reads it from context.
 
@@ -384,8 +384,8 @@ calls shared service code needs to know these vars exist and are already set —
 
 | Key | Catches | Where |
 |---|---|---|
-| `(tenant_id, message_id, attachment)` unique index | The same **mail** processed twice (a re-delivered or re-polled message) | `_claim()`, `email_ingest_service.py:1043` |
-| `credit_cards.submitted_at` + partial unique `(tenant, bank_code, doc_no) WHERE submitted_at IS NOT NULL` | The same **document** arriving in two different mails (e.g. forwarded automatically *and* by hand) | `_mark_submitted()`, `email_ingest_service.py:1068`; `is_duplicate` check upstream in `finalize_extraction` |
+| `(tenant_id, message_id, attachment)` unique index | The same **mail** processed twice (a re-delivered or re-polled message) | `_claim()`, `email_automation/ingest.py:1043` |
+| `credit_cards.submitted_at` + partial unique `(tenant, bank_code, doc_no) WHERE submitted_at IS NOT NULL` | The same **document** arriving in two different mails (e.g. forwarded automatically *and* by hand) | `_mark_submitted()`, `email_automation/ingest.py:1068`; `is_duplicate` check upstream in `finalize_extraction` |
 
 Both exist because they answer different questions. The ledger key is checked first and is
 free; the document key can only be known after extraction, since it depends on the printed

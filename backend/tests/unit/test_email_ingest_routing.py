@@ -15,10 +15,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services import email_imap as imap
-from app.services import email_ingest_service as ingest
-from app.services import email_settings_service as es
-from app.services.email_ingest_service import (
+from app.services.email_automation import imap, ingest
+from app.services.email_automation import ingest_settings as es
+from app.services.email_automation.ingest import (
     gmail_confirm_code,
     match_rules,
     sender_allowed,

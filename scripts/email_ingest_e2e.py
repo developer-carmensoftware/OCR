@@ -351,7 +351,7 @@ async def verify(report: Report, cases: list[Case]) -> None:
 
 
 async def run_poll(label: str) -> dict:
-    from app.services.email_ingest_service import run_ingest
+    from app.services.email_automation.ingest import run_ingest
 
     print(f"\n  polling ({label})…")
     summary = await run_ingest(limit=60)
@@ -475,7 +475,7 @@ def make_locked_pdf() -> bytes:
 
 async def paid_run(box, report: Report, pdfs: dict[str, bytes]) -> None:
     """P17R and P18–P20. Each one extracts; only P18 posts."""
-    from app.services.email_ingest_service import reject_document
+    from app.services.email_automation.ingest import reject_document
 
     bbl, other = pick(pdfs, bbl=True), pick(pdfs, bbl=False)
     await set_owner_emails([])

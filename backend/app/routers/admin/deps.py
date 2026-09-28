@@ -6,7 +6,7 @@ from fastapi import Depends, Header, HTTPException
 
 from app.auth.admin_session import AdminPrincipal, decode_admin_jwt
 from app.config import settings
-from app.services.admin_auth_service import get_admin_jwt_secret
+from app.services.admin.auth import get_admin_jwt_secret
 
 # ── JWT-based admin auth ──────────────────────────────────────────────────────
 

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.storage_service import StorageError, guess_ext, signed_url, upload_slip
+from app.services.billing.slip_storage import StorageError, guess_ext, signed_url, upload_slip
 
 
 def _mock_settings(url="https://host/Api/v1/External/FileService", key="fsc_key"):
@@ -62,8 +62,8 @@ def test_guess_ext_unknown_returns_non_empty_string():
 async def test_upload_slip_returns_file_id():
     client = _mock_httpx_client(200, json_body={"data": {"fileId": "file-abc"}})
     with (
-        patch("app.services.storage_service.settings", _mock_settings()),
-        patch("app.services.storage_service.httpx.AsyncClient", return_value=client),
+        patch("app.services.billing.slip_storage.settings", _mock_settings()),
+        patch("app.services.billing.slip_storage.httpx.AsyncClient", return_value=client),
     ):
         file_id = await upload_slip("o-123", b"fake-jpeg", "image/jpeg", path="202606")
 
@@ -80,8 +80,8 @@ async def test_upload_slip_returns_file_id():
 async def test_upload_slip_sanitizes_filename():
     client = _mock_httpx_client(200, json_body={"data": {"fileId": "file-abc"}})
     with (
-        patch("app.services.storage_service.settings", _mock_settings()),
-        patch("app.services.storage_service.httpx.AsyncClient", return_value=client),
+        patch("app.services.billing.slip_storage.settings", _mock_settings()),
+        patch("app.services.billing.slip_storage.httpx.AsyncClient", return_value=client),
     ):
         await upload_slip("../ord er#1", b"png", "image/png", path="202606")
 
@@ -93,8 +93,8 @@ async def test_upload_slip_sanitizes_filename():
 async def test_upload_slip_success_201():
     client = _mock_httpx_client(201, json_body={"data": {"fileId": "file-xyz"}})
     with (
-        patch("app.services.storage_service.settings", _mock_settings()),
-        patch("app.services.storage_service.httpx.AsyncClient", return_value=client),
+        patch("app.services.billing.slip_storage.settings", _mock_settings()),
+        patch("app.services.billing.slip_storage.httpx.AsyncClient", return_value=client),
     ):
         assert await upload_slip("o", b"png", "image/png", path="202606") == "file-xyz"
 
@@ -102,9 +102,9 @@ async def test_upload_slip_success_201():
 @pytest.mark.asyncio
 async def test_upload_slip_raises_on_server_error():
     with (
-        patch("app.services.storage_service.settings", _mock_settings()),
+        patch("app.services.billing.slip_storage.settings", _mock_settings()),
         patch(
-            "app.services.storage_service.httpx.AsyncClient",
+            "app.services.billing.slip_storage.httpx.AsyncClient",
             return_value=_mock_httpx_client(500),
         ),
     ):
@@ -115,9 +115,9 @@ async def test_upload_slip_raises_on_server_error():
 @pytest.mark.asyncio
 async def test_upload_slip_raises_when_response_has_no_file_id():
     with (
-        patch("app.services.storage_service.settings", _mock_settings()),
+        patch("app.services.billing.slip_storage.settings", _mock_settings()),
         patch(
-            "app.services.storage_service.httpx.AsyncClient",
+            "app.services.billing.slip_storage.httpx.AsyncClient",
             return_value=_mock_httpx_client(200, json_body={"data": {}}),
         ),
     ):
@@ -127,14 +127,14 @@ async def test_upload_slip_raises_when_response_has_no_file_id():
 
 @pytest.mark.asyncio
 async def test_upload_slip_raises_on_unsupported_type():
-    with patch("app.services.storage_service.settings", _mock_settings()):
+    with patch("app.services.billing.slip_storage.settings", _mock_settings()):
         with pytest.raises(StorageError, match="Unsupported"):
             await upload_slip("o-123", b"data", "image/gif", path="202606")
 
 
 @pytest.mark.asyncio
 async def test_upload_slip_raises_when_not_configured():
-    with patch("app.services.storage_service.settings", _mock_settings(url="")):
+    with patch("app.services.billing.slip_storage.settings", _mock_settings(url="")):
         with pytest.raises(StorageError, match="not configured"):
             await upload_slip("o-123", b"data", "image/jpeg", path="202606")
 
@@ -147,8 +147,8 @@ async def test_signed_url_returns_presigned_url():
     presigned = "https://minio.host/carmen/slips/uuid.jpg?X-Amz-Signature=abc"
     client = _mock_httpx_client(200, json_body={"data": {"url": presigned}})
     with (
-        patch("app.services.storage_service.settings", _mock_settings()),
-        patch("app.services.storage_service.httpx.AsyncClient", return_value=client),
+        patch("app.services.billing.slip_storage.settings", _mock_settings()),
+        patch("app.services.billing.slip_storage.httpx.AsyncClient", return_value=client),
     ):
         url = await signed_url("file-abc")
 
@@ -160,9 +160,9 @@ async def test_signed_url_returns_presigned_url():
 @pytest.mark.asyncio
 async def test_signed_url_raises_on_non_200():
     with (
-        patch("app.services.storage_service.settings", _mock_settings()),
+        patch("app.services.billing.slip_storage.settings", _mock_settings()),
         patch(
-            "app.services.storage_service.httpx.AsyncClient",
+            "app.services.billing.slip_storage.httpx.AsyncClient",
             return_value=_mock_httpx_client(404),
         ),
     ):
@@ -173,9 +173,9 @@ async def test_signed_url_raises_on_non_200():
 @pytest.mark.asyncio
 async def test_signed_url_raises_when_response_missing_url():
     with (
-        patch("app.services.storage_service.settings", _mock_settings()),
+        patch("app.services.billing.slip_storage.settings", _mock_settings()),
         patch(
-            "app.services.storage_service.httpx.AsyncClient",
+            "app.services.billing.slip_storage.httpx.AsyncClient",
             return_value=_mock_httpx_client(200, json_body={"data": {}}),
         ),
     ):

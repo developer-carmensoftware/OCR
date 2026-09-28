@@ -13,8 +13,8 @@ from app.models.business import OcrSession
 from app.models.catalog import Module, TenantModule
 from app.models.identity import Tenant
 from app.models.observability import LLMUsageLog
-from app.services.credit_service import active_subscription_map, get_credit_balance
-from app.services.usage_analytics_service import get_tenant_engagement_map
+from app.services.admin.usage_analytics import get_tenant_engagement_map
+from app.services.shared.credits import active_subscription_map, get_credit_balance
 
 from .deps import require_permission
 

@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from httpx import RequestError
 
 from app.config import settings
-from app.services.carmen_service import get_http_client, wrap_network_error
+from app.services.shared.carmen import get_http_client, wrap_network_error
 
 logger = logging.getLogger(__name__)
 

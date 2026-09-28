@@ -133,7 +133,7 @@ class TestUsageRangeCeilings:
 
 class TestMonthlyUsageSummary:
     async def _call(self, db, **kw):
-        from app.services.usage_analytics_service import get_monthly_usage_summary
+        from app.services.admin.usage_analytics import get_monthly_usage_summary
 
         return await get_monthly_usage_summary(
             db,
@@ -178,7 +178,7 @@ class TestMonthlyUsageSummary:
     async def test_from_date_is_floored_to_the_month_it_lands_in(self):
         # summary_date is always the 1st, so ?from=2026-03-15 would otherwise skip
         # March entirely — the month the reader explicitly asked to start in.
-        from app.services.usage_analytics_service import _month_floor
+        from app.services.admin.usage_analytics import _month_floor
 
         assert _month_floor(date(2026, 3, 15)) == date(2026, 3, 1)
         assert _month_floor(date(2026, 3, 1)) == date(2026, 3, 1)
@@ -189,7 +189,7 @@ class TestMonthlyUsageSummary:
 
 class TestMonthlyUsageTotals:
     async def _call(self, db, **kw):
-        from app.services.usage_analytics_service import get_monthly_usage_totals
+        from app.services.admin.usage_analytics import get_monthly_usage_totals
 
         return await get_monthly_usage_totals(
             db,

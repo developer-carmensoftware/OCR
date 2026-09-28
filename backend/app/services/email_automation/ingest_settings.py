@@ -27,7 +27,7 @@ from app.exceptions import ConflictError, FieldValidationError, ValidationError
 from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument, EmailIngestSettings
 from app.models.identity import Tenant
-from app.services.credit_service import active_subscription
+from app.services.shared.credits import active_subscription
 
 logger = logging.getLogger(__name__)
 
@@ -675,7 +675,7 @@ async def verify_token(token: str, carmen_uri: str) -> None:
     which is why `mark_token_unverified` exists for the posts that discover it first.
     """
     from app.context import current_carmen_uri
-    from app.services.carmen_service import CarmenAPIError, get_departments
+    from app.services.shared.carmen import CarmenAPIError, get_departments
 
     ctx = current_carmen_uri.set(carmen_uri)
     try:

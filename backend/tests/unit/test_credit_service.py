@@ -11,7 +11,7 @@ import pytest
 from app.exceptions import InsufficientCredits, ValidationError
 from app.models.enums import CreditLedgerReason, SubscriptionStatus
 from app.models.orm import CreditLedger, TenantSubscription
-from app.services import credit_service
+from app.services.shared import credits as credit_service
 from tests.conftest import set_context
 
 

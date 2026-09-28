@@ -75,8 +75,8 @@ this folder adds the two cron-only routes neither of the above documents.
 
 | Path | Role |
 |---|---|
-| `backend/app/services/email_ingest_service.py` | IMAP poll + the whole per-document pipeline (1116 lines) — the core of the feature |
-| `backend/app/services/email_settings_service.py` | Settings store, secrets, tag allocation, token health (730 lines) |
+| `backend/app/services/email_automation/ingest.py` | IMAP poll + the whole per-document pipeline (1116 lines) — the core of the feature |
+| `backend/app/services/email_automation/ingest_settings.py` | Settings store, secrets, tag allocation, token health (730 lines) |
 | `backend/app/routers/email_automation.py` | The Settings API + the two cron-triggered ingest routes (407 lines) |
 | `backend/app/routers/email_review.py` | The review queue's own API, on our session JWT rather than the customer's Carmen token |
 | `backend/app/models/email_automation.py` | ORM: `EmailIngestSettings`, `EmailDocument` |

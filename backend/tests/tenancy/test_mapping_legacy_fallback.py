@@ -10,7 +10,7 @@ entry of its own for. The unit tests pin the merge; this pins the SQL it rests o
 import pytest
 from sqlalchemy import text
 
-from app.services.accounting_config_service import get_accounting_config
+from app.services.credit_card.accounting_config import get_accounting_config
 from tests.tenancy.conftest import session_scope
 
 # `real_engine` / `tenants` come from conftest.py in this directory (not imported: ruff F811).

@@ -35,9 +35,9 @@ from app.models.schemas.email_automation import (
     ReviewDocumentDetail,
     ReviewStatus,
 )
-from app.services import email_ingest_service as ingest
-from app.services import email_settings_service as es
-from app.services.cc_jv import num, r2
+from app.services.credit_card.jv import num, r2
+from app.services.email_automation import ingest
+from app.services.email_automation import ingest_settings as es
 from app.utils.pagination import paginate
 
 router = APIRouter(prefix="/api/v1/email", tags=["Email Review"])

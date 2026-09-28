@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from app.auth.session import SessionInfo
-from app.routers.credit_card_activity import (
+from app.routers.credit_card.activity import (
     HIDDEN_REASON,
     NOISE_REASONS,
     PENDING,
