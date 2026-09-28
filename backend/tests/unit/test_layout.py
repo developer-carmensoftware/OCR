@@ -22,10 +22,10 @@ _DOMAINS = {"email_automation", "credit_card", "ap_invoice", "billing", "admin"}
 
 # Carmen/LLM calls email_automation must route through the module, not a bound name —
 # see "Patch ที่ค้างต้องพังเสียงดัง" in the refactor plan: a dry-run script (e.g.
-# scripts/email_multibu_qa.py) stubs Carmen by patching the module attribute
-# (`patch.object(ingest.carmen, "post_gljv", ...)`), and a `from ...carmen import
-# post_gljv` binding inside the package would silently escape that patch and post a
-# real JV during a "dry run".
+# scripts/email_multibu_qa.py) stubs Carmen by patching the source module's attribute
+# (`patch.object(carmen, "post_gljv", ...)` on `app.services.shared.carmen`), and a
+# `from ...carmen import post_gljv` binding inside the package would silently escape
+# that patch and post a real JV during a "dry run".
 _MUST_STAY_QUALIFIED = {"post_gljv", "post_input_tax", "extract_stateless"}
 
 
@@ -82,4 +82,37 @@ def test_email_automation_keeps_carmen_and_ocr_calls_patchable(path: Path):
             f"{path.relative_to(APP)} does `from {module} import {', '.join(sorted(bad))}` "
             f"— import the module instead and call {next(iter(bad))}(...) through it, so a "
             "dry-run script's patch on the module attribute cannot be silently bypassed."
+        )
+
+
+# The Phase 2 split of the old email_ingest_service: `ledger` is the base, `pipeline`
+# builds on it, `ingest` (the poll loop) and `review` (approve/reject) sit on top. Every
+# one of those modules' docstrings states this direction; this is what keeps it true.
+_EMAIL_PKG = "app.services.email_automation"
+_EMAIL_MAY_IMPORT = {
+    "ledger": set(),
+    "pipeline": {"ledger"},
+    "ingest": {"pipeline", "ledger"},
+    "review": {"pipeline", "ledger"},
+}
+
+
+@pytest.mark.parametrize("module", sorted(_EMAIL_MAY_IMPORT))
+def test_email_automation_split_keeps_its_import_direction(module: str):
+    path = APP / "services" / "email_automation" / f"{module}.py"
+    siblings = set(_EMAIL_MAY_IMPORT) - {module}
+    for imported, names in _imported_modules(path):
+        # Both shapes: `from app.services.email_automation.ledger import _claim` and
+        # `from app.services.email_automation import ledger`.
+        if imported.startswith(f"{_EMAIL_PKG}."):
+            targets = {imported.removeprefix(f"{_EMAIL_PKG}.").split(".")[0]}
+        elif imported == _EMAIL_PKG:
+            targets = set(names)
+        else:
+            continue
+        wrong = (targets & siblings) - _EMAIL_MAY_IMPORT[module]
+        assert not wrong, (
+            f"email_automation/{module}.py imports {', '.join(sorted(wrong))} — against the "
+            f"package's direction (ledger ← pipeline ← ingest/review). "
+            f"{module} may import only: {sorted(_EMAIL_MAY_IMPORT[module]) or 'none of them'}."
         )

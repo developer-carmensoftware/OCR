@@ -36,8 +36,8 @@ from app.models.schemas.email_automation import (
     ReviewStatus,
 )
 from app.services.credit_card.jv import num, r2
-from app.services.email_automation import ingest
 from app.services.email_automation import ingest_settings as es
+from app.services.email_automation import review
 from app.utils.pagination import paginate
 
 router = APIRouter(prefix="/api/v1/email", tags=["Email Review"])
@@ -224,7 +224,7 @@ async def approve(
     Carmen call and the ledger write, so a slow Carmen never holds a pooled connection
     open. The pool is 10 for the whole application (Supavisor caps the project at 15).
     """
-    result = await ingest.approve_document(
+    result = await review.approve_document(
         document_id,
         tenant_id=str(session.tenant_id),
         reviewer=session.carmen_user_id,
@@ -247,7 +247,7 @@ async def reject(
     paid for. The reason is optional free text: a mandatory one gets typed as "x" by day
     three, and an optional one that reaches `#/admin/email` is how we learn what the
     extractor keeps getting wrong."""
-    await ingest.reject_document(
+    await review.reject_document(
         document_id,
         tenant_id=str(session.tenant_id),
         reviewer=session.carmen_user_id,
