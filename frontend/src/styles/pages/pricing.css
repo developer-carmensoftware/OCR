@@ -1250,72 +1250,58 @@
   }
 }
 
-/* ─── Top-up packs: compact clickable cards ───
-   4 fixed columns, not auto-fit: with exactly 4 cards in an 860px section,
-   auto-fit would only fit 3 and orphan the 4th on a row by itself (same
-   failure mode .plan-grid--4 above documents and fixes for the plan cards). */
+/* ─── Top-up packs: one segmented rail ───
+   One surface split into four segments, deliberately NOT four more cards: the plan
+   cards above are separate products, a top-up is one product in four quantities.
+   The grid's own background is the hairline (1px gap over --border), so the dividers
+   are right at 1, 2 and 4 columns with no per-child border rules. Mobile-first:
+   rows ≤560px, 2×2 from 561px, one row from 861px. */
 .pack-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-@media (max-width: 860px) {
-  .pack-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 560px) {
-  .pack-grid {
-    grid-template-columns: 1fr;
-    max-width: 420px;
-    margin: 0 auto;
-  }
+  grid-template-columns: 1fr;
+  gap: 1px;
+  max-width: 420px;
+  margin: 0 auto;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
 }
 
 .pack-card {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.85rem;
-  padding: 1rem 1.15rem;
+  padding: 0.95rem 1.1rem;
   background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border: 0;
+  border-radius: 0;
   font: inherit;
+  color: inherit;
   text-align: left;
   cursor: pointer;
-  transition:
-    transform var(--dur-base) var(--ease),
-    border-color var(--dur-base) var(--ease),
-    box-shadow var(--dur-base) var(--ease);
+  transition: background-color var(--dur-fast) var(--ease);
 }
 
-.pack-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--primary);
-  box-shadow: var(--shadow-md);
+.pack-card:hover:not(:disabled) {
+  background: var(--primary-light);
 }
 
-.pack-card:active {
-  transform: scale(0.98);
+.pack-card:active:not(:disabled) {
+  background: color-mix(in oklch, var(--primary) 12%, var(--card-bg));
+}
+
+/* Inset: the rail's overflow: hidden clips an outside ring. */
+.pack-card:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: -3px;
 }
 
 .pack-card:disabled {
   opacity: 0.55;
-  pointer-events: none;
   cursor: default;
-}
-
-.pack-card-icon {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-md);
-  background: var(--amber-light);
-  color: var(--amber-text);
-  flex-shrink: 0;
 }
 
 .pack-card-id {
@@ -1330,6 +1316,11 @@
   letter-spacing: -0.01em;
   line-height: 1.1;
   color: var(--text);
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.pack-card:hover:not(:disabled) .pack-card-credits {
+  color: var(--primary);
 }
 
 .pack-card-unit {
@@ -1340,15 +1331,17 @@
   color: var(--text-2);
 }
 
+/* Solid fill tier (carries white in both themes), so it never reads as one more
+   save chip beside the light ones. */
 .pack-card-badge {
   flex-shrink: 0;
-  padding: 0.1rem 0.5rem;
+  padding: 0.1rem 0.55rem;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.03em;
   white-space: nowrap;
-  color: var(--emerald-text);
-  background: var(--emerald-light);
+  color: #fff;
+  background: var(--emerald-fill);
   border-radius: var(--radius-pill);
 }
 
@@ -1356,14 +1349,21 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.1rem;
-  margin-left: auto;
+  gap: 0.2rem;
 }
 
 .pack-card-amount {
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: var(--text);
+}
+
+.pack-card-meta {
+  display: flex;
+  flex-wrap: wrap; /* a Thai "/เอกสาร" rate + chip may need two lines */
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem 0.4rem;
 }
 
 .pack-card-rate {
@@ -1372,48 +1372,65 @@
   white-space: nowrap;
 }
 
-/* 4 across leaves ~165px inside each card — too narrow for the icon · credits · price
-   row (≈185–260px, wider in Thai). So: no icon, "100 credits" centered on one line,
-   a divider, then price · rate. ≤860px keeps the single-row card above.
-   Must stay after the .pack-card* base rules — same specificity, so order decides. */
-@media (min-width: 861px) {
+.pack-card-save {
+  padding: 0.05rem 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--emerald-text);
+  background: var(--emerald-light);
+  border-radius: var(--radius-pill);
+}
+
+/* Segments: centered columns. The top padding reserves the badge row on every
+   segment, so the four price lines stay level whether or not a badge is present. */
+@media (min-width: 561px) {
+  .pack-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: none;
+  }
+
   .pack-card {
     position: relative; /* anchors the badge */
     flex-direction: column;
-    align-items: stretch;
-    gap: 0.6rem;
-    padding: 1rem 0.75rem 0.85rem;
+    justify-content: flex-start;
+    gap: 0.55rem;
+    padding: 2.3rem 1rem 1.25rem; /* Thai badge glyphs run taller than Latin */
     text-align: center;
-  }
-
-  .pack-card-icon {
-    display: none;
   }
 
   .pack-card-id {
     flex-direction: row;
-    justify-content: center;
     align-items: baseline;
     gap: 0.35rem;
   }
 
-  /* Sits on the top border instead of widening the credits line. */
   .pack-card-badge {
     position: absolute;
-    top: 0;
+    top: 0.55rem;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translateX(-50%);
   }
 
   .pack-card-price {
-    flex-direction: row;
-    flex-wrap: wrap; /* a Thai "/เอกสาร" rate drops under the price if it has to */
+    align-items: center;
+  }
+
+  .pack-card-amount {
+    font-size: 1.2rem;
+  }
+
+  .pack-card-meta {
     justify-content: center;
-    align-items: baseline;
-    column-gap: 0.4rem;
-    margin: auto 0 0; /* pins prices to one line across the row */
-    padding-top: 0.6rem;
-    border-top: 1px solid var(--border);
+  }
+}
+
+/* 4 fixed columns, not auto-fit: in the 860px section auto-fit would fit 3 and
+   orphan the 4th (the failure .plan-grid--4 above documents). */
+@media (min-width: 861px) {
+  .pack-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
