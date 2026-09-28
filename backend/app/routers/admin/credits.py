@@ -36,7 +36,7 @@ from app.models.schemas import (
     RejectRequest,
     TopupRequest,
 )
-from app.services.billing import ar_posting as ar_posting_service  # noqa: F401
+from app.services.billing import ar_posting as ar_posting_service
 from app.services.billing import documents as bds
 from app.services.billing import orders as credit_order_service
 from app.services.billing import slip_storage as storage_service  # noqa: F401
@@ -49,12 +49,12 @@ from app.services.shared.credits import (
     topup_order,
 )
 
-# ar_posting_service and storage_service are unused directly here (their calls now
-# live in credit_order_service) but stay imported under this module's name because
-# tests/integration/test_admin_credits_api.py patches them at
-# "app.routers.admin.credits.{ar_posting_service,storage_service}.*" — patching a
-# module attribute mutates the shared module object, so it still takes effect
-# wherever credit_order_service calls it.
+# storage_service is unused directly here (its calls now live in credit_order_service)
+# but stays imported under this module's name because
+# tests/integration/test_admin_credits_api.py patches it at
+# "app.routers.admin.credits.storage_service.*" — patching a module attribute mutates
+# the shared module object, so it still takes effect wherever credit_order_service
+# calls it.
 from ._query import ListQuery, list_query
 from .deps import require_permission
 
@@ -346,9 +346,7 @@ async def list_ar_profiles(
     # slice of this table to hand a scoped admin instead.
     if not admin.is_global:
         raise HTTPException(status_code=403, detail="Global admin required")
-    rows = await credit_order_service.list_ar_profiles(
-        db, search=search, unmapped_only=unmapped_only
-    )
+    rows = await ar_posting_service.list_ar_profiles(db, search=search, unmapped_only=unmapped_only)
     return [ArCustomerProfileResponse.model_validate(r) for r in rows]
 
 
@@ -363,7 +361,7 @@ async def update_ar_profile(
     # See list_ar_profiles: no tenant_id on this table, so global-only rather than scoped.
     if not admin.is_global:
         raise HTTPException(status_code=403, detail="Global admin required")
-    profile = await credit_order_service.update_ar_profile(db, profile_id, body.carmen_ar_code)
+    profile = await ar_posting_service.update_ar_profile(db, profile_id, body.carmen_ar_code)
     await db.commit()
     await db.refresh(profile)
     logger.info(
@@ -384,7 +382,7 @@ async def sync_ar_profiles(
     # See list_ar_profiles: no tenant_id on this table, so global-only rather than scoped.
     if not admin.is_global:
         raise HTTPException(status_code=403, detail="Global admin required")
-    result = await credit_order_service.sync_ar_profiles(db)
+    result = await ar_posting_service.sync_ar_profiles(db)
     await db.commit()
     return result
 
@@ -399,7 +397,7 @@ async def post_ar_batch(
     admin: AdminPrincipal = Depends(require_permission("orders", "write")),
 ):
     """Batch-post paid orders to Carmen ERP as AR entries."""
-    results = await credit_order_service.post_ar_batch(
+    results = await ar_posting_service.post_ar_batch(
         db, body.order_ids, is_global=admin.is_global, tenant_scope=admin.tenant_scope
     )
     await db.commit()
