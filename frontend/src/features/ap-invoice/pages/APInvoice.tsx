@@ -203,37 +203,38 @@ export default function APInvoice() {
               </div>
             )}
 
-            {(step === 2 || step === 3) &&
-              (previewUrl || selectedPageThumbs?.length) &&
-              !loading && (
-                <SplitLayout
-                  showPreview={showPreview}
-                  onToggle={setShowPreview}
-                  previewUrl={previewUrl}
-                  previewType={previewType}
-                  fileName={file?.name}
-                  selectedPageThumbs={selectedPageThumbs}
-                >
-                  {step === 2 && (
-                    <APFieldMappingStep
-                      lineItems={lineItems}
-                      fieldMappings={fieldMappings as Record<APColumnKey, APFieldKey | 'ignore'>}
-                      availableFields={availableFields}
-                      onMappingChange={(col, val) =>
-                        setFieldMappings(p => ({
-                          ...p,
-                          [`col${col}`]: val as APFieldKey | 'ignore',
-                        }))
-                      }
-                      onBack={() => setStep(1)}
-                      onConfirm={confirmMapping}
-                    />
-                  )}
-                  {step === 3 && (
-                    <APReviewStep ctrl={ctrl as Parameters<typeof APReviewStep>[0]['ctrl']} />
-                  )}
-                </SplitLayout>
-              )}
+            {/* Not gated on a file preview: a restored draft never has one (nothing is
+                stored), and gating here left the restored invoice on a blank screen.
+                DocumentPreview shows its own "no preview" state. Same as ManualScan. */}
+            {(step === 2 || step === 3) && !loading && (
+              <SplitLayout
+                showPreview={showPreview}
+                onToggle={setShowPreview}
+                previewUrl={previewUrl}
+                previewType={previewType}
+                fileName={file?.name}
+                selectedPageThumbs={selectedPageThumbs}
+              >
+                {step === 2 && (
+                  <APFieldMappingStep
+                    lineItems={lineItems}
+                    fieldMappings={fieldMappings as Record<APColumnKey, APFieldKey | 'ignore'>}
+                    availableFields={availableFields}
+                    onMappingChange={(col, val) =>
+                      setFieldMappings(p => ({
+                        ...p,
+                        [`col${col}`]: val as APFieldKey | 'ignore',
+                      }))
+                    }
+                    onBack={() => setStep(1)}
+                    onConfirm={confirmMapping}
+                  />
+                )}
+                {step === 3 && (
+                  <APReviewStep ctrl={ctrl as Parameters<typeof APReviewStep>[0]['ctrl']} />
+                )}
+              </SplitLayout>
+            )}
 
             {step === 4 && (
               <APAccountMappingStep
