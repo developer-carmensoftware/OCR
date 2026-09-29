@@ -134,6 +134,20 @@ describe('useBankConfig — bank from ?bank= in the URL', () => {
     expect(result.current.bank).toBe('Kasikornbank (KBANK)')
   })
 
+  it("fetches the URL bank's own mappings, not the saved bank's", async () => {
+    window.location.hash = '#/CreditCardOCR/mapping?bank=KBANK'
+    getAccountingConfig.mockResolvedValue(apiConfig({ bank_code: 'GHL' }) as never)
+
+    const { result } = renderHook(() => useBankConfig())
+    await waitFor(() => expect(result.current.configLoading).toBe(false))
+
+    // First call, and only call: fetching the saved bank first put its mappings on screen
+    // under a KBANK dropdown until a second request caught up.
+    expect(getAccountingConfig).toHaveBeenCalledTimes(1)
+    expect(getAccountingConfig).toHaveBeenCalledWith('KBANK')
+    expect(result.current.mappingsBankCode).toBe('KBANK')
+  })
+
   it('falls back to the saved bank when the URL names none', async () => {
     getAccountingConfig.mockResolvedValue(apiConfig({ bank_code: 'GHL' }) as never)
 

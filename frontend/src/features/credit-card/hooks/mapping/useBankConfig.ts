@@ -76,15 +76,14 @@ export function useBankConfig(): BankConfigHook {
     // Branch comes off the document (useOcrExtraction writes it here); the saved
     // accounting config has no branch of its own, so it must not blank this out.
     ocrBranch = readAccountingConfig().company?.branch || ''
-    // The wizard's own bank wins over the config's stored default (normalizeConfigShape
-    // below does the same), so the mappings this fetches must be scoped to it — otherwise
-    // the dropdown would show `ocrBank` while displaying a different bank's GL mappings.
-    const ocrBankCode = ocrBank ? BANK_CODE_MAP[ocrBank] : undefined
-
     // An explicit `?bank=` names the bank a specific document belongs to, which is more
     // specific than either an in-progress wizard scan or the tenant's last-saved default,
     // so it wins over both.
     const bankOverride = codeToDisplayName(bankCodeFromHash()) || ocrBank
+    // That bank wins over the config's stored default (normalizeConfigShape below does the
+    // same), so the mappings this fetches must be scoped to it — otherwise the dropdown
+    // would show one bank while displaying a different bank's GL mappings.
+    const scopeBankCode = bankOverride ? BANK_CODE_MAP[bankOverride] : undefined
 
     const applyConfig = (source: Record<string, unknown>) => {
       const normalized = normalizeConfigShape(source, bankOverride, detectBankFromCompanyName)
@@ -103,7 +102,7 @@ export function useBankConfig(): BankConfigHook {
       })
     }
 
-    getAccountingConfig(ocrBankCode)
+    getAccountingConfig(scopeBankCode)
       .then(apiData => {
         const hasData =
           apiData &&
@@ -112,7 +111,7 @@ export function useBankConfig(): BankConfigHook {
           applyConfig(apiData as unknown as Record<string, unknown>)
           setSavedMappings(apiData.mappings || {})
           setSavedCustomTypes(apiData.custom_types || [])
-          setMappingsBankCode(ocrBankCode ?? apiData.bank_code ?? null)
+          setMappingsBankCode(scopeBankCode ?? apiData.bank_code ?? null)
         } else {
           throw new Error('empty')
         }
@@ -152,7 +151,7 @@ export function useBankConfig(): BankConfigHook {
         // The server fetch failed outright (no authoritative bank-scoped answer either
         // way), but a later bank switch must still be able to trigger a real fetch rather
         // than staying stuck thinking nothing has loaded yet.
-        setMappingsBankCode(ocrBankCode ?? null)
+        setMappingsBankCode(scopeBankCode ?? null)
       })
       .finally(() => setConfigLoading(false))
   }, [])

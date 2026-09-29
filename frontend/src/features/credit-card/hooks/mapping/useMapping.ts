@@ -404,6 +404,7 @@ export function useMapping() {
     // The full merged dict as last loaded from the server (source-tagged), for the
     // Settlement card to seed its own Detail/Summary rows from without a second fetch.
     savedMappings: bankConfig.savedMappings,
+    mappingsBankCode: bankConfig.mappingsBankCode,
     company: bankConfig.company,
     setCompany: bankConfig.setCompany,
     handleCompanyChange,

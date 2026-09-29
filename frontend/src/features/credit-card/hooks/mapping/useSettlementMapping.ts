@@ -111,7 +111,12 @@ export function useSettlementMapping(
    *  (`descriptionForBank(description, bankDescriptions, bankCode)`) — what a real post
    *  would use, tracked keystroke-by-keystroke so the preview stays accurate while the
    *  BU is still typing (Ticket D, 2026-09-22). */
-  description: string
+  description: string,
+  /** Which bank `savedMappings` belongs to (`useBankConfig.mappingsBankCode`). Mappings
+   *  are per bank since 20260924000000, and the page re-fetches them *after* the bank
+   *  changes — so until this matches `bankCode`, `savedMappings` is still the previous
+   *  bank's. Omitted = trust `savedMappings` as given (the pre-scoping behaviour). */
+  mappingsBankCode?: string | null
 ): SettlementMappingHook {
   const { t } = useT()
   const tRef = useRef(t)
@@ -165,11 +170,21 @@ export function useSettlementMapping(
         : []
       const next: Record<PostType, Record<string, FieldMapping>> = {
         Detail:
-          Object.keys(detail).length > 0 ? detail : blankRows(sample.map(i => i.payment_type_code)),
+          Object.keys(detail).length > 0
+            ? detail
+            : blankRows(
+                sample.map(i => i.payment_type_code),
+                SOURCE_BY_POST_TYPE.Detail,
+                mappings
+              ),
         Summary:
           Object.keys(summary).length > 0
             ? summary
-            : blankRows(dedupe(sample.map(i => firstToken(i.payment_type_code)))),
+            : blankRows(
+                dedupe(sample.map(i => firstToken(i.payment_type_code))),
+                SOURCE_BY_POST_TYPE.Summary,
+                mappings
+              ),
       }
       setSets(next)
       setSavedPrint(fingerprint(s.enabled, s.post_type, next))
@@ -182,12 +197,14 @@ export function useSettlementMapping(
   }, [])
 
   useEffect(() => {
+    if (mappingsBankCode !== undefined && mappingsBankCode !== bankCode) return
     void load(bankCode, savedMappings)
     // `savedMappings` intentionally excluded: it is the page's load-once snapshot, and a
     // later edit elsewhere on the page (commission/tax/net, a fee-invoice payment type)
-    // must not re-seed this card's rows out from under the user.
+    // must not re-seed this card's rows out from under the user. `mappingsBankCode` is
+    // in: it changes only when a bank's mappings land, never on an edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bankCode, load])
+  }, [bankCode, mappingsBankCode, load])
 
   const rows: SettlementRow[] = Object.entries(sets[postType] || {}).map(([code, mapping]) => ({
     code,
@@ -349,9 +366,20 @@ export function useSettlementMapping(
 
 /** Unmapped starting rows for a set of printed codes — nothing here has a dept/acc yet,
  *  only a name to map. */
-function blankRows(codes: string[]): Record<string, FieldMapping> {
+/** Tagged with their post type's `source`, like `addCustomType`'s rows: `load` reads the
+ *  saved dict back by `source`, so a seeded row saved untagged came back as nothing — the
+ *  card re-seeded it blank, and the next save wrote those blanks over the real mapping.
+ *  A code this bank already maps (untagged, saved before this fix or as a fee-invoice
+ *  payment type) keeps its dept/acc for the same reason. */
+function blankRows(
+  codes: string[],
+  source: string,
+  saved: Record<string, FieldMapping>
+): Record<string, FieldMapping> {
   const out: Record<string, FieldMapping> = {}
-  for (const code of codes) out[code] = { dept: '', acc: '' }
+  for (const code of codes) {
+    out[code] = { dept: saved[code]?.dept || '', acc: saved[code]?.acc || '', source }
+  }
   return out
 }
 

@@ -120,7 +120,8 @@ export default function Mapping() {
     mappingCtrl.savedMappings,
     mappingCtrl.masterAccounts,
     mappingCtrl.masterDepartments,
-    resolvedDescription
+    resolvedDescription,
+    mappingCtrl.mappingsBankCode
   )
 
   if (mappingCtrl.configLoading) return <MappingSkeleton />

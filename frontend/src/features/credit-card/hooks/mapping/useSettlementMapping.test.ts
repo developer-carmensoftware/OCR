@@ -91,6 +91,54 @@ describe('useSettlementMapping', () => {
 
     expect(result.current.rows.map(r => r.code).sort()).toEqual(['JCB PREM', 'VS INTER UP PREM'])
     expect(result.current.rows.every(r => !r.mapping.dept && !r.mapping.acc)).toBe(true)
+    // Tagged, or the save writes them untagged and the next load cannot find them: the card
+    // re-seeds them blank and the save after that blanks the real mapping.
+    expect(result.current.mappingsToSave['JCB PREM'].source).toBe('settlement_detail')
+    expect(result.current.mappingsToSave['JCB'].source).toBe('settlement_summary')
+  })
+
+  it('keeps an untagged mapping this bank already has for a seeded code', async () => {
+    getARSettings.mockResolvedValue(settingsResponse({ post_type: 'Detail' }))
+    getSamplePaymentTypes.mockResolvedValue([
+      { payment_type_code: 'JCB PREM' },
+      { payment_type_code: 'VS INTER PREM' },
+    ])
+    // Saved before seeded rows were tagged — no `source`.
+    const saved = { 'JCB PREM': { dept: 'GEN', acc: '1021008' } }
+
+    const { result } = renderHook(() => useSettlementMapping('KBANK', saved, [], [], ''))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.mappingsToSave['JCB PREM']).toEqual({
+      dept: 'GEN',
+      acc: '1021008',
+      source: 'settlement_detail',
+    })
+    expect(result.current.mappingsToSave['VS INTER PREM']).toEqual({
+      dept: '',
+      acc: '',
+      source: 'settlement_detail',
+    })
+  })
+
+  // Mappings are per bank, and the page fetches the new bank's *after* the dropdown moves.
+  // Loading on the bank change alone seeded the card from the previous bank's mappings and
+  // never looked again, so a KBANK mapping that was saved showed as blank rows.
+  it("waits for its own bank's mappings instead of seeding from the previous bank's", async () => {
+    getARSettings.mockResolvedValue(settingsResponse({ post_type: 'Detail' }))
+    const kbank = { 'JCB PREM': { dept: 'GEN', acc: '1021008', source: 'settlement_detail' } }
+
+    const { result, rerender } = renderHook(
+      ({ saved, of }: { saved: Record<string, { dept: string; acc: string }>; of: string }) =>
+        useSettlementMapping('KBANK', saved, [], [], '', of),
+      { initialProps: { saved: {}, of: 'SCB' } }
+    )
+    expect(getARSettings).not.toHaveBeenCalled()
+
+    rerender({ saved: kbank, of: 'KBANK' })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.rows).toEqual([{ code: 'JCB PREM', mapping: kbank['JCB PREM'] }])
   })
 
   it('seeds Summary by folding the sample onto each scheme’s first token, deduped', async () => {
