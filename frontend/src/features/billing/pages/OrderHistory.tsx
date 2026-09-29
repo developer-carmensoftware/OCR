@@ -89,7 +89,7 @@ function OrderRow({
             </span>
           ))}
         </span>
-        <span className="order-row-amount text-mono">฿{formatThb(order.amount_thb)}</span>
+        <span className="order-row-amount text-mono">฿{formatThb(order.amount_thb, true)}</span>
         <OrderStatusBadge status={order.status} />
         <ChevronDown
           size={16}

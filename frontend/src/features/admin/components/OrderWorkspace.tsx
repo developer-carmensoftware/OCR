@@ -301,7 +301,7 @@ function CompanyPanel({
             {past.map(o => (
               <li key={o.id}>
                 <span className={`orev-dot is-${STAGE_TONE[orderStage(o)]}`} aria-hidden="true" />
-                <span className="mono">฿{formatThb(o.amount_thb)}</span>
+                <span className="mono">฿{formatThb(o.amount_thb, true)}</span>
                 <span className="orev-muted">{o.pack_code}</span>
                 <span className="orev-history-status">{t(STAGE_KEY[orderStage(o)])}</span>
                 <span className="orev-muted">{timeAgo(o.created_at, t)}</span>

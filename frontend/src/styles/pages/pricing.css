@@ -1431,8 +1431,11 @@
     font-size: 1.2rem;
   }
 
+  /* Rate, then the save chip on its own line — in every language. Letting it wrap
+     only when it didn't fit left Thai cards a line taller than English ones. */
   .pack-card-meta {
-    justify-content: center;
+    flex-direction: column;
+    gap: 0.3rem;
   }
 }
 
