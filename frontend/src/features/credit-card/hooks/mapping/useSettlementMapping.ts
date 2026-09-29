@@ -90,7 +90,6 @@ export interface SettlementMappingHook {
   acceptSuggestion: (code: string) => void
   rejectSuggestion: (code: string) => void
   preview: ARPreview | null
-  previewLoading: boolean
   refreshPreview: () => void
   /** Both post-type sets, source-tagged, in the shape the page's own mapping dict
    *  already is — merge this in (spread after the page's own entries so a settlement
@@ -133,7 +132,6 @@ export function useSettlementMapping(
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion | null>>({})
   const [suggestLoading, setSuggestLoading] = useState(false)
   const [preview, setPreview] = useState<ARPreview | null>(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
   const [savedPrint, setSavedPrint] = useState<string | null>(null)
 
   const previewSeq = useRef(0)
@@ -299,7 +297,6 @@ export function useSettlementMapping(
 
   const refreshPreview = useCallback(() => {
     const seq = ++previewSeq.current
-    setPreviewLoading(true)
     previewARJv({
       bank_code: bankCode,
       post_type: postType,
@@ -317,9 +314,6 @@ export function useSettlementMapping(
           console.error('AR preview failed:', err)
           setPreview(null)
         }
-      })
-      .finally(() => {
-        if (seq === previewSeq.current) setPreviewLoading(false)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bankCode, postType, description, sets])
@@ -356,7 +350,6 @@ export function useSettlementMapping(
     acceptSuggestion,
     rejectSuggestion,
     preview,
-    previewLoading,
     refreshPreview,
     mappingsToSave,
     dirty,

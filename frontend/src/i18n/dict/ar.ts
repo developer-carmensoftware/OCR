@@ -55,18 +55,6 @@ export const en = {
   'ar.rowCount': '{count} in {postType}',
   'ar.removeType': 'Remove {type}',
 
-  // The worked example, beside the toggle rather than below it: the whole value is seeing
-  // the credit lines regroup while Detail/Summary is flipped.
-  'ar.previewTitle': 'JV preview',
-  'ar.previewNote': 'Worked example',
-  'ar.previewMeta': '{date} · Tax Inv.# {docNo}',
-  'ar.previewBuilding': 'Building preview...',
-  'ar.previewUnavailable': 'Preview unavailable — check that this bank is configured.',
-  'ar.previewUnmapped': 'Unmapped, so this would wait for review: {types}',
-  'ar.previewLines': '{count} lines · {postType}',
-  'ar.balanced': 'Debit = Credit',
-  'ar.outBy': 'Out by {amount} — this JV cannot post',
-
   // Save bar + the guard on the way out. The state sentence exists so a disabled primary
   // is not read as a broken control.
   'ar.unsaved': 'Unsaved changes',
@@ -135,16 +123,6 @@ export const th: Record<keyof typeof en, string> = {
   'ar.addType': 'เพิ่มประเภทบัตร',
   'ar.rowCount': '{count} รายการใน {postType}',
   'ar.removeType': 'ลบ {type}',
-
-  'ar.previewTitle': 'ตัวอย่าง JV',
-  'ar.previewNote': 'ตัวอย่างจากเอกสารจริง',
-  'ar.previewMeta': '{date} · เลขที่ใบกำกับ {docNo}',
-  'ar.previewBuilding': 'กำลังสร้างตัวอย่าง...',
-  'ar.previewUnavailable': 'แสดงตัวอย่างไม่ได้ — ตรวจสอบว่าตั้งค่าธนาคารนี้ไว้แล้ว',
-  'ar.previewUnmapped': 'ยังไม่ผูกบัญชี เอกสารจริงจะถูกพักไว้ให้ตรวจ: {types}',
-  'ar.previewLines': '{count} บรรทัด · {postType}',
-  'ar.balanced': 'เดบิตเท่ากับเครดิต',
-  'ar.outBy': 'ต่างกัน {amount} — JV ใบนี้โพสต์ไม่ได้',
 
   'ar.unsaved': 'มีการแก้ไขที่ยังไม่บันทึก',
   'ar.allSaved': 'บันทึกทุกอย่างในหน้านี้แล้ว',

@@ -63,11 +63,10 @@
   text-wrap: pretty;
 }
 
-/* ─── Two columns, preview on the right ───────────────────────────────────────
+/* ─── One column ──────────────────────────────────────────────────────────────
  *
- * The point of the Detail/Summary control is watching the credit lines regroup while it
- * is flipped, which needs both on screen at once. Below 1200px there is no room for that
- * and the rail simply becomes the last block in one column, where it used to be.
+ * Had a 460px JV-preview rail on the right at ≥1200px until 2026-09-29; the preview card
+ * is gone and the settlement card takes the full width.
  */
 
 .ar-grid {
@@ -82,30 +81,6 @@
 
 .ar-col {
   min-width: 0;
-}
-
-@media (min-width: 1200px) {
-  .ar-grid {
-    grid-template-columns: minmax(0, 1fr) 460px;
-    align-items: start;
-  }
-
-  /* Clear of `.app-header`, which is itself sticky at top: 0.75rem and 64px tall —
-     without the offset the preview's own title slides under it and the panel loses the
-     one line that says these figures are an example. */
-  .ar-rail {
-    position: sticky;
-    top: calc(0.75rem + 64px + var(--space-3));
-  }
-
-  .ar-rail .ar-preview-table {
-    font-size: 0.74rem;
-  }
-
-  .ar-rail .ar-preview-table th,
-  .ar-rail .ar-preview-table td {
-    padding: 0.4rem 0.4rem;
-  }
 }
 
 /* ─── Fields ──────────────────────────────────────────────────────────────── */
@@ -298,127 +273,6 @@
   color: var(--text-3);
 }
 
-/* ─── JV preview ──────────────────────────────────────────────────────────── */
-
-.ar-preview-note {
-  margin: 0 0 0.75rem;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.7rem;
-  font-weight: 400;
-  color: var(--text-3);
-  overflow-wrap: anywhere;
-}
-
-.ar-preview[aria-busy='true'] {
-  opacity: 0.55;
-  transition: opacity 0.18s ease-out;
-}
-
-.ar-preview-empty {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 1.25rem 0;
-  font-size: 0.82rem;
-  color: var(--text-3);
-}
-
-.ar-preview-warn {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid var(--rose-mid);
-  border-radius: var(--radius-sm);
-  background: var(--rose-light);
-  color: var(--rose-text);
-  font-size: 0.78rem;
-  line-height: 1.5;
-}
-
-.ar-preview-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.8rem;
-}
-
-.ar-preview-table th {
-  padding: 0.45rem 0.6rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  text-align: left;
-  color: var(--text-3);
-  white-space: nowrap;
-}
-
-.ar-preview-table td {
-  padding: 0.45rem 0.6rem;
-  border-bottom: 1px solid var(--border);
-  font-family: 'IBM Plex Mono', monospace;
-  color: var(--text-2);
-  vertical-align: top;
-}
-
-/* The comment as it will post to Carmen (`Tax Inv.# … - <payment type>`) — the column
-   that changes shape when Detail/Summary is flipped, which is the whole reason this panel
-   is beside that control. `overflow-wrap: anywhere` matters more since 2026-09-17: the
-   `Tax Inv.# … - ` prefix roughly triples the string's length, and in the 460px sticky
-   rail (`.ar-rail .ar-preview-table`, ≥1200px) that wraps most rows to two lines — the
-   row-count comparison the panel exists for still reads, just taller per row. */
-.ar-preview-table .ar-comment {
-  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
-  font-weight: 600;
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-
-.ar-preview-table .ar-num,
-.ar-preview-table th.ar-num {
-  text-align: right;
-  white-space: nowrap;
-}
-
-.ar-preview-table .ar-row-debit td {
-  background: var(--primary-light);
-  color: var(--text);
-  font-weight: 600;
-}
-
-.ar-preview-table tfoot td {
-  border-top: 2px solid var(--border-hi);
-  border-bottom: 0;
-  background: var(--muted);
-  font-weight: 700;
-  color: var(--text);
-}
-
-.ar-missing {
-  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
-  color: var(--rose-text);
-}
-
-.ar-balance {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.65rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.ar-balance.ok {
-  color: var(--emerald-text);
-}
-
-.ar-balance.bad {
-  color: var(--rose-text);
-}
-
 /* ─── Actions ─────────────────────────────────────────────────────────────────
  *
  * `.ui-actionbar` (admin.css) is the sticky bar itself. Which of the two states the Save
@@ -474,7 +328,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ar-preview[aria-busy='true'],
   .ar-tag {
     transition: none;
   }

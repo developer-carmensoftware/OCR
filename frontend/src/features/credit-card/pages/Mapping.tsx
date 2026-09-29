@@ -2,7 +2,6 @@ import { Network, Loader2, CheckCircle2, Scale } from 'lucide-react'
 import CustomModal from '@/shared/components/common/CustomModal'
 import Card from '@/shared/components/ui/Card'
 import Switch from '@/shared/components/ui/Switch'
-import ARJvPreview from '@/features/credit-card/components/ARJvPreview'
 import '@/styles/pages/mapping.css'
 import '@/styles/pages/ar-reconcile.css'
 import '@/styles/components/mapping-row.css'
@@ -275,14 +274,6 @@ export default function Mapping() {
                     </p>
                   </fieldset>
                 </Card>
-              </div>
-
-              <div className="ar-rail">
-                <ARJvPreview
-                  preview={settlementCtrl.preview}
-                  loading={settlementCtrl.previewLoading}
-                  postTypeLabel={postTypeLabel(settlementCtrl.postType)}
-                />
               </div>
             </div>
           </div>
