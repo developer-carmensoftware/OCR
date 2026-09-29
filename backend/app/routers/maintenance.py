@@ -5,7 +5,7 @@ scope but works for anonymous callers too (returns the global flag)."""
 from fastapi import APIRouter, Request
 
 from app.middleware.performance import decode_jwt_claims
-from app.services import maintenance_service
+from app.services.shared import maintenance as maintenance_service
 
 router = APIRouter(prefix="/api/v1/maintenance", tags=["Maintenance"])
 

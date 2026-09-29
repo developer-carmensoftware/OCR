@@ -2,13 +2,13 @@
 
 Two routers, two auth models, and the split is the point.
 
-`backend/app/routers/email_automation.py` (prefix `/api/v1/carmen`, tag `Email Automation`)
+`backend/app/routers/email_automation/settings_api.py` (prefix `/api/v1/carmen`, tag `Email Automation`)
 answers **Carmen's server**, authenticated by replaying the customer's own Carmen token.
 Seven are the Settings/notifications API Carmen calls (six also documented, in Thai, for
 Carmen's own developers in [`../CARMEN_API_SPEC.md`](../CARMEN_API_SPEC.md)); the two ingest
 routes are cron-only and appear in no other document.
 
-`backend/app/routers/email_review.py` (prefix `/api/v1/email`, tag `Email Review`) answers
+`backend/app/routers/email_automation/review.py` (prefix `/api/v1/email`, tag `Email Review`) answers
 **our own frontend** at `#/CreditCardOCR`, where the user already holds a session JWT, so it
 uses `get_current_session` like every other tenant-facing route in the app. It is what the
 human-in-the-loop queue reads and writes — see
@@ -71,7 +71,7 @@ without that anti-join one forwarded statement is listed under each source.
 
 **`filter` is `all` · `today` · `review` · `success` · `unposted`**; unknown falls back to
 `all`. All five have a chip on screen. They are **not** a grouping of statuses —
-`_chip_expr()` in `credit_card_activity.py` is the single definition, as a SQL `CASE` the
+`_chip_expr()` in `services/credit_card/activity.py` is the single definition, as a SQL `CASE` the
 list filters on and the counts group by:
 
 | chip | what is in it |
@@ -183,8 +183,8 @@ user's login for a problem that isn't theirs.
 }
 ```
 
-Validation codes, all raised from `save_settings()` / `set_token()`
-(`email_settings_service.py`):
+Validation codes, all raised from `save_settings()` (`email_automation/ingest_settings.py`) /
+`set_token()` (`email_automation/credential.py`):
 
 | Code | Field | Meaning |
 |---|---|---|
@@ -203,7 +203,7 @@ Validation codes, all raised from `save_settings()` / `set_token()`
 The payload replaces the BU's rule list wholesale — **send the complete current list, not
 a delta.** A rule's `pdf_password` field is the one exception to "whatever you send is what
 gets stored": omit it to keep the existing password, send `""` to clear it, send a value to
-set it (`_merge_rule()`, `email_settings_service.py:534`).
+set it (`_merge_rule()`, `email_automation/ingest_settings.py:534`).
 
 The ingest tag is allocated inside this call, and only here — the first time `enabled` is
 set `true` for a BU that doesn't already have one (`save_settings():516`). It is never

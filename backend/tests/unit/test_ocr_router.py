@@ -17,6 +17,18 @@ BASE_URL = "/api/v1/credit-card"
 AUTH_HEADERS = {"Authorization": "Bearer dummy"}
 
 
+@pytest.fixture(autouse=True)
+def _module_enabled():
+    """None of these tests are about module gating — they exercise extraction and
+    charging. Without this, `assert_module_enabled` (called ahead of
+    `consume_document` in the router) reaches its own un-mocked `async_session` and
+    makes a real DB call that only "passes" today because it fails open and the dev
+    DB happens to be reachable — see module_gate.py's own docstring on that behavior.
+    """
+    with patch("app.routers.credit_card.ocr.assert_module_enabled", new_callable=AsyncMock):
+        yield
+
+
 @pytest.fixture
 def mock_session():
     """Mock the async_session context manager."""
@@ -39,11 +51,11 @@ def mock_session():
 
 
 class TestExtractCard:
-    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
-    @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
-    @patch("app.routers.ocr.create_task")
-    @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
-    @patch("app.services.credit_card_service.has_submitted_doc", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.consume_document", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.get_correction_hints", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.create_task")
+    @patch("app.routers.credit_card.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
+    @patch("app.services.credit_card.extraction.has_submitted_doc", new_callable=AsyncMock)
     def test_extract_card_happy_path(
         self,
         mock_has_submitted,
@@ -86,8 +98,8 @@ class TestExtractCard:
         db_mock.execute.return_value = task_result
 
         with (
-            patch("app.routers.ocr.async_session", return_value=ctx_mock),
-            patch("app.services.credit_card_service.async_session", return_value=ctx_mock),
+            patch("app.routers.credit_card.ocr.async_session", return_value=ctx_mock),
+            patch("app.services.credit_card.extraction.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
         ):
             files = [("files", ("receipt.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 20, "image/jpeg"))]
@@ -105,11 +117,11 @@ class TestExtractCard:
         assert data[0]["id"] is not None
         assert dummy_task.status == TaskStatus.COMPLETED
 
-    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
-    @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
-    @patch("app.routers.ocr.create_task")
-    @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
-    @patch("app.services.credit_card_service.has_submitted_doc", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.consume_document", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.get_correction_hints", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.create_task")
+    @patch("app.routers.credit_card.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
+    @patch("app.services.credit_card.extraction.has_submitted_doc", new_callable=AsyncMock)
     def test_extract_card_duplicate_skipped(
         self,
         mock_has_submitted,
@@ -148,8 +160,8 @@ class TestExtractCard:
         db_mock.execute.return_value = task_result
 
         with (
-            patch("app.routers.ocr.async_session", return_value=ctx_mock),
-            patch("app.services.credit_card_service.async_session", return_value=ctx_mock),
+            patch("app.routers.credit_card.ocr.async_session", return_value=ctx_mock),
+            patch("app.services.credit_card.extraction.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
         ):
             files = [("files", ("receipt.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 20, "image/jpeg"))]
@@ -165,10 +177,10 @@ class TestExtractCard:
         assert data[0]["id"] is None
         assert dummy_task.status == TaskStatus.COMPLETED
 
-    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
-    @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
-    @patch("app.routers.ocr.create_task")
-    @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.consume_document", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.get_correction_hints", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.create_task")
+    @patch("app.routers.credit_card.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
     def test_extract_card_error_marks_failed(
         self,
         mock_extract_stateless,
@@ -196,8 +208,8 @@ class TestExtractCard:
         db_mock.execute.return_value = task_result
 
         with (
-            patch("app.routers.ocr.async_session", return_value=ctx_mock),
-            patch("app.services.credit_card_service.async_session", return_value=ctx_mock),
+            patch("app.routers.credit_card.ocr.async_session", return_value=ctx_mock),
+            patch("app.services.credit_card.extraction.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
         ):
             files = [("files", ("receipt.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 20, "image/jpeg"))]
@@ -214,12 +226,12 @@ class TestExtractCard:
 
     # ── Billing: one credit per file, not one per request ─────────────────────
 
-    @patch("app.routers.ocr.refund_document", new_callable=AsyncMock)
-    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
-    @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
-    @patch("app.routers.ocr.create_task")
-    @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
-    @patch("app.services.credit_card_service.has_submitted_doc", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.refund_document", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.consume_document", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.get_correction_hints", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.create_task")
+    @patch("app.routers.credit_card.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
+    @patch("app.services.credit_card.extraction.has_submitted_doc", new_callable=AsyncMock)
     def test_extract_charges_one_document_per_file(
         self,
         mock_has_submitted,
@@ -256,8 +268,8 @@ class TestExtractCard:
 
         jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
         with (
-            patch("app.routers.ocr.async_session", return_value=ctx_mock),
-            patch("app.services.credit_card_service.async_session", return_value=ctx_mock),
+            patch("app.routers.credit_card.ocr.async_session", return_value=ctx_mock),
+            patch("app.services.credit_card.extraction.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
         ):
             resp = client.post(
@@ -270,12 +282,12 @@ class TestExtractCard:
         mock_consume.assert_awaited_once_with(increment=3)
         mock_refund.assert_not_awaited()
 
-    @patch("app.routers.ocr.refund_document", new_callable=AsyncMock)
-    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
-    @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
-    @patch("app.routers.ocr.create_task")
-    @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
-    @patch("app.services.credit_card_service.has_submitted_doc", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.refund_document", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.consume_document", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.get_correction_hints", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.create_task")
+    @patch("app.routers.credit_card.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
+    @patch("app.services.credit_card.extraction.has_submitted_doc", new_callable=AsyncMock)
     def test_extract_refunds_only_the_files_that_failed(
         self,
         mock_has_submitted,
@@ -313,8 +325,8 @@ class TestExtractCard:
 
         jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
         with (
-            patch("app.routers.ocr.async_session", return_value=ctx_mock),
-            patch("app.services.credit_card_service.async_session", return_value=ctx_mock),
+            patch("app.routers.credit_card.ocr.async_session", return_value=ctx_mock),
+            patch("app.services.credit_card.extraction.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
             pytest.raises(RuntimeError),
         ):
@@ -327,11 +339,11 @@ class TestExtractCard:
         mock_consume.assert_awaited_once_with(increment=3)
         mock_refund.assert_awaited_once_with("credit", increment=2)
 
-    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.consume_document", new_callable=AsyncMock)
     def test_extract_rejects_batch_over_file_cap(self, mock_consume, mock_session):
         """Over the cap → 422 before anything is read or charged (OOM + billing guard)."""
         _, db_mock = mock_session
-        from app.routers.ocr import MAX_FILES_PER_EXTRACT
+        from app.routers.credit_card.ocr import MAX_FILES_PER_EXTRACT
 
         jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
         with make_test_client(db_mock) as client:
@@ -348,11 +360,11 @@ class TestExtractCard:
         assert "Too many files" in resp.json()["detail"]
         mock_consume.assert_not_awaited()
 
-    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
-    @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
-    @patch("app.routers.ocr.create_task")
-    @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
-    @patch("app.services.credit_card_service.has_submitted_doc", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.consume_document", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.get_correction_hints", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.create_task")
+    @patch("app.routers.credit_card.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
+    @patch("app.services.credit_card.extraction.has_submitted_doc", new_callable=AsyncMock)
     def test_bank_code_detected_from_extracted_when_not_passed(
         self,
         mock_has_submitted,
@@ -397,8 +409,8 @@ class TestExtractCard:
         db_mock.execute.return_value = task_result
 
         with (
-            patch("app.routers.ocr.async_session", return_value=ctx_mock),
-            patch("app.services.credit_card_service.async_session", return_value=ctx_mock),
+            patch("app.routers.credit_card.ocr.async_session", return_value=ctx_mock),
+            patch("app.services.credit_card.extraction.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
         ):
             files = [("files", ("receipt.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 20, "image/jpeg"))]
@@ -426,11 +438,11 @@ class TestExtractCard:
         assert call_kwargs["doc_no"] == "INV-456"
         assert call_kwargs["doc_date"] == date(2024, 3, 15)
 
-    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
-    @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
-    @patch("app.routers.ocr.create_task")
-    @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
-    @patch("app.services.credit_card_service.has_submitted_doc", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.consume_document", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.get_correction_hints", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.create_task")
+    @patch("app.routers.credit_card.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
+    @patch("app.services.credit_card.extraction.has_submitted_doc", new_callable=AsyncMock)
     def test_explicit_bank_code_param_takes_precedence_over_detection(
         self,
         mock_has_submitted,
@@ -469,8 +481,8 @@ class TestExtractCard:
         db_mock.execute.return_value = task_result
 
         with (
-            patch("app.routers.ocr.async_session", return_value=ctx_mock),
-            patch("app.services.credit_card_service.async_session", return_value=ctx_mock),
+            patch("app.routers.credit_card.ocr.async_session", return_value=ctx_mock),
+            patch("app.services.credit_card.extraction.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
         ):
             files = [("files", ("receipt.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 20, "image/jpeg"))]
@@ -493,7 +505,7 @@ class TestExtractCard:
 
 
 class TestListTasks:
-    @patch("app.routers.ocr.ocr_service.get_all_tasks", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.ocr_service.get_all_tasks", new_callable=AsyncMock)
     def test_list_tasks_200(self, mock_get_all):
         dummy_task = OCRTask(
             id=uuid.uuid4(),

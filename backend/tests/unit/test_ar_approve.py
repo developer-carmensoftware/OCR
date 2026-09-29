@@ -18,7 +18,7 @@ import pytest
 
 from app.exceptions import ValidationError
 from app.models.schemas import ARPreviewOut, ARPreviewRow, ExtractedDetailRow
-from app.services import email_ingest_service as ingest
+from app.services.email_automation import review
 from tests.unit.test_email_ingest_pipeline import (
     _approve_patches,
     _extracted,
@@ -62,10 +62,10 @@ def _built(unmapped=None, balanced=True, rows=None):
 async def _approve(db, row, *, built, rows_from_client=None, carmen_result=None):
     with (
         _approve_patches(db, carmen_result=carmen_result or {"Code": 0, "InternalMessage": "JV-7"}),
-        patch.object(ingest.ar_svc, "jv_for_document", AsyncMock(return_value=built)),
-        patch.object(ingest, "build_gljv_payload", MagicMock(return_value={})) as build,
+        patch.object(review.ar_svc, "jv_for_document", AsyncMock(return_value=built)),
+        patch.object(review, "build_gljv_payload", MagicMock(return_value={})) as build,
     ):
-        result = await ingest.approve_document(
+        result = await review.approve_document(
             row.id,
             tenant_id=str(row.tenant_id),
             reviewer="u-1",
@@ -108,14 +108,14 @@ async def test_approve_checks_the_same_duplicate_key_extraction_uses():
     that already posted would refuse the settlement report sharing its number."""
     row = _ar_row()
     db = _ReviewDB(row)
-    hsd = AsyncMock(wraps=ingest.has_submitted_doc)
+    hsd = AsyncMock(wraps=review.has_submitted_doc)
     with (
         _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-9"}),
-        patch.object(ingest, "has_submitted_doc", hsd),
-        patch.object(ingest.ar_svc, "jv_for_document", AsyncMock(return_value=_built())),
-        patch.object(ingest, "build_gljv_payload", MagicMock(return_value={})),
+        patch.object(review, "has_submitted_doc", hsd),
+        patch.object(review.ar_svc, "jv_for_document", AsyncMock(return_value=_built())),
+        patch.object(review, "build_gljv_payload", MagicMock(return_value={})),
     ):
-        await ingest.approve_document(
+        await review.approve_document(
             row.id,
             tenant_id=str(row.tenant_id),
             reviewer="u",
@@ -137,10 +137,10 @@ async def test_a_settlement_report_files_its_own_input_tax_record():
     db = _ReviewDB(row)
     with (
         _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-7"}) as p,
-        patch.object(ingest.ar_svc, "jv_for_document", AsyncMock(return_value=_built())),
-        patch.object(ingest, "build_gljv_payload", MagicMock(return_value={})),
+        patch.object(review.ar_svc, "jv_for_document", AsyncMock(return_value=_built())),
+        patch.object(review, "build_gljv_payload", MagicMock(return_value={})),
     ):
-        await ingest.approve_document(
+        await review.approve_document(
             row.id,
             tenant_id=str(row.tenant_id),
             reviewer="u",
@@ -160,10 +160,10 @@ async def test_a_settlement_report_with_no_total_row_claims_nothing():
     db = _ReviewDB(row)
     with (
         _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-7"}) as p,
-        patch.object(ingest.ar_svc, "jv_for_document", AsyncMock(return_value=_built())),
-        patch.object(ingest, "build_gljv_payload", MagicMock(return_value={})),
+        patch.object(review.ar_svc, "jv_for_document", AsyncMock(return_value=_built())),
+        patch.object(review, "build_gljv_payload", MagicMock(return_value={})),
     ):
-        await ingest.approve_document(
+        await review.approve_document(
             row.id, tenant_id=str(row.tenant_id), reviewer="u", extracted=_extracted(), rows=[]
         )
     assert p.tax.call_args.kwargs["details"] == []
@@ -178,9 +178,9 @@ async def test_a_fee_invoice_still_posts_the_rows_it_was_given():
 
     with (
         _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-1"}),
-        patch.object(ingest, "build_gljv_payload", MagicMock(return_value={})) as build,
+        patch.object(review, "build_gljv_payload", MagicMock(return_value={})) as build,
     ):
-        await ingest.approve_document(
+        await review.approve_document(
             row.id, tenant_id=str(row.tenant_id), reviewer="u", extracted=_extracted(), rows=edited
         )
 
@@ -233,11 +233,11 @@ async def test_nothing_reaches_carmen_when_the_entry_is_refused():
     with (
         _approve_patches(db, carmen_result={"Code": 0}) as p,
         patch.object(
-            ingest.ar_svc, "jv_for_document", AsyncMock(return_value=_built(unmapped=["JCB"]))
+            review.ar_svc, "jv_for_document", AsyncMock(return_value=_built(unmapped=["JCB"]))
         ),
     ):
         with pytest.raises(ValidationError):
-            await ingest.approve_document(
+            await review.approve_document(
                 row.id, tenant_id=str(row.tenant_id), reviewer="u", extracted=_extracted(), rows=[]
             )
 

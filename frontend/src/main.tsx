@@ -36,15 +36,15 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 
 import ReactDOM from 'react-dom/client'
 import { Toaster } from 'sonner'
-import { AuthProvider } from './contexts/AuthContext'
-import { AdminAuthProvider } from './contexts/AdminAuthContext'
+import { AuthProvider } from '@/shared/contexts/AuthContext'
+import { AdminAuthProvider } from '@/shared/contexts/AdminAuthContext'
 import { LanguageProvider } from './i18n/LanguageContext'
-import ProtectedRoute from './components/common/ProtectedRoute'
-import { ConsentGate } from './components/common/ConsentGate'
-import { MaintenanceGate } from './components/common/MaintenanceGate'
-import AdminProtectedRoute from './components/admin/AdminProtectedRoute'
-import ErrorBoundary from './components/common/ErrorBoundary'
-import PageSkeleton from './components/common/PageSkeleton'
+import ProtectedRoute from '@/shared/components/common/ProtectedRoute'
+import { ConsentGate } from '@/shared/components/common/ConsentGate'
+import { MaintenanceGate } from '@/shared/components/common/MaintenanceGate'
+import AdminProtectedRoute from '@/shared/components/common/AdminProtectedRoute'
+import ErrorBoundary from '@/shared/components/common/ErrorBoundary'
+import PageSkeleton from '@/shared/components/common/PageSkeleton'
 import './index.css'
 
 /** Remove the static HTML loader after React has painted. */
@@ -66,21 +66,21 @@ function dismissInitialLoader() {
   }
 }
 
-const Home = lazy(() => import('./pages/Home'))
-const ManualScan = lazy(() => import('./pages/ManualScan'))
-const ReviewQueue = lazy(() => import('./pages/ReviewQueue'))
-const Mapping = lazy(() => import('./pages/Mapping'))
-const APInvoice = lazy(() => import('./pages/APInvoice'))
-const Pricing = lazy(() => import('./pages/Pricing'))
-const OrderHistory = lazy(() => import('./pages/OrderHistory'))
-const WhatsNew = lazy(() => import('./pages/WhatsNew'))
-const EmailSettings = lazy(() => import('./pages/EmailSettings'))
+const Home = lazy(() => import('@/features/home/pages/Home'))
+const ManualScan = lazy(() => import('@/features/credit-card/pages/ManualScan'))
+const ReviewQueue = lazy(() => import('@/features/credit-card/pages/ReviewQueue'))
+const Mapping = lazy(() => import('@/features/credit-card/pages/Mapping'))
+const APInvoice = lazy(() => import('@/features/ap-invoice/pages/APInvoice'))
+const Pricing = lazy(() => import('@/features/billing/pages/Pricing'))
+const OrderHistory = lazy(() => import('@/features/billing/pages/OrderHistory'))
+const WhatsNew = lazy(() => import('@/features/home/pages/WhatsNew'))
+const EmailSettings = lazy(() => import('@/features/email-settings/pages/EmailSettings'))
 
 // Admin pages
-const AdminRouter = lazy(() => import('./pages/admin/AdminRouter'))
+const AdminRouter = lazy(() => import('@/features/admin/pages/AdminRouter'))
 
 // Order Review — standalone page (own shell, reuses admin auth)
-const OrderReviewShell = lazy(() => import('./pages/order-review/OrderReviewShell'))
+const OrderReviewShell = lazy(() => import('@/features/admin/pages/order-review/OrderReviewShell'))
 
 function getRoute(): string {
   const hash = window.location.hash.split('?')[0]

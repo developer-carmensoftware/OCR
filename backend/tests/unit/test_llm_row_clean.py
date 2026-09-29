@@ -11,8 +11,8 @@ import json
 import pytest
 
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services import llm_service
-from app.services.llm_service import _clean_llm_rows
+from app.services.credit_card import vision as llm_service
+from app.services.credit_card.vision import _clean_llm_rows
 
 
 def _rows(*specs) -> list[ExtractedDetailRow]:

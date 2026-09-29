@@ -47,14 +47,14 @@ def test_each_bus_credential_resolves_to_that_bus_own_carmen_origin(real_engine,
     the wrong origin would post one customer's JV into another's Carmen."""
     from app.database import async_session
     from app.models.email_automation import EmailIngestSettings
-    from app.services import email_settings_service as es
+    from app.services.email_automation import credential
 
     async def _targets():
         out = []
         async with async_session() as db:
             for bu_code, tenant_id, _uri, host in live:
                 row = await db.get(EmailIngestSettings, tenant_id)
-                token, uri = await es.posting_target(db, row)
+                token, uri = await credential.posting_target(db, row)
                 out.append((bu_code, host, bool(token), uri))
         return out
 
@@ -81,15 +81,15 @@ def test_two_bus_do_not_share_one_carmen_credential(live):
 async def _fingerprints(live):
     from app.database import async_session
     from app.models.email_automation import EmailIngestSettings
-    from app.services import email_settings_service as es
+    from app.services.email_automation import credential
 
     out = {}
     async with async_session() as db:
         for bu_code, tenant_id, _uri, _host in live:
             row = await db.get(EmailIngestSettings, tenant_id)
-            token, _ = await es.posting_target(db, row)
+            token, _ = await credential.posting_target(db, row)
             # The fingerprint, never the token itself — this output reaches a terminal.
-            out[bu_code] = es.fingerprint(token) if token else ""
+            out[bu_code] = credential.fingerprint(token) if token else ""
     return out
 
 
@@ -100,14 +100,14 @@ def test_a_stored_credential_still_opens_the_real_carmen(real_engine, live):
     from app.database import async_session
     from app.models.email_automation import EmailIngestSettings
     from app.routers.auth import validate_token
-    from app.services import email_settings_service as es
+    from app.services.email_automation import credential
 
     async def _probe():
         results = {}
         async with async_session() as db:
             for bu_code, tenant_id, _uri, _host in live:
                 row = await db.get(EmailIngestSettings, tenant_id)
-                token, uri = await es.posting_target(db, row)
+                token, uri = await credential.posting_target(db, row)
                 if not token or not uri:
                     results[bu_code] = "no-credential"
                     continue
@@ -138,12 +138,12 @@ def test_a_seeded_bu_with_no_credential_cannot_post_at_all(tenants):
     the pipeline parks the document instead of reaching for somebody else's."""
     from app.database import async_session
     from app.models.email_automation import EmailIngestSettings
-    from app.services import email_settings_service as es
+    from app.services.email_automation import credential
 
     async def _go():
         async with async_session() as db:
             row = await db.get(EmailIngestSettings, tenants.a)
-            return await es.posting_target(db, row)
+            return await credential.posting_target(db, row)
 
     token, uri = run(_go())
     assert token == "", "a BU with no stored credential resolved a token from somewhere"

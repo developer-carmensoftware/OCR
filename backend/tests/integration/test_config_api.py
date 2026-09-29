@@ -73,7 +73,9 @@ def test_I3_1_no_config_returns_empty_mappings():
 
 def test_get_accounting_with_config_returns_file_prefix():
     mock_db = make_mock_db()
-    mock_db.execute.side_effect = [_scalar(_config_row()), _scalars([])]
+    # config row, this bank's entries, then the bank-less ones a bank-scoped read falls
+    # back to (F-8) — the row names a bank, so that third read happens
+    mock_db.execute.side_effect = [_scalar(_config_row()), _scalars([]), _scalars([])]
     with make_test_client(mock_db) as client:
         resp = client.get(f"{BASE}/accounting", headers=AUTH)
         assert resp.status_code == 200
@@ -320,7 +322,7 @@ def test_carmen_being_unreachable_does_not_block_a_correction(monkeypatch):
     """The JV is about to be posted through Carmen anyway, which is where a genuinely bad
     pair gets caught. Refusing here would strand the reviewer on our outage."""
     from app.routers import config as router
-    from app.services.carmen_service import CarmenAPIError
+    from app.services.shared.carmen import CarmenAPIError
 
     async def depts(_token):
         raise CarmenAPIError(503, "upstream down")

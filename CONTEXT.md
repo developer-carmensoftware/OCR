@@ -78,7 +78,7 @@ in the purchase flow's line-item copy instead of a status badge.
 **Fee invoice**:
 A processor's own invoice for its transaction fees (KTC, GHL, PayPal, SiamPay) — one
 printed line per fee, each carrying its own pre-VAT amount. The credit-card JV
-builder's default branch (`grouping=None` in `cc_jv.build_jv_rows`): each line resolves
+builder's default branch (`grouping=None` in `credit_card.jv.build_jv_rows`): each line resolves
 to a payment type via fold-tolerant matching against free-text transaction
 descriptions, and the three fixed debit legs (commission/tax/net) sum the detail rows
 themselves, because a fee invoice prints no anchor total.
@@ -94,7 +94,7 @@ invoice has to sum by hand. Structurally the same JV as a fee invoice since 2026
 it was ingested as a second module (`cc_ar_reconcile`) only because that was true
 before decision #28, and stopped being true once the debit side collapsed. As of
 2026-09-22 (decision #29) it is a document kind the credit-card flow recognizes, not a
-module: `email_ingest_service` still tags its `ocr_tasks.module_id` as
+module: `email_automation.pipeline` still tags its `ocr_tasks.module_id` as
 `cc_ar_reconcile` for cost-reporting continuity, but `assert_module_enabled` gates on
 `credit_card_ocr` like everything else, and its posting profile
 (`ar_reconcile_settings`) lives beside the credit-card mapping, not behind a separate
@@ -103,7 +103,7 @@ _Avoid_: AR reconcile / AR reconciliation — the pre-2026-09-22 name for this w
 area, back when it was believed to need its own module, its own mapping table, and a
 second offsetting JV to clear against the fee invoice's. None of those premises
 survived decision #28 and #29; the words describing them shouldn't either. Code
-identifiers (`ar_reconcile_service.py`, `ARSettingsIn`, `/api/v1/ar-reconcile/*`) keep
+identifiers (`services/credit_card/ar_reconcile.py`, `ARSettingsIn`, `/api/v1/ar-reconcile/*`) keep
 the old name deliberately (decision #29, #11) — this entry governs user-facing copy
 and conversation, not identifiers.
 
@@ -118,3 +118,25 @@ old name for the same reason **Settlement report** does.
 _Avoid_: Post type / post_type as user-facing copy — accurate as a database column
 name, meaningless to a BU reading the settings page (what is being "posted" isn't
 what the choice is about; how the credit side is broken down is).
+
+### Email automation
+
+**Skipped** _(email document status)_:
+The document stopped **before** a document was charged — the BU's own configuration
+answered "not this file" (no matching rule, wrong PDF password, sender not registered,
+unsupported attachment). Skipped always means free.
+_Avoid_: using Skipped for anything that stopped after the charge, however harmless it
+looks to the customer — that is **Failed** or **Pending review**.
+
+**Failed** _(email document status)_:
+The document was charged and then stopped for good — including a second copy of a
+document already waiting in the review queue. A charged document that a human can still
+act on is **Pending review**, not Failed.
+
+**Owner emails**:
+A BU's optional list of its own mailboxes. A message must carry one of them in From, To or
+Cc, or its attachments are **Skipped**. It guards against misdirected mail, not against
+someone who knows the ingest address — a forward always carries the BU's mailbox in To.
+The secret ingest tag is what keeps strangers out. Empty accepts every sender.
+_Avoid_: sender allow-list, sender verification — both imply an identity check it does not
+perform.

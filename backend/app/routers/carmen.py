@@ -19,10 +19,10 @@ from app.constants import Module
 from app.database import get_db
 from app.exceptions import DuplicateDocumentError
 from app.models.orm import CreditCard
-from app.services import audit_service
-from app.services.ap_invoice_service import mark_invoice_submitted
-from app.services.audit_service import AuditAction
-from app.services.carmen_service import (
+from app.services.ap_invoice.service import mark_invoice_submitted
+from app.services.shared import audit as audit_service
+from app.services.shared.audit import AuditAction
+from app.services.shared.carmen import (
     CarmenAPIError,
     get_account_codes,
     get_departments,

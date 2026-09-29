@@ -659,7 +659,23 @@ WHERE service = 'carmen'
 GROUP BY 1
 ORDER BY 1;
 
--- 26. Settlement-report rows the 2026-09-22 ar_reconcile_mappings backfill skipped.
+
+-- 26. Would a DMARC gate refuse real mail? (email_documents.auth_verdict)
+-- Measurement for the sender-authentication decision (docs/email-automation/05-operations.md
+-- Known gaps). Per BU, how the last two weeks of mail scored at our own MX. A BU whose
+-- real auto-forwards show dmarc=fail would lose documents to a gate — decide from this,
+-- not from theory. NULL = no trusted Authentication-Results header on the message.
+SELECT
+    tenant_id,
+    COALESCE(SPLIT_PART(auth_verdict, ' ', 1), '(none)') AS dmarc,
+    COUNT(*)                                             AS rows,
+    COUNT(*) FILTER (WHERE status = 'posted')            AS posted
+FROM email_documents
+WHERE created_at >= NOW() - INTERVAL '14 days'
+GROUP BY 1, 2
+ORDER BY 1, 2;
+
+-- 27. Settlement-report rows the 2026-09-22 ar_reconcile_mappings backfill skipped.
 --
 -- The migration folds this feature's own credit-side mapping into
 -- bu_accounting_mapping_entries and archives the original table rather than dropping it
@@ -687,7 +703,7 @@ JOIN bu_accounting_mapping_entries existing
 WHERE arm.deleted_at IS NULL
 ORDER BY arm.payment_type_code;
 
--- 27. JV-description conflicts the 2026-09-22 (Ticket D) fold-in skipped.
+-- 28. JV-description conflicts the 2026-09-22 (Ticket D) fold-in skipped.
 --
 -- ar_reconcile_settings.jv_description_template folds into
 -- bu_accounting_configs.bank_descriptions[bank_code] -- the field the fee-invoice path

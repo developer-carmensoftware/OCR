@@ -28,7 +28,7 @@ import pytest
 
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services import email_ingest_service as ingest
+from app.services.email_automation import ledger, pipeline
 from tests.unit.test_email_ingest_pipeline import (
     MAPPINGS,
     _config,
@@ -115,7 +115,7 @@ def _setting(enabled=True, post_type="Summary"):
 
 @contextmanager
 def _ar_config(setting):
-    with patch.object(ingest, "_ar_setting", AsyncMock(return_value=setting)):
+    with patch.object(pipeline, "_ar_setting", AsyncMock(return_value=setting)):
         yield
 
 
@@ -193,8 +193,8 @@ async def test_a_fee_invoice_still_takes_the_original_path():
 async def test_a_parked_fee_invoice_does_not_block_its_sibling_settlement_report():
     tenant_id = str(uuid4())
     db = _FakeDB(pending_payloads=[{"doc_type": "fee_invoice"}])
-    with patch.object(ingest, "async_session", _session_factory(db)):
-        blocked = await ingest._already_pending(
+    with patch.object(ledger, "async_session", _session_factory(db)):
+        blocked = await ledger._already_pending(
             tenant_id, "KBANK", "210726E00035291", "ar_reconcile"
         )
     assert blocked is False
@@ -206,8 +206,8 @@ async def test_a_second_copy_of_the_same_document_type_is_still_caught():
     the same tax invoice number are a real duplicate."""
     tenant_id = str(uuid4())
     db = _FakeDB(pending_payloads=[{"doc_type": "ar_reconcile"}])
-    with patch.object(ingest, "async_session", _session_factory(db)):
-        blocked = await ingest._already_pending(
+    with patch.object(ledger, "async_session", _session_factory(db)):
+        blocked = await ledger._already_pending(
             tenant_id, "KBANK", "210726E00035291", "ar_reconcile"
         )
     assert blocked is True
@@ -219,9 +219,9 @@ async def test_a_row_parked_before_doc_type_existed_defaults_to_fee_invoice():
     `review_payload`, which a row parked before this feature shipped never had."""
     tenant_id = str(uuid4())
     db = _FakeDB(pending_payloads=[{}])
-    with patch.object(ingest, "async_session", _session_factory(db)):
-        assert await ingest._already_pending(tenant_id, "KTC", "INV-001", "fee_invoice") is True
-        assert await ingest._already_pending(tenant_id, "KTC", "INV-001", "ar_reconcile") is False
+    with patch.object(ledger, "async_session", _session_factory(db)):
+        assert await ledger._already_pending(tenant_id, "KTC", "INV-001", "fee_invoice") is True
+        assert await ledger._already_pending(tenant_id, "KTC", "INV-001", "ar_reconcile") is False
 
 
 # ── What it posts ─────────────────────────────────────────────────────────────
@@ -317,11 +317,11 @@ async def test_settlement_report_input_tax_uses_the_real_worked_example():
     profiles = {"Data": [{"Code": "VAT7", "Description": "VAT 7%", "Active": True, "TaxRate": 7}]}
     post_mock = AsyncMock(return_value={"Code": 0})
     with (
-        patch.object(ingest, "async_session", _session_factory(db)),
-        patch.object(ingest, "get_tax_profiles", AsyncMock(return_value=profiles)),
-        patch.object(ingest, "post_input_tax", post_mock),
+        patch.object(pipeline, "async_session", _session_factory(db)),
+        patch.object(pipeline, "get_tax_profiles", AsyncMock(return_value=profiles)),
+        patch.object(pipeline.carmen, "post_input_tax", post_mock),
     ):
-        note = await ingest._post_input_tax(
+        note = await pipeline._post_input_tax(
             _ar_extracted(total_row=total_row),
             bank_code="KBANK",
             config=_config(),
@@ -478,8 +478,8 @@ FEE_RULE_KBANK = [{"bank_code": "KBANK", "filename_patterns": ["MDR"], "is_activ
 async def test_a_kbank_fee_invoice_is_skipped_once_its_settlement_report_posted():
     db = _FakeDB()
     with (
-        patch.object(ingest, "_ar_setting", AsyncMock(return_value=_setting(enabled=True))),
-        patch.object(ingest, "_settlement_recently_posted", AsyncMock(return_value=True)),
+        patch.object(pipeline, "_ar_setting", AsyncMock(return_value=_setting(enabled=True))),
+        patch.object(pipeline, "_settlement_recently_posted", AsyncMock(return_value=True)),
     ):
         outcome, p = await _run(
             db,
@@ -503,8 +503,8 @@ async def test_a_kbank_fee_invoice_still_posts_without_recent_proof_of_a_settlem
     behaviour rather than silently dropping the fee invoice too."""
     db = _FakeDB()
     with (
-        patch.object(ingest, "_ar_setting", AsyncMock(return_value=_setting(enabled=True))),
-        patch.object(ingest, "_settlement_recently_posted", AsyncMock(return_value=False)),
+        patch.object(pipeline, "_ar_setting", AsyncMock(return_value=_setting(enabled=True))),
+        patch.object(pipeline, "_settlement_recently_posted", AsyncMock(return_value=False)),
     ):
         outcome, p = await _run(
             db,
@@ -523,7 +523,7 @@ async def test_a_kbank_fee_invoice_posts_normally_when_ar_reconciliation_is_off(
     """Regression check: AR reconciliation off for the bank must not touch this path at
     all, same as before ticket 02 existed."""
     db = _FakeDB()
-    with patch.object(ingest, "_ar_setting", AsyncMock(return_value=_setting(enabled=False))):
+    with patch.object(pipeline, "_ar_setting", AsyncMock(return_value=_setting(enabled=False))):
         outcome, p = await _run(
             db,
             filename="MDR_statement.pdf",
@@ -541,8 +541,8 @@ async def test_settlement_recently_posted_reads_a_hit():
     result = MagicMock()
     result.scalar_one_or_none.return_value = uuid4()
     session = SimpleNamespace(execute=AsyncMock(return_value=result))
-    with patch.object(ingest, "async_session", _session_factory(session)):
-        assert await ingest._settlement_recently_posted(str(uuid4()), "KBANK") is True
+    with patch.object(ledger, "async_session", _session_factory(session)):
+        assert await ledger._settlement_recently_posted(str(uuid4()), "KBANK") is True
 
 
 @pytest.mark.asyncio
@@ -550,8 +550,8 @@ async def test_settlement_recently_posted_reads_a_miss():
     result = MagicMock()
     result.scalar_one_or_none.return_value = None
     session = SimpleNamespace(execute=AsyncMock(return_value=result))
-    with patch.object(ingest, "async_session", _session_factory(session)):
-        assert await ingest._settlement_recently_posted(str(uuid4()), "KBANK") is False
+    with patch.object(ledger, "async_session", _session_factory(session)):
+        assert await ledger._settlement_recently_posted(str(uuid4()), "KBANK") is False
 
 
 @pytest.mark.asyncio
@@ -680,7 +680,7 @@ async def test_a_report_nobodys_password_opens_costs_nothing():
         db,
         passwords=["wrong"],
         carmen_result=None,
-        open_side_effect=ingest._Skip("wrong_pdf_password", "None of the saved passwords"),
+        open_side_effect=pipeline._Skip("wrong_pdf_password", "None of the saved passwords"),
     )
 
     assert outcome == "skipped"

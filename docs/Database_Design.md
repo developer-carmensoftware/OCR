@@ -224,7 +224,7 @@ Metadata of an AP Invoice OCR job. **Line items are NOT stored** — Carmen ERP 
 
 ### `correction_feedback`
 
-User corrections of LLM-extracted fields → drives `correction_service.py` which computes error rates and injects prompt hints.
+User corrections of LLM-extracted fields → drives `shared/correction.py` which computes error rates and injects prompt hints.
 
 | Key columns | Notes |
 |---|---|
@@ -234,10 +234,10 @@ User corrections of LLM-extracted fields → drives `correction_service.py` whic
 | `value_embedding` | `extensions.vector(1536)` — HNSW cosine index for nearest-neighbour prompt hints (NULL until embedded) |
 | `carmen_user_id` | who corrected |
 
-Partial unique index (active only): `(tenant_id, bank_code, doc_no, field_name) WHERE deleted_at IS NULL` — `bank_code` is in scope because `doc_no` is not unique across banks. The upsert in `correction_service.py` matches this index via index inference (not `ON CONSTRAINT`, which cannot target a partial unique index).
+Partial unique index (active only): `(tenant_id, bank_code, doc_no, field_name) WHERE deleted_at IS NULL` — `bank_code` is in scope because `doc_no` is not unique across banks. The upsert in `shared/correction.py` matches this index via index inference (not `ON CONSTRAINT`, which cannot target a partial unique index).
 HNSW index: `(value_embedding extensions.vector_cosine_ops) WHERE value_embedding IS NOT NULL`
 
-**Error rate formula** (`correction_service.py`):
+**Error rate formula** (`shared/correction.py`):
 `error_rate = corrections(field, 90d) / submitted_receipts(bank, 90d)`
 Inject hint into prompt if `error_rate > 10%`
 
@@ -368,7 +368,7 @@ Every outbound HTTP call (OpenRouter, Carmen ERP).
 
 ## 7. Analytics Tables
 
-Built nightly by **pg_cron SQL functions** (`fn_build_daily_summary`, `fn_build_daily_model_cost`, `fn_build_monthly_summary`) scheduled at 01:17–01:32 UTC. The Python `summary_service.py` remains for on-demand admin backfill via `POST /api/v1/admin/maintenance/summary/*`. All analytics kept indefinitely.
+Built nightly by **pg_cron SQL functions** (`fn_build_daily_summary`, `fn_build_daily_model_cost`, `fn_build_monthly_summary`) scheduled at 01:17–01:32 UTC. The Python `admin/summary.py` remains for on-demand admin backfill via `POST /api/v1/admin/maintenance/summary/*`. All analytics kept indefinitely.
 
 ### `daily_usage_summary`
 
@@ -376,7 +376,7 @@ Pre-aggregated nightly. Unique per `(tenant_id, module_id, summary_date)`.
 
 Aggregates: documents, submissions, LLM calls/tokens/cost, API calls, errors, corrections, outbound calls, latency (avg + p95).
 
-Used by `anomaly_service.py` as baseline for spike detection (7-day rolling average).
+Used by `shared/anomaly.py` as baseline for spike detection (7-day rolling average).
 
 ### `daily_model_cost`
 
@@ -660,7 +660,7 @@ in production, nothing polls the ingest mailbox until one is added. Ready-to-run
 4. Add module_id to OCRTask creation in the new router
 5. Add assert_module_enabled("my_module") + consume_document() at start of extract endpoint
 6. Pass module_id="my_module" to log_llm_usage calls
-7. Extend summary_service.py aggregation if needed
+7. Extend admin/summary.py aggregation if needed
 ```
 
 ## 13. Adding a New Bank (Admin Dashboard, zero redeploy)
@@ -676,7 +676,7 @@ in production, nothing polls the ingest mailbox until one is added. Ready-to-run
 
 ## 14. What's Planned (Not Yet Built)
 
-Built since this list was written: admin auth flow (`routers/admin/auth.py` + `services/admin_auth_service.py` — email/password; TOTP MFA still a Phase-1.5 placeholder), `require_permission()` (`routers/admin/deps.py`), bootstrap CLI (`app/bootstrap_admin.py`), and admin routers for tenants/sessions/usage/monitoring/credits/maintenance.
+Built since this list was written: admin auth flow (`routers/admin/auth.py` + `services/admin/auth.py` — email/password; TOTP MFA still a Phase-1.5 placeholder), `require_permission()` (`routers/admin/deps.py`), bootstrap CLI (`app/bootstrap_admin.py`), and admin routers for tenants/sessions/usage/monitoring/credits/maintenance.
 
 Still pending:
 

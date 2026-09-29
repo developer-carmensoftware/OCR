@@ -597,7 +597,7 @@ payload.
 > dead posting credential — opens `<your origin>/#/setting` in a new tab, the same way the
 > queue's *Open JV* opens `/glJv/{id}/show`. Our page is still routed for support but is
 > linked from nowhere. If that route ever moves, tell us: it is one constant
-> (`carmenSettingsUrl` in `frontend/src/lib/url.ts`).
+> (`carmenSettingsUrl` in `frontend/src/shared/lib/url.ts`).
 
 ### 2.8 Reference screen layout (2026-09-10) — **you do not have to design this**
 

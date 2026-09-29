@@ -1,0 +1,41 @@
+export const en = {
+  'admin.common.tenantSelector.filterTitle': 'Filter by tenant',
+  'admin.common.tenantSelector.allTenants': 'All Tenants',
+  'admin.common.chart.loadingAria': 'Loading chart…',
+  'admin.common.chart.noData': 'No data for selected period',
+  'admin.common.table.noData': 'No data',
+  // range/prev/next used to live here for DataTable's own pagination block. It renders
+  // the shared <Pager> now, which reads the `common.page*` keys above.
+  'admin.common.table.searchPlaceholder': 'Search…',
+  'admin.common.table.noMatch': 'Nothing matches “{q}”',
+  'admin.common.dateRange.from': 'From',
+  'admin.common.dateRange.to': 'To',
+  'admin.common.period.label': 'Period',
+  'admin.common.period.24h': 'Last 24 hours',
+  'admin.common.period.7d': 'Last 7 days',
+  'admin.common.period.30d': 'Last 30 days',
+  'admin.common.period.90d': 'Last 90 days',
+  'admin.common.period.12mo': 'Last 12 months',
+  'admin.common.period.custom': 'Custom range…',
+  'admin.common.period.monthlyNote': 'Monthly totals — daily rows go back 92 days.',
+} as const
+
+export const th: Record<keyof typeof en, string> = {
+  'admin.common.tenantSelector.filterTitle': 'กรองตาม Tenant ',
+  'admin.common.tenantSelector.allTenants': ' Tenant ทั้งหมด',
+  'admin.common.chart.loadingAria': 'กำลังโหลดกราฟ…',
+  'admin.common.chart.noData': 'ไม่มีข้อมูลในช่วงเวลาที่เลือก',
+  'admin.common.table.noData': 'ไม่มีข้อมูล',
+  'admin.common.table.searchPlaceholder': 'ค้นหา…',
+  'admin.common.table.noMatch': 'ไม่พบรายการที่ตรงกับ “{q}”',
+  'admin.common.dateRange.from': 'จาก',
+  'admin.common.dateRange.to': 'ถึง',
+  'admin.common.period.label': 'ช่วงเวลา',
+  'admin.common.period.24h': '24 ชั่วโมงล่าสุด',
+  'admin.common.period.7d': '7 วันล่าสุด',
+  'admin.common.period.30d': '30 วันล่าสุด',
+  'admin.common.period.90d': '90 วันล่าสุด',
+  'admin.common.period.12mo': '12 เดือนล่าสุด',
+  'admin.common.period.custom': 'กำหนดเอง…',
+  'admin.common.period.monthlyNote': 'ยอดรวมรายเดือน — ข้อมูลรายวันย้อนหลังได้ 92 วัน',
+}

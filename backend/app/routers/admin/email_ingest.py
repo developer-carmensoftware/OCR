@@ -26,12 +26,12 @@ from app.auth.admin_session import AdminPrincipal
 from app.config import settings
 from app.database import get_db
 from app.models.business import OCRTask
-from app.models.email_automation import EmailDocument, EmailIngestSettings
+from app.models.email_automation import EmailDocument, EmailIngestSettings, shown_attachment
 from app.models.identity import Tenant
 from app.models.observability import JobRun
-from app.services import email_ingest_service as ingest
-from app.services import email_settings_service as es
-from app.services.tenant_lookup import tenant_name_map
+from app.services.email_automation import credential, ingest
+from app.services.email_automation import ingest_settings as es
+from app.services.shared.tenant_lookup import tenant_name_map
 
 from .deps import require_permission
 
@@ -115,13 +115,14 @@ async def list_email_documents(
                 "tenant_id": str(doc.tenant_id),
                 "tenant_name": names.get(str(doc.tenant_id)),
                 "message_id": doc.message_id,
-                "attachment": doc.attachment,
+                "attachment": shown_attachment(doc.attachment),
                 "status": doc.status,
                 "reason_code": doc.reason_code,
                 "bank_code": doc.bank_code,
                 "doc_no": doc.doc_no,
                 "jv_no": doc.jv_no,
                 "error_message": doc.error_message,
+                "auth_verdict": doc.auth_verdict,
                 "task_id": str(doc.task_id) if doc.task_id else None,
                 # Name first: the id is here for the rare case two people share a
                 # display name, but nobody debugging a JV wants to read a UUID.
@@ -294,7 +295,7 @@ async def list_email_business_units(
                 "owner_emails": len(body["owner_emails"]),
                 "blockers": body["status"]["blockers"],
                 "gmail_confirmed_at": body["gmail_confirmed_at"],
-                "token": es.token_status(row),
+                "token": credential.token_status(row),
                 "documents_total": count,
                 "last_received_at": last.isoformat() if last else None,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,

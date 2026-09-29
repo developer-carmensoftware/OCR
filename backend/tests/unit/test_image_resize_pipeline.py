@@ -17,7 +17,8 @@ from unittest.mock import AsyncMock, patch
 
 from PIL import Image
 
-from app.services import ap_invoice_service, ocr_service
+from app.services.ap_invoice import service as ap_invoice_service
+from app.services.credit_card import ocr as ocr_service
 
 
 def _encode(mode: str, size: tuple[int, int], fmt: str, color=(200, 200, 200), **kw) -> bytes:
@@ -39,7 +40,7 @@ def _data_url_parts(call_args) -> tuple[str, bytes]:
 # ── Credit Card OCR ─────────────────────────────────────────────────────────────
 
 
-@patch("app.services.llm_service.call_vision_llm", new_callable=AsyncMock)
+@patch("app.services.credit_card.vision.call_vision_llm", new_callable=AsyncMock)
 async def test_credit_card_oversized_rgba_png_resized_and_mime_matches_bytes(mock_call):
     mock_call.return_value = "{}"
     original = _encode("RGBA", (3000, 2000), "PNG", color=(200, 200, 200, 255))
@@ -53,7 +54,7 @@ async def test_credit_card_oversized_rgba_png_resized_and_mime_matches_bytes(moc
     assert max(out.size) <= 2200
 
 
-@patch("app.services.llm_service.call_vision_llm", new_callable=AsyncMock)
+@patch("app.services.credit_card.vision.call_vision_llm", new_callable=AsyncMock)
 async def test_credit_card_small_jpeg_passthrough_unchanged(mock_call):
     mock_call.return_value = "{}"
     original = _encode("RGB", (800, 600), "JPEG")
@@ -68,8 +69,8 @@ async def test_credit_card_small_jpeg_passthrough_unchanged(mock_call):
 # ── AP Invoice ───────────────────────────────────────────────────────────────────
 
 
-@patch("app.services.ap_invoice_service.postprocess_ap_invoice", side_effect=lambda d: d)
-@patch("app.services.ap_invoice_service.call_vision_llm", new_callable=AsyncMock)
+@patch("app.services.ap_invoice.service.postprocess_ap_invoice", side_effect=lambda d: d)
+@patch("app.services.ap_invoice.service.call_vision_llm", new_callable=AsyncMock)
 async def test_ap_invoice_oversized_jpeg_resized_and_mime_matches_bytes(mock_call, _mock_post):
     mock_call.return_value = "{}"
     original = _encode("RGB", (3000, 2000), "JPEG")
@@ -83,8 +84,8 @@ async def test_ap_invoice_oversized_jpeg_resized_and_mime_matches_bytes(mock_cal
     assert max(out.size) <= 2200
 
 
-@patch("app.services.ap_invoice_service.postprocess_ap_invoice", side_effect=lambda d: d)
-@patch("app.services.ap_invoice_service.call_vision_llm", new_callable=AsyncMock)
+@patch("app.services.ap_invoice.service.postprocess_ap_invoice", side_effect=lambda d: d)
+@patch("app.services.ap_invoice.service.call_vision_llm", new_callable=AsyncMock)
 async def test_ap_invoice_small_png_passthrough_unchanged(mock_call, _mock_post):
     mock_call.return_value = "{}"
     original = _encode("RGB", (800, 600), "PNG")

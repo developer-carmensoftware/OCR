@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.carmen_service import get_jv_by_source, get_vendor_invoices
+from app.services.shared.carmen import get_jv_by_source, get_vendor_invoices
 
-SVC = "app.services.carmen_service"
+SVC = "app.services.shared.carmen"
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ async def test_vendor_invoices_404_returns_empty_list():
 
 @pytest.mark.asyncio
 async def test_vendor_invoices_500_raises():
-    from app.services.carmen_service import CarmenAPIError
+    from app.services.shared.carmen import CarmenAPIError
 
     patches = _patch_carmen(_mock_resp(500, b"Internal Server Error"))
     for p in patches:
@@ -141,7 +141,7 @@ async def test_jv_by_source_valid_json():
 
 @pytest.mark.asyncio
 async def test_post_input_tax_rejection_with_json_body_raises():
-    from app.services.carmen_service import CarmenAPIError, post_input_tax
+    from app.services.shared.carmen import CarmenAPIError, post_input_tax
 
     patches = _patch_carmen(
         _mock_resp(400, json_data={"Code": -1, "UserMessage": "TaxId required"}), method="post"
@@ -168,7 +168,7 @@ async def test_post_input_tax_rejection_with_json_body_raises():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("call", ["post_gljv", "put_gljv", "post_invoice", "put_input_tax"])
 async def test_write_calls_raise_on_401_with_json_body(call):
-    import app.services.carmen_service as svc
+    import app.services.shared.carmen as svc
 
     resp = _mock_resp(401, json_data={"Message": "Authorization has been denied for this request."})
     resp.text = '{"Message": "Authorization has been denied for this request."}'
@@ -190,7 +190,7 @@ async def test_write_calls_raise_on_401_with_json_body(call):
 
 @pytest.mark.asyncio
 async def test_post_input_tax_success_returns_body():
-    from app.services.carmen_service import post_input_tax
+    from app.services.shared.carmen import post_input_tax
 
     data = {"Code": 0, "InternalMessage": "42"}
     patches = _patch_carmen(_mock_resp(json_data=data), method="post")
@@ -208,7 +208,7 @@ async def test_post_input_tax_success_returns_body():
 
 @pytest.mark.asyncio
 async def test_fetch_vendor_history_empty_body_graceful(ctx):
-    from app.services.ap_vendor_history_service import _CACHE, fetch_vendor_history
+    from app.services.ap_invoice.vendor_history import _CACHE, fetch_vendor_history
 
     _CACHE.clear()
     patches = _patch_carmen(_mock_resp(200, b""))
@@ -223,7 +223,7 @@ async def test_fetch_vendor_history_empty_body_graceful(ctx):
 
 @pytest.mark.asyncio
 async def test_fetch_vendor_history_invalid_json_graceful(ctx):
-    from app.services.ap_vendor_history_service import _CACHE, fetch_vendor_history
+    from app.services.ap_invoice.vendor_history import _CACHE, fetch_vendor_history
 
     _CACHE.clear()
     resp = MagicMock()

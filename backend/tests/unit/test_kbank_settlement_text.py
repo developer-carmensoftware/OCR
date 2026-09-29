@@ -14,7 +14,7 @@ file is committed to the repo, the customer's is not.
 
 import fitz
 
-from app.services import kbank_settlement_text as k
+from app.services.credit_card import kbank_settlement_text as k
 
 FAKE_MERCHANT_ID = "999999999999999"
 FAKE_MERCHANT_NAME = "TEST MERCHANT COMPANY LTD"
@@ -109,7 +109,7 @@ def test_survives_the_real_normalizer_unchanged():
     """The whole point of matching the vision prompt's own output shape: this parser's
     result needs no special-casing downstream. `_normalize_ar_settlement` finds the
     anchor, verifies Σ THB AMT and COMM+VAT+NET against it, and raises no warning."""
-    from app.services.credit_card_service import _normalize_ar_settlement
+    from app.services.credit_card.postprocess import _normalize_ar_settlement
 
     result = k.parse(_fixture_pdf())
     _normalize_ar_settlement(result, "KB1P554V2_SUM_999999999999999_20260721.pdf")

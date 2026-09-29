@@ -40,7 +40,7 @@ def _ctx(tenant_id):
 def test_the_module_gate_answers_per_bu(real_engine, tenants):
     """AP invoice is explicitly disabled for A and enabled for B. Same call, both ways."""
     from app.exceptions import ModuleDisabled
-    from app.services.module_gate import assert_module_enabled
+    from app.services.shared.module_gate import assert_module_enabled
 
     async def _check(tid):
         _ctx(tid)
@@ -87,7 +87,7 @@ def test_the_disabled_module_is_a_403_at_the_endpoint(tenants):
 def test_disabling_a_module_for_one_bu_leaves_the_other_alone(real_engine, tenants):
     """Flip credit_card_ocr off for B, and confirm A still has it."""
     from app.exceptions import ModuleDisabled
-    from app.services.module_gate import assert_module_enabled
+    from app.services.shared.module_gate import assert_module_enabled
 
     async def _check(tid):
         _ctx(tid)
@@ -143,7 +143,7 @@ def _balances(engine, tenants):
 def test_a_charge_lands_on_the_paying_bu_and_nobody_else(real_engine, tenants):
     """A is on a subscription, B on a credit balance. Charging A must move A's allowance
     and leave B's balance exactly where it was — and the other way round."""
-    from app.services.credit_service import consume_document
+    from app.services.shared.credits import consume_document
 
     before_bal, before_used = _balances(real_engine, tenants)
 
@@ -168,7 +168,7 @@ def test_a_charge_lands_on_the_paying_bu_and_nobody_else(real_engine, tenants):
 def test_a_bu_with_no_funding_is_refused_and_takes_nothing_from_anyone(real_engine, tenants):
     """C has a zero balance and no subscription — the 402 path."""
     from app.exceptions import InsufficientCredits
-    from app.services.credit_service import consume_document
+    from app.services.shared.credits import consume_document
 
     before_bal, before_used = _balances(real_engine, tenants)
 
@@ -185,7 +185,7 @@ def test_a_bu_with_no_funding_is_refused_and_takes_nothing_from_anyone(real_engi
 
 
 def test_a_refund_goes_back_to_the_bu_that_paid(real_engine, tenants):
-    from app.services.credit_service import consume_document, refund_document
+    from app.services.shared.credits import consume_document, refund_document
 
     before_bal, before_used = _balances(real_engine, tenants)
 
@@ -228,7 +228,7 @@ def test_maintenance_for_one_bu_does_not_stop_the_other(tenants):
     The cache behind it is a single process-wide dict, so this also checks that a
     refresh triggered for A does not repaint B."""
     from app.database import async_session
-    from app.services import maintenance_service as maint
+    from app.services.shared import maintenance as maint
 
     async def _set(tid, enabled):
         async with async_session() as db:

@@ -1,0 +1,232 @@
+import { useState } from 'react'
+import { toast } from 'sonner'
+import { m, AnimatePresence } from 'framer-motion'
+import { useOcrWizard } from '@/features/credit-card/hooks'
+import StepWizard from '@/shared/components/common/StepWizard'
+import FormActions from '@/shared/components/common/FormActions'
+import CustomModal from '@/shared/components/common/CustomModal'
+import ExtractionSkeleton from '@/shared/components/common/ExtractionSkeleton'
+import SplitLayout from '@/shared/components/common/SplitLayout'
+import UsageIndicator from '@/shared/components/common/UsageIndicator'
+import AppHeader from '@/shared/components/common/AppHeader'
+import { useT } from '@/i18n/LanguageContext'
+import { appKey } from '@/shared/lib/storage'
+import UploadSection from '@/features/credit-card/components/UploadSection'
+import BankDetectionBanner from '@/features/credit-card/components/BankDetectionBanner'
+import ExtractionWarningBanner from '@/shared/components/ExtractionWarningBanner'
+import HeaderCard from '@/features/credit-card/components/HeaderCard'
+import DetailTable from '@/features/credit-card/components/DetailTable'
+import AccountingReview from '@/features/credit-card/components/AccountingReview'
+import InputTaxReconciliation from '@/features/credit-card/components/InputTaxReconciliation'
+import { BANK_THAI_NAMES } from '@/shared/constants'
+import type { BankCode } from '@/shared/types/api'
+
+export default function ManualScan() {
+  const { t } = useT()
+  const {
+    step,
+    files,
+    previewUrl,
+    previewType,
+    loading,
+    submitting,
+    elapsed,
+    extractionStatus,
+    headerData,
+    details,
+    warnings,
+    fileInputRef,
+    modal,
+    showModal,
+    closeModal,
+    setStep,
+    bank,
+    handleFileChange,
+    reExtract,
+    updateHeader,
+    updateDetail,
+    addRow,
+    deleteRow,
+    handleSubmitFinal,
+    handleCancel,
+    resetAll,
+    pdfInfoLoading,
+  } = useOcrWizard()
+
+  const [showPreview, setShowPreview] = useState(false)
+
+  function handleReExtract(bankType: BankCode | null) {
+    const bankDisplay = bankType
+      ? `${BANK_THAI_NAMES[bankType] || bankType} (${bankType})`
+      : t('cc.autoDetect')
+    const method = bankType ? t('cc.methodPrompt', { bank: bankDisplay }) : t('cc.methodAuto')
+    showModal({
+      title: t('cc.reExtractTitle'),
+      message: t('cc.reExtractMsg', { bank: bankDisplay, method }),
+      type: 'warning',
+      confirmText: t('cc.reExtract'),
+      cancelText: t('modal.cancel'),
+      onConfirm: () => {
+        closeModal()
+        reExtract(bankType ?? undefined)
+      },
+      onCancel: closeModal,
+    })
+  }
+
+  function handleStepClick(n: number) {
+    if (n === 1 && step > 1) {
+      showModal({
+        title: t('cc.returnTitle'),
+        message: t('cc.returnMsg'),
+        type: 'warning',
+        confirmText: t('cc.goBack'),
+        cancelText: t('cc.stayHere'),
+        onConfirm: () => {
+          closeModal()
+          resetAll()
+        },
+        onCancel: closeModal,
+      })
+    } else {
+      setStep(n)
+    }
+  }
+
+  return (
+    <>
+      <CustomModal
+        show={modal.show}
+        title={modal.title as string}
+        message={modal.message as string}
+        type={modal.type as 'info' | 'success' | 'warning' | 'error'}
+        confirmText={modal.confirmText as string}
+        cancelText={modal.cancelText as string | undefined}
+        cancelStyle={modal.cancelStyle as React.CSSProperties | undefined}
+        inputLabel={modal.inputLabel as string | undefined}
+        inputType={modal.inputType as 'text' | 'password' | undefined}
+        inputPlaceholder={modal.inputPlaceholder as string | undefined}
+        busy={modal.busy as boolean | undefined}
+        errorNonce={modal.errorNonce as number | undefined}
+        onInputChange={modal.onInputChange as ((v: string) => void) | undefined}
+        onConfirm={modal.onConfirm as () => void}
+        onCancel={modal.onCancel as (() => void) | undefined}
+      />
+
+      <div className="app-container">
+        <AppHeader
+          module="credit-card"
+          // One module, one name, on both of its pages. Which page you are on is the
+          // StepWizard directly below this header, not a second title.
+          moduleName={t('review.title')}
+          eyebrow="Carmen Cloud · Credit Card"
+          onBack={() => {
+            window.location.hash = '#/CreditCardOCR'
+          }}
+          backLabel={t('review.back')}
+        >
+          <UsageIndicator />
+        </AppHeader>
+
+        <StepWizard step={step} onStepClick={n => !loading && !submitting && handleStepClick(n)} />
+
+        <AnimatePresence mode="wait">
+          <m.div
+            key={loading ? 'loading' : step}
+            initial={{ opacity: 0, transform: 'translateY(10px)' }}
+            animate={{ opacity: 1, transform: 'translateY(0px)' }}
+            exit={{ opacity: 0, transform: 'translateY(-6px)' }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          >
+            {step === 1 && !loading && (
+              <UploadSection
+                onFileChange={handleFileChange}
+                fileInputRef={fileInputRef}
+                fileName={files[0]?.name}
+                pdfInfoLoading={pdfInfoLoading}
+              />
+            )}
+            {step === 1 && loading && (
+              <ExtractionSkeleton status={extractionStatus} elapsed={elapsed} />
+            )}
+            {step === 2 && loading && (
+              <ExtractionSkeleton status={extractionStatus} elapsed={elapsed} />
+            )}
+
+            {step === 2 && !loading && (
+              <SplitLayout
+                showPreview={showPreview}
+                onToggle={setShowPreview}
+                previewUrl={previewUrl}
+                previewType={previewType}
+                fileName={files[0]?.name}
+              >
+                <BankDetectionBanner bank={bank} loading={loading} onReExtract={handleReExtract} />
+                <ExtractionWarningBanner warnings={warnings} />
+                <HeaderCard
+                  headerData={headerData as Record<string, string>}
+                  onUpdate={updateHeader}
+                />
+                <DetailTable
+                  details={details}
+                  onUpdate={updateDetail}
+                  onAddRow={addRow}
+                  onDeleteRow={deleteRow}
+                />
+                <FormActions
+                  onCancel={handleCancel}
+                  onSubmit={() => setStep(3)}
+                  submitLabel={t('cc.nextReview')}
+                  showBack={false}
+                />
+              </SplitLayout>
+            )}
+
+            {step === 3 && (
+              <SplitLayout
+                showPreview={showPreview}
+                onToggle={setShowPreview}
+                previewUrl={previewUrl}
+                previewType={previewType}
+                fileName={files[0]?.name}
+              >
+                <AccountingReview
+                  details={details}
+                  headerData={headerData as Record<string, string>}
+                  bank={bank}
+                  onBack={() => setStep(2)}
+                  onSubmit={handleSubmitFinal}
+                  onGoMapping={() => {
+                    try {
+                      localStorage.setItem(
+                        appKey('ocr_wizard_state'),
+                        JSON.stringify({ bank, details })
+                      )
+                    } catch {
+                      /* ignore */
+                    }
+                    toast.info(t('cc.openedMapping'))
+                    window.open('#/CreditCardOCR/mapping', '_blank')
+                  }}
+                  submitting={submitting}
+                />
+              </SplitLayout>
+            )}
+
+            {step === 4 && (
+              <InputTaxReconciliation
+                details={details}
+                headerData={headerData as Record<string, string>}
+                bank={bank}
+                onBack={() => setStep(3)}
+                onFinish={resetAll}
+              />
+            )}
+          </m.div>
+        </AnimatePresence>
+      </div>
+    </>
+  )
+}
+
+import type React from 'react'

@@ -12,7 +12,7 @@ from app.models.schemas.notifications import (
     NotificationListResponse,
     NotificationResponse,
 )
-from app.services import notification_service
+from app.services.shared import notification as notification_service
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 

@@ -6,7 +6,7 @@ sibling), plus a TOTAL row that must never be read as a merchant.
 """
 
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services import kbank_tax_summary as k
+from app.services.credit_card import kbank_tax_summary as k
 
 HEADER = (
     "MERCHANT ID,TAX ID,ACCOUNT NO,TAX INVOICE NO,MERCHANT NAME (ENG),"

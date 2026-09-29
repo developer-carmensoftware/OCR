@@ -33,7 +33,7 @@
 | 2.0 | 17 Apr 2026 | Intern Team | Correction Learning System: feedback router (/api/v1/feedback/correction), correction_feedback table, correction_service (ratio-based hints), prompt injection at extract time, diffCorrections/logCorrections on frontend |
 | 2.1 | 20 Apr 2026 | Intern Team | Architecture refactor: backend models/ package split (enums/orm/schemas), useOcrWizard hook extracted from App.jsx, barrel files (index.js) per component domain, Home hub page; UI/UX redesign with IBM Plex Sans + indigo design system |
 | 2.2 | 24 Apr 2026 | Intern Team | LLM usage tracking: add `token_hash` (SHA-256) and `bu_name` columns to `llm_usage_logs`; update `mapping_history` unique constraint to include dept_code + acc_code; `usage_service.log_llm_usage()` accepts `admin_token` + `bu_name` |
-| 2.3 | 10 Jun 2026 | Intern Team | **API namespace refactor (multi-module coherence):** `/api/v1/ocr/*` → `/api/v1/credit-card/*`; Carmen lifted to top-level `/api/v1/carmen/*` (shared by both modules); `/api/v1/mapping/*` → `/api/v1/credit-card/mapping/*`; health/debug-llm moved to app-level; dead endpoints removed (`/ocr/submit`, `/ocr/receipts/{id}/submit`, `mapping/history`); DB migrated to PostgreSQL (Neon); frontend paths centralized in `src/lib/api/endpoints.ts` |
+| 2.3 | 10 Jun 2026 | Intern Team | **API namespace refactor (multi-module coherence):** `/api/v1/ocr/*` → `/api/v1/credit-card/*`; Carmen lifted to top-level `/api/v1/carmen/*` (shared by both modules); `/api/v1/mapping/*` → `/api/v1/credit-card/mapping/*`; health/debug-llm moved to app-level; dead endpoints removed (`/ocr/submit`, `/ocr/receipts/{id}/submit`, `mapping/history`); DB migrated to PostgreSQL (Neon); frontend paths centralized in `src/shared/api/endpoints.ts` |
 | 3.0 | 07 Jul 2026 | Intern Team | **Supabase cutover + platform expansion:** DB migrated Neon → Supabase (Supavisor pooler, pg_cron/pg_partman background jobs); AP Invoice module APIs documented; Auth/Config/Files endpoint specs added; Billing & Credits purchase flow (`/api/v1/credits/*`) + Admin dashboard (`/api/v1/admin/*`) added; banks expanded 3 → 8 (BAY + processor fee invoices KTC/GHL/PAYPAL/SIAMPAY); credit-card line items no longer persisted (extract-display-only); `credit_card_transactions` + Tools layer removed; DB schema section now defers to Database_Design.md; deployment = Render (backend) + Vercel (frontend) |
 
 ---
@@ -637,7 +637,7 @@ sequenceDiagram
 
 > **Removed 2026-07-06.** The generic `/api/v1/tools` registry (agent-style invocation
 > by name) had no callers and was deleted. GL suggestion is served directly by
-> `routers/mapping.py` → `services/gl_suggestion_service.py`. Restore from git history
+> `routers/mapping.py` → `services/credit_card/gl_suggestion.py`. Restore from git history
 > if an agent layer is reintroduced.
 
 ---
@@ -948,10 +948,10 @@ ALLOWED_CARMEN_HOSTS=carmen.example.com
 
 | File | Exported Functions |
 | :--- | :--- |
-| `src/lib/api/endpoints.ts` | `API` — single source of truth สำหรับทุก `/api/v1/*` path |
-| `src/lib/api/ocr.ts` | `extractFromFile()` (→ `API.creditCard.extract`) |
-| `src/lib/api/carmen.ts` | `fetchAccountCodes()`, `fetchDepartments()`, `fetchGLPrefixes()`, `submitToCarmen()` (→ `API.carmen.*`) |
-| `src/lib/api/mapping.ts` | `suggestMapping()`, `suggestPaymentTypes()` (→ `API.creditCard.mapping.*`) |
+| `src/shared/api/endpoints.ts` | `API` — single source of truth สำหรับทุก `/api/v1/*` path |
+| `src/shared/api/ocr.ts` | `extractFromFile()` (→ `API.creditCard.extract`) |
+| `src/shared/api/carmen.ts` | `fetchAccountCodes()`, `fetchDepartments()`, `fetchGLPrefixes()`, `submitToCarmen()` (→ `API.carmen.*`) |
+| `src/features/credit-card/api/mapping.ts` | `suggestMapping()`, `suggestPaymentTypes()` (→ `API.creditCard.mapping.*`) |
 
 > หมายเหตุ: `markSubmitted()` ถูกลบออกแล้ว (v2.3) — ไม่เคยมี endpoint จริง
 
@@ -959,23 +959,23 @@ ALLOWED_CARMEN_HOSTS=carmen.example.com
 
 | File | Purpose |
 | :--- | :--- |
-| `src/hooks/credit-card/useOcrWizard.ts` | Credit card wizard state + handlers |
-| `src/hooks/ap-invoice/useAPInvoice.ts` | AP invoice wizard state + handlers |
+| `src/features/credit-card/hooks/useOcrWizard.ts` | Credit card wizard state + handlers |
+| `src/features/ap-invoice/hooks/useAPInvoice.ts` | AP invoice wizard state + handlers |
 | `src/hooks/mapping/…` | Mapping page state |
 | `src/hooks/credits/…` | Pricing / order / checkout state |
-| `src/hooks/useCarmenSSO.ts`, `useDarkMode.ts`, `useModal.ts`, `usePdfPasswordPrompt.ts`, `useUserConsent.ts` | Cross-cutting |
+| `src/shared/hooks/useCarmenSSO.ts`, `useDarkMode.ts`, `useModal.ts`, `usePdfPasswordPrompt.ts`, `useUserConsent.ts` | Cross-cutting |
 
 **App & Pages**:
 
 | File | Role |
 | :--- | :--- |
 | `src/App.tsx` | Thin render shell — imports hooks, renders step JSX only |
-| `src/pages/Home.tsx` | Landing hub page |
+| `src/features/home/pages/Home.tsx` | Landing hub page |
 | `src/pages/CreditCardOCR.tsx` / `APInvoice.tsx` / `Mapping.tsx` | โมดูลหลัก 3 หน้า |
-| `src/pages/Pricing.tsx` / `OrderHistory.tsx` | Customer-facing purchase flow (`#/pricing`, `#/pricing/orders`) — **bilingual EN/TH** ผ่าน `src/i18n/dict.ts` + `LanguageContext.tsx` |
+| `src/features/billing/pages/Pricing.tsx` / `OrderHistory.tsx` | Customer-facing purchase flow (`#/pricing`, `#/pricing/orders`) — **bilingual EN/TH** ผ่าน `src/i18n/dict/` (ไฟล์ละ namespace) + `LanguageContext.tsx` |
 | `src/pages/admin/` / `order-review/` | Admin dashboard + order review |
-| `src/constants/index.ts` | `BANKS`, `detectBankFromCompanyName()`, `DETAIL_COLUMNS`, etc. |
-| `src/lib/storage.ts` | tenant-aware localStorage wrapper (`appKey()`) — ทุกการเข้าถึง localStorage ต้องผ่านตัวนี้ |
+| `src/shared/constants/index.ts` | `BANKS`, `detectBankFromCompanyName()`, `DETAIL_COLUMNS`, etc. |
+| `src/shared/lib/storage.ts` | tenant-aware localStorage wrapper (`appKey()`) — ทุกการเข้าถึง localStorage ต้องผ่านตัวนี้ |
 
 ### 10.3 CSS Architecture & Design System
 
@@ -1023,8 +1023,8 @@ ALLOWED_CARMEN_HOSTS=carmen.example.com
 | **Duplicate check on submitted only** | Allows editing before submit; duplicate check only applies to finalized (submitted_at NOT NULL) records |
 | **AI-first mapping** | Mapping page auto-triggers AI suggest on bank selection |
 | **localStorage caching** | Avoid re-fetching master data every step; user can modify offline |
-| **Carmen proxy in backend** | `carmen.py` router + `carmen_service.py` — avoid frontend CORS issues, centralize authorization, SSRF protection |
-| **Frontend path constants** | `src/lib/api/endpoints.ts` — all `/api/v1/*` paths in one place; adding a module = one new section, not scattered grep changes |
+| **Carmen proxy in backend** | `carmen.py` router + `shared/carmen.py` — avoid frontend CORS issues, centralize authorization, SSRF protection |
+| **Frontend path constants** | `src/shared/api/endpoints.ts` — all `/api/v1/*` paths in one place; adding a module = one new section, not scattered grep changes |
 | **Safe migrations** | Supabase CLI owns the schema (`supabase/migrations/*.sql`, `supabase db push`) — files are append-only and idempotent; never edit applied files |
 | **Background jobs in Postgres** | pg_cron + pg_partman own analytics/retention/billing sweeps — survives Render free-tier sleep; app-side has only the perf-log flush loop |
 | **Service layer contract** | Services raise typed exceptions from `app/exceptions.py`, never `HTTPException` — global handler in `factory.py` maps to HTTP codes |

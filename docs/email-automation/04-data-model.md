@@ -63,7 +63,11 @@ trail for every outcome, `reason_code` taxonomy included.
 | `reviewed_by` | `varchar(36)`, nullable | `carmen_user_id` of whoever approved or rejected it. No FK — there is no users table, and the id is opaque to us |
 | `reviewed_by_name` | `varchar(100)`, nullable | Their username, from the same session claims. Stored because an opaque uuid answers nobody's question about who posted a JV |
 | `reviewed_at` | `timestamptz`, nullable | When they did |
+| `posting_started_at` | `timestamptz`, nullable | **The approve/reject claim.** Set by `_claim_for_review`'s compare-and-set (`UPDATE … WHERE status='pending_review' AND (null OR older than POSTING_CLAIM_TTL)`), given back by `_release_claim` on every exit before Carmen accepts, cleared by `_finish`. Non-null and younger than 5 min = someone is acting on the row; a second approve/reject gets 409. A timestamp rather than a status so no tab or count moves, and a claim left by a dead process expires instead of stranding the document. Replaced a `FOR UPDATE` that was released before `post_gljv` ran (DEF-1, 2026-09-24 QA) |
 | `dismissed_at` | `timestamptz`, nullable | **Read-only since §18** — nothing writes it any more. It survives because the 2026-09-03 migration back-dated every historical `failed`/`rejected`/`skipped` row as dismissed, and `_attention` subtracts them so that pile does not light the queue's dot for ever. The gesture it was added for is gone: dismissal existed to stop `review` filling with rows it could never clear (§13 #54), and `review` holds only `pending_review` now. Not a soft delete, and this table has no `deleted_at` for it to be confused with |
+| `auth_verdict` | `varchar(100)`, nullable | Our own MX's verdict on the sender, from the topmost `Authentication-Results` header only if its authserv-id is `mx.google.com` (`imap.auth_verdict`), e.g. `dmarc=pass dkim=pass spf=softfail`. Stamped per message by `_record_auth` after `_process_message`. **Measurement only** — no gate reads it until real auto-forwards have been seen to pass (item 26 in `backend/db/queries.sql`) |
+
+**Retention** (`fn_purge_email_documents`, pg_cron `email-documents-purge` daily 03:50 UTC): `skipped` rows are deleted at 90 days; every other status except `pending_review` is scrubbed at 90 days (`review_payload`, `reviewed_by`, `reviewed_by_name`, `error_message` nulled, `attachment` → `scrubbed:<id>` because it is part of the unique key — screens read `shown_attachment()`) and deleted at 2 years. `pending_review` never expires: it was charged and only a human retires it, and it is capped at 50 per BU. A deliberate exception to "soft delete everywhere": this is a processing ledger, Carmen holds the JV. Safe for dedupe because 90 days ≫ `IMAP_HOLD_DAYS`. `job_runs` rows go at 90 days in the same job.
 
 **Indexes:** `uq_email_documents_message` — unique on `(tenant_id, message_id, attachment)`,
 **this index is the dedupe**, not a constraint that happens to also prevent duplicates.
@@ -122,7 +126,7 @@ call), `credit_ledger` (the charge, and any refund), and one `job_runs` row per 
 
 The single table everything else in this folder points back to — cross-checked against
 every raise site in `_run_document()` / `_open_or_fail()` and the three `except` clauses at
-`email_ingest_service.py:842-886`.
+`email_automation/pipeline.py:548-596`.
 
 | `reason_code` | Raised from | Charged first? | Refunded? | Final `status` |
 |---|---|---|---|---|
@@ -134,9 +138,10 @@ every raise site in `_run_document()` / `_open_or_fail()` and the three `except`
 | `wrong_pdf_password` | `_open_or_fail()` — every password tried, none worked | No | — | `skipped` |
 | `unreadable_document` | `create_task` / `extract_stateless` / `finalize_extraction` threw — **inside the refund boundary** | Yes | **Yes** — the only refund left in the pipeline | `failed` |
 | `unreadable_document` | anything else unhandled — the generic `except` | Yes | No | `failed` |
-| `duplicate_document` | `_already_pending()` — an identical document is already in the queue (review mode only) | Yes | No | `failed` |
+| `duplicate_document` | `_already_pending()` — an identical document is already in the queue. Raises no notification: the queued copy is the one to act on (CA-102 M-027) | Yes | No | `failed` |
 | `tax_id_mismatch` | `foreign_tax_id()` finds a conflict | Yes | No | **`pending_review`** |
 | `duplicate_document` | `extracted.is_duplicate` | Yes | No | **`pending_review`** |
+| `duplicate_document` | `_possibly_posted()` — a document this BU posted **on the same date** has a number that contains this one or is contained in it (a misread that added or dropped characters; F-7, 2026-09-25). "Possibly already posted to Carmen as `<number>`": not refused, because nothing proves they are the same statement, but never auto-posted | Yes | No | **`pending_review`** |
 | `mapping_incomplete` | GL mapping still missing after the AI-fill attempt (auto-post only — with review on it parks with the gap named) | Yes | No | **`pending_review`** |
 | `unreadable_document` | `build_jv_rows()` produces no postable amount | Yes | No | **`pending_review`** |
 | `carmen_unauthorized` | No posting credential, or no Carmen host known for the BU | Yes | No | **`pending_review`** |
@@ -227,6 +232,8 @@ how the design changed (full narrative in [06-decision-log.md](06-decision-log.m
 | `20260807020000_email_gmail_auto_confirm.sql` | `gmail_confirmed_at` — the real completion signal, once it was found Google no longer prints a code |
 | `20260829000000_email_review_queue.sql` | Human-in-the-loop: `review_payload`, `reviewed_by`, `reviewed_at`, the partial pending index, and `auto_post` on the settings table |
 | `20260829010000_email_review_reviewer_name.sql` | `reviewed_by_name` — added a day later, as its own migration, because `20260829000000` had already been applied |
+| `20260923000000_email_documents_retention.sql` | `fn_purge_email_documents` + its daily schedule (scrub 90 d, delete 2 y, `skipped` at 90 d, `job_runs` at 90 d), and `auth_verdict` for measuring DMARC before any gate uses it |
+| `20260925000000_email_documents_posting_claim.sql` | `posting_started_at` — the expiring approve/reject claim that stops two reviewers posting one document twice |
 
 ## Deliberately not stored
 

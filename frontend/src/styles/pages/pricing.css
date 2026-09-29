@@ -1250,69 +1250,73 @@
   }
 }
 
-/* ─── Top-up packs: compact clickable cards ─── */
+/* ─── Top-up packs: a row of cards ───
+   Each pack gets its own card, spaced and lifted like .plan-card above (same gap,
+   radius, --shadow-card, hover). The whole card is the button. Mobile-first: rows
+   ≤560px, 2×2 from 561px, 4-up from 861px. Entrance comes from
+   features/billing/motion.ts, shared with the plan grid, on the .pack-cell wrapper. */
 .pack-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr;
   gap: 1rem;
+  max-width: 420px;
+  margin: 0 auto;
 }
 
-@media (max-width: 860px) {
-  .pack-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 560px) {
-  .pack-grid {
-    grid-template-columns: 1fr;
-    max-width: 420px;
-    margin: 0 auto;
-  }
+/* Motion wrapper; flex so every card stretches to its row's height. */
+.pack-cell {
+  display: flex;
 }
 
 .pack-card {
+  position: relative;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.85rem;
-  padding: 1rem 1.15rem;
+  width: 100%;
+  padding: 0.95rem 1.1rem;
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
   font: inherit;
+  color: inherit;
   text-align: left;
   cursor: pointer;
   transition:
-    transform var(--dur-base) var(--ease),
-    border-color var(--dur-base) var(--ease),
-    box-shadow var(--dur-base) var(--ease);
+    transform var(--dur-base) var(--ease-out-premium),
+    box-shadow var(--dur-base) var(--ease-out-premium),
+    border-color var(--dur-base) var(--ease-out-premium);
 }
 
-.pack-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--primary);
-  box-shadow: var(--shadow-md);
+@media (hover: hover) and (pointer: fine) {
+  .pack-card:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card-hover);
+    border-color: var(--border-hi);
+  }
+
+  .pack-card:hover:not(:disabled) .pack-card-credits {
+    color: var(--primary);
+  }
 }
 
-.pack-card:active {
+/* The card is the button, so it presses like one; 0.98 rather than .btn's 0.97
+   because the surface is much larger. */
+.pack-card:active:not(:disabled) {
   transform: scale(0.98);
+  transition-duration: var(--dur-fast);
+}
+
+.pack-card:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .pack-card:disabled {
   opacity: 0.55;
-  pointer-events: none;
   cursor: default;
-}
-
-.pack-card-icon {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-md);
-  background: var(--amber-light);
-  color: var(--amber-text);
-  flex-shrink: 0;
 }
 
 .pack-card-id {
@@ -1327,6 +1331,7 @@
   letter-spacing: -0.01em;
   line-height: 1.1;
   color: var(--text);
+  transition: color var(--dur-fast) var(--ease-out-premium);
 }
 
 .pack-card-unit {
@@ -1337,15 +1342,17 @@
   color: var(--text-2);
 }
 
+/* Solid fill tier (carries white in both themes), so it never reads as one more
+   save chip beside the light ones. */
 .pack-card-badge {
   flex-shrink: 0;
-  padding: 0.1rem 0.5rem;
+  padding: 0.1rem 0.55rem;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.03em;
   white-space: nowrap;
-  color: var(--emerald-text);
-  background: var(--emerald-light);
+  color: #fff;
+  background: var(--emerald-fill);
   border-radius: var(--radius-pill);
 }
 
@@ -1353,20 +1360,91 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.1rem;
-  margin-left: auto;
+  gap: 0.2rem;
 }
 
 .pack-card-amount {
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: var(--text);
+}
+
+.pack-card-meta {
+  display: flex;
+  flex-wrap: wrap; /* a Thai "/เอกสาร" rate + chip may need two lines */
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem 0.4rem;
 }
 
 .pack-card-rate {
   font-size: 0.78rem;
   color: var(--text-2);
   white-space: nowrap;
+}
+
+.pack-card-save {
+  padding: 0.05rem 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--emerald-text);
+  background: var(--emerald-light);
+  border-radius: var(--radius-pill);
+}
+
+/* Cards: centered columns. The top padding reserves the badge row on every card,
+   so the four price lines stay level whether or not a badge is present. */
+@media (min-width: 561px) {
+  .pack-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: none;
+  }
+
+  .pack-card {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 0.55rem;
+    padding: 2.3rem 1rem 1.25rem; /* Thai badge glyphs run taller than Latin */
+    text-align: center;
+  }
+
+  .pack-card-id {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.35rem;
+  }
+
+  .pack-card-badge {
+    position: absolute;
+    top: 0.55rem;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .pack-card-price {
+    align-items: center;
+  }
+
+  .pack-card-amount {
+    font-size: 1.2rem;
+  }
+
+  /* Rate, then the save chip on its own line — in every language. Letting it wrap
+     only when it didn't fit left Thai cards a line taller than English ones. */
+  .pack-card-meta {
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+}
+
+/* 4 fixed columns, not auto-fit: in the 860px section auto-fit would fit 3 and
+   orphan the 4th (the failure .plan-grid--4 above documents). */
+@media (min-width: 861px) {
+  .pack-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 /* ─── Trust strip (quiet reassurance, closes the page) ─── */

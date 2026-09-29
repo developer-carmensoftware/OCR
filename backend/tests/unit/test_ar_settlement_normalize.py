@@ -8,7 +8,7 @@ still balances perfectly.
 """
 
 from app.models.schemas import ExtractedCreditCardData, ExtractedDetailRow
-from app.services.credit_card_service import _normalize_ar_settlement
+from app.services.credit_card.postprocess import _normalize_ar_settlement
 
 FILE = "KB1P554V2_SUM_451005282039001_20260721.pdf"
 MERCHANT = "451005282039001"

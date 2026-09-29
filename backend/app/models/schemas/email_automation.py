@@ -7,7 +7,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, SecretStr
 
-from app.constants import DocType
 from app.models.schemas.common import Page
 
 # The tenant is still the pair (host, bu) — `uri` is how Carmen spells the host, because
@@ -30,9 +29,10 @@ class RuleIn(BaseModel):
     # Which of the two KBANK documents this rule's files are — constants.DocType.
     # The rule has to say, because the page cannot: a settlement report and the commission
     # invoice for that same settlement share the bank, the date and the tax invoice number.
-    # Defaults to the document type that existed before this field did, so every rule
-    # already stored keeps behaving exactly as it did.
-    doc_type: str = DocType.FEE_INVOICE
+    # Omit = keep the stored value (F-5: a client that does not know the field must not
+    # turn a settlement rule back into a fee-invoice one); a rule that never had one is a
+    # fee invoice, the document type that existed before this field did.
+    doc_type: str | None = None
 
 
 class SettingsIn(BaseModel):
@@ -163,8 +163,8 @@ class ActivityRow(ReviewDocument):
     thing that differs, and it is what the Source column shows.
 
     A manual row's pending-only fields (`doc_date`, `total`, `line_count`, `flags`) stay at
-    their defaults — a manual scan is only ever listed once it has posted, so there is
-    nothing waiting on a human and no payload to summarise.
+    their defaults — a manual scan is either posted or `scanned` (charged, never posted, and
+    not resumable), so there is nothing waiting on a human and no payload to summarise.
     """
 
     source: str  # "email" | "manual"

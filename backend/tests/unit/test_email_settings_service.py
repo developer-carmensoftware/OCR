@@ -17,7 +17,8 @@ import pytest
 
 from app.exceptions import ConflictError, FieldValidationError
 from app.models.schemas.email_automation import RuleIn, SettingsIn
-from app.services import email_settings_service as es
+from app.services.email_automation import credential
+from app.services.email_automation import ingest_settings as es
 
 
 def _valid_tax_id(prefix: str = "010553600012") -> str:
@@ -329,6 +330,19 @@ async def test_existing_row_rules_replace_wholesale_password_kept_or_cleared():
     assert by_bank["BBL"]["pdf_password_enc"] is None  # cleared
 
 
+def test_a_rule_key_this_version_does_not_know_survives_a_save():
+    """F-5 (2026-09-24 QA): the AR branch stores `doc_type` on a rule; a save from code
+    that does not know the field rebuilt the rule without it, silently turning a
+    settlement rule back into a fee-invoice rule. Known fields still take the new value."""
+    previous = {"bank_code": "KTC", "doc_type": "settlement", "is_active": True}
+    merged = es._merge_rule(
+        RuleIn(bank_code="KTC", filename_patterns=["ktc"], is_active=False), previous
+    )
+    assert merged["doc_type"] == "settlement"
+    assert merged["is_active"] is False
+    assert merged["filename_patterns"] == ["ktc"]
+
+
 # ── to_response ────────────────────────────────────────────────────────────────
 
 
@@ -452,15 +466,15 @@ async def test_rule_passwords_and_posting_target_round_trip():
         carmen_token_enc=encrypt_carmen_token("carmen-tok-abc", key),
         carmen_uri="https://hotel.carmenwork.com",
     )
-    assert es.rule_passwords(row) == ["1234"]  # inactive rule's password excluded
-    token, uri = await es.posting_target(_db_scalar(None), row)
+    assert credential.rule_passwords(row) == ["1234"]  # inactive rule's password excluded
+    token, uri = await credential.posting_target(_db_scalar(None), row)
     assert (token, uri) == ("carmen-tok-abc", "https://hotel.carmenwork.com")
 
 
 @pytest.mark.asyncio
 async def test_posting_target_falls_back_to_tenant_host_when_uri_unset():
     row = _fake_row(carmen_token_enc=None, carmen_uri=None)
-    _, uri = await es.posting_target(_db_scalar("hotel.carmenwork.com"), row)
+    _, uri = await credential.posting_target(_db_scalar("hotel.carmenwork.com"), row)
     assert uri == "https://hotel.carmenwork.com"
 
 
@@ -471,11 +485,11 @@ async def test_posting_target_dev_token_only_in_debug(monkeypatch):
     row = _fake_row(carmen_token_enc=None, carmen_uri="https://hotel.carmenwork.com")
 
     monkeypatch.setattr(es.app_settings, "app_debug", True)
-    token, _ = await es.posting_target(_db_scalar(None), row)
+    token, _ = await credential.posting_target(_db_scalar(None), row)
     assert token == "dev-tok-xyz"
 
     monkeypatch.setattr(es.app_settings, "app_debug", False)
-    token, _ = await es.posting_target(_db_scalar(None), row)
+    token, _ = await credential.posting_target(_db_scalar(None), row)
     assert token == ""  # empty → the caller parks the document instead of guessing
 
 
@@ -484,7 +498,7 @@ async def test_posting_target_dev_token_only_in_debug(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_set_token_stores_encrypted_plus_fingerprint_never_plaintext(monkeypatch):
-    monkeypatch.setattr(es, "verify_token", AsyncMock(return_value=None))
+    monkeypatch.setattr(credential, "verify_token", AsyncMock(return_value=None))
     row = _fake_row(
         carmen_token_enc=None,
         carmen_uri=None,
@@ -495,10 +509,12 @@ async def test_set_token_stores_encrypted_plus_fingerprint_never_plaintext(monke
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=[_exec(scalar_one_or_none=row)])
 
-    saved = await es.set_token(db, _tenant_with_host(), "crm_svc_secret", "https://h", "apikey:x")
+    saved = await credential.set_token(
+        db, _tenant_with_host(), "crm_svc_secret", "https://h", "apikey:x"
+    )
 
     assert saved.carmen_token_enc and saved.carmen_token_enc != "crm_svc_secret"
-    assert saved.carmen_token_fp == es.fingerprint("crm_svc_secret")
+    assert saved.carmen_token_fp == credential.fingerprint("crm_svc_secret")
     assert saved.carmen_token_verified_at is not None
     assert saved.updated_by == "apikey:x"
 
@@ -506,19 +522,19 @@ async def test_set_token_stores_encrypted_plus_fingerprint_never_plaintext(monke
 @pytest.mark.asyncio
 async def test_set_token_stores_nothing_when_carmen_rejects_it(monkeypatch):
     """Strict verification: a token Carmen will not accept never reaches the DB."""
-    from app.services.carmen_service import CarmenAPIError
+    from app.services.shared.carmen import CarmenAPIError
 
     async def _reject(_token):
         raise CarmenAPIError(401, "Unauthorized")
 
-    monkeypatch.setattr("app.services.carmen_service.get_departments", _reject)
+    monkeypatch.setattr("app.services.shared.carmen.get_departments", _reject)
 
     row = _fake_row(carmen_token_enc=None, carmen_uri=None)
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=[_exec(scalar_one_or_none=row)])
 
     with pytest.raises(FieldValidationError):
-        await es.set_token(db, _tenant_with_host(), "bad-token", "https://h", "apikey:x")
+        await credential.set_token(db, _tenant_with_host(), "bad-token", "https://h", "apikey:x")
     assert row.carmen_token_enc is None
     db.commit.assert_not_awaited()
 
@@ -534,7 +550,7 @@ def test_token_status_never_contains_the_token_value():
         carmen_token_fp="9c1f3a2b",
         carmen_token_verified_at=None,
     )
-    body = es.token_status(row)
+    body = credential.token_status(row)
     assert body["configured"] is True
     assert body["fingerprint"] == "9c1f3a2b"
     assert "crm_svc_secret" not in str(body)
@@ -654,7 +670,7 @@ async def test_unconfigured_bu_reports_only_not_configured(monkeypatch):
 )
 @pytest.mark.asyncio
 async def test_carmen_origin_rejected_before_any_outbound_request(host):
-    from app.routers.email_automation import _safe_carmen_uri
+    from app.routers.email_automation.settings_api import _safe_carmen_uri
 
     with pytest.raises(FieldValidationError) as exc:
         await _safe_carmen_uri(_tenant_with_host(host))
@@ -664,7 +680,7 @@ async def test_carmen_origin_rejected_before_any_outbound_request(host):
 @pytest.mark.asyncio
 async def test_carmen_origin_is_derived_from_the_tenant_host():
     """One value, not two: the origin a token is validated against is the one we post to."""
-    from app.routers.email_automation import _safe_carmen_uri
+    from app.routers.email_automation.settings_api import _safe_carmen_uri
 
     assert await _safe_carmen_uri(_tenant_with_host()) == "https://hotel.carmenwork.com"
 
@@ -856,7 +872,7 @@ def test_an_unconfigured_bu_reports_review_mode_too():
 
 def test_a_rule_defaults_to_the_document_type_that_existed_before_this_field():
     rule = RuleIn(bank_code="KTC", filename_patterns=[".pdf"])
-    assert rule.doc_type == "fee_invoice"
+    assert rule.doc_type is None  # omitted = keep whatever is stored (F-5)
 
     stored = es._merge_rule(rule, None)
     assert stored["doc_type"] == "fee_invoice"

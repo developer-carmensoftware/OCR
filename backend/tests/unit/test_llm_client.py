@@ -95,8 +95,8 @@ class TestCallTextLlm:
                 "app.llm.client._get_pool",
                 return_value=_single_key_pool(self.mock_client),
             ),
-            patch("app.services.usage_service.log_llm_usage", new_callable=AsyncMock),
-            patch("app.services.outbound_log_service.log_outbound", new_callable=AsyncMock),
+            patch("app.services.shared.llm_usage_logger.log_llm_usage", new_callable=AsyncMock),
+            patch("app.services.shared.outbound_log.log_outbound", new_callable=AsyncMock),
         ):
             yield
 
@@ -184,8 +184,8 @@ class TestCallVisionLlm:
                 "app.llm.client._get_pool",
                 return_value=_single_key_pool(self.mock_client),
             ),
-            patch("app.services.usage_service.log_llm_usage", new_callable=AsyncMock),
-            patch("app.services.outbound_log_service.log_outbound", new_callable=AsyncMock),
+            patch("app.services.shared.llm_usage_logger.log_llm_usage", new_callable=AsyncMock),
+            patch("app.services.shared.outbound_log.log_outbound", new_callable=AsyncMock),
         ):
             yield
 
@@ -229,8 +229,10 @@ class TestCallVisionLlm:
 
         self.mock_client.chat.completions.create.return_value = _make_response("ok")
 
-        with patch("app.services.usage_service.log_llm_usage", new_callable=AsyncMock) as mock_log:
-            with patch("app.services.outbound_log_service.log_outbound", new_callable=AsyncMock):
+        with patch(
+            "app.services.shared.llm_usage_logger.log_llm_usage", new_callable=AsyncMock
+        ) as mock_log:
+            with patch("app.services.shared.outbound_log.log_outbound", new_callable=AsyncMock):
                 await call_vision_llm(
                     system_prompt="sys",
                     user_content=[],
@@ -263,7 +265,7 @@ class TestCallVisionLlm:
             "ok", provider="Google"
         )
         with patch(
-            "app.services.outbound_log_service.log_outbound", new_callable=AsyncMock
+            "app.services.shared.outbound_log.log_outbound", new_callable=AsyncMock
         ) as mock_out:
             await call_vision_llm(system_prompt="sys", user_content=[], model="test-model")
         kwargs = mock_out.call_args.kwargs
@@ -278,7 +280,7 @@ class TestCallVisionLlm:
             "ok", provider="Google"
         )
         with patch(
-            "app.services.anomaly_service.open_alert_if_absent", new_callable=AsyncMock
+            "app.services.shared.anomaly.open_alert_if_absent", new_callable=AsyncMock
         ) as mock_alert:
             await call_vision_llm(system_prompt="sys", user_content=[], model="test-model")
         mock_alert.assert_not_called()
@@ -291,7 +293,7 @@ class TestCallVisionLlm:
             "ok", provider="Baidu"
         )
         with patch(
-            "app.services.anomaly_service.open_alert_if_absent", new_callable=AsyncMock
+            "app.services.shared.anomaly.open_alert_if_absent", new_callable=AsyncMock
         ) as mock_alert:
             await call_vision_llm(system_prompt="sys", user_content=[], model="test-model")
         mock_alert.assert_called_once()

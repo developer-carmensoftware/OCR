@@ -11,7 +11,7 @@ from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.exceptions import ValidationError
 from app.models.schemas import ModuleToggleRequest
-from app.services import quota_admin_service as svc
+from app.services.admin import quotas as svc
 
 from .deps import require_permission
 

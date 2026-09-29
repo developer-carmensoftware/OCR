@@ -48,12 +48,12 @@ _CREDIT_CONTEXTS = {
     "bank": {
         "context": "each payment type is a receivable from the bank",
         "dr_line": "Dr [Payment Type Account] ← BalanceSheet: bank receivable / cash account (Normal Balance: Debit)",
-        "hint": "All types typically map to the same bank receivable / C/A account — they represent money the bank owes the merchant.",
+        "hint": "They represent money the bank owes the merchant. When no brand-specific account exists, all types share one bank receivable / C/A account.",
     },
     "gateway": {
         "context": "each payment type is a settlement receivable from a payment gateway / card processor (NOT a bank deposit account)",
         "dr_line": "Dr [Payment Type Account] ← BalanceSheet: gateway/processor settlement receivable (Normal Balance: Debit)",
-        "hint": "All types typically map to the same settlement-receivable account (ลูกหนี้/receivable from the processor) — prefer receivable-style accounts over bank C/A or S/A deposit accounts.",
+        "hint": "When no brand-specific account exists, all types share one settlement-receivable account (ลูกหนี้/receivable from the processor) — prefer receivable-style accounts over bank C/A or S/A deposit accounts.",
     },
 }
 
@@ -83,7 +83,8 @@ Journal Entry context ({ctx["context"]}):
 Payment types to map (each represents a settlement channel):
 {types_list}
 
-Payment type codes: VSA=Visa, MCA=Mastercard, QR-*=QR payments, -P=Premium, -INT=International, -DCC=DCC, -AFF=Affiliate
+Payment type codes: VSA=Visa, MCA=Mastercard, JCB=JCB, AMX/AMEX=American Express, UPI/CUP=UnionPay, QR-*=QR payments, -P=Premium, -INT=International, -DCC=DCC, -AFF=Affiliate
+If an account names the card brand (Visa/วีซ่า, Mastercard/มาสเตอร์, JCB, AMEX, UnionPay, QR/พร้อมเพย์), map every type of that brand (incl. -P/-INT/-DCC variants) to it.
 {ctx["hint"]}
 
 Departments:
@@ -92,7 +93,7 @@ Departments:
 BalanceSheet accounts (bank/receivable, {b_account_count}):
 {acc_lines or "  (none)"}
 
-{history_section}Rules: use codes exactly as listed; null if no match; all types typically share the same account.
+{history_section}Rules: use codes exactly as listed; null if no match; a brand-specific account beats a generic bank account.
 Keys must be: {keys}
 {{"{payment_types[0] if payment_types else ""}":{{"dept":null,"acc":null}},...}}"""
 

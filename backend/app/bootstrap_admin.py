@@ -23,7 +23,7 @@ async def _bootstrap(reset_password: bool) -> None:
     from app.config import settings
     from app.database import async_session, ensure_db
     from app.models.admin import AdminUser, AdminUserRole
-    from app.services.admin_auth_service import hash_password
+    from app.services.admin.auth import hash_password
 
     username = settings.admin_bootstrap_username.strip().lower()
     password = settings.admin_bootstrap_password

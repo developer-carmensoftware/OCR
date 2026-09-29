@@ -63,10 +63,9 @@ check_untyped_defs = false
 # and lets these overrides decide. Don't re-list modules in ci.yml.
 [[tool.mypy.overrides]]
 module = [
-    "app.services.ap_invoice_postprocess_service",
-    "app.services.usage_service",
-    "app.services.audit_service",
-    "app.services.llm_service",
+    "app.services.ap_invoice.postprocess",
+    "app.services.shared.audit",
+    "app.services.credit_card.vision",
     "app.auth.session",
     "app.exceptions",
     "app.constants",

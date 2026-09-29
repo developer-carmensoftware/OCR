@@ -40,7 +40,7 @@ Every meaningful change is logged in [`changelog/`](changelog/), **one file per 
 - Group by area (Backend / Frontend / DB / Infra) when useful; one terse bullet per change, link the commit hash once it exists.
 - Put **uncommitted / in-progress** work in its own section so it's clear what hasn't shipped.
 - See [changelog/README.md](changelog/README.md) for the full convention.
-- **User-visible changes also need a release note** in [`frontend/src/content/releaseNotes.ts`](frontend/src/content/releaseNotes.ts) (2-4 bullets, EN + TH, keyed by date) — that file is what users read in the notification bell. Internal work gets a changelog entry only.
+- **User-visible changes also need a release note** in [`frontend/src/shared/content/releaseNotes.ts`](frontend/src/shared/content/releaseNotes.ts) (2-4 bullets, EN + TH, keyed by date) — that file is what users read in the notification bell. Internal work gets a changelog entry only.
 - **CI enforces this**: the `changelog-check` job fails any PR that touches no `changelog/` file (escape hatch: `skip-changelog` label). Add/update today's entry **in the same commit/branch as the change, before opening the PR** — don't wait for CI to fail first.
 
 ---
@@ -77,10 +77,10 @@ a version.
 ```text
 useOcrWizard hook
   → POST /api/v1/credit-card/extract
-      routers/ocr.py           consume_document() → vision LLM → ExtractedCreditCardData
+      routers/credit_card/ocr.py  consume_document() → vision LLM → ExtractedCreditCardData
       llm/prompts/__init__.py  _REGISTRY dict maps bank_code → prompt file (code-based, pending CMS)
   → POST /api/v1/credit-card/mapping/suggest
-      services/gl_suggestion_service.py  LLM suggests GL dept/acc for fixed fields + payment types
+      services/credit_card/gl_suggestion.py  LLM suggests GL dept/acc for fixed fields + payment types
   → POST /api/v1/carmen/gljv  submit to Carmen ERP
       routers/carmen.py        post-submit bookkeeping marks CreditCard.submitted_at
                                Duplicate check: (tenant_id, bank_code, doc_no, submitted_at IS NOT NULL)
@@ -93,10 +93,10 @@ useAPInvoice hook
   → POST /api/v1/ap-invoice/extract
       routers/ap_invoice.py    consume_document() → vision LLM
       ap_invoice_postprocess   tax-type detection, footer discount distribution, per-line totals
-      llm_usage_logger.log_llm_usage()  silent-failure token logging → llm_usage_logs
+      shared.llm_usage_logger.log_llm_usage()  silent-failure token logging → llm_usage_logs
   → Step 2: column→field mapping  persisted to localStorage per vendor name
   → POST /api/v1/ap-invoice/suggest
-      ap_invoice_service       pre-filters expense accounts → LLM → deptCode/accountCode
+      ap_invoice.service       pre-filters expense accounts → LLM → deptCode/accountCode
   → POST /api/v1/carmen/invoice  submit to Carmen ERP
 ```
 
@@ -108,18 +108,23 @@ before changing anything here; the block below is only the shape.
 
 ```text
 pg_cron → POST /api/v1/email/ingest  (internal job token)
-  services/email_imap.py           ← transport only: IMAP, MIME, zips, tag parsing.
+  services/email_automation/imap.py    ← transport only: IMAP, MIME, zips, tag parsing.
                                      No DB, no session, no tenant. Blocking, so the
                                      pipeline calls it via asyncio.to_thread.
-  services/email_ingest_service.py ← everything that decides meaning and cost
+  services/email_automation/ingest.py  ← the poll loop + message-level routing
       AIAGENT+<tag>@…   tag from the envelope → tenant     ← routing, costs nothing
-      email_documents   claim the row (dedupe: message × attachment)
-      email_ingest_settings  filename must match one of this BU's rules; this BU's PDF passwords
+      email_ingest_settings  entitled? backlog under the cap? → else hand the mail back unread
+  services/email_automation/pipeline.py  ← _run_document: everything that decides meaning and cost
+      filename must match one of this BU's rules; this BU's PDF passwords
       consume_document() → same extract → GL-map → POST JV path as the Credit Card wizard
       tax ID vs this BU's register  ← verification, not routing; parks only on positive conflict
       _review_flags() non-empty, or auto_post = false (default)
                                     → park at pending_review; the poll stops here
-routers/email_review.py  ← the queue's own API (session JWT, not the Carmen-token path)
+  services/email_automation/ledger.py  ← the email_documents row: claim (dedupe: message ×
+                                     attachment), park, finish, duplicate/backlog checks
+  services/email_automation/review.py  ← approve/reject: the second half of _run_document
+      import direction ledger ← pipeline ← ingest/review, enforced by tests/unit/test_layout.py
+routers/email_automation/review.py  ← the queue's own API (session JWT, not the Carmen-token path)
   #/CreditCardOCR        the review queue = the Credit Card module's landing page
   #/CreditCardOCR/review?id=…   approve → the same post_gljv the poll would have called
   #/CreditCardOCR/manual  the wizard, moved down one level, unchanged
@@ -137,7 +142,7 @@ with its reason recorded** instead of finishing as `failed`. The customer paid f
 reading; throwing it away left re-scanning by hand as the only recovery. Only three
 post-extraction cases stay terminal: the generic `except` (it can fire after the JV posted),
 the refund boundary (the money went back), and a second copy of something already queued.
-`_park_or_finish` in `_run_document` is the whole rule.
+`_park_or_finish` in `_run_document` (`email_automation/pipeline.py`) is the whole rule.
 
 **`auto_post` is per BU and defaults to `false`** (`email_ingest_settings.auto_post`). Since
 2026-09-08 it has exactly **one writer, `PUT /api/v1/carmen/settings`** — Carmen's own
@@ -204,17 +209,17 @@ Gotchas worth knowing before trusting a number:
   never reached the model. The Tenants page renders task-derived `last_use` instead.
 - **`GET /admin/tenants` needs `include_engagement=true`** for the engagement fields. It is
   off by default because `TenantSelector` calls the same endpoint on five other pages.
-- Adding a page = **2 edits**: an entry in `NAV_SECTIONS` (`pages/admin/routes.tsx`) with
+- Adding a page = **2 edits**: an entry in `NAV_SECTIONS` (`features/admin/pages/routes.tsx`) with
   its `hash`, `icon`, `labelKey` and `component: lazy(() => import(...))`, and that
-  `admin.nav.item.*` key in **both** `en` and `th` of `i18n/dict.ts` (TS fails the build if
-  TH is missing). `routes.tsx` is the single list: the sidebar reads it and `ADMIN_ROUTES`
-  (hash → page, used by `pages/admin/AdminRouter.tsx`) is derived from it, so a page cannot
+  `admin.nav.item.*` key in **both** `en` and `th` of `features/admin/i18n/nav.ts` (TS fails the
+  build if TH is missing). `routes.tsx` is the single list: the sidebar reads it and `ADMIN_ROUTES`
+  (hash → page, used by `features/admin/pages/AdminRouter.tsx`) is derived from it, so a page cannot
   have a nav entry without a route or the reverse. `main.tsx` knows only that `#/admin*`
   belongs to `AdminRouter`, which keeps the whole dashboard out of the main bundle.
   For the table itself, follow the pattern below rather than inventing per-page state.
 
-**The admin table pattern** (`hooks/admin/useTableQuery.ts` + `hooks/admin/useTableData.ts`
-+ `components/admin/DataTable.tsx`):
+**The admin table pattern** (`features/admin/hooks/useTableQuery.ts` + `features/admin/hooks/useTableData.ts`
++ `features/admin/components/DataTable.tsx`):
 
 - `useTableData(fetcher, deps, errorKey)` owns the fetch: `{ rows, total, loading, reload }`,
   the failure toast, and a monotonic request guard so a slow early response cannot repaint
@@ -232,13 +237,13 @@ Gotchas worth knowing before trusting a number:
   failures by cause; grouping one page reports wrong counts) and Credit Orders loads the
   endpoint's cap in one go (its search must reach past the visible page). Don't "fix" these
   into server mode — each shows a real `total` so a bitten cap is visible.
-- **Page size is the reader's, and shared** — `hooks/useRowsPerPage.ts` holds it in one
+- **Page size is the reader's, and shared** — `shared/hooks/useRowsPerPage.ts` holds it in one
   global `localStorage['rowsPerPage']` (**not** `appKey()`: a UI preference like `theme`,
   so it survives logout). `useTableQuery` seeds its `limit` default from it *synchronously*,
   which is what stops a table fetching 25 rows and then immediately fetching 50. `pageSize`
   survives as an override that also hides the control, for a table whose size is not the
   reader's to pick (only `ExtractionsPage`'s nested table today).
-- **One pagination component**: `components/common/Pager.tsx`, used by DataTable and the
+- **One pagination component**: `shared/components/common/Pager.tsx`, used by DataTable and the
   five customer-facing lists. Pass `onLimitChange` to get the rows-per-page select; omit it
   for a fixed-size list (the notification bell). Options top out at 100 because that is the
   lowest backend cap among its callers — check `le=` before adding a bigger one.
@@ -267,34 +272,34 @@ an ad-hoc script while `uvicorn` is up hits the 15-connection Supavisor cap.
 ## Key Design Decisions
 
 - **English is the default UI language** — All UI text, labels, buttons, copy, and user-facing error messages default to **English**. Write new surfaces in English first. Thai is reserved for user-supplied content that is inherently Thai (vendor names, GL labels, extracted invoice text) and for explicit per-locale translation; never default a new label/component to Thai. This applies to the internal OCR wizards and mapping UI.
-  - **Bilingual (EN/TH) surfaces: the customer-facing purchase flow and the admin dashboard.** `#/pricing` + `#/pricing/orders` (catalog → checkout → QR → slip → order history) and `#/admin/*` (nav, KPIs, tables, forms, toasts) run through a lightweight i18n helper: `frontend/src/i18n/dict.ts` (EN source-of-truth + TH, typed by key) and `frontend/src/i18n/LanguageContext.tsx` (`useT()` → `{ lang, setLang, t }`, persisted to `localStorage['lang']`, **defaults to Thai**). Add a string by adding its key to both `en` and `th` in `dict.ts` (TS errors if TH is missing), then `t('key', { vars })` at the call site. The `EN | ไทย` toggle is `components/common/LanguageToggle.tsx` (rendered in the purchase flow and in `AdminLayout.tsx`'s sidebar). Admin uses the `admin.*` key namespace (one section per page, e.g. `admin.overview.*`, `admin.quotas.*`, plus `admin.common.*` for strings shared across pages via `TenantSelector`/`MetricChartImpl`); the purchase flow uses `pricing.*`/`checkout.*`/`orev.*`/etc. Tier brand names (Free/Starter/Growth/…) and the Carmen eyebrow stay as-is. The **printed proforma body is English-only** (titles, terms, amount-in-words); the catalog/checkout UI around it follows the bilingual toggle. Admin technical nouns (Quota, Session, LLM, MTD) may stay in English within Thai sentences where that reads naturally to a technical audience — don't force purist translation of internal admin jargon.
+  - **Bilingual (EN/TH) surfaces: the customer-facing purchase flow and the admin dashboard.** `#/pricing` + `#/pricing/orders` (catalog → checkout → QR → slip → order history) and `#/admin/*` (nav, KPIs, tables, forms, toasts) run through a lightweight i18n helper: `frontend/src/i18n/dict/` (**one file per key namespace** — `checkout.*` lives in `dict/checkout.ts`; each file's `en` is the source of truth and its `th` is typed against it) and `frontend/src/i18n/LanguageContext.tsx` (`useT()` → `{ lang, setLang, t }`, persisted to `localStorage['lang']`, **defaults to Thai**). Add a string by adding its key to both `en` and `th` of its namespace's file (TS errors if TH is missing; a new namespace is a new file plus two spread lines in `dict/index.ts`), then `t('key', { vars })` at the call site. **Admin copy is lazy-loaded:** `admin.<page>.*` lives in `features/admin/i18n/<page>.ts`, outside the customer DICT, and joins it via `registerDict()` when the admin chunk loads (`AdminRouter.tsx`, `OrderReviewShell.tsx`; `src/test/setup.ts` for tests) — so an `admin.*` key used anywhere outside `features/admin` renders raw, and `dict.test.ts` fails on one. The `EN | ไทย` toggle is `shared/components/common/LanguageToggle.tsx` (rendered in the purchase flow and in `AdminLayout.tsx`'s sidebar). Admin uses the `admin.*` key namespace (one section per page, e.g. `admin.overview.*`, `admin.quotas.*`, plus `admin.common.*` for strings shared across pages via `TenantSelector`/`MetricChartImpl`); the purchase flow uses `pricing.*`/`checkout.*`/`orev.*`/etc. Tier brand names (Free/Starter/Growth/…) and the Carmen eyebrow stay as-is. The **printed proforma body is English-only** (titles, terms, amount-in-words); the catalog/checkout UI around it follows the bilingual toggle. Admin technical nouns (Quota, Session, LLM, MTD) may stay in English within Thai sentences where that reads naturally to a technical audience — don't force purist translation of internal admin jargon.
 - **Stateless extraction** — `/extract` returns the extracted JSON immediately rather than staging a server-side draft. It does write bookkeeping rows (`ocr_tasks`, plus the `credit_cards`/`ap_invoices` header via `finalize_extraction`); what waits for `/submit` is the Carmen posting and the `submitted_at` stamp. Line items are never persisted.
-- **No file storage** — uploaded images are read into memory, sent to LLM, then discarded. Nothing is written to disk. No `uploads/` or `exports/` directory. **One exception:** payment slips are persisted to the internal OneApp FileService (`services/storage_service.py` — `POST /Upload` → `fileId`, `GET /Files/{fileId}` → presigned URL, `X-Api-Key` auth). Postgres stores only the `fileId` in `credit_orders.slip_object_key`.
+- **No file storage** — uploaded images are read into memory, sent to LLM, then discarded. Nothing is written to disk. No `uploads/` or `exports/` directory. **One exception:** payment slips are persisted to the internal OneApp FileService (`services/billing/slip_storage.py` — `POST /Upload` → `fileId`, `GET /Files/{fileId}` → presigned URL, `X-Api-Key` auth). Postgres stores only the `fileId` in `credit_orders.slip_object_key`.
 - **Single LLM call** — Vision LLM extracts structured JSON from image in one call; no separate OCR engine.
 - **Tenant resolution at login** — `routers/auth.py` upserts a single `tenants` row keyed by the (host, bu) pair from Carmen JWT claims on every `/exchange` call. `tenant_id` is embedded in the JWT so subsequent requests read identity without a DB lookup. There is no separate `business_units` table — each (host, bu) pair is its own tenant.
 - **FK-based tenancy** — Data-plane tables carry a single `tenant_id` NOT NULL FK (native `PGUUID(as_uuid=True)`). Observability log tables use `VARCHAR(36)` + index (no FK — high-volume append-only tables).
 - **Bank code not enum** — `credit_cards.bank_code` FK → `banks.code` VARCHAR. No hardcoded `BankType` enum in the DB; adding a bank is an INSERT (pending Admin Dashboard for zero-redeploy).
 - **Credit card line items are NOT persisted** — like AP invoices, credit-card transactions follow the extract-display-only pattern (Carmen ERP is source of truth). Only `credit_cards` header data is stored; line items live transiently in the API response (`CreditCardTransactionSchema`). **One bounded exception:** an email document waiting for a human holds its whole extraction — line items included — in `email_documents.review_payload`, because there is nothing else to show the reviewer and no second extraction to fall back on. `_finish()` clears it on every terminal transition, so the steady state is unchanged.
 - **Soft delete everywhere** — Business tables never hard-delete. Always filter `WHERE deleted_at IS NULL`.
-- **Two document pools, not three** — a scan is charged by `consume_document()` (`services/credit_service.py`): the active subscription's monthly allowance first (use-it-or-lose-it), then `tenant_credits.balance` (never expires). The free trial is not a third pool — a new tenant is granted 30 credits (`signup_grant` ledger reason) in the same transaction that creates their tenant row, which is what makes it a one-time grant. The old `quotas`/`quota_usage` counter engine was retired by migration `20260813000100` and the tables were dropped by `20260825000000`. What survived that retirement is only `assert_module_enabled()`, which now lives in `services/module_gate.py` (renamed from `quota_service.py` 2026-08-18 — the old name described an engine that no longer exists).
-- **Order status: customer sees one status, admin sees two** — `CreditOrderStatus.PAID` and `.COMPLETE` are both real to the admin (`CreditOrdersPage.tsx`'s `to_post`/`posted` tabs), because `.COMPLETE` marks the order posted to Carmen as an AR entry via `post_ar_batch()` — an admin-triggered batch step with **no customer-visible effect** (no notification, no document, no endpoint behaves differently). The customer's order is fully done at `.PAID`: credits/subscription already granted, and this app never issues a tax invoice regardless of status (Carmen ERP is that system of record — see `approve()`'s docstring in `credit_order_service.py`). `OrderStatusBadge.tsx` therefore renders `paid` and `complete` with the **same label** on purpose; don't split them apart because they look like distinct values in the type. Relatedly, no customer-facing string may say a `subscription` order "adds credits" — only `topup` orders call `grant_credits()`; `activate_subscription()` never touches `tenant_credits.balance`.
+- **Two document pools, not three** — a scan is charged by `consume_document()` (`services/shared/credits.py`): the active subscription's monthly allowance first (use-it-or-lose-it), then `tenant_credits.balance` (never expires). The free trial is not a third pool — a new tenant is granted 30 credits (`signup_grant` ledger reason) in the same transaction that creates their tenant row, which is what makes it a one-time grant. The old `quotas`/`quota_usage` counter engine was retired by migration `20260813000100` and the tables were dropped by `20260825000000`. What survived that retirement is only `assert_module_enabled()`, which now lives in `services/shared/module_gate.py` (renamed from `quota_service.py` 2026-08-18 — the old name described an engine that no longer exists).
+- **Order status: customer sees one status, admin sees two** — `CreditOrderStatus.PAID` and `.COMPLETE` are both real to the admin (`CreditOrdersPage.tsx`'s `to_post`/`posted` tabs), because `.COMPLETE` marks the order posted to Carmen as an AR entry via `post_ar_batch()` — an admin-triggered batch step with **no customer-visible effect** (no notification, no document, no endpoint behaves differently). The customer's order is fully done at `.PAID`: credits/subscription already granted, and this app never issues a tax invoice regardless of status (Carmen ERP is that system of record — see `approve()`'s docstring in `billing/orders.py`). `OrderStatusBadge.tsx` therefore renders `paid` and `complete` with the **same label** on purpose; don't split them apart because they look like distinct values in the type. Relatedly, no customer-facing string may say a `subscription` order "adds credits" — only `topup` orders call `grant_credits()`; `activate_subscription()` never touches `tenant_credits.balance`.
 - **module_id on every LLM call** — `log_llm_usage(module_id="credit_card_ocr")` instead of old `usage_type` string. Enables per-module cost breakdown in `daily_usage_summary`.
 - **Shared LLM client** — `llm/client.py` is the sole `AsyncOpenAI` factory. Never construct it elsewhere.
 - **LLM privacy is enforced per-request, not via dashboard** — `_provider_prefs()` in `llm/client.py` attaches `extra_body={"provider": {"data_collection": "deny", ...}}` to EVERY OpenRouter call (vision + text). This is the technical enforcement of the consent-modal no-training promise (`UserConsentModal.tsx`); it does not rely on the OpenRouter account dashboard toggles (which can drift silently). `LLM_TEXT_PROVIDER_ALLOWLIST` additionally pins the non-Google suggestion model to US-jurisdiction providers. Prod logs CRITICAL if `LLM_DATA_COLLECTION != "deny"`. The dashboard's Google-ZDR toggle (disable AI Studio, keep Vertex) is a manual second layer — see `docs/SECURITY_PDPA_CHECKLIST.md`.
 - **Consent is recorded server-side** — `consent_logs` (append-only, no soft-delete, no retention purge — legal evidence, PDPA ม.19) is the source of truth for AI-processing consent; `POST/GET /api/v1/consent`. Org-level (keyed on `tenant_id`). `useUserConsent.ts` treats localStorage only as a fast-path cache; `CONSENT_VERSION` bumps re-prompt every tenant so a real server record exists.
-- **AP invoice post-processing is non-trivial** — `ap_invoice_postprocess.py` must run after LLM.
-- **AP review reconciliation (pin-based)** — In the Step-3 Account Summary, "From Table" (Σ line items) is reconciled against "From Document" (the immutable extracted footer totals). Every row keeps `lineTotal = lineSubTotal + taxAmt`, so the summary has only two free quantities (Σsub, Σtax) and `grand ≡ Σsub + Σtax`. Each per-field **Adjust** writes ONLY its own amount field on the plug row(s) and lets the total follow via `syncLineTotals` (`lib/apTax.ts`) — never re-deriving a sibling from the rate (that caused the old "whack-a-mole"). The header "From Document" values are the trusted anchor and are **never** re-synced from line sums (`hooks/ap-invoice/useAPInvoice.ts`).
-- **Document self-inconsistency = misread digit** — When the printed footer itself doesn't add up (`sub + tax ≠ grand`, beyond a 1-satang tolerance), the LLM misread a figure; reconciling line items can never clear it. `repairDocFigure()` (`hooks/ap-invoice/useAPValidation.ts`) identifies the outlier using the line-item sums as tiebreaker and recomputes it from `grand = sub + tax`. **Hybrid apply**: high-confidence repairs (unambiguous outlier + gap ≤ `AUTO_FIX_MAX_GAP` = 1 baht) are auto-applied once on entering Step 3 (`step===3` effect, guarded by a ref so it never overrides later manual edits); ambiguous or large-gap cases surface a manual "Fix document figures" banner and suppress the per-field Adjust buttons (which would otherwise drag the corroborated table value onto the misread doc value).
-- **Carmen proxy** — backend proxies all Carmen ERP requests (`routers/carmen.py` + `services/carmen_service.py`) to avoid CORS.
+- **AP invoice post-processing is non-trivial** — `ap_invoice/postprocess.py` must run after LLM.
+- **AP review reconciliation (pin-based)** — In the Step-3 Account Summary, "From Table" (Σ line items) is reconciled against "From Document" (the immutable extracted footer totals). Every row keeps `lineTotal = lineSubTotal + taxAmt`, so the summary has only two free quantities (Σsub, Σtax) and `grand ≡ Σsub + Σtax`. Each per-field **Adjust** writes ONLY its own amount field on the plug row(s) and lets the total follow via `syncLineTotals` (`shared/lib/apTax.ts`) — never re-deriving a sibling from the rate (that caused the old "whack-a-mole"). The header "From Document" values are the trusted anchor and are **never** re-synced from line sums (`features/ap-invoice/hooks/useAPInvoice.ts`).
+- **Document self-inconsistency = misread digit** — When the printed footer itself doesn't add up (`sub + tax ≠ grand`, beyond a 1-satang tolerance), the LLM misread a figure; reconciling line items can never clear it. `repairDocFigure()` (`features/ap-invoice/hooks/useAPValidation.ts`) identifies the outlier using the line-item sums as tiebreaker and recomputes it from `grand = sub + tax`. **Hybrid apply**: high-confidence repairs (unambiguous outlier + gap ≤ `AUTO_FIX_MAX_GAP` = 1 baht) are auto-applied once on entering Step 3 (`step===3` effect, guarded by a ref so it never overrides later manual edits); ambiguous or large-gap cases surface a manual "Fix document figures" banner and suppress the per-field Adjust buttons (which would otherwise drag the corroborated table value onto the misread doc value).
+- **Carmen proxy** — backend proxies all Carmen ERP requests (`routers/carmen.py` + `services/shared/carmen.py`) to avoid CORS.
 - **Migrations are Supabase CLI** — schema is owned by `supabase/migrations/*.sql`. Apply with `supabase db push`. Never edit or reorder applied migration files.
 - **localStorage** — credit card: `accountingConfig`, `accountMappingAmount`. AP invoice: field mappings keyed by vendor name.
 - **Service layer contract** — services never raise `HTTPException`; they raise typed exceptions from `app/exceptions.py`. The global handler in `factory.py` maps these to HTTP status codes.
 - **App factory** — `app/factory.py` builds the FastAPI instance (middleware + exception handlers + routers). `app/lifecycle.py` owns lifespan (startup/shutdown + background tasks). `app/sentry.py` owns Sentry init. `app/main.py` is the thin entrypoint.
-- **Charge before the LLM, refund only when the LLM never ran** — `consume_document()` runs at every extract endpoint AFTER `ensure_pdf_openable` and `assert_module_enabled` (so a locked PDF or a disabled module never costs a document) and returns what it charged; pass that to `refund_document()` for the files that failed. Both fail open on infra errors — only a real out-of-credits raises `InsufficientCredits` (402). **The refund test is "did the vision call happen", not "did the document post".** In the wizards every refund site is an extraction that threw, so the user got nothing back. Email ingest states the same rule explicitly: `_run_document()` has a single **refund boundary** (`email_ingest_service.py`) wrapping `create_task` + `extract_stateless` + `finalize_extraction`, and it is the only place in that pipeline that refunds — once extraction returns, the document is charged whatever happens next (`duplicate_document`, `tax_id_mismatch`, `mapping_incomplete`, any `carmen_rejected`). That is why `_Skip` carries no refund flag. Ingest deliberately matches the wizard here, which has always charged for a duplicate because `finalize_extraction` only sets an `is_duplicate` flag rather than raising.
+- **Charge before the LLM, refund only when the LLM never ran** — `consume_document()` runs at every extract endpoint AFTER `ensure_pdf_openable` and `assert_module_enabled` (so a locked PDF or a disabled module never costs a document) and returns what it charged; pass that to `refund_document()` for the files that failed. Both fail open on infra errors — only a real out-of-credits raises `InsufficientCredits` (402). **The refund test is "did the vision call happen", not "did the document post".** In the wizards every refund site is an extraction that threw, so the user got nothing back. Email ingest states the same rule explicitly: `_run_document()` has a single **refund boundary** (`email_automation/pipeline.py`) wrapping `create_task` + `extract_stateless` + `finalize_extraction`, and it is the only place in that pipeline that refunds — once extraction returns, the document is charged whatever happens next (`duplicate_document`, `tax_id_mismatch`, `mapping_incomplete`, any `carmen_rejected`). That is why `_Skip` carries no refund flag. Ingest deliberately matches the wizard here, which has always charged for a duplicate because `finalize_extraction` only sets an `is_duplicate` flag rather than raising.
 - **What one document costs differs per module** — credit card charges **per file** (`increment=len(file_data)`), AP invoice charges **per page sent to the LLM** (`billable_pages()` in `utils/pages.py`, capped at `MAX_PAGES_PER_CALL`=5): a 3-page selection costs 3, and 3 images merged client-side into one PDF cost 3. `ensure_pdf_openable()` returns the page count for exactly this. The whole N is charged to one pool — a tenant with 3 subscription docs left scanning 5 pages pays 5 credits and strands the 3. **`ocr_tasks.charged_docs` records what each task cost** — nothing else can (a subscription-funded scan writes no ledger row; `credit_ledger.ref` is the filename, since the charge precedes `create_task`). Count documents with `SUM(charged_docs)`, never `COUNT(ocr_tasks)`.
-- **Hook directory convention** — Feature hooks live in subdirectories, one per feature: `hooks/admin/`, `hooks/ap-invoice/`, `hooks/credit-card/`, `hooks/credits/`, `hooks/email-settings/`, `hooks/mapping/`, `hooks/notifications/`. Cross-cutting hooks (`useModal`, `useDarkMode`, `useCarmenSSO`, `useRowsPerPage`) stay at top level. Each subdir has an `index.ts` barrel. All **tenant-scoped** localStorage access goes through `lib/storage.ts` (`appKey()`); global UI preferences (`theme`, `lang`, `rowsPerPage`) deliberately stay outside it, because they are not business data and must survive logout — see that file's header before adding a key either way.
+- **Frontend layout: `features/` + `shared/`** — `frontend/src/features/<feature>/` holds one feature's `pages/`, `components/`, `hooks/`, `lib/` and `api/` (`admin`, `ap-invoice`, `billing`, `credit-card`, `email-settings`, `home`); `frontend/src/shared/` holds what two or more features — or the app shell in `main.tsx` — use: `components/common/`, `hooks/`, `lib/`, `api/`, `contexts/`, `constants/`, `types/`, `content/`. `i18n/`, `styles/`, `test/` and `assets/` stay at `src/`. **Placement rule:** used by one feature → that feature; by two or more → `shared/`, moved the day the second one needs it. Import across folders with `@/` (= `src/`; declared in `tsconfig.json`, `vite.config.ts` and `vitest.config.js`), within a folder with `./`. **Nothing outside `features/admin` imports it statically** — ESLint `no-restricted-imports` enforces it (type-only imports allowed); `main.tsx` reaches the dashboard only through `lazy(() => import(...))`, which is what keeps it out of the main bundle. That is why `AdminAuthContext`, `AdminProtectedRoute` and `shared/api/adminAuth.ts` (token storage, `adminFetch`, `adminMe`/`adminLogout`) live in `shared/`: the shell needs them to gate `#/admin*`. Every other admin endpoint is in `features/admin/api/<area>.ts`, one module per area, all sending through `adminFetch`. Each hooks folder keeps its `index.ts` barrel (`features/credit-card/hooks/` and its `mapping/` subfolder each have one); cross-cutting hooks (`useModal`, `useDarkMode`, `useCarmenSSO`, `useRowsPerPage`) live in `shared/hooks/`. All **tenant-scoped** localStorage access goes through `shared/lib/storage.ts` (`appKey()`); global UI preferences (`theme`, `lang`, `rowsPerPage`) deliberately stay outside it, because they are not business data and must survive logout — see that file's header before adding a key either way.
 - **Pydantic schemas** — All request/response schemas in `app/models/schemas/` package. Never define `class X(BaseModel)` inside a router file.
-- **Every list endpoint answers the same envelope** — `Page[T]` = `{total, limit, offset, data}` (`models/schemas/common.py`), built by `paginate()` (`utils/pagination.py`), mirrored on the frontend by `lib/api/page.ts`. `total` is counted off the **unlimited** statement with `ORDER BY` stripped, so a truncated window can always say *"showing 200 of 340"* instead of ending silently — `len(data)` as a total is the bug class this exists to kill. A query selecting several entities uses `count_rows()` + its own `.all()` instead, because `paginate()`'s `.scalars()` would flatten each row to the first entity.
+- **Every list endpoint answers the same envelope** — `Page[T]` = `{total, limit, offset, data}` (`models/schemas/common.py`), built by `paginate()` (`utils/pagination.py`), mirrored on the frontend by `shared/api/page.ts`. `total` is counted off the **unlimited** statement with `ORDER BY` stripped, so a truncated window can always say *"showing 200 of 340"* instead of ending silently — `len(data)` as a total is the bug class this exists to kill. A query selecting several entities uses `count_rows()` + its own `.all()` instead, because `paginate()`'s `.scalars()` would flatten each row to the first entity.
 
 ---
 
@@ -303,7 +308,7 @@ an ad-hoc script while `uvicorn` is up hits the 15-connection Supavisor cap.
 1. Create `backend/app/llm/prompts/<bank>.py` — export `LAYOUT`
 2. Register in `backend/app/llm/prompts/__init__.py` → `_REGISTRY`
 3. `INSERT INTO banks (code, name, ...) VALUES ('KTB', 'Krungthai Bank', ...)`
-4. Add to `BANKS` in `frontend/src/constants/banks.ts`
+4. Add to `BANKS` in `frontend/src/shared/constants/banks.ts`
 5. Add detection in `detectBankFromCompanyName()` if needed
 
 > **Future (Admin Dashboard):** Steps 1–2 replaced by Prompt CMS; steps 3–5 replaced by UI. Zero redeploy.
@@ -408,7 +413,7 @@ EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # dev default; per-BU routing uses
 
 **Date columns:** `credit_cards.doc_date`, `ap_invoices.doc_date` are `DATE` type. LLM string output is normalized via `app/utils/date_parsing.py` (handles DD/MM/YYYY, ISO, dashes, Thai Buddhist years) before insert. API output uses DD/MM/YYYY string for backward compatibility.
 
-**Supported banks (pre-seeded):** `BBL` | `KBANK` | `SCB` | `BAY` | `KTC` | `GHL` | `PAYPAL` | `SIAMPAY` — BAY is a bank-statement layout; KTC/GHL/PAYPAL/SIAMPAY are processor *fee invoices*: one details row **per printed fee line** (`commis_amt`=that line's fee before VAT); the footer's printed VAT is spread proportionally across the lines (`tax_amt`, `pay_amt`=fee+VAT share, `total`=0). The prompt's final TOTAL summary row is consumed by `credit_card_service._normalize_fee_invoice` and never emitted as a detail row. If the footer can't be read, a lone line figure is treated as the fee before VAT at an assumed 7% rate and `ExtractedCreditCardData.warnings` carries a user-facing caveat (shown as an amber banner in the wizard).
+**Supported banks (pre-seeded):** `BBL` | `KBANK` | `SCB` | `BAY` | `KTC` | `GHL` | `PAYPAL` | `SIAMPAY` — BAY is a bank-statement layout; KTC/GHL/PAYPAL/SIAMPAY are processor *fee invoices*: one details row **per printed fee line** (`commis_amt`=that line's fee before VAT); the footer's printed VAT is spread proportionally across the lines (`tax_amt`, `pay_amt`=fee+VAT share, `total`=0). The prompt's final TOTAL summary row is consumed by `credit_card.postprocess._normalize_fee_invoice` and never emitted as a detail row. If the footer can't be read, a lone line figure is treated as the fee before VAT at an assumed 7% rate and `ExtractedCreditCardData.warnings` carries a user-facing caveat (shown as an amber banner in the wizard).
 
 **Supported files:** JPG, PNG, WebP, BMP, TIFF, HEIC/HEIF, PDF — max 5 MB (read into memory only, never persisted to disk; HEIC → JPEG via pillow-heif in `utils/image_processing.py`)
 

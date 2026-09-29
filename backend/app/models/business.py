@@ -281,6 +281,10 @@ class BUAccountingMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
     # of a settlement report's two credit-side vocabularies wrote this row — see the
     # class docstring. Informational only.
     source = Column(String(20), nullable=True)
+    # Null = pre-migration row (20260924000000), scoped by config_id alone. New rows always
+    # carry the bank they were saved for — see accounting_config_service for the fallback
+    # that keeps a single-bank tenant's queries unchanged.
+    bank_code = Column(String(20), ForeignKey("banks.code"), nullable=True, index=True)
 
     config = relationship("BUAccountingConfig", back_populates="entries")
 
@@ -289,6 +293,7 @@ class BUAccountingMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
             "uq_bu_mapping_entry_active",
             "config_id",
             "field_type",
+            "bank_code",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
         ),

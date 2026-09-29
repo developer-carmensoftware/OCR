@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services import promptpay_service
+from app.services.billing import promptpay as promptpay_service
 from app.utils.tax import split_inclusive
 
 # ── tax.split_inclusive ───────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ def test_crc_is_deterministic():
 @pytest.mark.asyncio
 async def test_next_document_number_format():
     # Single shared sequence across all doc types: AI-YYYYMM-NNNN.
-    from app.services.billing_document_service import _next_document_number
+    from app.services.billing.documents import _next_document_number
 
     db = AsyncMock()
     result_mock = MagicMock()
@@ -107,7 +107,7 @@ async def test_next_document_number_format():
 
 @pytest.mark.asyncio
 async def test_next_document_number_higher_counter():
-    from app.services.billing_document_service import _next_document_number
+    from app.services.billing.documents import _next_document_number
 
     db = AsyncMock()
     result_mock = MagicMock()
@@ -135,7 +135,7 @@ def test_payload_national_id_does_not_contain_mobile_prefix():
 
 @pytest.mark.asyncio
 async def test_next_document_number_zero_padded():
-    from app.services.billing_document_service import _next_document_number
+    from app.services.billing.documents import _next_document_number
 
     db = AsyncMock()
     result_mock = MagicMock()

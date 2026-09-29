@@ -24,7 +24,7 @@ import pytest
 
 from app.constants import PostType
 from app.models.schemas.common import FieldMapping
-from app.services import ar_reconcile_service as svc
+from app.services.credit_card import ar_reconcile as svc
 
 TENANT = "11111111-1111-1111-1111-111111111111"
 
@@ -106,10 +106,11 @@ def _summary_entries():
 
 
 def _config(entries, bank_descriptions=None):
-    """Two `.execute()` results — a `BUAccountingConfig` row, then its entries — what
-    `get_accounting_config` (`_get_config` then `_get_entries`) reads. Pass the merged
-    list `_fixed_entries() + _summary_entries()` (or a subset) since both live in the
-    one table now. `bank_descriptions` is this same row's JV-wording field (Ticket D,
+    """Three `.execute()` results — a `BUAccountingConfig` row, this bank's entries, then
+    the pre-migration no-bank entries (none here) — what a bank-scoped
+    `get_accounting_config` (`_get_config`, then `_get_entries` twice) reads. Pass the
+    merged list `_fixed_entries() + _summary_entries()` (or a subset) since both live in
+    the one table now. `bank_descriptions` is this same row's JV-wording field (Ticket D,
     2026-09-22) — a settlement JV's description now resolves from here too."""
     cfg = SimpleNamespace(
         id=9,
@@ -120,7 +121,7 @@ def _config(entries, bank_descriptions=None):
         branch=None,
         bank_descriptions=bank_descriptions or {},
     )
-    return [cfg], list(entries)
+    return [cfg], list(entries), []
 
 
 def _no_config():

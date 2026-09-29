@@ -84,7 +84,7 @@ model needs it, not because anything reads it today.
 
 Because nothing is credited, what a switch costs the buyer is entirely in what it forfeits, not in
 the invoice total. That is what the plan-change warning at Step 4 exists to say plainly before the
-buyer transfers — see `frontend/src/constants/billing.ts` (`planChangeLoss`) for the two cases it
+buyer transfers — see `frontend/src/features/billing/constants.ts` (`planChangeLoss`) for the two cases it
 flags: a smaller monthly quota, and an annual term traded for a monthly one.
 
 ### Top-up Credits

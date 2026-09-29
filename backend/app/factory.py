@@ -34,21 +34,21 @@ from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers.admin import router as admin_router
 from app.routers.ap_invoice import router as ap_invoice_router
-from app.routers.ar_reconcile import router as ar_reconcile_router
 from app.routers.auth import router as auth_router
 from app.routers.carmen import router as carmen_router
 from app.routers.config import router as config_router
 from app.routers.consent import router as consent_router
-from app.routers.credit_card_activity import router as credit_card_activity_router
+from app.routers.credit_card.activity import router as credit_card_activity_router
+from app.routers.credit_card.ar_reconcile import router as ar_reconcile_router
+from app.routers.credit_card.mapping import router as mapping_router
+from app.routers.credit_card.ocr import router as ocr_router
 from app.routers.credits import router as credits_router
-from app.routers.email_automation import router as email_automation_router
-from app.routers.email_review import router as email_review_router
+from app.routers.email_automation.review import router as email_review_router
+from app.routers.email_automation.settings_api import router as email_automation_router
 from app.routers.feedback import router as feedback_router
 from app.routers.files import router as files_router
 from app.routers.maintenance import router as maintenance_router
-from app.routers.mapping import router as mapping_router
 from app.routers.notifications import router as notifications_router
-from app.routers.ocr import router as ocr_router
 from app.sentry import capture
 
 logger = logging.getLogger(__name__)

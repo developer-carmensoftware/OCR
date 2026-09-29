@@ -57,3 +57,50 @@ describe('translate', () => {
     expect(mismatched).toEqual([])
   })
 })
+
+// Every namespace file as loaded, not through DICT — the spread that builds DICT lets a
+// later file win silently, so a key defined twice is only visible from here.
+const FILES = {
+  ...import.meta.glob('./dict/*.ts', { eager: true }),
+  ...import.meta.glob('/src/features/admin/i18n/*.ts', { eager: true }),
+} as Record<string, { en?: Record<string, string> }>
+const NAMESPACE_FILES = Object.entries(FILES).filter(([path]) => !path.endsWith('/index.ts'))
+
+describe('one file per namespace', () => {
+  it('no key is defined in two files', () => {
+    const total = NAMESPACE_FILES.reduce((n, [, mod]) => n + Object.keys(mod.en ?? {}).length, 0)
+    expect(total).toBe(Object.keys(DICT.en).length)
+  })
+
+  it("every key carries its file's namespace (admin: admin.<file>.)", () => {
+    const misplaced = NAMESPACE_FILES.flatMap(([path, mod]) => {
+      const ns = path.split('/').pop()!.replace(/\.ts$/, '')
+      const prefix = path.includes('/features/admin/') ? `admin.${ns}.` : `${ns}.`
+      return Object.keys(mod.en ?? {})
+        .filter(k => !k.startsWith(prefix))
+        .map(k => `${path}: ${k}`)
+    })
+    expect(misplaced).toEqual([])
+  })
+})
+
+describe('admin copy stays out of the customer bundle', () => {
+  const SOURCES = import.meta.glob('/src/**/*.{ts,tsx}', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  }) as Record<string, string>
+
+  // Anywhere else, an admin key would render as the raw key until the admin chunk had
+  // loaded and registered its copy — i.e. always, on a customer screen.
+  it('no admin.* key is used outside features/admin', () => {
+    const leaks = Object.entries(SOURCES)
+      .filter(
+        ([path]) => !path.startsWith('/src/features/admin/') && !path.startsWith('/src/i18n/')
+      )
+      .filter(([path]) => !/\.test\.tsx?$/.test(path))
+      .filter(([, src]) => /['"]admin\.[A-Za-z]/.test(src))
+      .map(([path]) => path)
+    expect(leaks).toEqual([])
+  })
+})

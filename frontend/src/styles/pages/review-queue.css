@@ -281,8 +281,7 @@
 
 /* ── Empty states ───────────────────────────────────────────────────────────── */
 
-.rq-empty,
-.rq-intro {
+.rq-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -292,13 +291,6 @@
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-}
-
-/* Flat by default (DESIGN.md §Flat-By-Default): a shadow promises the surface holds
-   something to act on. `.rq-intro` always carries a button, so it keeps the promise;
-   `.rq-empty` is mostly a sentence and only sometimes a link. */
-.rq-intro {
-  box-shadow: var(--shadow-sm);
 }
 
 /* The tone rides on a wrapper so `--calm` can draw a well, which an SVG cannot draw for
@@ -328,12 +320,7 @@
   color: var(--text-4);
 }
 
-.rq-intro-icon {
-  color: var(--primary);
-}
-
-.rq-empty-title,
-.rq-intro-title {
+.rq-empty-title {
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -342,72 +329,13 @@
   text-wrap: balance;
 }
 
-.rq-empty-body,
-.rq-intro-body {
+.rq-empty-body {
   font-size: 0.875rem;
   line-height: 1.65;
   color: var(--text-3);
   margin: 0;
   max-width: 46ch;
   text-wrap: pretty;
-}
-
-.rq-intro-note {
-  font-size: 0.8rem;
-  color: var(--text-3);
-  margin: 0;
-}
-
-.rq-address {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0.5rem 0.5rem 0.5rem 0.85rem;
-  background: var(--muted);
-  border: 1px solid var(--border-input);
-  border-radius: var(--radius-md);
-  margin-top: var(--space-1);
-}
-
-.rq-address code {
-  font-size: 0.85rem;
-  color: var(--text);
-  word-break: break-all;
-}
-
-.rq-steps {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-3);
-  list-style: none;
-  counter-reset: rq-step;
-  margin: var(--space-2) 0 var(--space-1);
-  padding: 0;
-  font-size: 0.8rem;
-  color: var(--text-3);
-}
-
-.rq-steps li {
-  counter-increment: rq-step;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.rq-steps li::before {
-  content: counter(rq-step);
-  display: grid;
-  place-items: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: var(--radius-pill);
-  background: var(--primary-light);
-  color: var(--primary);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.7rem;
-  font-weight: 500;
-  flex: none;
 }
 
 /* Six columns do not fit a phone, and a primary work surface must not scroll sideways.

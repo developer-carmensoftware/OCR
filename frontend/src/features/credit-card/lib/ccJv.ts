@@ -1,0 +1,327 @@
+import { parseNum, round2 } from '@/shared/lib/format'
+import { codeToSource, descriptionForBank } from './bankTransforms'
+import { normalizeYearToCE } from '@/shared/lib/date'
+
+/** The four accounting-config fields a JV header needs, already normalised. */
+export interface GljvConfig {
+  filePrefix?: string
+  fileSource?: string
+  description?: string
+  bankDescriptions?: Record<string, string>
+}
+
+export interface JvRow {
+  dept: string
+  acc: string
+  desc: string
+  debit: number
+  credit: number
+  /**
+   * Which accounting-config entry produced this row's dept/acc — `commission`, `tax`,
+   * `net`, or a payment type.
+   *
+   * The review screen edits mappings in place and needs to know what a picker is editing.
+   * Deriving it from row order would couple that screen to this function's internals; a
+   * row genuinely knows which rule made it, so it says so. Ignored by
+   * `buildGljvPayload`, which builds Carmen's `Detail` field by field.
+   *
+   * Not unique per row: two detail lines of the same payment type produce two rows with
+   * one key, and editing either changes both. That IS the model — the picker edits a
+   * rule, not a row.
+   */
+  key: string
+  /**
+   * Which detail lines this leg's amount came from, by index.
+   *
+   * The review screen edits amounts on the JV rather than on a separate line-items table,
+   * so it has to put an edited figure back where it came from — and `details` is not
+   * cosmetic: `build_input_tax_payload` files the VAT record off it, per line.
+   *
+   * A credit leg carries exactly one index and is therefore exact. A consolidated debit
+   * leg carries every contributing line, and there is no single right way to split one
+   * total back across several — see `applyJvAmount`, which is where that judgement lives.
+   */
+  lines: number[]
+}
+
+// Minimal structural shape of a Step-2 DetailRow — only the fields the JV builder
+// reads. Kept local so this pure lib file has no dependency on the component layer.
+interface Detail {
+  Transaction?: string
+  PayAmt?: string
+  CommisAmt?: string
+  TaxAmt?: string
+  Total?: string
+}
+
+type Mapping = { dept?: string; acc?: string }
+
+const leg = (
+  cfg: Mapping,
+  desc: string,
+  debit: number,
+  credit: number,
+  key: string,
+  lines: number[]
+): JvRow => ({
+  dept: cfg.dept || '',
+  acc: cfg.acc || '',
+  desc,
+  debit,
+  credit,
+  key,
+  lines,
+})
+
+/**
+ * Build the Step-3 journal-entry rows from extracted detail lines + accounting config.
+ *
+ * Consolidated (`consolidateDebit`, the default for all banks — see
+ * `GROUP_DEBIT_BY_TRANSACTION` in shared/constants/banks.ts): credit legs stay
+ * one-per-payment-type; the debit side collapses to the **three canonical buckets**
+ * (commission, tax, Bank Account) in fixed order, each summed across all lines and
+ * **always present** — so a gateway invoice (net = 0) still shows a `0.00` Bank Account
+ * row and every document type reviews with the same standard layout. Lossless: Σdebit /
+ * Σcredit are unchanged, so the JV stays balanced. The zero legs are display-only —
+ * `useOcrSubmission` drops them before posting so no empty GL lines reach Carmen.
+ *
+ * Per-line (`consolidateDebit: false`, preserved for future use): 1 credit
+ * (PayAmt → payment-type account) + up to 3 debits (commission, tax, net) per
+ * line; zero amounts are skipped.
+ */
+export function buildJvRows(
+  details: Detail[],
+  config: Record<string, unknown>,
+  opts: { consolidateDebit?: boolean } = {}
+): JvRow[] {
+  const mappings = (config.mappings || {}) as Record<string, Mapping>
+  const paymentAmount = (config.paymentAmount || {}) as Record<string, Mapping>
+
+  if (opts.consolidateDebit) return consolidated(details, mappings, paymentAmount)
+
+  const rows: JvRow[] = []
+  const addRow = (
+    cfg: Mapping,
+    amount: number,
+    desc: string,
+    isDebit: boolean,
+    key: string,
+    line: number
+  ) => {
+    if (!amount) return
+    rows.push(
+      isDebit ? leg(cfg, desc, amount, 0, key, [line]) : leg(cfg, desc, 0, amount, key, [line])
+    )
+  }
+  details.forEach((detail, i) => {
+    const payType = detail.Transaction || 'UNKNOWN'
+    addRow(paymentAmount[payType] || {}, parseNum(detail.PayAmt), payType, false, payType, i)
+    addRow(
+      mappings.commission || {},
+      parseNum(detail.CommisAmt),
+      'Credit card commission',
+      true,
+      'commission',
+      i
+    )
+    addRow(mappings.tax || {}, parseNum(detail.TaxAmt), 'Input Tax', true, 'tax', i)
+    addRow(mappings.net || {}, parseNum(detail.Total), 'Bank Account', true, 'net', i)
+  })
+  return rows
+}
+
+function consolidated(
+  details: Detail[],
+  mappings: Record<string, Mapping>,
+  paymentAmount: Record<string, Mapping>
+): JvRow[] {
+  // Credit legs: one per payment-type detail line (unchanged), skip zero.
+  const rows: JvRow[] = []
+  details.forEach((detail, i) => {
+    const amt = parseNum(detail.PayAmt)
+    if (!amt) return
+    const payType = detail.Transaction || 'UNKNOWN'
+    rows.push(leg(paymentAmount[payType] || {}, payType, 0, amt, payType, [i]))
+  })
+  // Degenerate/empty document — no real credit legs, so emit nothing (mirrors the
+  // per-line builder's "no data" outcome; keeps Submit disabled).
+  if (rows.length === 0) return rows
+
+  // Debit side: the three canonical buckets, summed, always present (standard layout).
+  const sum = (k: keyof Detail) => round2(details.reduce((s, d) => s + parseNum(d[k]), 0))
+  const all = details.map((_, i) => i)
+  rows.push(
+    leg(mappings.commission || {}, 'Credit card commission', sum('CommisAmt'), 0, 'commission', all)
+  )
+  rows.push(leg(mappings.tax || {}, 'Input Tax', sum('TaxAmt'), 0, 'tax', all))
+  rows.push(leg(mappings.net || {}, 'Bank Account', sum('Total'), 0, 'net', all))
+  return rows
+}
+
+/** Which detail column each JV leg's amount is a sum of. */
+const COLUMN_FOR_KEY: Record<string, keyof Detail> = {
+  commission: 'CommisAmt',
+  tax: 'TaxAmt',
+  net: 'Total',
+}
+
+/**
+ * Put an amount edited on the JV back into the detail lines it came from.
+ *
+ * The review screen has no separate line-items table any more — the JV is the one place
+ * figures are read and changed. But `details` is not display: `build_input_tax_payload`
+ * files the VAT record from it, line by line, so an edit that only moved the JV would
+ * post a tax record that disagrees with the journal.
+ *
+ * A credit leg maps to exactly one line, so it is written straight through. A consolidated
+ * debit leg is a sum over several, and splitting one total back has no single right
+ * answer — this shares the new figure out **in proportion to what each line already
+ * carries**, which is the relationship the bank charged by (commission and its VAT are
+ * per-transaction percentages). Rounding drift lands on the last line so the parts still
+ * add to exactly what was typed.
+ *
+ * ponytail: proportional split, and it is a judgement, not arithmetic. If a BU ever needs
+ * to correct one specific line of a multi-line statement, that needs the per-line table
+ * back — not a cleverer rule here.
+ */
+export function applyJvAmount<T extends Detail>(details: T[], row: JvRow, next: number): T[] {
+  const col = COLUMN_FOR_KEY[row.key] ?? 'PayAmt'
+  const lines = row.lines.filter(i => i >= 0 && i < details.length)
+  if (lines.length === 0) return details
+
+  if (lines.length === 1) {
+    const i = lines[0]
+    return details.map((d, n) => (n === i ? { ...d, [col]: round2(next).toFixed(2) } : d))
+  }
+
+  const current = lines.map(i => parseNum(details[i][col]))
+  const total = current.reduce((s, v) => s + v, 0)
+  // Nothing to be proportional to: an all-zero column splits evenly, the only neutral
+  // answer available.
+  const share = (v: number) => (total ? (next * v) / total : next / lines.length)
+
+  let assigned = 0
+  const out = [...details]
+  lines.forEach((i, k) => {
+    // The last line absorbs the rounding, so the parts add to exactly what was typed
+    // rather than to a figure one satang out that makes the JV refuse to balance.
+    const last = k === lines.length - 1
+    const value = last ? round2(next - assigned) : round2(share(current[k]))
+    assigned = round2(assigned + value)
+    out[i] = { ...out[i], [col]: value.toFixed(2) }
+  })
+  return out
+}
+
+const TEMPLATE_TAGS = ['{Settlement_Date}', '{Tax_Invoice_No}', '{Bank_Name}'] as const
+
+function hasTemplateTags(s: string): boolean {
+  return TEMPLATE_TAGS.some(tag => s.includes(tag))
+}
+
+/** Fill a JV description template's three tags. Twin of `render_jv_description` in
+ *  cc_jv.py — was settlement-only until Ticket D (2026-09-22) gave the fee-invoice
+ *  path a browser-side renderer too, since the wizard is the one place a tagged
+ *  description can now be typed for a bank with no settlement layout at all. */
+function renderJvDescription(
+  template: string,
+  tags: { settlementDate?: string; taxInvoiceNo?: string; bankName?: string }
+): string {
+  let out = template
+  out = out.split('{Settlement_Date}').join(tags.settlementDate || '')
+  out = out.split('{Tax_Invoice_No}').join(tags.taxInvoiceNo || '')
+  out = out.split('{Bank_Name}').join(tags.bankName || '')
+  return out.split(/\s+/).filter(Boolean).join(' ')
+}
+
+/** The one decision point the fee-invoice default and (since Ticket D) a settlement
+ *  JV share: a saved value with a template tag is a full template; one without is
+ *  today's plain `base - docDate` concatenation, unchanged for every BU that has
+ *  never touched the tags. Twin of `render_description` in cc_jv.py. */
+function renderDescription(
+  base: string,
+  docDate: string | undefined,
+  docNo: string | undefined,
+  bankName: string | undefined
+): string {
+  if (!base) return ''
+  if (hasTemplateTags(base)) {
+    return renderJvDescription(base, { settlementDate: docDate, taxInvoiceNo: docNo, bankName })
+  }
+  return docDate ? `${base} - ${docDate}` : base
+}
+
+/**
+ * JV rows + accounting config → the exact Carmen `gljv` body the wizard posts.
+ *
+ * Server-side twin: `build_gljv_payload()` in backend/app/services/cc_jv.py, which
+ * email automation uses because it has no browser. The two are pinned together by
+ * `contracts/cc-jv.contract.json` — read `ccJv.contract.test.ts` before changing
+ * any field here, and change the Python side in the same commit.
+ *
+ * `config` is already normalised: `useOcrSubmission` resolves the snake_case API shape
+ * and the camelCase localStorage shape into these four fields before calling, which is
+ * where that concern belongs (it is about where the config came from, not what a JV is).
+ */
+export function buildGljvPayload(
+  rows: JvRow[],
+  opts: { docDate?: string; docNo?: string; bankCode?: string; config: GljvConfig }
+): Record<string, unknown> {
+  const { docDate, docNo, bankCode, config } = opts
+  // Per-bank wording when the BU set one, else the BU's single description — the
+  // input-tax record built from the same statement resolves it the same way, so the
+  // two documents never disagree about what they are.
+  const base = descriptionForBank(config.description, config.bankDescriptions, bankCode)
+
+  return {
+    JvhSeq: -1,
+    JvhDate: jvhDate(docDate),
+    Prefix: config.filePrefix || '',
+    JvhNo: 'Auto',
+    // Source follows the scanned bank (single authority), not stale saved config;
+    // fall back to stored config only when the bank is unknown.
+    JvhSource: (bankCode && codeToSource(bankCode)) || config.fileSource || '',
+    Status: 'Draft',
+    Description: renderDescription(base, docDate, docNo, bankCode),
+    // Drop display-only zero legs (e.g. gateway net=0.00 shown in Step 3 for a
+    // standard layout) — never post empty GL lines to Carmen.
+    Detail: rows
+      .filter(r => r.debit || r.credit)
+      .map(r => ({
+        JvhSeq: -1,
+        JvdSeq: -1,
+        DeptCode: r.dept,
+        AccCode: r.acc,
+        Description: r.desc,
+        CurCode: 'THB',
+        CurRate: 1,
+        CrAmount: round2(r.credit),
+        CrBase: round2(r.credit),
+        DrAmount: round2(r.debit),
+        DrBase: round2(r.debit),
+        DimList: {},
+      })),
+    DimHList: { Dim: [] },
+    // Empty from the wizard, 'OCR-EMAIL' from email ingest — the field exists so
+    // accounting can tell a machine-posted JV from a reviewed one. Deliberately
+    // outside the shared contract (CARMEN_INTEGRATION.md §4 point 3).
+    UserModified: '',
+  }
+}
+
+/**
+ * 'DD/MM/YYYY' (CE or BE) → ISO-8601. Falls back to now, as the server twin does.
+ *
+ * The day and month MUST arrive zero-padded. `new Date('2026-8-5')` is parsed as
+ * *local* time and lands on the previous day in UTC, while `new Date('2026-08-05')`
+ * is parsed as UTC. Both producers pad — `normalizeDateStringToCE()` at extraction
+ * and `formatDateToDDMMYYYY()` in the date picker — so this is safe; keep it that way.
+ */
+function jvhDate(docDate?: string): string {
+  if (docDate) {
+    const [d, m, y] = docDate.split('/')
+    const parsed = new Date(`${normalizeYearToCE(y)}-${m}-${d}`)
+    if (!isNaN(parsed.getTime())) return parsed.toISOString()
+  }
+  return new Date().toISOString()
+}

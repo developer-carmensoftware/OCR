@@ -2,15 +2,15 @@
   "$comment": [
     "CONTRACT FIXTURE — the credit-card JV body, pinned across two implementations.",
     "",
-    "The wizard builds its JV in the browser (frontend/src/lib/ccJv.ts +",
-    "hooks/credit-card/useOcrSubmission.ts) because a human reviews it there. Email",
-    "automation has no browser, so backend/app/services/cc_jv.py builds the same body.",
+    "The wizard builds its JV in the browser (frontend/src/features/credit-card/lib/ccJv.ts +",
+    "features/credit-card/hooks/useOcrSubmission.ts) because a human reviews it there. Email",
+    "automation has no browser, so backend/app/services/credit_card/jv.py builds the same body.",
     "Both suites tested their own side; nothing tested that the two agreed, and drift",
     "there posts wrong money silently. This file is the single source both read.",
     "",
     "Readers:",
     "  backend/tests/unit/test_cc_jv.py::test_contract_fixture",
-    "  frontend/src/lib/ccJv.contract.test.ts",
+    "  frontend/src/features/credit-card/lib/ccJv.contract.test.ts",
     "",
     "SHAPE NOTE — the two builders take mappings differently, which is why this file",
     "keeps them apart instead of pre-merging:",
@@ -38,7 +38,7 @@
   ],
 
   "bankSourceMap": {
-    "$comment": "Bank code to Carmen GL source. A third copy of this table lives in frontend/src/constants/banks.ts (BANK_SOURCE_MAP, keyed by display name via OCR_BANK_MAP) and a second in cc_jv.py. Both tests assert their own map reproduces this one.",
+    "$comment": "Bank code to Carmen GL source. A third copy of this table lives in frontend/src/shared/constants/banks.ts (BANK_SOURCE_MAP, keyed by display name via OCR_BANK_MAP) and a second in credit_card/jv.py. Both tests assert their own map reproduces this one.",
     "BBL": "ACBB",
     "KBANK": "ACKB",
     "SCB": "ACSC",

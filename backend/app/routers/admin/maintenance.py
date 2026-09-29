@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.schemas import ScheduleMaintenanceRequest, TenantMaintenanceRequest
-from app.services import maintenance_service
-from app.services.usage_service import list_model_pricing
+from app.services.shared import maintenance as maintenance_service
+from app.services.shared.pricing_cache import list_model_pricing
 
 from .deps import require_maintenance_auth, require_permission
 
@@ -29,7 +29,7 @@ async def trigger_summary_rebuild(
     target_date: date | None = Query(None, alias="date"),
     _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
 ):
-    from app.services.summary_service import build_daily_summary
+    from app.services.admin.summary import build_daily_summary
 
     result = await build_daily_summary(target_date)
     return {"status": "completed", "date": str(target_date), "metrics": result}
@@ -40,7 +40,7 @@ async def trigger_model_cost(
     target_date: date | None = Query(None, alias="date"),
     _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
 ):
-    from app.services.summary_service import build_daily_model_cost
+    from app.services.admin.summary import build_daily_model_cost
 
     result = await build_daily_model_cost(target_date)
     return {"status": "completed", "date": str(target_date), "metrics": result}
@@ -51,7 +51,7 @@ async def trigger_monthly_summary(
     target_date: date | None = Query(None, alias="date"),
     _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
 ):
-    from app.services.summary_service import build_monthly_summary
+    from app.services.admin.summary import build_monthly_summary
 
     result = await build_monthly_summary(target_date)
     return {"status": "completed", "date": str(target_date), "metrics": result}
@@ -61,7 +61,7 @@ async def trigger_monthly_summary(
 async def trigger_anomaly_detection(
     _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
 ):
-    from app.services.anomaly_service import detect_anomalies
+    from app.services.shared.anomaly import detect_anomalies
 
     result = await detect_anomalies()
     return {"status": "completed", "alerts_created": result}
@@ -71,7 +71,7 @@ async def trigger_anomaly_detection(
 async def trigger_pricing_sync(
     _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
 ):
-    from app.services.usage_service import fetch_openrouter_pricing
+    from app.services.shared.pricing_cache import fetch_openrouter_pricing
 
     await fetch_openrouter_pricing()
     return {"status": "sync_started"}

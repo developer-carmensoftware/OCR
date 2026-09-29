@@ -17,8 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.auth.session import SessionInfo
 from app.models.schemas import ARPreviewOut, ARPreviewRow
-from app.routers import email_review
-from app.services import ar_reconcile_service as ar_svc
+from app.routers.email_automation import review as email_review
+from app.services.credit_card import ar_reconcile as ar_svc
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
 

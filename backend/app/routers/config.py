@@ -1,7 +1,8 @@
 """
 User config router — persists per-BU settings that previously lived in localStorage.
 
-  GET  /api/v1/config/accounting                    → load accounting config for current BU
+  GET  /api/v1/config/accounting?bank_code=          → load accounting config (GL mappings scoped
+                                                        to bank_code, default the BU's own bank)
   PUT  /api/v1/config/accounting                    → upsert accounting config (FULL replace)
   PATCH /api/v1/config/accounting                   → correct only the fields named
   GET  /api/v1/config/ap-mapping/{tax_id}           → load AP column mapping for a vendor
@@ -23,8 +24,8 @@ from app.models.schemas import (
     AccountingConfigResponse,
     ConfigPatchRequest,
 )
-from app.services import accounting_config_service as svc
-from app.services.carmen_service import CarmenAPIError, get_departments
+from app.services.credit_card import accounting_config as svc
+from app.services.shared.carmen import CarmenAPIError, get_departments
 from app.utils.gl_filter import parse_default_account
 
 logger = logging.getLogger(__name__)
@@ -33,10 +34,13 @@ router = APIRouter(prefix="/api/v1/config", tags=["Config"])
 
 @router.get("/accounting", response_model=AccountingConfigResponse)
 async def get_accounting_config(
+    bank_code: str | None = Query(
+        None, description="Which bank's GL mappings to read. Omit for the tenant's own bank."
+    ),
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    return await svc.get_accounting_config(db, session.tenant_id)
+    return await svc.get_accounting_config(db, session.tenant_id, bank_code)
 
 
 @router.put("/accounting")

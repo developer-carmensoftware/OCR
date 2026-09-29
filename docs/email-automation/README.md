@@ -75,13 +75,17 @@ this folder adds the two cron-only routes neither of the above documents.
 
 | Path | Role |
 |---|---|
-| `backend/app/services/email_ingest_service.py` | IMAP poll + the whole per-document pipeline (1116 lines) — the core of the feature |
-| `backend/app/services/email_settings_service.py` | Settings store, secrets, tag allocation, token health (730 lines) |
-| `backend/app/routers/email_automation.py` | The Settings API + the two cron-triggered ingest routes (407 lines) |
-| `backend/app/routers/email_review.py` | The review queue's own API, on our session JWT rather than the customer's Carmen token |
+| `backend/app/services/email_automation/ingest.py` | The IMAP poll and forwarding-confirmation sweep: routes each attachment to its BU and hands it to the pipeline |
+| `backend/app/services/email_automation/pipeline.py` | One document end to end: open, charge, extract, GL-map, post — `_run_document()` and its refund boundary |
+| `backend/app/services/email_automation/ledger.py` | Every `email_documents` state write: claim, park, finish, dedupe, `_review_flags()` |
+| `backend/app/services/email_automation/review.py` | The human's two verbs: `approve_document()` / `reject_document()` |
+| `backend/app/services/email_automation/ingest_settings.py` | Settings store and its validation, tag allocation, tax-ID checks, readiness |
+| `backend/app/services/email_automation/credential.py` | The two secrets (PDF passwords, Carmen posting token): decrypt, verify, store, token health |
+| `backend/app/routers/email_automation/settings_api.py` | The Settings API + the two cron-triggered ingest routes (407 lines) |
+| `backend/app/routers/email_automation/review.py` | The review queue's own API, on our session JWT rather than the customer's Carmen token |
 | `backend/app/models/email_automation.py` | ORM: `EmailIngestSettings`, `EmailDocument` |
 | `backend/app/models/schemas/email_automation.py` | Request payloads: `RuleIn`, `SettingsIn`, `TokenIn` |
-| `frontend/src/pages/EmailSettings.tsx` + `frontend/src/hooks/email-settings/` + `frontend/src/lib/api/emailAutomation.ts` | The internal test surface at `#/email-settings` — see [02-architecture.md](02-architecture.md#frontend-surface) |
-| `frontend/src/pages/ReviewQueue.tsx` + `ReviewDocument.tsx` + `hooks/credit-card/useReviewQueue.ts` + `lib/api/emailReview.ts` | The customer-facing queue at `#/CreditCardOCR` and the review page behind it |
-| `scripts/email_ingest_e2e.py` | End-to-end script against the real dev mailbox + database |
+| `frontend/src/features/email-settings/pages/EmailSettings.tsx` + `frontend/src/hooks/email-settings/` + `frontend/src/features/email-settings/api/emailAutomation.ts` | The internal test surface at `#/email-settings` — see [02-architecture.md](02-architecture.md#frontend-surface) |
+| `frontend/src/features/credit-card/pages/ReviewQueue.tsx` + `ReviewDocument.tsx` + `features/credit-card/hooks/useReviewQueue.ts` + `features/credit-card/api/emailReview.ts` | The customer-facing queue at `#/CreditCardOCR` and the review page behind it |
+| `scripts/qa/email_ingest_e2e.py` | End-to-end script against the real dev mailbox + database |
 | `supabase/migrations/20260803000000_email_automation.sql` and eight migrations after it | Schema — full lineage in [04-data-model.md](04-data-model.md#migration-lineage) |

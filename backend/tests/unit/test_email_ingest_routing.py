@@ -15,10 +15,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services import email_imap as imap
-from app.services import email_ingest_service as ingest
-from app.services import email_settings_service as es
-from app.services.email_ingest_service import (
+from app.services.email_automation import imap, ingest
+from app.services.email_automation import ingest_settings as es
+from app.services.email_automation.imap import (
     gmail_confirm_code,
     match_rules,
     sender_allowed,
@@ -91,6 +90,37 @@ def test_the_bare_address_yields_no_tag():
 def test_another_domains_plus_address_is_not_our_tag():
     assert tag_from_recipients(["AIAGENT+a1b2c3d4@example.com"]) is None
     assert tag_from_recipients(["someoneelse+a1b2c3d4@carmensoftware.com"]) is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        # Routed live to the BU owning the tag before the regex had edges (2026-09-24 QA, F-3).
+        "AIAGENT+a1b2c3d4@carmensoftware.com.evil.test",
+        "for <AIAGENT+a1b2c3d4@carmensoftware.com.evil.test>; Wed, 6 Aug 2026 09:00:00 -0700",
+        "AIAGENT+a1b2c3d4@carmensoftware.com-evil.test",
+        # A different mailbox whose local part merely ends in ours.
+        "xAIAGENT+a1b2c3d4@carmensoftware.com",
+        "a.AIAGENT+a1b2c3d4@carmensoftware.com",
+        "foo+AIAGENT+a1b2c3d4@carmensoftware.com",
+    ],
+)
+def test_a_lookalike_address_is_not_our_tag(value):
+    assert tag_from_recipients([value]) is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "<AIAGENT+a1b2c3d4@carmensoftware.com>",
+        "AIAGENT+a1b2c3d4@carmensoftware.com;",
+        "AIAGENT+a1b2c3d4@carmensoftware.com.",  # sentence-ending dot in free text
+        "Accounts <AIAGENT+a1b2c3d4@carmensoftware.com>",
+        "AIAGENT+a1b2c3d4@carmensoftware.com, other@example.com",
+    ],
+)
+def test_the_tag_survives_the_punctuation_real_headers_put_around_it(value):
+    assert tag_from_recipients([value]) == "a1b2c3d4"
 
 
 def test_no_delivery_headers_at_all_yields_no_tag():
@@ -176,6 +206,40 @@ def test_a_delivery_header_wins_over_a_received_clause():
         " Wed, 5 Aug 2026 23:05:50 -0700 (PDT)\n"
     )
     assert tag_from_recipients(imap._recipients(msg)) == "a1b2c3d4"
+
+
+# ── auth_verdict — measurement of who really sent the mail ─────────────────────
+
+
+def test_the_verdict_is_read_from_our_own_mx_header():
+    msg = _msg(
+        "Authentication-Results: mx.google.com;\n"
+        "       dkim=pass header.i=@ktc.co.th header.s=s1 header.b=abc;\n"
+        "       spf=softfail (google.com: domain of x@ktc.co.th) smtp.mailfrom=x@ktc.co.th;\n"
+        "       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=ktc.co.th\n"
+    )
+    assert imap.auth_verdict(msg) == "dmarc=pass dkim=pass spf=softfail"
+
+
+def test_a_forged_pass_below_a_foreign_top_header_is_not_trusted():
+    """Only the topmost header is ours; anything under it came with the mail."""
+    msg = _msg(
+        "Authentication-Results: relay.evil.example; dmarc=fail\n"
+        "Authentication-Results: mx.google.com; dkim=pass; spf=pass; dmarc=pass\n"
+    )
+    assert imap.auth_verdict(msg) is None
+
+
+def test_a_forged_pass_under_our_top_header_is_ignored():
+    msg = _msg(
+        "Authentication-Results: mx.google.com; dkim=none; spf=fail; dmarc=fail\n"
+        "Authentication-Results: mx.google.com; dkim=pass; spf=pass; dmarc=pass\n"
+    )
+    assert imap.auth_verdict(msg) == "dmarc=fail dkim=none spf=fail"
+
+
+def test_no_header_is_no_verdict():
+    assert imap.auth_verdict(_msg("From: a@b.com\n")) is None
 
 
 # ── resolve_by_tag ─────────────────────────────────────────────────────────────
@@ -280,9 +344,9 @@ def test_missing_sender_or_subject_is_not_a_crash():
 
 # ── sender_allowed — the optional owner-address layer ─────────────────────────
 
-# From + To + Cc as the poll concatenates them, for each arrival mode.
-_AUTO = 'From: "KTC" <no-reply@ktc.co.th> To: accounting@hotelgroup.com'
-_MANUAL = "From: Somchai <somchai@hotelgroup.com> To: AIAGENT+a1b2c3d4@carmensoftware.com"
+# From + To + Cc comma-joined, exactly as `fetch_pending` builds `people`, per arrival mode.
+_AUTO = '"KTC" <no-reply@ktc.co.th>, accounting@hotelgroup.com'
+_MANUAL = "Somchai <somchai@hotelgroup.com>, AIAGENT+a1b2c3d4@carmensoftware.com"
 
 
 @pytest.mark.parametrize(
@@ -304,6 +368,13 @@ _MANUAL = "From: Somchai <somchai@hotelgroup.com> To: AIAGENT+a1b2c3d4@carmensof
         (["accounting@other.com"], _AUTO, False),
         # Case-insensitive, and the display-name form needs no parsing.
         (["SOMCHAI@hotelgroup.com".lower()], _MANUAL.upper(), True),
+        # Whole addresses, not substrings (CA-102 M-009): a registered address that merely
+        # occurs inside another one, or inside a display name the sender wrote, is no match.
+        (["accounting@hotelgroup.com"], "ap.accounting@hotelgroup.com", False),
+        (["accounting@hotelgroup.com"], "accounting@hotelgroup.com.evil.io", False),
+        (["accounting@hotelgroup.com"], '"accounting@hotelgroup.com" <x@evil.io>', False),
+        # No readable address at all fails closed once a list is set.
+        (["accounting@hotelgroup.com"], "", False),
     ],
 )
 def test_sender_allowed(owners, people, allowed):
@@ -311,12 +382,12 @@ def test_sender_allowed(owners, people, allowed):
 
 
 def test_people_addresses_names_what_a_refused_mail_carried():
-    """The header shapes of the 2026-08-28 incident, as `fetch_unseen` concatenates them.
+    """The header shapes of the 2026-08-28 incident, as `fetch_pending` concatenates them.
 
     A BU had registered `acounting@hotelgroup.com` for a mailbox spelled
     `accounting@hotelgroup.com`, and every document it forwarded was skipped with a
     message that named no address at all. This is what makes the near-miss readable — and
-    it fails if the comma join in `fetch_unseen` is ever reverted, because `getaddresses`
+    it fails if the comma join in `fetch_pending` is ever reverted, because `getaddresses`
     parses an address list, not headers run together on whitespace.
     """
     people = ", ".join(

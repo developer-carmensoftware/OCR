@@ -62,7 +62,7 @@ Every row here was decided in the design session, not inferred.
 
 ## 3. The cut
 
-One place in [`email_ingest_service.py`](../../backend/app/services/email_ingest_service.py).
+One place in [`email_automation/ingest.py`](../../backend/app/services/email_automation/ingest.py).
 Everything above line 767 is unchanged: the gate ladder still runs in full, still charges,
 still auto-fills missing GL mappings, still parks on `tax_id_mismatch` or `mapping_incomplete`
 (the latter now parks *for review* rather than failing, with review on — §10 #30).
@@ -86,7 +86,7 @@ step would fill the queue with documents whose only problem is a missing mapping
 about to fill by itself.
 
 **`carmen_token` and `carmen_uri` are deliberately not persisted.** Approve re-reads them via
-`es.posting_target(db, row)`. They rotate, and `sweep_token_health` may have unverified them
+`credential.posting_target(db, row)`. They rotate, and `sweep_token_health` may have unverified them
 while the document sat.
 
 ### What must be re-checked at approve time
@@ -228,7 +228,7 @@ Merge-on-omit is the idiom `_merge_rule` already uses for `pdf_password_enc`.
 
 ## 5. API
 
-New router `backend/app/routers/email_review.py`, prefix `/api/v1/email`, every route
+New router `backend/app/routers/email_automation/review.py`, prefix `/api/v1/email`, every route
 `Depends(get_current_session)`. **Not** the `_caller`/`_resolve` Carmen-token path in
 `email_automation.py` — that exists for Carmen's server calling us; this is our own
 authenticated frontend.
@@ -249,26 +249,30 @@ Schemas go in the existing `app/models/schemas/email_automation.py`. `paginate()
 ### Approve, precisely
 
 ```python
-# routers/email_review.py — the shape, not the code
+# routers/email_automation/review.py — the shape, not the code
 async with async_session() as db:
-    doc = await _claim_for_approval(db, doc_id, tenant_id)   # SELECT ... FOR UPDATE,
-                                                             # refuse if status != pending_review
-    token, uri = await es.posting_target(db, settings_row)    # fresh, never persisted
-
-tenant_ctx = current_tenant_id.set(tenant_id)                 # both ContextVars, or
-uri_ctx = current_carmen_uri.set(uri)                         # post_gljv has no host
+    doc = await _claim_for_review(db, doc_id, tenant_id)     # compare-and-set on
+                                                             # posting_started_at, committed
+posted = False
 try:
+    token, uri = await credential.posting_target(db, settings_row)    # fresh, never persisted
+    tenant_ctx = current_tenant_id.set(tenant_id)             # both ContextVars, or
+    uri_ctx = current_carmen_uri.set(uri)                     # post_gljv has no host
     if await has_submitted_doc(tenant_id, doc_no, doc_date):  # re-check, not the stale flag
         raise DuplicateDocument(...)
     result = await post_gljv(build_gljv_payload(...), token)
-    await _mark_submitted(card_id)
+    posted = True
+    await _mark_submitted(tenant_id, doc.task_id)             # the row's own task, never
+                                                              # the client's extracted.id
     tax_note = await _post_input_tax(...) if body.post_input_tax else None
     await _finish(doc.id, status="posted", jv_no=..., error=tax_note)   # clears review_payload
-finally:
+finally:                                                      #  and the claim
     current_carmen_uri.reset(uri_ctx); current_tenant_id.reset(tenant_ctx)
+    if not posted:
+        await _release_claim(doc.id)                          # approvable again at once
 ```
 
-Three things that will be got wrong if not written down:
+Four things that will be got wrong if not written down:
 
 1. **Do not post through `routers/carmen.py:proxy_gljv`.** It reads `session.carmen_token` —
    the *reviewer's* token. An ingested document must post under the **BU's stored credential**,
@@ -276,8 +280,19 @@ Three things that will be got wrong if not written down:
 2. **Both ContextVars, reset in `finally`.** `post_gljv` reads the host from
    `current_carmen_uri`; `log_llm_usage` reads `current_tenant_id`. This is the same setup
    `_process_attachment` does at lines 591-592.
-3. **`SELECT ... FOR UPDATE` on the claim.** Two people in the same BU can have the queue open.
-   The second click must find a row that is no longer `pending_review` and say so.
+3. **A claim that outlives the session, not a lock inside it.** Two people in the same BU can
+   have the queue open, so the second click must be refused. This was first built as
+   `SELECT … FOR UPDATE` — in a session that closed before `post_gljv` ran, so the lock was
+   gone when it mattered and two approvals both posted (DEF-1, found by the 2026-09-24 QA run,
+   `docs/email-automation/qa/`). It is now a compare-and-set on
+   `email_documents.posting_started_at`: the second approve — or a reject arriving mid-post —
+   gets 409, the claim is given back on every exit before Carmen accepts, and one older than
+   `POSTING_CLAIM_TTL` (5 min) belongs to a dead process and can be retaken. Holding the row
+   lock across the Carmen call (the wizard's way) was the alternative; it pins a pooled
+   connection for up to two Carmen timeouts against a pool of 10.
+4. **Stamp the card through the ledger row's own `task_id`, with the tenant in the WHERE
+   clause.** `ApproveIn.extracted` is whatever the browser sent; stamping `extracted.id` once
+   let one BU mark another's card posted (DEF-2).
 
 ### Notification
 
@@ -314,7 +329,7 @@ not a router.
 
 **The wizard does not change.** The current body of
 [`CreditCardOCR.tsx`](../../frontend/src/pages/CreditCardOCR.tsx) — `StepWizard` plus the four
-step branches — moves to `pages/ManualScan.tsx` unedited, and `useOcrWizard` is untouched. This
+step branches — moves to `features/credit-card/pages/ManualScan.tsx` unedited, and `useOcrWizard` is untouched. This
 makes the split *cheaper* to build than a single screen that shape-shifts: nothing has to merge.
 
 **The cost, stated plainly.** Every BU today has email ingestion off, so on day one the
@@ -699,7 +714,7 @@ record they intend to key by hand.
 
 ### i18n
 
-Customer-facing, so bilingual — `en` **and** `th` in `dict.ts` or `dict.test.ts` fails CI.
+Customer-facing, so bilingual — `en` **and** `th` in `i18n/dict/` or `dict.test.ts` fails CI.
 New namespace `review.*`. Reason-line phrases and reject reasons included.
 
 ---
@@ -923,7 +938,7 @@ introduced the worse half of it.
 | # | Change | Why |
 |---|---|---|
 | 45 | **Only `Needs review` carries a count.** `Posted` and `Not posted` lost theirs. | Backpressure caps pending at 50, so `Needs review` lives in 0–50 and falls as it is worked. The other two are lifetime totals that never fall: at four figures the number is furniture, on screen every day for ever, and nothing anyone can act on. The size of the list is in the `Pager` once the chip is open, which is where it answers something. The old comment's defence — *"a count that disappears makes the strip reflow"* — argued for printing a **zero**, not for the number existing; it still holds on the one chip that has one, and the other two cannot reflow because they never have a number to lose. |
-| 46 | **`ATTENTION_WINDOW` = 7 days.** The dot counts anomalies from the last week, not from all time. `counts` stays unwindowed. | #43 widened the dot to cover every failure — and `email_ingest_service.py` says `ponytail: single pass, no retry of a failed document`, with the mail already `\Seen`. A failed row is therefore terminal: fixing the filename rule today does not clear the 46 `no_rule_match` rows behind it. As written, #43's dot would have been lit for ever on any BU that has ever had a bad week, which is a warning nobody reads by the third day — including the day something new breaks. Seven days because these documents arrive monthly: long enough to notice and fix before next month's statement, short enough that the dot means "recently" rather than "ever". The window lives in `_counts_stmt`, asserted against compiled SQL (`test_the_dot_only_looks_at_the_last_week`) because a mock DB executes no date predicate. |
+| 46 | **`ATTENTION_WINDOW` = 7 days.** The dot counts anomalies from the last week, not from all time. `counts` stays unwindowed. | #43 widened the dot to cover every failure — and `email_automation/ingest.py` says `ponytail: single pass, no retry of a failed document`, with the mail already `\Seen`. A failed row is therefore terminal: fixing the filename rule today does not clear the 46 `no_rule_match` rows behind it. As written, #43's dot would have been lit for ever on any BU that has ever had a bad week, which is a warning nobody reads by the third day — including the day something new breaks. Seven days because these documents arrive monthly: long enough to notice and fix before next month's statement, short enough that the dot means "recently" rather than "ever". The window lives in `_counts_stmt`, asserted against compiled SQL (`test_the_dot_only_looks_at_the_last_week`) because a mock DB executes no date predicate. |
 
 Both are the same rule, and it is worth stating once: **a number on this page has to be able
 to go down.** It is what killed §6's `· 8 posted today` (#40) and it is what these two
@@ -1177,7 +1192,7 @@ support conversation this creates — *"it used to post everything"*. The honest
 the switch itself, which now names what still stops rather than promising that nothing does.
 
 The volume is bounded by how often a reading is imperfect, not by document count: on the
-banks measured, all seven `warnings` sites in `credit_card_service.py` are exception paths
+banks measured, all seven `warnings` sites in `credit_card/postprocess.py` are exception paths
 (assumed VAT rate, reconciliation drift, negative amounts, no fee lines found), and
 `mapping_guessed` fires once per *new payment type* — the guess is saved, so the second
 document carrying it is clean and posts.
@@ -1201,7 +1216,7 @@ document carrying it is clean and posts.
 still deferred — §12 left it for *"the day a supervisor asks for recency rather than a
 total"*, and #70's link answers the same dead end for the price of one button. §6's
 `Nothing waiting · 8 posted today` header line stays deleted (#40: a lifetime total only
-goes up). And `components/admin/ui/EmptyState.tsx` was not adopted: it is admin-only, its
+goes up). And `features/admin/components/ui/EmptyState.tsx` was not adopted: it is admin-only, its
 CSS lives in `admin.css`, its `action` slot has no CSS rule and no call site, and it puts
 body copy on `--text-4`, which `DESIGN.md:176` says can never reach AA.
 
@@ -1336,7 +1351,7 @@ rule good for one document, with the date and "Gross Amount" going into the cust
 `finalize_extraction`, **after** the normalizers (they match on the raw label —
 `_is_summary_row` reads "TOTAL") and before anything treats the string as a key. Both entry
 paths run through there, so the wizard and the pipeline cannot disagree about what the key
-is, and neither `cc_jv.py` nor its `ccJv.ts` twin had to move.
+is, and neither `credit_card/jv.py` nor its `ccJv.ts` twin had to move.
 
 Digits otherwise survive, for the reason `_fold` already leaves them alone: this BU has both
 `04-4100-03 SiamPay` and `04-4100-04 SiamPay`, one character apart and different accounts.
@@ -1458,8 +1473,8 @@ logos and unreadable files are gone from both chips, and still in `All`.
 
 A wording pass over every string the queue can print, read end to end for the first time.
 The column is fed from four places that had never been compared: `reasonFor`'s flag ladder,
-the `review.rc*` dictionary, `error_message` written by `email_ingest_service.py`, and
-`cc_input_tax.py`'s skip reasons. Three of the findings are defects, not taste.
+the `review.rc*` dictionary, `error_message` written by `email_automation/{ingest,pipeline}.py`, and
+`credit_card/input_tax.py`'s skip reasons. Three of the findings are defects, not taste.
 
 ### The defects
 
@@ -1473,7 +1488,7 @@ the `review.rc*` dictionary, `error_message` written by `email_ingest_service.py
 
 | # | Decision | Why |
 |---|---|---|
-| 89 | **`stopText` moves to `lib/reviewReasons.ts` and is the only thing that decides what a stopped row says** — the pending cell, the resolved cell and the dialog banner all call it. `full` is the single flag they differ on. | The invariant was already written down ("the two must not drift") and was already broken, because the rule lived in one screen's private helper. Two surfaces reading one module is what the module is for. |
+| 89 | **`stopText` moves to `shared/lib/reviewReasons.ts` and is the only thing that decides what a stopped row says** — the pending cell, the resolved cell and the dialog banner all call it. `full` is the single flag they differ on. | The invariant was already written down ("the two must not drift") and was already broken, because the rule lived in one screen's private helper. Two surfaces reading one module is what the module is for. |
 | 90 | **A pending row prints its detail, like a resolved one does.** | The phrase-only branch put Carmen's verdict on the dead row and hid it on the live one — backwards, since only the pending row can still be acted on. A reviewer could not triage the queue without opening each row. |
 | 91 | **The column is headed `Detail`, not `Message`.** | Every other header on the table names its content; this one named its medium. The cell is a reason while the row waits and an outcome once it resolves, and `Detail` is the word that covers both without promising either. English in both locales, like `Status` and `JV no.` |
 | 92 | **Sentence case on every phrase the column can print, backend details included.** | Five lowercase fragments, one capitalised phrase and two first-person sentences was four grammars in one scan. A reader's eye re-orients at each change, in the one column they are scanning to decide what to open. |
@@ -1516,7 +1531,7 @@ the column says — its colour, and whether it says anything at all.
 | # | Decision | Why |
 |---|---|---|
 | 96 | **A pending row is never rose.** `reasonFor` drops tone `bad` entirely: every non-clean reason is amber, `Ready to post` stays green, and `.rq-reason--bad` belongs to the resolved-failure branch alone. The ladder still decides *which phrase* prints. | One colour, one meaning, in a column that holds both open and closed rows. The severity gradient it replaced was real but was being drawn in the vocabulary of the other half of the column: a reviewer scanning for what to open was shown "this is finished and it failed" on the row most needing them. Green/amber already separates skip-me from read-me, and the words carry the rest. |
-| 97 | **`no_rule_match` is in no view of the customer's app.** `_visible()` in `credit_card_activity.py` removes it from the window **and** the counts, so it is not a bucket with no chip — it is not in the arithmetic. `REASON_KEY`, `FIX` and both `review.rcNoRuleMatch` strings go with it, which retires the *Filename patterns* third of #93. | Reverses §14 #65, deliberately. That decision kept the rows under `all` so a BU whose pattern was too narrow could find the statements it dropped — a real failure, answered in a worse place: they would have to notice a shortfall and then read 46 rows of their own rule working to see the one that should not be there. The rows are still written and `#/admin/email` still lists them by reason, which is where support already diagnoses a pattern, reached by the customer asking. |
+| 97 | **`no_rule_match` is in no view of the customer's app.** `_visible()` in `services/credit_card/activity.py` removes it from the window **and** the counts, so it is not a bucket with no chip — it is not in the arithmetic. `REASON_KEY`, `FIX` and both `review.rcNoRuleMatch` strings go with it, which retires the *Filename patterns* third of #93. | Reverses §14 #65, deliberately. That decision kept the rows under `all` so a BU whose pattern was too narrow could find the statements it dropped — a real failure, answered in a worse place: they would have to notice a shortfall and then read 46 rows of their own rule working to see the one that should not be there. The rows are still written and `#/admin/email` still lists them by reason, which is where support already diagnoses a pattern, reached by the customer asking. |
 
 `_visible()` is NULL-safe by construction and that is the whole reason it is a named function
 rather than a `~and_(...)` at each call site: `NOT (status = 'skipped' AND reason_code =
@@ -1587,3 +1602,85 @@ now, and it is what a support conversation reads.
 - **Removing `auto_post` from `ReviewStatus`.** `build_settings_response` computes it
   anyway, and "is this BU on auto-post" is the first question of every support thread about
   a document that did or did not wait.
+
+---
+
+## §22 — The bell is kept current, not appended to (2026-09-23)
+
+§52 batched the bell to one row per BU per poll. It stayed one row per *poll* — a BU that
+did not open the app for three polls in a row got three `document_pending_review` rows and
+a separate `document_blocked` row riding beside each one, which is what "too many
+notifications" actually meant: not that any single row was wrong, but that nothing ever
+stopped adding rows for a queue the customer had not looked at yet.
+
+A grilling session with the user (2026-09-23) settled the bell's role first — an **action
+inbox**, not an activity feed — and every decision below follows from that: an outcome the
+queue already shows on its own (posted, a per-document detail) does not need a bell row
+that says the same thing again, and a row that is still true does not need a second copy.
+
+### The decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 102 | **`notification_service.notify_collapsed(db, tenant_id, type_, key, build_payload)`.** Finds the tenant's newest *unread* row of that `type_`; if its payload's `key` matches, replaces the payload and bumps `created_at` (the row moves to the top and re-counts as new); otherwise behaves like `notify`. Once the customer reads a row, the next call starts a fresh one. | The one mechanism both call sites below need — a live gauge (queue size) and a running counter (occurrences of a reason) both want "fold into what's already unread, start over once it's read". Two copies of that fold, one per call site, is the drift `notify_collapsed` exists to rule out. |
+| 103 | **`_notify_pending` folds `document_blocked` into `document_pending_review`.** One row, `{"pending": N, "blocked": M}` — `M` only present when non-zero. Both figures are recounted from the queue on every poll (`_pending_count`), not carried over from what this poll alone parked, so a customer who skipped three polls sees today's true total, not the last poll's delta. | §52's `document_blocked` was a second row saying "something in the queue you already know about is still blocked" — read as noise the moment it repeated. Folding it into the row that already says "N waiting" costs nothing extra to read and never announces the same blocked document twice. |
+| 104 | **`sender_not_allowed` leaves `NOTIFIABLE_SKIPS`.** The ledger row (`#/admin/email`, the settings page) is unchanged; only the bell stops ringing for it. | Anyone who learns a BU's `AIAGENT+<tag>@` address can make this fire, for mail the customer never sent and cannot act on by looking at it — the one `NOTIFIABLE_SKIPS` reason that was not the customer's own document. `ATTENTION_REASONS` in `services/credit_card/activity.py` is untouched: the queue's dot on the `unposted` chip is a different question (is this row worth a reviewer's attention while they're already looking at the chip) from the bell's (is this worth interrupting them for), and only the second one changed. |
+| 105 | **`document_blocked` / `document_failed` collapse per `reason_code`, with a running `count`, not per document.** `_finish` builds `{"reason_code", "count": prev+1, "attachment": <last one>, "message"}` — the payload carries no `document_id`. `document_posted` is the deliberate exception and keeps `notify()` per document: the customer asked, in the same session, for a receipt with *that* document's JV number, not a running count. | A bad PDF password or a dead extractor repeats across a whole batch exactly like a busy poll does — §52's fix for one was never applied to the other. `wrong_pdf_password` and `unsupported_attachment` are the only reasons `document_blocked` carries (§104 removed the third); `document_failed` is `unreadable_document` in practice (every other post-charge refusal parks reviewable under §13/#22 instead of finishing). |
+| 106 | **A collapsed blocked/failed row opens the `unposted` chip (`#/CreditCardOCR?filter=unposted`), not a per-document dialog.** `useReviewQueue` takes an optional `initialFilter` that skips its own today→review→success fall-through when the caller already named a chip. `NotificationBell.tsx`'s `isCollapsed(payload)` (`typeof payload.count === 'number'`) is what tells a new collapsed row from an old per-document one still sitting in a customer's unread list — the old shape still opens `NotificationDetailModal` exactly as before. | There is no single document left to show once the row means "N of them" — `_chip_expr` puts both a skipped `wrong_pdf_password`/`unsupported_attachment` and a failed `unreadable_document` under `unposted`, so one destination covers both collapsed types. The old-shape branch is not a migration path; `user_notifications` gets no backfill, so rows written before this section simply keep reading as they always did until they age out (`UserNotification`'s own 30-day-retention docstring, `models/billing.py`). |
+
+### What a BU will notice
+
+Fewer bell rows for the same events, not different ones. A poll that used to add up to two
+rows (`document_pending_review` + `document_blocked`) now touches at most one, and it is the
+*same* row across polls until it is read. A batch of documents failing on the same PDF
+password used to be one row per file; it is one row with a count now, and clicking it opens
+the `Not posted` chip instead of one dialog per file. A stranger's mail to the BU's `+tag`
+address no longer rings the bell at all (it is still on `#/admin/email` if anyone goes
+looking). `document_posted` is unchanged — still one receipt per document.
+
+### Considered and not done
+
+- **A digest / scheduled summary.** Solves a different problem (batching *time*, not
+  *repetition*) and adds a scheduler for something `notify_collapsed` already fixes without
+  one.
+- **A unique partial index on `(tenant_id, type, key) WHERE read_at IS NULL`, upserted in
+  one statement.** Would remove the SELECT-then-mutate round trip, at the cost of a
+  migration and a constraint every future notification type has to satisfy. Revisit if the
+  bell ever needs to survive concurrent writers racing the same row — today's writers
+  (`_notify_pending` inside `_poll_lock`, `_finish` per document) don't.
+- **Recomputing the blocked/failed count from the ledger instead of incrementing it.** Would
+  match `document_pending_review`'s "always the live truth" rule, but `wrong_pdf_password`/
+  `unsupported_attachment`/`unreadable_document` rows are terminal — a live COUNT(*) would
+  read the BU's entire history, not "how many since you last looked". The two call sites
+  want different arithmetic, which is why `build_payload` takes the previous payload instead
+  of `notify_collapsed` deciding for them.
+- **Migrating or marking-read the rows already in the database.** Nothing reads `key` on an
+  old row, so it simply never folds and behaves exactly as it always has until it ages out.
+
+## §23 — The landing page is a log of what credits went on, not an email pitch (2026-09-23)
+
+`#/CreditCardOCR` showed a full-page pitch for email forwarding (`NotSetUp`) to every BU
+that had not switched it on and had no rows. Most BUs scan by hand and will keep doing so,
+and for them the pitch was the whole page. Worse, it could not go away on its own for a BU
+that scanned but never posted: manual scans were listed only once `submitted_at` was set,
+so a scan charged at extraction and abandoned at step 3 left no trace. The page could not
+answer the question a manual-only BU actually brings to it: *what did my credits go on?*
+
+A grilling session with the user (2026-09-23) settled the page's role first: an **activity
+log** over both sources, with email as one way in. Everything below follows from that.
+
+### The decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 107 | **`NotSetUp` is deleted, and so is the in-app pitch.** A BU with no rows at all gets `NoScansYet`: one sentence and **Upload documents**. Carmen's own settings screen introduces the automation. With it go `getReviewStatus` (its only reader), the `review.intro*`/`step*`/`copyAddress` strings and the `.rq-address`/`.rq-steps` CSS. `GET /api/v1/email/status` stays on the backend. It has no caller in this app now. | An ad on the landing page told a manual-only BU it was using the product wrong. A dismissible banner and a secondary button were both considered. The user chose no in-app pitch at all. |
+| 108 | **A manual scan that was charged and never posted is listed.** `credit_cards.submitted_at IS NULL` → `status: "scanned"`, timestamped by `created_at`, under `unposted`, `today` and `all` (`MANUAL_CHIPS`). "Has a `credit_cards` row" already means "was charged": a failed extraction is refunded before `finalize_extraction` writes one. This reverses `_manual_row`'s old "drafts are excluded". | Once extraction returns the document is charged, whatever happens next (Key Design Decisions, *charge before the LLM*). Hiding those rows made the log disagree with the balance. |
+| 109 | **View-only, red "Not posted", no dot.** No Review/Resume/Rescan action. The pill is the chip's own word in its own red, and `_anomalies` never sees these rows. | Line items are never persisted, so there is nothing to resume, and keeping them would reverse *Credit card line items are NOT persisted*. Stopping halfway is the scanner's choice, not a machine fault, so the dot would cry wolf. |
+| 110 | **No per-row credit figure.** | Asked and declined: the row being *there* is what answers "what did the credit go on". |
+
+### What a BU will notice
+
+A BU that has never scanned sees "No scans yet" and an upload button, not an email pitch.
+Every manual scan now appears as soon as it is read. It sits under Not posted, with the
+scanner's name, until it posts, and then under Posted. The Not posted chip's count grows
+with abandoned scans. Its dot does not light for them.

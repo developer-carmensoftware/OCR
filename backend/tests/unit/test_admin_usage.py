@@ -490,7 +490,7 @@ class TestTenantRanking:
         db = AsyncMock()
         db.execute.side_effect = [self._perf_rows(), self._empty_tenant_map()]
         with patch(
-            "app.services.usage_analytics_service.get_tenant_ranking",
+            "app.services.admin.usage_analytics.get_tenant_ranking",
             new_callable=AsyncMock,
         ) as mock_rank:
             mock_rank.return_value = []
@@ -501,7 +501,7 @@ class TestTenantRanking:
         db = AsyncMock()
         db.execute.side_effect = [self._perf_rows(), self._empty_tenant_map()]
         with patch(
-            "app.services.usage_analytics_service.get_tenant_ranking",
+            "app.services.admin.usage_analytics.get_tenant_ranking",
             new_callable=AsyncMock,
         ) as mock_rank:
             mock_rank.return_value = []

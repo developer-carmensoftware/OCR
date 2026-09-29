@@ -12,7 +12,7 @@ import pytest
 
 from app.constants import DocType
 from app.models.schemas import ExtractedCreditCardData
-from app.services import ocr_service
+from app.services.credit_card import ocr as ocr_service
 
 
 def _pdf() -> bytes:

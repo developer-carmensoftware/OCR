@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.exceptions import NotFoundError
+from app.services.billing.slip_storage import StorageError
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
 
@@ -222,6 +224,43 @@ def test_get_slip_url_returns_404_when_no_slip():
         resp = client.get(f"{BASE}/credit-orders/{order.id}/slip-url", headers=AUTH)
 
     assert resp.status_code == 404
+
+
+def test_get_slip_url_is_404_when_the_file_is_gone_from_storage():
+    """A slip whose file FileService no longer has (every pre-2026-07-13 upload) is a
+    404 with a reason, not a 502 that counts as a server error on #/admin/errors."""
+    order = _order()
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _scalar(order)
+
+    with (
+        patch(
+            "app.routers.admin.credits.storage_service.signed_url",
+            new=AsyncMock(side_effect=NotFoundError("Slip file not found in storage")),
+        ),
+        make_admin_test_client(mock_db) as client,
+    ):
+        resp = client.get(f"{BASE}/credit-orders/{order.id}/slip-url", headers=AUTH)
+
+    assert resp.status_code == 404
+    assert "not found in storage" in resp.json()["detail"]
+
+
+def test_get_slip_url_is_502_when_storage_fails():
+    order = _order()
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _scalar(order)
+
+    with (
+        patch(
+            "app.routers.admin.credits.storage_service.signed_url",
+            new=AsyncMock(side_effect=StorageError("Storage unreachable")),
+        ),
+        make_admin_test_client(mock_db) as client,
+    ):
+        resp = client.get(f"{BASE}/credit-orders/{order.id}/slip-url", headers=AUTH)
+
+    assert resp.status_code == 502
 
 
 # ── POST /admin/credit-orders/{id}/approve ────────────────────────────────────
@@ -727,3 +766,58 @@ def test_order_reviewer_can_work_the_queue_but_not_credit_balances():
             kwargs = {"json": {}} if method == "post" else {}
             resp = getattr(client, method)(f"{BASE}{path}", headers=AUTH, **kwargs)
             assert resp.status_code == 403, f"{method} {path} leaked to order_reviewer"
+
+
+# ── GET /admin/credit-packs ───────────────────────────────────────────────────
+
+
+def _catalog_pack(code, kind, credits, price_thb, sort_order):
+    row = MagicMock()
+    row.code = code
+    row.kind = kind
+    row.credits = credits
+    row.price_thb = Decimal(str(price_thb))
+    row.price_annual_thb = None
+    row.sort_order = sort_order
+    row.is_active = True
+    row.description = f"{credits} credits"
+    return row
+
+
+def _catalog_db(rows):
+    scalars_result = MagicMock()
+    scalars_result.all.return_value = rows
+    execute_result = MagicMock()
+    execute_result.scalars.return_value = scalars_result
+    mock_db = make_mock_db()
+    mock_db.execute = AsyncMock(return_value=execute_result)
+    return mock_db
+
+
+def test_admin_credit_packs_returns_the_live_catalog_with_prices():
+    """The Credits page's top-up menu labels come from here, so the prices must be the
+    database's — the menu used to hardcode them and drifted (฿1,200 shown for ฿2,000)."""
+    mock_db = _catalog_db(
+        [
+            _catalog_pack("sub_starter", "subscription", 200, 490.0, 1),
+            _catalog_pack("pack_micro", "topup", 100, 450.0, 10),
+        ]
+    )
+
+    with make_admin_test_client(mock_db) as client:
+        resp = client.get(f"{BASE}/credit-packs", headers=AUTH)
+
+    assert resp.status_code == 200
+    body = {p["code"]: p for p in resp.json()}
+    assert body["pack_micro"]["price_thb"] == 450.0
+    assert body["pack_micro"]["price_annual_thb"] is None
+    assert body["sub_starter"]["price_annual_thb"] == 5292.0  # same annual_price() as /packs
+
+
+def test_admin_credit_packs_needs_quotas_read():
+    mock_db = _catalog_db([])
+
+    with make_admin_test_client(mock_db, perms={"orders:read"}) as client:
+        resp = client.get(f"{BASE}/credit-packs", headers=AUTH)
+
+    assert resp.status_code == 403

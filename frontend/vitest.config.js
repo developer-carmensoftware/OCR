@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
@@ -14,6 +15,10 @@ process.env.TZ = 'Asia/Bangkok'
 
 export default defineConfig({
   plugins: [react()],
+  // Mirrors vite.config.ts (and tsconfig.json's `paths`), or `@/` imports fail only under test.
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
   // Mirrors vite.config.ts — this config is separate, so the define has to be too
   // or anything rendering __APP_VERSION__ blows up only under test.
   define: {
@@ -28,7 +33,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
-      include: ['src/hooks/**', 'src/lib/**'],
+      // Every hooks/, lib/ and api/ folder, feature and shared alike (api/ was lib/api/).
+      include: ['src/**/hooks/**', 'src/**/lib/**', 'src/**/api/**'],
     },
   },
 })
