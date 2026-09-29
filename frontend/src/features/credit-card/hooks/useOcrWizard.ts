@@ -134,9 +134,13 @@ export function useOcrWizard() {
     restorePromptedRef.current = true
     const draft = loadDraft<CcDraft>('cc')
     if (!draft) return
+    // A JV id means the JV is already in Carmen, so the only thing left is step 4. Drafts
+    // written before useOcrSubmission advanced on success can say step 3 here, and step 3's
+    // submit is refused as a duplicate — so the id wins over the recorded step.
+    const posted = !!draft.data.carmenJvId || draft.data.step >= 4
     showModal({
       title: 'Unfinished document found',
-      message: draftPromptMessage(draft.data.headerData?.DocNo, draft.at),
+      message: draftPromptMessage(draft.data.headerData?.DocNo, draft.at, posted),
       type: 'info',
       confirmText: 'Restore',
       cancelText: 'Discard',
@@ -144,7 +148,7 @@ export function useOcrWizard() {
         extraction.restoreDraft(draft.data)
         setJvRows(draft.data.jvRows || [])
         setCarmenJvId(draft.data.carmenJvId ?? null)
-        setStep(draft.data.step)
+        setStep(posted ? Math.max(draft.data.step, 4) : draft.data.step)
         closeModal()
         showToast('Restored your unfinished document', 'success')
       },
@@ -282,6 +286,7 @@ export function useOcrWizard() {
     elapsed: extraction.elapsed,
     extractionStatus: extraction.extractionStatus,
     bank: extraction.bank,
+    cardId: extraction.cardId,
     setBank: extraction.setBank,
     headerData: extraction.headerData,
     details: extraction.details,

@@ -19,6 +19,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    Numeric,
     SmallInteger,
     String,
     Text,
@@ -127,6 +128,13 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
     # the only reason a manual scan can link into Carmen from the activity table the way an
     # email document does. NULL for anything posted before 20260831000000.
     jv_no = Column(String(50), nullable=True)
+    # The input-tax record's two sums, stamped with the JV, and when that record was filed.
+    # `tax_amt > 0 AND input_tax_at IS NULL` on a posted card = a VAT claim still owed —
+    # see 20260929000000_credit_cards_input_tax.sql for why this could not be left to the
+    # browser draft. All three NULL for anything posted before that migration.
+    commis_amt = Column(Numeric(14, 2), nullable=True)
+    tax_amt = Column(Numeric(14, 2), nullable=True)
+    input_tax_at = Column(DateTime(timezone=True), nullable=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
 
     task = relationship("OCRTask", back_populates="credit_card")

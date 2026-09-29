@@ -8,17 +8,30 @@ lives here.
 
 Kept deliberately in step with InputTaxReconciliation.tsx. `test_cc_input_tax.py`
 pins the arithmetic and the date/prefix derivation.
+
+`file_input_tax_for_card` is the third caller: a manual scan whose JV posted and whose
+step 4 never happened (the session died, or it was skipped), filed afterwards from the
+activity table out of the two sums stamped on the card with the JV.
 """
 
 from __future__ import annotations
 
 import calendar
 import logging
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.exceptions import CarmenServiceError, ConflictError, NotFoundError, ValidationError
+from app.models.business import CreditCard
+from app.models.catalog import Bank
 from app.models.schemas import ExtractedDetailRow
+from app.services.credit_card.accounting_config import description_for, get_accounting_config
 from app.services.credit_card.jv import num, r2
+from app.services.shared import carmen
 
 logger = logging.getLogger(__name__)
 
@@ -202,3 +215,70 @@ def build_input_tax_payload(
         "VnCode": "",
     }
     return payload, None
+
+
+async def file_input_tax_for_card(
+    db: AsyncSession, tenant_id: uuid.UUID, card_id: uuid.UUID, carmen_token: str
+) -> None:
+    """File the ACTX a posted manual scan still owes, and stamp `input_tax_at`.
+
+    The card is locked FOR UPDATE through the Carmen call, as `proxy_gljv` does, so two
+    presses serialize and the second is refused rather than filing twice.
+
+    Built from the card, not from a browser: the two sums were stamped with the JV, the
+    date/number/branch are the card's own, and the vendor, profile and wording are resolved
+    exactly as the email job resolves them. A reason `build_input_tax_payload` refuses on is
+    raised as it stands — it opens "Input tax not recorded" and names what is missing.
+    """
+    card = (
+        await db.execute(
+            select(CreditCard)
+            .where(
+                CreditCard.id == card_id,
+                CreditCard.tenant_id == tenant_id,
+                CreditCard.deleted_at.is_(None),
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if card is None:
+        raise NotFoundError("Document not found")
+    if card.submitted_at is None:
+        raise ConflictError("This document's JV has not been posted to Carmen")
+    if card.input_tax_at is not None:
+        raise ConflictError("The input tax for this document has already been recorded")
+    if card.tax_amt is None:
+        # Posted before the sums were stored — there is nothing to build the record from.
+        raise ConflictError("This document predates input-tax tracking; key it in Carmen")
+
+    bank_code: str | None = card.bank_code  # type: ignore[assignment]
+    config = await get_accounting_config(db, str(tenant_id), bank_code)
+    bank = await db.get(Bank, bank_code) if bank_code else None
+    try:
+        profiles = await carmen.get_tax_profiles(carmen_token)
+    except carmen.CarmenAPIError as e:
+        raise CarmenServiceError(f"Carmen tax profiles: {e.detail}") from e
+
+    payload, skipped = build_input_tax_payload(
+        [ExtractedDetailRow(commis_amt=str(card.commis_amt or 0), tax_amt=str(card.tax_amt))],
+        doc_no=card.doc_no,  # type: ignore[arg-type]
+        doc_date=card.doc_date.strftime("%d/%m/%Y") if card.doc_date else None,
+        bank=bank,
+        branch=card.branch_no or config.branch,  # type: ignore[arg-type]
+        description=description_for(config, bank_code),
+        tax_profiles_raw=profiles,
+    )
+    if payload is None:
+        raise ValidationError(skipped or "There is no VAT on this document to record")
+
+    try:
+        res = await carmen.post_input_tax(payload, carmen_token)
+    except carmen.CarmenAPIError as e:
+        raise CarmenServiceError(f"Carmen Input Tax: {e.detail}") from e
+    res = res or {}
+    if res.get("Code") != 0:
+        reason = res.get("UserMessage") or res.get("InternalMessage") or f"Code {res.get('Code')}"
+        raise ValidationError(f"Carmen: {reason}")
+
+    card.input_tax_at = datetime.now(UTC)  # type: ignore[assignment]
+    await db.commit()

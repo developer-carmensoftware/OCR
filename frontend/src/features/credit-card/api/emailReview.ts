@@ -84,6 +84,9 @@ export interface ReviewDocument {
    *  row then says it was scanned by hand without naming anybody, which is the honest
    *  answer; a raw user id would not be. */
   posted_by_name: string | null
+  /** A `manual` row whose JV posted, which owed VAT, and whose input-tax record was never
+   *  filed — the session died on step 4, or it was skipped. `recordInputTax` files it. */
+  input_tax_owed?: boolean
 }
 
 /** One document, opened. `extracted` is an `/extract` response verbatim, which is exactly
@@ -144,6 +147,24 @@ export async function markChipSeen(filter: ActivityFilter): Promise<void> {
     body: JSON.stringify({ filter }),
   })
   if (!res.ok) throw new Error(`Could not mark seen (${res.status})`)
+}
+
+/**
+ * File the input tax a posted manual scan still owes. Built server-side from the sums
+ * stamped on the card with its JV, and posted with this user's own Carmen token.
+ *
+ * 409 = nothing left to file (someone already did), 400 = the record cannot be built or
+ * Carmen refused it. Either way the server's words are what the user needs to read.
+ */
+export async function recordInputTax(cardId: string): Promise<void> {
+  const res = await apiFetch(API.creditCard.activityInputTax(cardId), { method: 'POST' })
+  if (!res.ok) {
+    const detail = await res
+      .json()
+      .then(d => (d as { detail?: string }).detail)
+      .catch(() => null)
+    throw new Error(detail || `Could not record input tax (${res.status})`)
+  }
 }
 
 export async function getPending(id: string): Promise<ReviewDocumentDetail> {

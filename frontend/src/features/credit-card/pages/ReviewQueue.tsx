@@ -401,7 +401,7 @@ export default function ReviewQueue() {
                   !hasWork &&
                   Array.from({ length: 3 }).map((_, i) => <RowSkeleton key={i} />)}
                 {rows.map(row => (
-                  <QueueRow key={row.id} row={row} onOpen={openDoc} />
+                  <QueueRow key={row.id} row={row} onOpen={openDoc} onChanged={reload} />
                 ))}
               </tbody>
             </table>
