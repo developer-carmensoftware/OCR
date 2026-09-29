@@ -4,6 +4,7 @@ import { buildQs, type QueryParams } from '@/features/admin/api/common'
 import { adminFetch } from '@/shared/api/adminAuth'
 import { API } from '@/shared/api/endpoints'
 import type { Page } from '@/shared/api/page'
+import type { CreditPack } from '@/shared/api/credits'
 
 export interface CreditBalance {
   tenant_id: string
@@ -19,6 +20,13 @@ export interface CreditLedgerEntry {
   ref: string | null
   note: string | null
   created_at: string | null
+}
+
+/** The live catalog (plans and top-ups) — the same rows the buyer's pricing page reads. */
+export async function fetchCreditPacks(): Promise<CreditPack[]> {
+  const res = await adminFetch(API.admin.creditPacks)
+  if (!res.ok) throw new Error('Failed to fetch credit packs')
+  return res.json()
 }
 
 export async function fetchCreditBalance(tenantId: string): Promise<CreditBalance> {

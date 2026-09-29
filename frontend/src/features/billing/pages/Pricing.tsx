@@ -15,7 +15,7 @@ import {
   clearPersistedCheckout,
   type CheckoutSession,
 } from '@/features/billing/hooks'
-import { PLAN_META, SALES_CONTACT } from '@/features/billing/constants'
+import { PLAN_META, SALES_CONTACT, annualSavePct } from '@/features/billing/constants'
 import {
   getPaymentInfo,
   type BillingPeriod,
@@ -143,11 +143,7 @@ export default function Pricing() {
   const { openOrders, reload } = useOrderHistory(1)
   const hasOpenOrder = openOrders.length > 0
   // Savings % for the toggle badge — derived from the catalog (same for every tier).
-  const annualSavePct = (() => {
-    const p = plans.find(pl => pl.price_annual_thb != null && pl.price_thb)
-    if (!p?.price_annual_thb) return null
-    return Math.round((1 - p.price_annual_thb / 12 / p.price_thb) * 100)
-  })()
+  const savePct = annualSavePct(plans)
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [resume, setResume] = useState<CheckoutSession | null>(() => loadPersistedCheckout())
   const [view, setView] = useState<'catalog' | 'checkout'>(resume ? 'checkout' : 'catalog')
@@ -199,6 +195,8 @@ export default function Pricing() {
           type="button"
           className="btn btn-sm btn-outline"
           onClick={() => setShowTutorial(true)}
+          // The tour quotes the live catalog; with no plans loaded it would teach no prices.
+          disabled={plans.length === 0}
         >
           <GraduationCap size={14} /> {t('nav.tutorial')}
         </button>
@@ -314,9 +312,9 @@ export default function Pricing() {
                         onClick={() => setBillingPeriod('annual')}
                       >
                         {t('plan.billingAnnual')}
-                        {annualSavePct != null && (
+                        {savePct != null && (
                           <span className="seg-save-pill">
-                            {t('plan.saveAnnualPct', { pct: annualSavePct })}
+                            {t('plan.saveAnnualPct', { pct: savePct })}
                           </span>
                         )}
                       </button>
@@ -392,7 +390,12 @@ export default function Pricing() {
 
       {showTutorial && (
         <Suspense fallback={null}>
-          <PurchaseTutorial open onClose={() => setShowTutorial(false)} />
+          <PurchaseTutorial
+            open
+            onClose={() => setShowTutorial(false)}
+            plans={plans}
+            packs={packs}
+          />
         </Suspense>
       )}
     </div>

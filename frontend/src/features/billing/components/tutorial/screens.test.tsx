@@ -2,9 +2,13 @@ import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
 import { SpotProvider } from '@/shared/components/tutorial/Spot'
 import { spotTarget } from '@/shared/components/tutorial/useCamera'
-import { PURCHASE_FIGURES } from './screens'
-import { PURCHASE_TUTORIAL } from './purchase'
+import { purchaseFigures } from './screens'
+import { purchaseTutorial } from './purchase'
+import { DEMO_PACKS, DEMO_PLANS } from './fixtures'
 
+const CATALOG = { plans: DEMO_PLANS, packs: DEMO_PACKS }
+const PURCHASE_FIGURES = purchaseFigures(CATALOG)
+const PURCHASE_TUTORIAL = purchaseTutorial(CATALOG)
 const FOCUS_STEPS = PURCHASE_TUTORIAL.map((s, i) => ({ ...s, n: i + 1 })).filter(s => s.spot)
 
 /**
@@ -66,5 +70,27 @@ describe('purchase tutorial figures', () => {
     expect(container.querySelector('.slip-chosen')).not.toBeNull()
     expect(container.querySelector('.slip-submit')).not.toBeNull()
     expect(container.querySelector('.slip-drop')).toBeNull()
+  })
+
+  /**
+   * The tour used to type its prices and had drifted from the catalog (no Lite, no
+   * Micro). Every price line is now written from the catalog it is given.
+   */
+  it('quotes every price from the catalog, not from its own copy', () => {
+    const step = (spot: string) => PURCHASE_TUTORIAL.find(s => s.spot === spot)!
+    const topup = step('topup-credits').en.body.join(' ')
+    expect(topup).toContain('**100 Credits:** ฿450 (฿4.50 per page on average)')
+    expect(topup).toContain('**10,000 Credits:** ฿20,000 (฿2.00 per page on average)')
+
+    const monthly = step('monthly-plans')
+    expect(monthly.en.body).toContain('• **Lite:** 100 documents / month (฿290 / month)')
+    // 10% is read off price_annual_thb (3,132 = 290 × 12 × 0.9), not typed.
+    expect(monthly.th.body.join(' ')).toContain('ส่วนลด **10%**')
+
+    const cheaper = purchaseTutorial({
+      plans: DEMO_PLANS,
+      packs: [{ ...DEMO_PACKS[0], price_thb: 400 }],
+    })
+    expect(cheaper.find(s => s.spot === 'topup-credits')!.en.body.join(' ')).toContain('฿400')
   })
 })

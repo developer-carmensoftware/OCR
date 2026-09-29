@@ -9,21 +9,14 @@ import {
   adjustCredits,
   fetchCreditBalance,
   fetchCreditLedger,
+  fetchCreditPacks,
   topupCredits,
   type CreditLedgerEntry,
 } from '@/features/admin/api/credits'
+import type { CreditPack } from '@/shared/api/credits'
+import { formatThb } from '@/shared/lib/money'
 import '@/styles/components/admin-credits.css'
 import { useT } from '@/i18n/LanguageContext'
-
-// Mirrors the active top-up credit_packs catalog (see migration 219).
-function getPacks(t: ReturnType<typeof useT>['t']) {
-  return [
-    { code: 'pack_micro', label: t('admin.credits.pack.micro') },
-    { code: 'pack_small', label: t('admin.credits.pack.small') },
-    { code: 'pack_medium', label: t('admin.credits.pack.medium') },
-    { code: 'pack_large', label: t('admin.credits.pack.large') },
-  ]
-}
 
 function getCols(t: ReturnType<typeof useT>['t']): Column<CreditLedgerEntry>[] {
   return [
@@ -50,7 +43,9 @@ function getCols(t: ReturnType<typeof useT>['t']): Column<CreditLedgerEntry>[] {
 
 export default function CreditsPage() {
   const { t } = useT()
-  const PACKS = getPacks(t)
+  // Read from the catalog, never listed here: these labels used to hardcode prices
+  // and showed ฿1,200 for a ฿2,000 pack by the time anyone looked.
+  const [packs, setPacks] = useState<CreditPack[]>([])
   // The ledger used to be a flat newest-100 with no date filter and no note — on the
   // one table whose entire purpose is being auditable, entry #101 was unreachable.
   const { params, set, server } = useTableQuery({
@@ -63,7 +58,7 @@ export default function CreditsPage() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [packCode, setPackCode] = useState(PACKS[0].code)
+  const [packCode, setPackCode] = useState('')
   const [adjustDelta, setAdjustDelta] = useState('')
   const [adjustNote, setAdjustNote] = useState('')
 
@@ -100,6 +95,20 @@ export default function CreditsPage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(refresh, [params])
+
+  useEffect(() => {
+    fetchCreditPacks()
+      .then(all => {
+        const topups = all.filter(p => p.kind === 'topup')
+        setPacks(topups)
+        setPackCode(code => code || (topups[0]?.code ?? ''))
+      })
+      .catch(e =>
+        toast.error(t('admin.credits.toast.loadFailed', { error: e?.message ?? 'failed to load' }))
+      )
+    // Once per visit: the catalog does not change under an open page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleTopup = async () => {
     setBusy(true)
@@ -170,16 +179,19 @@ export default function CreditsPage() {
                   onChange={e => setPackCode(e.target.value)}
                   aria-label={t('admin.credits.packAria')}
                 >
-                  {PACKS.map(p => (
+                  {packs.map(p => (
                     <option key={p.code} value={p.code}>
-                      {p.label}
+                      {t('admin.credits.packOption', {
+                        credits: p.credits.toLocaleString(),
+                        price: formatThb(p.price_thb),
+                      })}
                     </option>
                   ))}
                 </select>
                 <button
                   type="button"
                   className="btn btn-confirm"
-                  disabled={busy}
+                  disabled={busy || !packCode}
                   onClick={() => void handleTopup()}
                 >
                   {t('admin.credits.grant')}

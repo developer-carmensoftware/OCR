@@ -25,6 +25,7 @@ from app.models.schemas import (
     CreditBalanceResponse,
     CreditLedgerEntry,
     CreditOrderResponse,
+    CreditPackResponse,
     HoldBatchRequest,
     HoldBatchResponse,
     HoldRequest,
@@ -46,6 +47,7 @@ from app.services.shared.credits import (
     adjust_balance,
     get_credit_balance,
     get_ledger,
+    list_active_packs,
     topup_order,
 )
 
@@ -80,6 +82,16 @@ async def get_balance(
     _assert_scope(admin, tenant_id)
     balance = await get_credit_balance(tenant_id)
     return CreditBalanceResponse(tenant_id=tenant_id, balance=balance)
+
+
+@router.get("/credit-packs", response_model=list[CreditPackResponse])
+async def list_credit_packs(
+    db: AsyncSession = Depends(get_db),
+    _admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+):
+    """The live catalog, for the Credits page's top-up menu — same read as the buyer's
+    /credits/packs, so the menu can never show a price the database doesn't."""
+    return await list_active_packs(db)
 
 
 @router.post("/tenants/{tenant_id}/credits/topup", response_model=CreditBalanceResponse)
