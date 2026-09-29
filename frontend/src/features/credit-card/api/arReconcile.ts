@@ -8,9 +8,10 @@ import type { FieldMapping } from '@/shared/types/api'
  * payment-type mapping this feature used to own moved into
  * `bu_accounting_mapping_entries`, saved through `PUT /api/v1/config/accounting`
  * alongside commission/tax/net — not through this module any more. Reshaped again the
- * same day (Ticket D): the JV description template moved there too, so `ARSettings`
- * carries only `enabled` / `post_type` now. What is left here is that posting profile
- * and the JV preview, which still needs the *unsaved* form state to track edits live.
+ * same day (Ticket D): the JV description template moved there too. And on 2026-09-29
+ * `enabled` left as well — whether a bank reconciles is its email rule, set by Carmen's
+ * settings API — so `ARSettings` saves only `post_type`. What is left here is that and the
+ * JV preview, which still needs the *unsaved* form state to track edits live.
  */
 
 export type PostType = 'Detail' | 'Summary'
@@ -26,15 +27,15 @@ export interface ARMappingItem {
 
 export interface ARSettings {
   bank_code: string
-  enabled: boolean
   post_type: PostType
 }
 
-/** `ARSettings` plus what only the server can answer: whether this bank has a
- *  settlement layout at all (`banks.settlement_grouping is not null`) — what decides
- *  whether the merged mapping page's Settlement card renders for the bank currently
- *  selected. Not saved. */
+/** `ARSettings` plus what only the server can answer, neither of them saved from here:
+ *  whether the bank's email rule has reconciliation switched on (Carmen's setting), and
+ *  whether the bank has a settlement layout at all (`banks.settlement_grouping is not
+ *  null`) — what decides whether the mapping page's Settlement card renders for it. */
 export interface ARSettingsResponse extends ARSettings {
+  enabled: boolean
   has_settlement_layout: boolean
 }
 

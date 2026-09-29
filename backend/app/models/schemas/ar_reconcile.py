@@ -29,16 +29,15 @@ class ARMappingItem(BaseModel):
 
 
 class ARSettingsIn(BaseModel):
-    """Full replace of one (tenant, bank) posting profile.
+    """One bank's settlement JV grouping, saved from the mapping page.
 
-    No `jv_description_template` any more (Ticket D, 2026-09-22) — a settlement JV's
-    wording is the same field the fee-invoice path always used
-    (`bu_accounting_mapping_entries`'s config, `description`/`bank_descriptions`, saved
-    through `PUT /api/v1/config/accounting`), not a posting-profile concern of its own.
+    Only `post_type` since 2026-09-29: whether the bank reconciles at all is its email
+    rule (`doc_type: ar_reconcile`), written by Carmen's settings API — not a field here.
+    No `jv_description_template` either (Ticket D, 2026-09-22) — a settlement JV's wording
+    is the fee-invoice path's own `description`/`bank_descriptions`.
     """
 
     bank_code: str
-    enabled: bool = False
     post_type: str = PostType.DETAIL
 
     @field_validator("post_type")
@@ -50,10 +49,12 @@ class ARSettingsIn(BaseModel):
 
 
 class ARSettingsOut(ARSettingsIn):
+    # An active `ar_reconcile` email rule exists for this bank — read-only here, the
+    # switch is Carmen's.
+    enabled: bool = False
     # Whether this bank has a settlement layout at all (`banks.settlement_grouping is
-    # not null`) — what the merged mapping page reads to decide whether the
-    # Settlement card renders for the currently selected bank. Not saved; the server's
-    # own answer, same role the old dedicated screen's `banks[].supported` played.
+    # not null`) — what the mapping page reads to decide whether its Settlement card
+    # renders for the currently selected bank.
     has_settlement_layout: bool = False
 
 

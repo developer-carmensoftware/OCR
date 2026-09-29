@@ -280,12 +280,17 @@ export function useReviewDocument(id: string, onClose: () => void, onDone: () =>
       ? fixLinkProps({ href: '#/CreditCardOCR/mapping' })
       : null
 
-  // Every value on that screen is scoped to one bank profile, so the door carries this
-  // document's own bank rather than letting the screen open on its hardcoded default.
-  // Merged into the mapping page 2026-09-22 (decision #3); same `?bank=` contract.
-  const arSettingsHref = bankCode
-    ? `#/CreditCardOCR/mapping?bank=${encodeURIComponent(bankCode)}`
-    : '#/CreditCardOCR/mapping'
+  // Two doors behind one button, picked by what is wrong. No JV at all means this bank has
+  // no active settlement rule — the switch, which Carmen's settings screen owns since
+  // 2026-09-29, so that is where it opens. Otherwise the gap is an account, fixed on the
+  // mapping page, and every value there is per bank, so the door carries this document's.
+  const arSettingsLink = fixLinkProps({
+    href: !arJv
+      ? '/setting'
+      : bankCode
+        ? `#/CreditCardOCR/mapping?bank=${encodeURIComponent(bankCode)}`
+        : '#/CreditCardOCR/mapping',
+  })
 
   async function approve() {
     if (!doc) return
@@ -424,7 +429,7 @@ export function useReviewDocument(id: string, onClose: () => void, onDone: () =>
     arJv,
     arBlockReason,
     prefixFix,
-    arSettingsHref,
+    arSettingsLink,
     requestClose,
     updateHeader,
     updateAmount,

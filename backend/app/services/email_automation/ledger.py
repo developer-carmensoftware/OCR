@@ -11,16 +11,16 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.constants import DocType, Module
+from app.constants import DocType
 from app.database import async_session
-from app.models.business import CreditCard, OCRTask
+from app.models.business import CreditCard
 from app.models.email_automation import EmailDocument
 from app.models.schemas import ExtractedCreditCardData
 from app.services.credit_card.jv import num, r2
@@ -50,12 +50,6 @@ REVIEW_BACKLOG_CAP = 50
 # it. It still writes its ledger row (`#/admin/email` and the settings page can see it),
 # it just does not cost the customer's attention.
 NOTIFIABLE_SKIPS = ("wrong_pdf_password", "unsupported_attachment")
-
-# How stale "a settlement report posted" is allowed to be before the fee-invoice
-# double-book guard stops trusting it (`_settlement_recently_posted`). Wide enough to
-# span a weekend gap between a Friday and a Monday settlement; narrow enough that a
-# broken filename rule shows up as ordinary two-JV posting again within days, not weeks.
-_SETTLEMENT_FRESHNESS = timedelta(days=3)
 
 # ── Ledger ────────────────────────────────────────────────────────────────────
 
@@ -160,38 +154,6 @@ async def _possibly_posted(tenant_id: str, doc_no: str | None, doc_date: Any) ->
         logger.error("[email] Could not check for near-duplicate documents: %s", exc)
         return None
     return _overlapping_doc_no(doc_no, list(posted))
-
-
-async def _settlement_recently_posted(tenant_id: str, bank_code: str) -> bool:
-    """Has a settlement report for this bank actually posted lately?
-
-    `ar_reconcile_settings.enabled` is a static toggle, not proof the settlement report is
-    still arriving — its filename rule matches an exact report version number
-    (`KB1P554V2`) the bank could change, which would make it match nothing
-    (`no_rule_match`, silent by design) while this flag stayed on. The fee-invoice guard
-    that reads this exists only to stop a double-book; skipping on the flag alone would
-    then also silence the backup copy, leaving the BU with zero JVs and no signal (decision
-    log #28). Requiring recent proof instead fails open: no settlement report, no skip, the
-    fee invoice posts on its own exactly as it did before AR reconciliation existed.
-
-    `email_documents` carries no `doc_type` column (see `_already_pending`'s docstring), so
-    "was this a settlement report" is only answerable through its task's `module_id`.
-    """
-    cutoff = datetime.now(UTC) - _SETTLEMENT_FRESHNESS
-    async with async_session() as db:
-        res = await db.execute(
-            select(EmailDocument.id)
-            .join(OCRTask, OCRTask.id == EmailDocument.task_id)
-            .where(
-                EmailDocument.tenant_id == tenant_id,
-                EmailDocument.bank_code == bank_code,
-                EmailDocument.status == "posted",
-                OCRTask.module_id == Module.CC_AR_RECONCILE,
-                EmailDocument.updated_at >= cutoff,
-            )
-            .limit(1)
-        )
-        return res.scalar_one_or_none() is not None
 
 
 async def _already_pending(

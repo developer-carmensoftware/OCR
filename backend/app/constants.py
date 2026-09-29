@@ -24,6 +24,7 @@ class DocType:
 
     FEE_INVOICE = "fee_invoice"  # default: everything the wizard has ever scanned
     AR_RECONCILE = "ar_reconcile"  # KBANK KB1P554V2 merchant settlement report
+    ALL = (FEE_INVOICE, AR_RECONCILE)
 
 
 class PostType:

@@ -1369,4 +1369,16 @@ describe('a parked settlement report', () => {
     const link = screen.getByRole('link', { name: /AR reconciliation settings/i })
     expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
   })
+
+  it('sends a bank with no settlement rule to Carmen’s settings, where the switch lives', async () => {
+    // No JV means no active `ar_reconcile` rule for this bank — set on Carmen's settings
+    // screen since 2026-09-29, not on our mapping page, which would open on a bank with
+    // nothing to fix.
+    vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: null }))
+    mount()
+
+    const link = await screen.findByRole('link', { name: /AR reconciliation settings/i })
+    expect(link.getAttribute('href')).toMatch(/#\/setting$/)
+    expect(link).toHaveAttribute('target', '_blank')
+  })
 })

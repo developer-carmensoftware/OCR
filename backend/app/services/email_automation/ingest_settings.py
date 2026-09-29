@@ -53,6 +53,19 @@ async def _active_bank_codes(db: AsyncSession) -> set[str]:
     return set(rows)
 
 
+async def _settlement_bank_codes(db: AsyncSession) -> set[str]:
+    """Banks with a settlement-report layout (`banks.settlement_grouping` set) — the only
+    ones a rule may mark `ar_reconcile`."""
+    rows = (
+        await db.execute(
+            select(Bank.code).where(
+                Bank.settlement_grouping.is_not(None), Bank.deleted_at.is_(None)
+            )
+        )
+    ).scalars()
+    return set(rows)
+
+
 async def _bank_tax_ids(db: AsyncSession) -> set[str]:
     """Every issuer TIN we know about — the numbers a BU may not claim as its own.
 
@@ -479,6 +492,31 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
                         "field": f"rules[{i}].bank_code",
                         "code": "unsupported_bank",
                         "message": f"Unsupported bank code: {rule.bank_code}",
+                    }
+                )
+            if rule.doc_type is not None and rule.doc_type not in DocType.ALL:
+                errors.append(
+                    {
+                        "field": f"rules[{i}].doc_type",
+                        "code": "invalid",
+                        "message": f"doc_type must be one of {', '.join(DocType.ALL)}",
+                    }
+                )
+            elif rule.doc_type == DocType.AR_RECONCILE and (
+                not rule.bank_code or rule.bank_code not in await _settlement_bank_codes(db)
+            ):
+                # Checked here, where the switch is set, rather than discovered by the
+                # pipeline after the mail arrives: a settlement rule on a bank with no
+                # settlement layout would charge for a read no prompt exists for.
+                errors.append(
+                    {
+                        "field": f"rules[{i}].doc_type",
+                        "code": "no_settlement_layout",
+                        "message": (
+                            f"{rule.bank_code} has no settlement-report layout"
+                            if rule.bank_code
+                            else "A settlement-report rule must name its bank"
+                        ),
                     }
                 )
             if rule.bank_code in seen_banks:

@@ -246,7 +246,6 @@ export function useMapping() {
   interface SettlementSave {
     hasSettlementLayout: boolean
     mappingsToSave: Record<string, FieldMapping>
-    enabled: boolean
     postType: PostType
     bankCode: string
   }
@@ -348,7 +347,6 @@ export function useMapping() {
         try {
           await saveARSettings({
             bank_code: settlement.bankCode,
-            enabled: settlement.enabled,
             post_type: settlement.postType,
           })
         } catch (err) {

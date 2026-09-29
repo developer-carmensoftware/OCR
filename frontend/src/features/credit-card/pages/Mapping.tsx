@@ -1,7 +1,6 @@
 import { Network, Loader2, CheckCircle2, Scale } from 'lucide-react'
 import CustomModal from '@/shared/components/common/CustomModal'
 import Card from '@/shared/components/ui/Card'
-import Switch from '@/shared/components/ui/Switch'
 import '@/styles/pages/mapping.css'
 import '@/styles/pages/ar-reconcile.css'
 import '@/styles/components/mapping-row.css'
@@ -148,7 +147,6 @@ export default function Mapping() {
         ? {
             hasSettlementLayout: true,
             mappingsToSave: settlementCtrl.mappingsToSave,
-            enabled: settlementCtrl.enabled,
             postType: settlementCtrl.postType,
             bankCode,
           }
@@ -229,16 +227,13 @@ export default function Mapping() {
             <div className="ar-grid">
               <div className="ar-col">
                 <Card title={t('cc.settlementCardTitle')} icon={<Scale size={16} />}>
-                  <div className="ar-field" style={{ marginBottom: '1rem' }}>
-                    <Switch
-                      checked={settlementCtrl.enabled}
-                      onChange={settlementCtrl.setEnabled}
-                      label={t('ar.enabled')}
-                    />
-                    {!settlementCtrl.enabled && (
-                      <p className="ar-hint ar-hint-warn">{t('ar.enabledOffHint')}</p>
-                    )}
-                  </div>
+                  {/* Whether this bank reconciles at all is its email rule, switched in
+                      Carmen's settings (2026-09-29) — said here, not set here. */}
+                  {!settlementCtrl.enabled && (
+                    <p className="ar-hint ar-hint-warn" style={{ margin: '0 0 1rem' }}>
+                      {t('ar.enabledOffHint')}
+                    </p>
+                  )}
 
                   <fieldset className="ar-field ar-posttype">
                     <legend>{t('ar.postType')}</legend>

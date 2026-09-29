@@ -246,7 +246,8 @@ GET /api/v1/carmen/settings?uri=https%3A%2F%2Fhotelgroup.carmenwork.com&bu=hq
       "bank_sender_email": "no-reply@ktc.co.th",
       "filename_patterns": ["MDR", "Commission"],  // required, ≥1 — see §2.3
       "has_password": true,               // never the password itself
-      "is_active": true
+      "is_active": true,
+      "doc_type": "fee_invoice"           // "fee_invoice" | "ar_reconcile" — §2.9
     }
   ],
   "status": {                             // read-only, for Carmen to display
@@ -277,7 +278,8 @@ PUT /api/v1/carmen/settings
       "bank_sender_email": "no-reply@ktc.co.th",   // optional hint, see below
       "filename_patterns": ["MDR", "Commission"],  // REQUIRED, at least one
       "pdf_password": "1234",             // write-only: omit = keep, "" = clear
-      "is_active": true
+      "is_active": true,
+      "doc_type": "fee_invoice"           // OMIT = keep — §2.9
     }
   ]
 }
@@ -618,10 +620,9 @@ grey strip carrying `URI` and `BU`, then:
 **A rule card** is `Rule N` with a delete button, four controls in a wrapping grid — **Bank**
 (blank = *Other, detect from the document*, options from `GET /bank-codes`, never a second
 hardcoded list), **Bank sender email**, **PDF password** (blank = keep the stored one), and
-**Document type** (**ours** — `fee_invoice` vs `ar_reconcile`; skip it only if you never
-enable AR reconciliation for a BU, since a settlement report matched by a commission rule is
-read with the wrong layout) — then **Filename patterns \*** full width with an **Active**
-switch beside it.
+**Document type** (`fee_invoice` vs `ar_reconcile` — §2.9; skip it only if you never
+enable AR reconciliation for a BU, since it is the only switch that does) — then
+**Filename patterns \*** full width with an **Active** switch beside it.
 
 **Save semantics, which matter more than the layout.** The whole page is one dirty form with
 `SAVE SETTINGS` and `RESET` at the bottom, both disabled until something changes. One
@@ -638,6 +639,30 @@ rather than from what was typed (we normalise some values). Two rules follow fro
 Field errors from `errors[]` render under the input named by `field` (`tax_ids[0]`,
 `rules[1].filename_patterns`), and a failed save keeps the form dirty so nothing typed is
 lost. Everything is English; the page is a form, not a wizard — there are no steps.
+
+### 2.9 Settlement reports — `doc_type` on a rule is the switch (2026-09-29)
+
+KBANK sends two documents for one settlement: the commission tax invoice and the merchant
+settlement report (`KB1P554V2`). They share the bank, the date and the tax invoice number, so
+nothing on the page tells them apart — **the rule says which one its files are**.
+
+```jsonc
+{ "bank_code": "KBANK", "filename_patterns": ["KB1P554V2"], "is_active": true,
+  "doc_type": "ar_reconcile" }
+```
+
+- **`doc_type: "ar_reconcile"` on an active rule *is* "reconcile this bank".** There is no
+  other switch — not in our app, not elsewhere in this payload. To stop, set `is_active:
+  false` (the reports are then `no_rule_match`: recorded, never scanned, never charged) or set
+  `doc_type` back to `fee_invoice`.
+- **How the JV groups is not yours to send.** Detail (one credit line per printed payment
+  type) vs Summary (one per scheme) is an accounting choice that lives beside the GL accounts
+  each grouping needs, on our Mapping page. Never chosen = Detail.
+- **`doc_type` merges on omit**, like `auto_post` (§2.7): a client that does not send it keeps
+  what is stored.
+- **Validated on write** (`errors[]`, §2.8): `rules[i].doc_type` = `no_settlement_layout` when
+  the rule's bank has no settlement-report layout (today only `KBANK` has one) or the rule has
+  no `bank_code`; `invalid` for an unknown value.
 
 ---
 
@@ -899,11 +924,17 @@ The rest of the integration:
 | 6 | Yes/no on the proposed `document.*` events (§3.3) | outcome reporting |
 | 7 | Confirmation that automated JVs are distinguishable in `JvhSource` (§4) | audit review |
 | 8 | **An `auto_post` switch on the settings screen (§2.7)** — send it on `PUT /settings`, omit it everywhere else | a customer ever turning review off |
+| 9 | **Document type on the rule card (§2.9)** — `doc_type`; echo it back on every save | a BU reconciling its KBANK settlement report |
 
 > Item 8 is new on 2026-09-08 and is a **hand-over, not an addition**: the OCR app used to
 > carry this switch as well, and two writers for one boolean meant an ordinary settings save
 > could turn review back on behind the customer's back. Ours is gone. Until yours ships, a
 > BU stays in review mode — the safe state — and we can flip it for them on request.
+>
+> Item 9 is new on 2026-09-29 and is the same kind of hand-over: our Mapping page used to
+> carry a "Reconcile this bank" switch as well as the rule's Document type. The switch is
+> gone — the rule is the only one. (Detail/Summary stays on our Mapping page.) Until yours
+> ships, our `#/email-settings` sets it.
 >
 > Item 7 of the previous revision — "confirm Email Automation is gated on the monthly
 > package" — is closed: it is gated, and enforced both at the toggle (`422 not_entitled`)

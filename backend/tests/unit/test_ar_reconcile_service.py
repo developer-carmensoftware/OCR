@@ -15,6 +15,11 @@ credit-card one). Everything that assumed two separate stores — `_get_mappings
 prefill, the bank selector's own `SUPPORTED_BANKS`/`RECONCILABLE_BANKS` — is gone with it;
 tests that only existed to pin those are deleted below rather than adapted, since the thing
 they proved no longer exists to prove.
+
+Updated 2026-09-29: whether a bank reconciles is read off its email rule
+(`email_ingest_settings.rules`, written by Carmen's settings API) — `_rules()` below. Its
+Detail/Summary grouping is still an `ar_reconcile_settings` row saved from the mapping page
+— `_row()`. `enabled` on that row is no longer read or written.
 """
 
 from types import SimpleNamespace
@@ -29,17 +34,21 @@ from app.services.credit_card import ar_reconcile as svc
 TENANT = "11111111-1111-1111-1111-111111111111"
 
 
-def _setting(**over):
-    base = dict(
-        id=7,
-        tenant_id=TENANT,
-        bank_code="KBANK",
-        enabled=True,
-        post_type=PostType.SUMMARY,
-        jv_description_template="Credit Card AR Reconcile {Settlement_Date}",
+def _rules(**over):
+    """The BU's `email_ingest_settings.rules` value, as `ar_rule` selects it — one active
+    KBANK settlement rule (the switch) unless overridden."""
+    rule = dict(
+        bank_code="KBANK", filename_patterns=["KB1P554V2"], is_active=True, doc_type="ar_reconcile"
     )
-    base.update(over)
-    return SimpleNamespace(**base)
+    rule.update(over)
+    return [rule]
+
+
+def _row(post_type=PostType.SUMMARY, **over):
+    """An `ar_reconcile_settings` row — only `post_type` is read any more."""
+    return SimpleNamespace(
+        **{"tenant_id": TENANT, "bank_code": "KBANK", "post_type": post_type, **over}
+    )
 
 
 def _result(rows):
@@ -138,7 +147,8 @@ async def test_jv_for_document_builds_the_entry_the_reviewer_approves():
     # The description now resolves from the same bank_descriptions field the
     # fee-invoice path reads (Ticket D, 2026-09-22) — not a settlement-only template.
     db = _db(
-        [_setting()],
+        [_rules()],
+        [_row()],
         *_config(
             _fixed_entries() + _summary_entries(),
             bank_descriptions={"KBANK": "Credit Card AR Reconcile {Settlement_Date}"},
@@ -170,7 +180,8 @@ async def test_jv_for_document_description_falls_back_to_plain_concatenation():
     is the whole point of Ticket D's merge: a BU that never touches the new tags sees
     no change to their settlement JV's wording either."""
     db = _db(
-        [_setting()],
+        [_rules()],
+        [_row()],
         *_config(_fixed_entries() + _summary_entries(), bank_descriptions={"KBANK": "AR Recon"}),
     )
 
@@ -182,7 +193,7 @@ async def test_jv_for_document_description_falls_back_to_plain_concatenation():
 
 @pytest.mark.asyncio
 async def test_jv_for_document_description_is_empty_when_nothing_is_saved():
-    db = _db([_setting()], *_config(_fixed_entries() + _summary_entries()))
+    db = _db([_rules()], [_row()], *_config(_fixed_entries() + _summary_entries()))
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
@@ -196,7 +207,7 @@ async def test_jv_for_document_reports_a_missing_fixed_debit_mapping():
     nothing about the arithmetic is wrong, which is why `approve_document` checks
     `unmapped` separately rather than trusting `balanced` to catch it. Only the credit
     side (VS/MC/JCB) is configured; no commission/tax/net rows exist in the same table."""
-    db = _db([_setting()], *_config(_summary_entries()))
+    db = _db([_rules()], [_row()], *_config(_summary_entries()))
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
@@ -215,7 +226,7 @@ async def test_jv_for_document_uses_the_settings_post_type_not_the_labels_on_the
         _entry("MC INTER PREM", acc="1021002", is_custom=True, source="settlement_detail"),
         _entry("JCB PREM", acc="1021003", is_custom=True, source="settlement_detail"),
     ]
-    db = _db([_setting(post_type=PostType.DETAIL)], *_config(detail_entries))
+    db = _db([_rules()], [_row(PostType.DETAIL)], *_config(detail_entries))
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
@@ -228,7 +239,7 @@ async def test_jv_for_document_names_the_types_that_would_block_the_post():
     entries = _fixed_entries() + [
         _entry("VS", acc="1021001", is_custom=True, source="settlement_summary")
     ]
-    db = _db([_setting()], *_config(entries))
+    db = _db([_rules()], [_row()], *_config(entries))
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
@@ -249,7 +260,7 @@ async def test_jv_for_document_is_none_when_the_bank_was_never_configured():
 
 @pytest.mark.asyncio
 async def test_jv_for_document_survives_a_document_with_no_number():
-    db = _db([_setting()], *_config(_fixed_entries() + _summary_entries()))
+    db = _db([_rules()], [_row()], *_config(_fixed_entries() + _summary_entries()))
     out = await svc.jv_for_document(db, TENANT, "KBANK", {**EXTRACTED, "doc_no": ""})
 
     assert out.doc_no == ""
@@ -261,7 +272,7 @@ async def test_jv_for_document_survives_a_document_with_no_number():
 async def test_jv_for_document_with_no_accounting_config_row_leaves_everything_unmapped():
     """The debit legs and the credit groups now come from the same query — if the BU has
     never saved an accounting config at all, both sides are unmapped, not just one."""
-    db = _db([_setting()], *_no_config())
+    db = _db([_rules()], [_row()], *_no_config())
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
@@ -294,8 +305,8 @@ def test_mappings_dict_converts_field_mappings_to_plain_dicts():
 
 @pytest.mark.asyncio
 async def test_get_settings_returns_the_posting_profile_for_a_configured_bank():
-    # _get_setting, get_settlement_grouping.
-    db = _db([_setting()], ["first_token"])
+    # post_type_for, ar_rule, get_settlement_grouping.
+    db = _db([_row()], [_rules()], ["first_token"])
 
     out = await svc.get_settings(db, TENANT, "KBANK")
 
@@ -306,7 +317,7 @@ async def test_get_settings_returns_the_posting_profile_for_a_configured_bank():
 
 @pytest.mark.asyncio
 async def test_get_settings_defaults_for_a_bank_never_saved():
-    db = _db([], ["first_token"])
+    db = _db([], [], ["first_token"])
 
     out = await svc.get_settings(db, TENANT, "KBANK")
 
@@ -317,7 +328,7 @@ async def test_get_settings_defaults_for_a_bank_never_saved():
 
 @pytest.mark.asyncio
 async def test_get_settings_reports_no_settlement_layout_for_a_bank_that_has_none():
-    db = _db([_setting(bank_code="SCB")], [])
+    db = _db([_row(bank_code="SCB")], [_rules(bank_code="SCB")], [])
 
     out = await svc.get_settings(db, TENANT, "SCB")
 
@@ -344,22 +355,38 @@ async def test_get_settlement_grouping_is_none_for_a_bank_with_no_settlement_lay
     assert await svc.get_settlement_grouping(db, "SCB") is None
 
 
+@pytest.mark.asyncio
+async def test_an_inactive_or_fee_invoice_rule_is_not_a_settlement_switch():
+    """Only an active `ar_reconcile` rule turns reconciliation on — the rule is the one
+    switch, so anything else reads as off."""
+    for rules in (_rules(is_active=False), _rules(doc_type="fee_invoice")):
+        db = _db([_row()], [rules], ["first_token"])
+        out = await svc.get_settings(db, TENANT, "KBANK")
+        assert out.enabled is False
+        assert await svc.jv_for_document(_db([rules]), TENANT, "KBANK", EXTRACTED) is None
+
+
+@pytest.mark.asyncio
+async def test_a_switched_on_bank_whose_grouping_was_never_saved_groups_by_detail():
+    """The switch (the rule) and the grouping (the mapping page) are set in different
+    places, so a bank can be switched on before anyone picks one."""
+    db = _db([], [_rules()], ["first_token"])
+    out = await svc.get_settings(db, TENANT, "KBANK")
+    assert out.enabled is True and out.post_type == PostType.DETAIL
+
+
 # ── save_settings ─────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_saving_over_an_existing_row_updates_it_rather_than_adding_a_second():
+async def test_saving_over_an_existing_row_updates_its_grouping_rather_than_adding_one():
     from app.models.schemas import ARSettingsIn
 
-    row = _setting(enabled=False, post_type=PostType.DETAIL)
+    row = _row(PostType.DETAIL)
     db = _db([row])
-    req = ARSettingsIn(bank_code="KBANK", enabled=True, post_type=PostType.SUMMARY)
+    await svc.save_settings(db, TENANT, ARSettingsIn(bank_code="KBANK", post_type="Summary"))
 
-    await svc.save_settings(db, TENANT, req)
-
-    assert row.enabled is True and row.post_type == PostType.SUMMARY
-    # No mapping table of this feature's own to write to any more (decision #3) — the
-    # row is updated in place and nothing is added.
+    assert row.post_type == PostType.SUMMARY
     assert db.add.call_args_list == []
     db.commit.assert_awaited()
 
@@ -368,14 +395,11 @@ async def test_saving_over_an_existing_row_updates_it_rather_than_adding_a_secon
 async def test_saving_a_new_bank_adds_one_row():
     from app.models.schemas import ARSettingsIn
 
-    db = _db([])  # no existing setting for this (tenant, bank)
-    req = ARSettingsIn(bank_code="KBANK", enabled=True, post_type=PostType.DETAIL)
+    db = _db([])
+    await svc.save_settings(db, TENANT, ARSettingsIn(bank_code="KBANK", post_type="Detail"))
 
-    await svc.save_settings(db, TENANT, req)
-
-    assert len(db.add.call_args_list) == 1
     added = db.add.call_args_list[0].args[0]
-    assert added.bank_code == "KBANK" and added.enabled is True
+    assert added.bank_code == "KBANK" and added.post_type == PostType.DETAIL
     db.commit.assert_awaited()
 
 

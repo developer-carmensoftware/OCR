@@ -19,9 +19,7 @@ import uuid
 from functools import partial
 from typing import Any
 
-from sqlalchemy import select
-
-from app.constants import DocType, Module
+from app.constants import DocType, Module, PostType
 from app.database import async_session
 from app.exceptions import (
     ExtractionError,
@@ -30,10 +28,10 @@ from app.exceptions import (
     PdfPasswordRequired,
     ValidationError,
 )
-from app.models.business import ARReconcileSetting
 from app.models.catalog import Bank
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractedDetailRow, ExtractionWarning
+from app.services.credit_card import ar_reconcile as ar_svc
 from app.services.credit_card import gl_suggestion as gl
 from app.services.credit_card import kbank_tax_summary
 from app.services.credit_card import ocr as ocr_service
@@ -57,7 +55,6 @@ from app.services.email_automation.ledger import (
     _park_for_review,
     _possibly_posted,
     _review_flags,
-    _settlement_recently_posted,
 )
 from app.services.shared import carmen
 from app.services.shared.carmen import (
@@ -213,7 +210,8 @@ async def _run_document(
     # Which of the two KBANK documents this is — decided by the rule below, before the
     # charge. Initialised here so `_park_or_finish` can read it on any path.
     doc_type: str = DocType.FEE_INVOICE
-    ar_setting: ARReconcileSetting | None = None
+    # AR only: how the credit side groups — saved from the mapping page.
+    ar_post_type: str = PostType.DETAIL
     # AR only: the settlement report's own page prints no tax ID, so its second factor
     # comes from the CSV sidecar instead — set below, read by `_review_flags`. True when
     # there was no matching sidecar row, not when one was checked and found fine.
@@ -332,32 +330,16 @@ async def _run_document(
                     "ar_reconcile_disabled",
                     "The settlement-report rule does not say which bank it is for",
                 )
-            ar_setting = await _ar_setting(tenant_id, bank_code)
-            if not ar_setting or not ar_setting.enabled:
-                # Before the charge, so a BU that tagged a rule and then switched the
-                # feature off pays nothing for the mail that keeps arriving.
-                raise _Skip(
-                    "ar_reconcile_disabled",
-                    f"AR reconciliation is switched off for {bank_code}",
-                )
-        elif bank_code:
-            # The double-book guard: a KBANK fee invoice would book the same commission
-            # twice once its settlement report also posts. The primary fix is the BU
-            # repointing its filename rule at `KB1P554V2_SUM` so this attachment matches
-            # no rule at all (`no_rule_match`, also free) — this is only the backstop for
-            # a rule still pointed at the old fee-invoice file. It only fires on recent
-            # proof a settlement report actually posted, not on the flag alone; see
-            # `ledger._settlement_recently_posted`.
-            covering_setting = await _ar_setting(tenant_id, bank_code)
-            if (
-                covering_setting
-                and covering_setting.enabled
-                and await _settlement_recently_posted(tenant_id, bank_code)
-            ):
-                raise _Skip(
-                    "covered_by_settlement_jv",
-                    f"{bank_code}'s settlement report already covers this commission",
-                )
+            # The rule is the switch (2026-09-29): an active `ar_reconcile` rule means
+            # reconcile this bank, and there is no second toggle to consult. Switching it
+            # off is Carmen deactivating the rule, which `match_rules` already skips —
+            # `no_rule_match`, free, before the charge, same as the old toggle was.
+            # How it groups is the BU's own choice on the mapping page, not the rule's.
+            ar_post_type = await _ar_post_type(tenant_id, bank_code)
+        # No fee-invoice double-book guard any more (2026-09-29). It caught a KBANK fee
+        # invoice matched by a KBANK fee-invoice rule while KBANK reconciled — and rules
+        # are one per bank, so "KBANK reconciles" now *is* that rule being `ar_reconcile`.
+        # The state it guarded against cannot exist.
 
         # Before any charge: a disguised, locked or corrupt file must not cost anything.
         password = await _open_or_fail(blob, filename, passwords)
@@ -544,11 +526,10 @@ async def _run_document(
             # settlement keys (decision #3, 2026-09-22). Extending the fee invoice's
             # guess-then-approve dance to a second document type is a separate decision
             # from collapsing the storage, not a consequence of it.
-            assert ar_setting is not None  # set together with doc_type, above
             mapping_missing = unmapped_payment_types(
                 extracted.details,
                 config.mappings or {},
-                grouping=partial(group_key, post_type=ar_setting.post_type),
+                grouping=partial(group_key, post_type=ar_post_type),
             )
             missing: list[str] = []
         else:
@@ -600,7 +581,6 @@ async def _run_document(
             raise verdict
 
         if doc_type == DocType.AR_RECONCILE:
-            assert ar_setting is not None
             # One dict now (decision #3): commission/tax/net and this bank's credit-side
             # keys both live in `config.mappings`. The debit legs still read it off the
             # report's own total row, not derived from the credit rows — `is_balanced`
@@ -611,7 +591,7 @@ async def _run_document(
                 extracted.details,
                 config.mappings or {},
                 total_row=extracted.total_row,
-                grouping=partial(group_key, post_type=ar_setting.post_type),
+                grouping=partial(group_key, post_type=ar_post_type),
             )
         else:
             rows = build_jv_rows(extracted.details, config.mappings or {})
@@ -880,20 +860,13 @@ async def _post_input_tax(
     return None
 
 
-# ── AR reconciliation settings ────────────────────────────────────────────────
+# ── AR reconciliation grouping ────────────────────────────────────────────────
 
 
-async def _ar_setting(tenant_id: str, bank_code: str) -> ARReconcileSetting | None:
-    """This BU's AR-reconciliation configuration for one bank, or None if never saved."""
+async def _ar_post_type(tenant_id: str, bank_code: str) -> str:
+    """Detail or Summary for this bank, as the mapping page saved it (Detail if never)."""
     async with async_session() as db:
-        res = await db.execute(
-            select(ARReconcileSetting).where(
-                ARReconcileSetting.tenant_id == tenant_id,
-                ARReconcileSetting.bank_code == bank_code,
-                ARReconcileSetting.deleted_at.is_(None),
-            )
-        )
-        return res.scalars().first()
+        return await ar_svc.post_type_for(db, tenant_id, bank_code)
 
 
 # ── GL mapping the BU never set ───────────────────────────────────────────────

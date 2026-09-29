@@ -17,11 +17,15 @@ left to mock it with. The settlement report's credit-side keys live in
 the three fixed debit legs — so every fixture below that used to pass a separate `maps=`
 into a mocked `_ar_mappings` now merges that same dict into `_config(mappings=...)`
 instead.
+
+Updated 2026-09-29: the rule is the whole switch — "switched off" is the rule going
+inactive, not a settings row. The Detail/Summary grouping is still the mapping page's, read
+through `pipeline._ar_post_type`, which `_run_ar` patches. The fee-invoice double-book guard and its tests are gone with it: rules are one
+per bank, so a KBANK fee-invoice rule and a reconciling KBANK can no longer coexist.
 """
 
-from contextlib import contextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -104,21 +108,6 @@ def _ar_extracted(**overrides) -> ExtractedCreditCardData:
     return ExtractedCreditCardData(**defaults)
 
 
-def _setting(enabled=True, post_type="Summary"):
-    return SimpleNamespace(
-        id=7,
-        enabled=enabled,
-        post_type=post_type,
-        jv_description_template="Credit Card AR Reconcile {Settlement_Date}",
-    )
-
-
-@contextmanager
-def _ar_config(setting):
-    with patch.object(pipeline, "_ar_setting", AsyncMock(return_value=setting)):
-        yield
-
-
 def _ar_mappings_dict(maps=None) -> dict:
     """The merged `config.mappings` dict the AR path now reads for both debit legs and
     credit groups — commission/tax/net/Visa (`MAPPINGS` from `test_email_ingest_pipeline`)
@@ -134,13 +123,13 @@ AR_TAX_SUMMARY = {
 }
 
 
-async def _run_ar(db, *, setting=None, maps=None, **kw):
+async def _run_ar(db, *, post_type="Summary", rules=None, maps=None, **kw):
     kw.setdefault("extracted", _ar_extracted())
     kw.setdefault("config", _config(mappings=_ar_mappings_dict(maps)))
     kw.setdefault("carmen_result", {"Code": 0, "InternalMessage": "JV-2606-0089"})
     kw.setdefault("tax_summary", AR_TAX_SUMMARY)
-    with _ar_config(_setting() if setting is None else setting):
-        return await _run(db, filename=AR_FILE, rules=AR_RULE, **kw)
+    with patch.object(pipeline, "_ar_post_type", AsyncMock(return_value=post_type)):
+        return await _run(db, filename=AR_FILE, rules=rules or AR_RULE, **kw)
 
 
 # ── The branch ────────────────────────────────────────────────────────────────
@@ -267,7 +256,7 @@ async def test_detail_mode_posts_one_credit_per_printed_payment_type():
         "MC INTER PREM": {"dept": "GEN", "acc": "1021002"},
         "JCB PREM": {"dept": "GEN", "acc": "1021003"},
     }
-    _, p = await _run_ar(_FakeDB(), setting=_setting(post_type="Detail"), maps=detail_maps)
+    _, p = await _run_ar(_FakeDB(), post_type="Detail", maps=detail_maps)
 
     detail = p.post_gljv.call_args[0][0]["Detail"]
     assert len(detail) == 7, "3 fixed debit legs + 4 printed payment types"
@@ -445,113 +434,27 @@ async def test_a_disagreeing_csv_figure_parks_with_a_warning_instead_of_a_skip()
 
 @pytest.mark.asyncio
 async def test_ar_switched_off_costs_nothing():
-    """The check sits before `consume_document`, so a BU that tagged a rule and then turned
-    the feature off is not billed for the mail that keeps arriving."""
+    """Switching reconciliation off is Carmen deactivating the rule — `match_rules` skips
+    it before the charge, so the mail that keeps arriving costs nothing."""
     db = _FakeDB()
-    outcome, p = await _run_ar(db, setting=_setting(enabled=False), carmen_result=None)
+    outcome, p = await _run_ar(db, rules=[{**AR_RULE[0], "is_active": False}], carmen_result=None)
+
+    assert outcome == "skipped"
+    assert db.added[0].reason_code == "no_rule_match"
+    p.consume_document.assert_not_called()
+    p.extract.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_settlement_rule_with_no_bank_costs_nothing():
+    """`PUT /carmen/settings` refuses this; the pipeline still stops before the charge for
+    a rule that got stored some other way, since it cannot pick a layout without a bank."""
+    db = _FakeDB()
+    outcome, p = await _run_ar(db, rules=[{**AR_RULE[0], "bank_code": None}], carmen_result=None)
 
     assert outcome == "skipped"
     assert db.added[0].reason_code == "ar_reconcile_disabled"
     p.consume_document.assert_not_called()
-    p.extract.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_ar_never_configured_costs_nothing_either():
-    db = _FakeDB()
-    outcome, p = await _run_ar(db, setting=False, carmen_result=None)
-
-    assert outcome == "skipped"
-    p.consume_document.assert_not_called()
-
-
-# ── Double-booking guard (ticket 02) ────────────────────────────────────────────
-#
-# A KBANK fee invoice must not also post once its settlement report already covers the
-# same commission. This lives on the *fee-invoice* path (no `doc_type: ar_reconcile` on
-# the matched rule), the mirror image of every test above.
-
-FEE_RULE_KBANK = [{"bank_code": "KBANK", "filename_patterns": ["MDR"], "is_active": True}]
-
-
-@pytest.mark.asyncio
-async def test_a_kbank_fee_invoice_is_skipped_once_its_settlement_report_posted():
-    db = _FakeDB()
-    with (
-        patch.object(pipeline, "_ar_setting", AsyncMock(return_value=_setting(enabled=True))),
-        patch.object(pipeline, "_settlement_recently_posted", AsyncMock(return_value=True)),
-    ):
-        outcome, p = await _run(
-            db,
-            filename="MDR_statement.pdf",
-            rules=FEE_RULE_KBANK,
-            extracted=_extracted(),
-            config=_config(),
-            carmen_result={"Code": 0},
-        )
-
-    assert outcome == "skipped"
-    assert db.added[0].reason_code == "covered_by_settlement_jv"
-    p.consume_document.assert_not_called()
-    p.extract.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_a_kbank_fee_invoice_still_posts_without_recent_proof_of_a_settlement_report():
-    """The known-risk fix from decision #28: the static `enabled` flag alone is not
-    trusted. No recent settlement report means the guard fails open to the old two-JV
-    behaviour rather than silently dropping the fee invoice too."""
-    db = _FakeDB()
-    with (
-        patch.object(pipeline, "_ar_setting", AsyncMock(return_value=_setting(enabled=True))),
-        patch.object(pipeline, "_settlement_recently_posted", AsyncMock(return_value=False)),
-    ):
-        outcome, p = await _run(
-            db,
-            filename="MDR_statement.pdf",
-            rules=FEE_RULE_KBANK,
-            extracted=_extracted(bank_name="KASIKORNBANK", bank_company_name="Kasikornbank"),
-            config=_config(),
-            carmen_result={"Code": 0, "InternalMessage": "JV-1"},
-        )
-
-    assert outcome == "posted"
-
-
-@pytest.mark.asyncio
-async def test_a_kbank_fee_invoice_posts_normally_when_ar_reconciliation_is_off():
-    """Regression check: AR reconciliation off for the bank must not touch this path at
-    all, same as before ticket 02 existed."""
-    db = _FakeDB()
-    with patch.object(pipeline, "_ar_setting", AsyncMock(return_value=_setting(enabled=False))):
-        outcome, p = await _run(
-            db,
-            filename="MDR_statement.pdf",
-            rules=FEE_RULE_KBANK,
-            extracted=_extracted(bank_name="KASIKORNBANK", bank_company_name="Kasikornbank"),
-            config=_config(),
-            carmen_result={"Code": 0, "InternalMessage": "JV-2"},
-        )
-
-    assert outcome == "posted"
-
-
-@pytest.mark.asyncio
-async def test_settlement_recently_posted_reads_a_hit():
-    result = MagicMock()
-    result.scalar_one_or_none.return_value = uuid4()
-    session = SimpleNamespace(execute=AsyncMock(return_value=result))
-    with patch.object(ledger, "async_session", _session_factory(session)):
-        assert await ledger._settlement_recently_posted(str(uuid4()), "KBANK") is True
-
-
-@pytest.mark.asyncio
-async def test_settlement_recently_posted_reads_a_miss():
-    result = MagicMock()
-    result.scalar_one_or_none.return_value = None
-    session = SimpleNamespace(execute=AsyncMock(return_value=result))
-    with patch.object(ledger, "async_session", _session_factory(session)):
-        assert await ledger._settlement_recently_posted(str(uuid4()), "KBANK") is False
 
 
 @pytest.mark.asyncio
@@ -634,7 +537,7 @@ async def test_a_clean_detail_report_still_waits_when_auto_post_is_off():
             # 4-row default `details` instead).
             total_row=ExtractedDetailRow(commis_amt="582.99", tax_amt="40.81", total="24,467.20"),
         ),
-        setting=_setting(post_type="Detail"),
+        post_type="Detail",
         maps=FULL_DETAIL_MAPS,
         carmen_result={"Code": 0, "InternalMessage": "JV-2606-0090"},
     )

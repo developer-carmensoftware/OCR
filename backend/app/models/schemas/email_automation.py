@@ -32,6 +32,12 @@ class RuleIn(BaseModel):
     # Omit = keep the stored value (F-5: a client that does not know the field must not
     # turn a settlement rule back into a fee-invoice one); a rule that never had one is a
     # fee invoice, the document type that existed before this field did.
+    #
+    # `ar_reconcile` is also the switch itself (2026-09-29): an active rule of that type is
+    # what "reconcile this bank" means. There is no second toggle on our mapping page any
+    # more — Carmen's settings screen is the one writer, same lesson as `auto_post`. How
+    # the JV groups (Detail/Summary) is still ours: the mapping page, beside the accounts
+    # each grouping needs.
     doc_type: str | None = None
 
 

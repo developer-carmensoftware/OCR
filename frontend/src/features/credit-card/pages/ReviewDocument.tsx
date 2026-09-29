@@ -70,7 +70,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     arJv,
     arBlockReason,
     prefixFix,
-    arSettingsHref,
+    arSettingsLink,
     requestClose,
     updateHeader,
     updateAmount,
@@ -388,7 +388,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                       Approve/Reject below it — shorter mouse travel between "check the
                       settings" and "act on the document" than a flush-left placement. */}
                   <div className="rd-ar-hint">
-                    <a className="btn btn-outline btn-sm" href={arSettingsHref}>
+                    <a className="btn btn-outline btn-sm" {...arSettingsLink}>
                       {t('review.arSettings')}
                     </a>
                   </div>

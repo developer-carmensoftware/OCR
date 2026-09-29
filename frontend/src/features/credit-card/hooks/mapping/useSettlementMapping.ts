@@ -22,8 +22,9 @@ import type { FieldMapping } from '@/shared/types/api'
  * (the page's already-loaded, full merged dict — commission/tax/net, every
  * fee-invoice payment type, and this bank's settlement rows, all in one shape) is
  * injected, and `mappingsToSave` is what the page folds back into its own dict right
- * before the one `PUT /config/accounting` call. Only the posting profile itself
- * (enabled / post type) and the two payment-type sets are this hook's own.
+ * before the one `PUT /config/accounting` call. Only the post type and the two
+ * payment-type sets are this hook's own. `enabled` is read-only (2026-09-29): whether
+ * the bank reconciles is its email rule, switched in Carmen's settings, not here.
  *
  * **No `template` state any more (Ticket D, 2026-09-22)** — the JV description is the
  * same field the fee-invoice path always used (`bank_descriptions[bankCode]`), owned by
@@ -56,12 +57,10 @@ export interface SettlementRow {
  *  stringify would call that an edit. No `description` any more — it lives on the
  *  page's own config, whose own save this card no longer gates. */
 function fingerprint(
-  enabled: boolean,
   postType: PostType,
   sets: Record<PostType, Record<string, FieldMapping>>
 ): string {
   return JSON.stringify([
-    enabled,
     postType,
     ...POST_TYPES.map(pt =>
       Object.entries(sets[pt] || {})
@@ -74,8 +73,8 @@ function fingerprint(
 export interface SettlementMappingHook {
   loading: boolean
   hasSettlementLayout: boolean
+  /** Carmen has this bank's settlement rule switched on — shown, not set, here. */
   enabled: boolean
-  setEnabled: (v: boolean) => void
   postType: PostType
   setPostType: (v: PostType) => void
   rows: SettlementRow[]
@@ -185,7 +184,7 @@ export function useSettlementMapping(
               ),
       }
       setSets(next)
-      setSavedPrint(fingerprint(s.enabled, s.post_type, next))
+      setSavedPrint(fingerprint(s.post_type, next))
     } catch (err) {
       console.error('AR settings load failed:', err)
       toast.error(tRef.current('ar.toastLoadFailed'))
@@ -327,7 +326,7 @@ export function useSettlementMapping(
   const mappedCount = (pt: PostType) =>
     Object.values(sets[pt] || {}).filter(m => m.dept && m.acc).length
 
-  const dirty = savedPrint !== null && fingerprint(enabled, postType, sets) !== savedPrint
+  const dirty = savedPrint !== null && fingerprint(postType, sets) !== savedPrint
 
   const mappingsToSave: Record<string, FieldMapping> = { ...sets.Detail, ...sets.Summary }
 
@@ -335,7 +334,6 @@ export function useSettlementMapping(
     loading,
     hasSettlementLayout,
     enabled,
-    setEnabled,
     postType,
     setPostType,
     rows,

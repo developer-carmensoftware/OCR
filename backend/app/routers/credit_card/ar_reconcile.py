@@ -1,8 +1,11 @@
 """Settlement report — per-bank posting profile API.
 
   GET   /api/v1/ar-reconcile/settings?bank_code=  → the posting profile for one bank
-  PUT   /api/v1/ar-reconcile/settings             → upsert it (full replace)
+  PUT   /api/v1/ar-reconcile/settings             → save its Detail/Summary grouping
   POST  /api/v1/ar-reconcile/preview              → the JV this configuration would build
+
+Whether a bank reconciles at all is not here (2026-09-29): it is the bank's email rule
+(`doc_type: ar_reconcile`), set through Carmen's settings API. GET reports it read-only.
 
 The payment-type mapping is not part of this API (decision #3, 2026-09-22) — it lives in
 `bu_accounting_mapping_entries`, read and written through `/api/v1/config/accounting`
@@ -78,11 +81,8 @@ async def save_settings(
     session: SessionInfo = Depends(get_current_session),
 ):
     req.bank_code = req.bank_code.upper()
-    if req.enabled and await svc.get_settlement_grouping(db, req.bank_code) is None:
-        # Enabling a bank with no settlement layout would arm a pipeline with no prompt
-        # behind it: the document would be charged, fail at the prompt registry, and
-        # read to the BU as the feature being broken. Saving it switched off is fine —
-        # that is a draft.
+    if await svc.get_settlement_grouping(db, req.bank_code) is None:
+        # Nothing reads a grouping for a bank no settlement report can arrive from.
         raise ValidationError(f"{req.bank_code} has no settlement-report layout configured yet")
     await svc.save_settings(db, session.tenant_id, req)
     return {"ok": True}

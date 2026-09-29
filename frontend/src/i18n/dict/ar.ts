@@ -14,8 +14,9 @@ export const en = {
   'ar.intro':
     'Splits the lump credit-card control account into per-scheme receivables when a settlement report arrives by email.',
   'ar.bank': 'Merchant bank',
-  'ar.enabled': 'Reconcile this bank',
-  'ar.enabledOffHint': 'Switched off — arriving reports are handed back unread and cost nothing.',
+  // Read-only since 2026-09-29: the switch is the bank's email rule in Carmen's settings.
+  'ar.enabledOffHint':
+    'Not reconciling — switch it on in Carmen settings by setting this bank’s email rule to Settlement report.',
 
   // The three controls the review dialog's AR reconciliation settings link sends people here for.
   'ar.postingRules': 'Posting rules',
@@ -86,8 +87,8 @@ export const th: Record<keyof typeof en, string> = {
   'ar.intro':
     'แยกยอดบัญชีคุมยอดบัตรเครดิตก้อนเดียวออกเป็นลูกหนี้รายค่ายบัตร เมื่อรายงาน settlement ส่งเข้ามาทางอีเมล',
   'ar.bank': 'ธนาคารผู้รับบัตร',
-  'ar.enabled': 'กระทบยอดธนาคารนี้',
-  'ar.enabledOffHint': 'ปิดอยู่ — รายงานที่ส่งเข้ามาจะถูกส่งคืนโดยไม่อ่านและไม่มีค่าใช้จ่าย',
+  'ar.enabledOffHint':
+    'ยังไม่ได้เปิดกระทบยอด — เปิดได้ที่หน้า Settings ของ Carmen โดยตั้ง rule อีเมลของธนาคารนี้เป็น Settlement report',
 
   'ar.postingRules': 'กติกาการลงบัญชี',
   'ar.postType': 'รูปแบบการแบ่งยอดเครดิต',

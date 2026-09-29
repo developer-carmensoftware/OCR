@@ -7,9 +7,14 @@ already reading (decision #28). Ticket D (2026-09-22, same day) folded the JV
 description the same way: `jv_description_template` is no longer read or written here —
 a settlement JV's wording now comes from `bu_accounting_mapping_entries`'s config via
 `cc_jv.resolve_jv_description`, the same call the fee-invoice path always used. What
-this module owns now is only `enabled` / `post_type`, one row per (tenant, bank).
-`ar_reconcile_settings.jv_description_template` stays in the schema, unused — same
-precedent as `debit_dept_code`/`debit_account_code` from decision #28.
+this module owned after that was only `enabled` / `post_type`, one row per (tenant, bank).
+
+2026-09-29: only `post_type` now. Whether a bank reconciles at all is its email rule
+(`doc_type: ar_reconcile`, active), set by Carmen's settings screen — one switch instead of
+a rule tag plus a toggle here that both had to be on. `ar_rule` below is that read. How the
+JV groups stays ours, saved from the mapping page beside the accounts each grouping needs.
+`ar_reconcile_settings.enabled` stays in the schema, unread — same precedent as
+`jv_description_template` and `debit_dept_code`/`debit_account_code` from decision #28.
 """
 
 from __future__ import annotations
@@ -19,8 +24,9 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import DocType, PostType
 from app.models.catalog import Bank
-from app.models.email_automation import EmailDocument
+from app.models.email_automation import EmailDocument, EmailIngestSettings
 from app.models.orm import ARReconcileSetting
 from app.models.schemas import (
     ARPreviewOut,
@@ -67,6 +73,30 @@ async def get_settlement_grouping(db: AsyncSession, bank_code: str) -> str | Non
     ).scalar_one_or_none()
 
 
+async def ar_rule(db: AsyncSession, tenant_id: str, bank_code: str) -> dict | None:
+    """This BU's active settlement-report rule for one bank, or None.
+
+    An active rule with `doc_type: ar_reconcile` *is* the switch — there is no other one.
+    Rules are one per bank (`ingest_settings.save_settings` refuses a duplicate), so the
+    first match is the only one.
+    """
+    rules = (
+        await db.execute(
+            select(EmailIngestSettings.rules).where(EmailIngestSettings.tenant_id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    return next(
+        (
+            r
+            for r in rules or []
+            if r.get("doc_type") == DocType.AR_RECONCILE
+            and r.get("is_active", True)
+            and (r.get("bank_code") or "").upper() == bank_code.upper()
+        ),
+        None,
+    )
+
+
 async def _get_setting(
     db: AsyncSession, tenant_id: str, bank_code: str
 ) -> ARReconcileSetting | None:
@@ -78,6 +108,13 @@ async def _get_setting(
         )
     )
     return res.scalars().first()
+
+
+async def post_type_for(db: AsyncSession, tenant_id: str, bank_code: str) -> str:
+    """How this bank's settlement JV groups, as the mapping page saved it. Never saved =
+    Detail, the grouping that keeps every printed line."""
+    row = await _get_setting(db, tenant_id, bank_code)
+    return row.post_type if row else PostType.DETAIL
 
 
 async def latest_real_sample(
@@ -137,48 +174,32 @@ async def latest_real_sample(
 
 
 async def get_settings(db: AsyncSession, tenant_id: str, bank_code: str) -> ARSettingsOut:
-    row = await _get_setting(db, tenant_id, bank_code)
-    has_layout = await get_settlement_grouping(db, bank_code) is not None
-    if not row:
-        return ARSettingsOut(
-            bank_code=bank_code,
-            enabled=False,
-            post_type="Detail",
-            has_settlement_layout=has_layout,
-        )
+    """What the mapping page shows: the grouping it saved, whether Carmen has the bank's
+    settlement rule switched on (read-only here), and whether the bank has a settlement
+    layout at all."""
     return ARSettingsOut(
-        bank_code=row.bank_code,
-        enabled=bool(row.enabled),
-        post_type=row.post_type,
-        has_settlement_layout=has_layout,
+        bank_code=bank_code,
+        post_type=await post_type_for(db, tenant_id, bank_code),
+        enabled=await ar_rule(db, tenant_id, bank_code) is not None,
+        has_settlement_layout=await get_settlement_grouping(db, bank_code) is not None,
     )
 
 
 async def save_settings(db: AsyncSession, tenant_id: str, req: ARSettingsIn) -> None:
-    """Full replace of the posting profile. Its payment-type mapping is no longer part
-    of this call — it lives in `bu_accounting_mapping_entries`, saved through
-    `PUT /api/v1/config/accounting`, the merged mapping page's other write. Its JV
-    description likewise (Ticket D) — that same call's `description` field."""
+    """Upsert this bank's grouping. Nothing else lives here to save: the switch is the email
+    rule (Carmen's), and the accounts go through `PUT /api/v1/config/accounting`."""
     row = await _get_setting(db, tenant_id, req.bank_code)
     if row:
-        row.enabled = req.enabled
         row.post_type = req.post_type
     else:
-        row = ARReconcileSetting(
-            tenant_id=tenant_id,
-            bank_code=req.bank_code,
-            enabled=req.enabled,
-            post_type=req.post_type,
+        db.add(
+            ARReconcileSetting(
+                tenant_id=tenant_id, bank_code=req.bank_code, post_type=req.post_type
+            )
         )
-        db.add(row)
-
     await db.commit()
     logger.info(
-        "Saved AR reconcile settings tenant=%s bank=%s enabled=%s post_type=%s",
-        tenant_id,
-        req.bank_code,
-        req.enabled,
-        req.post_type,
+        "Saved AR post type tenant=%s bank=%s post_type=%s", tenant_id, req.bank_code, req.post_type
     )
 
 
@@ -202,9 +223,9 @@ async def jv_for_document(
     """
     if not bank_code:
         return None
-    setting = await _get_setting(db, tenant_id, bank_code)
-    if setting is None:
+    if await ar_rule(db, tenant_id, bank_code) is None:
         return None
+    post_type = await post_type_for(db, tenant_id, bank_code)
 
     rows_in = [_detail_row(r) for r in (extracted.get("details") or [])]
     doc_no = extracted.get("doc_no") or ""
@@ -219,7 +240,7 @@ async def jv_for_document(
     mappings = config.mappings or {}
 
     def grouping(label: str) -> str:
-        return group_key(label, setting.post_type)
+        return group_key(label, post_type)
 
     rows = build_jv_rows(rows_in, mappings, total_row=total_row, grouping=grouping)
     return ARPreviewOut(
@@ -233,7 +254,7 @@ async def jv_for_document(
         total_credit=round(sum(r["credit"] for r in rows), 2),
         balanced=is_balanced(rows),
         unmapped=_unmapped(rows_in, mappings, grouping=grouping),
-        post_type=setting.post_type,
+        post_type=post_type,
     )
 
 

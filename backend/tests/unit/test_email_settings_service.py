@@ -911,3 +911,51 @@ def test_the_settings_response_hands_doc_type_back():
 
     # A rule stored before this field existed reads as the type that existed then.
     assert [r["doc_type"] for r in body["rules"]] == ["ar_reconcile", "fee_invoice"]
+
+
+# ── The rule as the settlement switch (2026-09-29) ───────────────────────────────
+#
+# An active `ar_reconcile` rule *is* "reconcile this bank" now — Carmen's settings screen is
+# the one writer, so what that switch needs (a bank with a settlement layout) is checked
+# here, where it is set.
+
+
+def _settings(*rules):
+    return SettingsIn(uri="h", bu="b", enabled=False, tax_ids=[], rules=list(rules))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "rule,field,code",
+    [
+        # SCB has no settlement layout — arming it would charge for a read no prompt exists for.
+        (
+            RuleIn(bank_code="SCB", filename_patterns=["x"], doc_type="ar_reconcile"),
+            "doc_type",
+            "no_settlement_layout",
+        ),
+        # "Other" cannot be a settlement rule: the pipeline needs the bank to pick a layout.
+        (
+            RuleIn(bank_code=None, filename_patterns=["x"], doc_type="ar_reconcile"),
+            "doc_type",
+            "no_settlement_layout",
+        ),
+        (
+            RuleIn(bank_code="KBANK", filename_patterns=["x"], doc_type="statement"),
+            "doc_type",
+            "invalid",
+        ),
+    ],
+)
+async def test_a_settlement_rule_is_validated_where_it_is_set(rule, field, code):
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            _exec(scalars=["KBANK", "SCB"]),
+            _exec(scalars=["KBANK"]),
+        ]  # active, settlement
+    )
+    with pytest.raises(FieldValidationError) as exc:
+        await es.save_settings(db, _tenant(), _settings(rule))
+    assert exc.value.errors[0]["field"] == f"rules[0].{field}"
+    assert exc.value.errors[0]["code"] == code

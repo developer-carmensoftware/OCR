@@ -778,3 +778,47 @@ disagreeing is left for a human, per `db/queries.sql` item 27's conflict report 
 against dev at the time this shipped, since KBANK is still the only live settlement
 bank and neither of its two dev tenants had a customized settlement template that
 disagreed with their own fee-invoice wording.
+
+## 31. The rule is the settlement switch; Carmen sets it (2026-09-29)
+
+**Decided:** 2026-09-29. Until today, a bank's settlement report reconciled only if **two**
+switches in two places were both on: its email rule said `doc_type: ar_reconcile` (Carmen's
+settings screen, or our `#/email-settings`), and `ar_reconcile_settings.enabled` was on (our
+Mapping page's Settlement card).
+
+**Decision.** One switch, on the rule, written only through `PUT /api/v1/carmen/settings`:
+
+- An **active** rule with `doc_type: ar_reconcile` *is* "reconcile this bank". Rules are
+  already one per bank (`save_settings` refuses a duplicate), so the rule is the per-bank
+  record there was always going to be.
+- Validation moves to where the switch is set: `ar_reconcile` needs a `bank_code` whose bank
+  has `settlement_grouping`; an unknown `doc_type` is refused.
+- The Mapping page's Settlement card loses its toggle and says, read-only, when the bank is
+  not switched on. `ar_reconcile_settings.enabled` stays in the schema, unread and unwritten
+  (same precedent as `jv_description_template` in #30).
+- **Detail/Summary stays ours** — the same card, the same `PUT /api/v1/ar-reconcile/settings`,
+  now carrying only `post_type`. It was briefly moved onto the rule too, then put back the
+  same day: it is an accounting choice, and it belongs beside the GL accounts each grouping
+  needs, which are on that page. Carmen never sends or sees it.
+
+**Why.** Same lesson as `auto_post` on 2026-09-08: two writers for one fact means one of them
+silently undoes the other, and a rule tagged for a bank that was "switched off" elsewhere was
+a state nobody could see from either screen. The toggle only existed because the rule lived
+in Carmen and the toggle in our app; the rule already said everything the toggle did.
+
+**What it costs.**
+
+- The "tagged but switched off" skip (`ar_reconcile_disabled` for that reason) is gone;
+  turning reconciliation off is deactivating the rule, which is `no_rule_match` — also free,
+  also before the charge. `ar_reconcile_disabled` survives only for a settlement rule stored
+  with no bank.
+- **The fee-invoice double-book guard (`covered_by_settlement_jv`, #28) is deleted**, with
+  `ledger._settlement_recently_posted`. It caught a KBANK fee invoice matched by a KBANK
+  fee-invoice rule while KBANK reconciled. With one rule per bank, "KBANK reconciles" now
+  *is* that rule being `ar_reconcile`, so the state cannot exist. Not covered, before or
+  after: a KBANK fee invoice caught by the "Other" rule (`bank_code: null`), whose bank is
+  only known after extraction. The primary fix stays what #28 said it was — the BU's
+  filename patterns not matching the fee-invoice file.
+
+**No data migration.** The only writes to `ar_reconcile_settings` came from an unpushed
+branch, and its `post_type` column keeps meaning what it meant.
