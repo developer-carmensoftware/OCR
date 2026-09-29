@@ -221,9 +221,7 @@ async def jv_for_document(
     def grouping(label: str) -> str:
         return group_key(label, setting.post_type)
 
-    rows = build_jv_rows(
-        rows_in, mappings, total_row=total_row, grouping=grouping, doc_no=doc_no or None
-    )
+    rows = build_jv_rows(rows_in, mappings, total_row=total_row, grouping=grouping)
     return ARPreviewOut(
         rows=[ARPreviewRow(**r) for r in rows],
         description=resolve_jv_description(

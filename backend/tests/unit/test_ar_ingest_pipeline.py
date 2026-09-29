@@ -256,7 +256,7 @@ async def test_ar_posts_three_fixed_debit_legs_and_one_credit_per_scheme():
     assert credits == {"1021001": 5451.0, "1021002": 5945.0, "1021003": 300.0}
     assert sum(r["DrAmount"] for r in detail) == sum(r["CrAmount"] for r in detail)
     assert payload["Description"] == "Credit Card AR Reconcile 21/07/2026"
-    assert detail[0]["Description"].startswith("Tax Inv.# 210726E00035291 - ")
+    assert detail[0]["Description"] == "VS", "the payment type alone, no Tax Inv.# prefix"
 
 
 @pytest.mark.asyncio

@@ -66,7 +66,7 @@ class ARPreviewRow(BaseModel):
     # The group this leg is, as `cc_jv.group_key` resolved it — empty on the debit leg,
     # which is the counterpart to all of them. Carried so the review screen can put each
     # printed payment type beside the leg it became without re-deriving the grouping in
-    # the browser or slicing the `Tax Inv.# … - ` prefix back off `desc`.
+    # the browser from `desc`.
     key: str = ""
 
 

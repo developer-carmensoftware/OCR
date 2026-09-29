@@ -46,7 +46,7 @@ interface Props {
    *
    * For the AR settlement path, where none of them is editable in any sense that reaches
    * Carmen: the server rebuilds that JV from the document on approve, so a corrected
-   * document number changed the `Tax Inv.#` on screen and nothing that posted; and the
+   * document number changed nothing that posted; and the
    * parent skips the config write entirely on that path, so a retyped prefix or
    * description was dropped on submit. Four inputs that quietly discard what is typed into
    * them are worse than four values.

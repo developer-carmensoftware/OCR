@@ -1088,7 +1088,7 @@ const AR_JV = {
     {
       dept: 'GEN',
       acc: '510300',
-      desc: 'Tax Inv.# 210726E00035291 - VS INTER UP PREM',
+      desc: 'VS INTER UP PREM',
       debit: 0,
       credit: 15000,
       key: 'VS INTER UP PREM',
@@ -1096,7 +1096,7 @@ const AR_JV = {
     {
       dept: 'GEN',
       acc: '511200',
-      desc: 'Tax Inv.# 210726E00035291 - VS LOCAL UP PREM',
+      desc: 'VS LOCAL UP PREM',
       debit: 0,
       credit: 10091,
       key: 'VS LOCAL UP PREM',
@@ -1121,7 +1121,7 @@ const AR_JV_SUMMARY = {
     {
       dept: 'GEN',
       acc: '510300',
-      desc: 'Tax Inv.# 210726E00035291 - VS',
+      desc: 'VS',
       debit: 0,
       credit: 25091,
       key: 'VS',
@@ -1166,8 +1166,8 @@ describe('a parked settlement report', () => {
 
     await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(paneRows()).toEqual([
-      ['', 'GEN', '510300', 'Tax Inv.# 210726E00035291 - VS INTER UP PREM', '', '15,000.00'],
-      ['', 'GEN', '511200', 'Tax Inv.# 210726E00035291 - VS LOCAL UP PREM', '', '10,091.00'],
+      ['', 'GEN', '510300', 'VS INTER UP PREM', '', '15,000.00'],
+      ['', 'GEN', '511200', 'VS LOCAL UP PREM', '', '10,091.00'],
       ...CONTROL_PANE_ROWS,
     ])
     // The credit-card half of the modal is replaced, not disabled.
@@ -1184,7 +1184,7 @@ describe('a parked settlement report', () => {
 
     await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(paneRows()).toEqual([
-      ['', 'GEN', '510300', 'Tax Inv.# 210726E00035291 - VS2 folded in', '', '25,091.00'],
+      ['', 'GEN', '510300', 'VS2 folded in', '', '25,091.00'],
       ...CONTROL_PANE_ROWS,
     ])
     expect(document.querySelectorAll('.arv-row-src')).toHaveLength(0)
@@ -1197,7 +1197,7 @@ describe('a parked settlement report', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show 2 lines folded into VS' }))
 
     expect(paneRows()).toEqual([
-      ['', 'GEN', '510300', 'Tax Inv.# 210726E00035291 - VS2 folded in', '', '25,091.00'],
+      ['', 'GEN', '510300', 'VS2 folded in', '', '25,091.00'],
       ['', '', '', 'VS INTER UP PREM', '', ''],
       ['', '', '', 'VS LOCAL UP PREM', '', ''],
       ...CONTROL_PANE_ROWS,
@@ -1298,11 +1298,11 @@ describe('a parked settlement report', () => {
     // carries `jv-row--needed`), and as the reason the disabled button gives — a reader who
     // scrolled past the table still gets told what to go and fix.
     expect(document.querySelectorAll('.arv .jv-row--needed')).toHaveLength(1)
-    expect(paneRows().find(r => r[3] === 'Tax Inv.# 210726E00035291 - VS LOCAL UP PREM')).toEqual([
+    expect(paneRows().find(r => r[3] === 'VS LOCAL UP PREM')).toEqual([
       '',
       'Not mapped',
       'Not mapped',
-      'Tax Inv.# 210726E00035291 - VS LOCAL UP PREM',
+      'VS LOCAL UP PREM',
       '',
       '10,091.00',
     ])

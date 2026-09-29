@@ -137,7 +137,6 @@ def build_jv_rows(
     *,
     total_row: ExtractedDetailRow | None = None,
     grouping: Callable[[str], str] | None = None,
-    doc_no: str | None = None,
 ) -> list[dict]:
     """Three fixed debit legs (commission / input tax / bank account) + one credit leg
     per payment type or group.
@@ -165,14 +164,14 @@ def build_jv_rows(
     guesses a figure that was not printed. A group whose total is negative (a refund
     or chargeback settling on the same report, FRD §8 case 5) swaps sides and posts
     its absolute value, so the entry stays a reclassification in the right direction
-    instead of a negative credit Carmen would reject. `doc_no`, when given, prefixes
-    every credit leg's description (`Tax Inv.# <doc_no> - <label>`) — the tax invoice
-    number the settlement report and its (former) sibling fee invoice share.
+    instead of a negative credit Carmen would reject. Each credit leg's description is
+    the payment type or group alone — no `Tax Inv.# <doc_no> - ` prefix since
+    2026-09-29; the document number is already on the JV header.
 
     Every leg carries a `key` — the group it posts under, empty on all three debit
     legs since none of them is a printed payment type. The review screen joins printed
-    lines back to legs on this rather than re-deriving the grouping or slicing the
-    `Tax Inv.# … - ` prefix back off `desc` (`ARReviewPane.tsx`).
+    lines back to legs on this rather than re-deriving the grouping from `desc`
+    (`ARReviewPane.tsx`).
     """
     fixed = {k: mappings.get(k, {}) for k in _FIXED_TYPES}
 
@@ -206,9 +205,6 @@ def build_jv_rows(
         rows.append(leg(fixed["net"], "Bank Account", total("total"), 0.0))
         return rows
 
-    tax_inv = (doc_no or "").strip()
-    prefix = f"Tax Inv.# {tax_inv} - " if tax_inv else ""
-
     grouped: dict[str, float] = {}
     for d in details:
         amt = num(d.pay_amt)
@@ -235,7 +231,7 @@ def build_jv_rows(
         rows.append(
             leg(
                 cfg,
-                f"{prefix}{key}",
+                key,
                 abs(amt) if amt < 0 else 0.0,
                 amt if amt >= 0 else 0.0,
                 key,

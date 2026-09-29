@@ -612,7 +612,6 @@ async def _run_document(
                 config.mappings or {},
                 total_row=extracted.total_row,
                 grouping=partial(group_key, post_type=ar_setting.post_type),
-                doc_no=extracted.doc_no,
             )
         else:
             rows = build_jv_rows(extracted.details, config.mappings or {})

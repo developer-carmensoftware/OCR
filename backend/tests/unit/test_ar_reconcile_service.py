@@ -160,7 +160,7 @@ async def test_jv_for_document_builds_the_entry_the_reviewer_approves():
     assert out.balanced is True
     assert out.unmapped == []
     assert out.description == "Credit Card AR Reconcile 21/07/2026"
-    assert out.rows[0].desc.startswith("Tax Inv.# 210726E00035291 - ")
+    assert out.rows[0].desc == "VS", "the payment type alone, no Tax Inv.# prefix"
 
 
 @pytest.mark.asyncio

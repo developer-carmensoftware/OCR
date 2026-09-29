@@ -45,7 +45,7 @@ def _built(unmapped=None, balanced=True, rows=None):
         ),
         ARPreviewRow(dept="GEN", acc="5002", desc="Input Tax", debit=40.81, credit=0.0),
         ARPreviewRow(dept="GEN", acc="1010", desc="Bank Account", debit=24467.20, credit=0.0),
-        ARPreviewRow(dept="GEN", acc="1021001", desc="Tax Inv.# X - VS", debit=0.0, credit=25091.0),
+        ARPreviewRow(dept="GEN", acc="1021001", desc="VS", debit=0.0, credit=25091.0),
     ]
     return ARPreviewOut(
         rows=rows,

@@ -130,9 +130,7 @@ async def preview(
     def grouping(label: str) -> str:
         return group_key(label, req.post_type)
 
-    rows = build_jv_rows(
-        details, mappings, total_row=total_row, grouping=grouping, doc_no=doc_no or None
-    )
+    rows = build_jv_rows(details, mappings, total_row=total_row, grouping=grouping)
     return ARPreviewOut(
         rows=[ARPreviewRow(**r) for r in rows],
         description=render_description(
