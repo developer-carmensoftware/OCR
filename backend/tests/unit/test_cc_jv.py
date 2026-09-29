@@ -384,7 +384,7 @@ def test_settlement_detail_posts_one_credit_per_printed_payment_type():
     out = _ar_build(PostType.DETAIL, _ar_detail_mappings())
 
     assert len(out) == 10, "3 fixed debit legs + 7 credits"
-    debits, credits = out[:3], out[3:]
+    debits, credits = out[-3:], out[:-3]
     assert [d["desc"] for d in debits] == ["Credit card commission", "Input Tax", "Bank Account"]
     assert [d["debit"] for d in debits] == [582.99, 40.81, 24467.20]
     assert all(d["credit"] == 0 for d in debits)
@@ -402,11 +402,11 @@ def test_settlement_summary_folds_schemes_onto_their_first_token():
     out = _ar_build(PostType.SUMMARY, _ar_summary_mappings())
 
     assert len(out) == 6, "3 fixed debit legs + VS + MC + JCB"
-    by_key = {r["desc"].rsplit(" - ", 1)[1]: r for r in out[3:]}
+    by_key = {r["desc"].rsplit(" - ", 1)[1]: r for r in out[:-3]}
     assert by_key["VS"]["credit"] == 15471.00  # 2,200 + 3,251 + 10,020
     assert by_key["MC"]["credit"] == 9320.00  # 1,000 + 5,945 + 2,375
     assert by_key["JCB"]["credit"] == 300.00
-    assert sum(d["debit"] for d in out[:3]) == AR_TOTAL
+    assert sum(d["debit"] for d in out[-3:]) == AR_TOTAL
     assert is_balanced(out)
 
 
@@ -419,16 +419,16 @@ def test_settlement_leg_carries_the_group_it_posts_under():
     all three say so with an empty key -- same as the fee-invoice legs above.
     """
     detail = _ar_build(PostType.DETAIL, _ar_detail_mappings())
-    assert [r["key"] for r in detail[:3]] == ["", "", ""]
-    assert [r["key"] for r in detail[3:]] == [t for t, _ in AR_SAMPLE]
+    assert [r["key"] for r in detail[-3:]] == ["", "", ""]
+    assert [r["key"] for r in detail[:-3]] == [t for t, _ in AR_SAMPLE]
 
     summary = _ar_build(PostType.SUMMARY, _ar_summary_mappings())
-    assert [r["key"] for r in summary[:3]] == ["", "", ""]
-    assert [r["key"] for r in summary[3:]] == ["VS", "MC", "JCB"]
+    assert [r["key"] for r in summary[-3:]] == ["", "", ""]
+    assert [r["key"] for r in summary[:-3]] == ["VS", "MC", "JCB"]
 
     # The join the browser performs, spelled out: a printed label is either the key
     # itself or the key plus a space and the rest of it. Nothing else has to be true.
-    keys = {r["key"] for r in summary[3:]}
+    keys = {r["key"] for r in summary[:-3]}
     for label, _ in AR_SAMPLE:
         assert any(label == k or label.startswith(f"{k} ") for k in keys), label
 
@@ -528,10 +528,10 @@ def test_settlement_negative_group_swaps_sides_and_still_balances():
         total_row=ExtractedDetailRow(total="2,251.00", commis_amt="0.00", tax_amt="0.00"),
     )
 
-    by_key = {r["desc"].rsplit(" - ", 1)[1]: r for r in out[3:]}
+    by_key = {r["desc"].rsplit(" - ", 1)[1]: r for r in out[:-3]}
     assert by_key["VS"]["credit"] == 3251.00 and by_key["VS"]["debit"] == 0
     assert by_key["MC"]["debit"] == 1000.00 and by_key["MC"]["credit"] == 0
-    assert sum(d["debit"] for d in out[:3]) == 2251.00  # net of the two groups
+    assert sum(d["debit"] for d in out[-3:]) == 2251.00  # net of the two groups
     assert is_balanced(out)
 
 
@@ -548,7 +548,7 @@ def test_settlement_lone_negative_group_still_posts_as_a_debit_leg():
         total_row=None,
     )
 
-    assert out[3]["debit"] == 3251.00 and out[3]["credit"] == 0
+    assert out[0]["debit"] == 3251.00 and out[0]["credit"] == 0
     assert not is_balanced(out), "nothing on the debit side answers the refund"
 
 
@@ -563,7 +563,7 @@ def test_settlement_document_with_no_amounts_produces_no_jv():
 
 def test_settlement_unmapped_key_still_appears_in_the_rows_so_the_reviewer_can_see_it():
     out = _ar_build(PostType.SUMMARY, _ar_mapping(["VS"]))
-    by_key = {r["desc"].rsplit(" - ", 1)[1]: r for r in out[3:]}
+    by_key = {r["desc"].rsplit(" - ", 1)[1]: r for r in out[:-3]}
 
     assert by_key["MC"]["acc"] == "", "blank, not dropped -- the row is what gets mapped"
     assert is_balanced(out)
@@ -724,8 +724,8 @@ def test_settlement_document_without_a_tax_invoice_number_drops_the_comment_pref
         grouping=partial(group_key, post_type=PostType.DETAIL),
         doc_no=None,
     )
-    assert [r["desc"] for r in out[:3]] == ["Credit card commission", "Input Tax", "Bank Account"]
-    assert out[3]["desc"] == "VS INTER PREM"
+    assert [r["desc"] for r in out[-3:]] == ["Credit card commission", "Input Tax", "Bank Account"]
+    assert out[0]["desc"] == "VS INTER PREM"
 
 
 # -- total_row missing --------------------------------------------------------------
@@ -738,7 +738,7 @@ def test_settlement_document_without_a_tax_invoice_number_drops_the_comment_pref
 def test_settlement_missing_total_row_posts_zero_on_every_debit_leg():
     out = _ar_build(PostType.DETAIL, _ar_detail_mappings(), total_row=None)
 
-    assert [d["debit"] for d in out[:3]] == [0.0, 0.0, 0.0]
+    assert [d["debit"] for d in out[-3:]] == [0.0, 0.0, 0.0]
     assert not is_balanced(out), "credits still post; debits do not -- a real imbalance"
 
 

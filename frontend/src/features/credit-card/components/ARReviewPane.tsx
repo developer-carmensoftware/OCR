@@ -57,7 +57,7 @@ export default function ARReviewPane({ jv, details }: Props) {
   const { controlRows, groups, newTypes, zeroLines, anyMerged } = useMemo(() => {
     const rows = jv?.rows ?? []
     // The three fixed debit legs (commission / input tax / bank account, decision #28)
-    // belong to no group — `build_ar_jv_rows` writes all three first, always in that
+    // belong to no group — `build_jv_rows` writes all three last, always in that
     // order, each with an empty key. Filtered, not a single `.find()`: that read the
     // pre-2026-09-18 shape, where a settlement JV had exactly one derived control leg
     // instead of three fixed ones, and silently dropped the other two.
@@ -179,34 +179,6 @@ export default function ARReviewPane({ jv, details }: Props) {
         </thead>
 
         <tbody>
-          {/* The three fixed debit legs — commission, input tax, bank account
-              (decision #28) — lead, matching the debit-first convention on `JvEditor`'s
-              own table. Ruled off below them rather than above, since they are the odd
-              ones out and everything after is a report line. Read-only: each is a
-              once-per-bank setup choice, not a per-document one — see
-              `#/CreditCardOCR/ar-settings`. */}
-          {controlRows.map((c, i) => (
-            <tr key={`ctrl-${i}`} className="arv-row-control">
-              <td className="jv-num--empty" />
-              <Cells dept={c.dept} acc={c.acc} />
-              <td className="arv-key" data-label={t('review.jvDesc')}>
-                {c.desc}
-              </td>
-              <td
-                className={`jv-num text-mono${c.debit ? '' : ' jv-num--empty'}`}
-                data-label={t('review.jvDebit')}
-              >
-                {c.debit ? fmt(c.debit) : ''}
-              </td>
-              <td
-                className={`jv-num text-mono${c.credit ? '' : ' jv-num--empty'}`}
-                data-label={t('review.jvCredit')}
-              >
-                {c.credit ? fmt(c.credit) : ''}
-              </td>
-            </tr>
-          ))}
-
           {groups.map(({ leg, lines, merged }) => {
             const rowClass = !leg.dept || !leg.acc ? 'jv-row--needed' : undefined
             const open = expanded.has(leg.key)
@@ -312,6 +284,34 @@ export default function ARReviewPane({ jv, details }: Props) {
               </td>
               <td className="jv-num--empty" />
               <td className="jv-num--empty" />
+            </tr>
+          ))}
+
+          {/* The three fixed debit legs — commission, input tax, bank account
+              (decision #28) — close the table, after every report line: credits first,
+              debits last, the order `build_jv_rows` emits and Carmen receives. Ruled off
+              above the first of them, since they are the odd ones out. Read-only: each is
+              a once-per-bank setup choice, not a per-document one — see
+              `#/CreditCardOCR/ar-settings`. */}
+          {controlRows.map((c, i) => (
+            <tr key={`ctrl-${i}`} className="arv-row-control">
+              <td className="jv-num--empty" />
+              <Cells dept={c.dept} acc={c.acc} />
+              <td className="arv-key" data-label={t('review.jvDesc')}>
+                {c.desc}
+              </td>
+              <td
+                className={`jv-num text-mono${c.debit ? '' : ' jv-num--empty'}`}
+                data-label={t('review.jvDebit')}
+              >
+                {c.debit ? fmt(c.debit) : ''}
+              </td>
+              <td
+                className={`jv-num text-mono${c.credit ? '' : ' jv-num--empty'}`}
+                data-label={t('review.jvCredit')}
+              >
+                {c.credit ? fmt(c.credit) : ''}
+              </td>
             </tr>
           ))}
         </tbody>

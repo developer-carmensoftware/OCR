@@ -1058,7 +1058,8 @@ const AR_LINES = [
 ]
 
 // The three fixed debit legs (decision #28) — commission / input tax / bank account,
-// always in that order, each with an empty key since none is a printed payment type.
+// always in that order and always after the credit legs, each with an empty key since
+// none is a printed payment type.
 // `build_ar_jv_rows` reads them off the report's own total row, independent of the
 // credit rows below — real worked-example figures, so Σ debit = Σ credit = 25,091.00.
 const AR_CONTROL_ROWS = [
@@ -1084,7 +1085,6 @@ const CONTROL_PANE_ROWS = [
 /** Detail: the printed label is the key, so the table is one row per printed line. */
 const AR_JV = {
   rows: [
-    ...AR_CONTROL_ROWS,
     {
       dept: 'GEN',
       acc: '510300',
@@ -1101,6 +1101,7 @@ const AR_JV = {
       credit: 10091,
       key: 'VS LOCAL UP PREM',
     },
+    ...AR_CONTROL_ROWS,
   ],
   description: 'Credit Card AR Reconcile 21/07/2026',
   doc_no: '210726E00035291',
@@ -1117,7 +1118,6 @@ const AR_JV_SUMMARY = {
   ...AR_JV,
   post_type: 'Summary',
   rows: [
-    ...AR_CONTROL_ROWS,
     {
       dept: 'GEN',
       acc: '510300',
@@ -1126,6 +1126,7 @@ const AR_JV_SUMMARY = {
       credit: 25091,
       key: 'VS',
     },
+    ...AR_CONTROL_ROWS,
   ],
 }
 
@@ -1165,9 +1166,9 @@ describe('a parked settlement report', () => {
 
     await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(paneRows()).toEqual([
-      ...CONTROL_PANE_ROWS,
       ['', 'GEN', '510300', 'Tax Inv.# 210726E00035291 - VS INTER UP PREM', '', '15,000.00'],
       ['', 'GEN', '511200', 'Tax Inv.# 210726E00035291 - VS LOCAL UP PREM', '', '10,091.00'],
+      ...CONTROL_PANE_ROWS,
     ])
     // The credit-card half of the modal is replaced, not disabled.
     expect(screen.queryByText('ACCOUNT CODE MAPPING')).not.toBeInTheDocument()
@@ -1183,8 +1184,8 @@ describe('a parked settlement report', () => {
 
     await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(paneRows()).toEqual([
-      ...CONTROL_PANE_ROWS,
       ['', 'GEN', '510300', 'Tax Inv.# 210726E00035291 - VS2 folded in', '', '25,091.00'],
+      ...CONTROL_PANE_ROWS,
     ])
     expect(document.querySelectorAll('.arv-row-src')).toHaveLength(0)
 
@@ -1196,10 +1197,10 @@ describe('a parked settlement report', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show 2 lines folded into VS' }))
 
     expect(paneRows()).toEqual([
-      ...CONTROL_PANE_ROWS,
       ['', 'GEN', '510300', 'Tax Inv.# 210726E00035291 - VS2 folded in', '', '25,091.00'],
       ['', '', '', 'VS INTER UP PREM', '', ''],
       ['', '', '', 'VS LOCAL UP PREM', '', ''],
+      ...CONTROL_PANE_ROWS,
     ])
   })
 
@@ -1284,9 +1285,8 @@ describe('a parked settlement report', () => {
     const unmapped = {
       ...AR_JV,
       unmapped: ['VS LOCAL UP PREM'],
-      // The three control legs and the VS INTER UP PREM credit leg untouched; only the
-      // last row — VS LOCAL UP PREM — loses its mapping.
-      rows: [...AR_JV.rows.slice(0, 4), { ...AR_JV.rows[4], dept: '', acc: '' }],
+      // Every leg untouched except VS LOCAL UP PREM, which loses its mapping.
+      rows: AR_JV.rows.map(r => (r.key === 'VS LOCAL UP PREM' ? { ...r, dept: '', acc: '' } : r)),
     }
     vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: unmapped }))
     mount()

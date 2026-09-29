@@ -227,11 +227,8 @@ def build_jv_rows(
         # of scope here.
         return r2(num(getattr(total_row, field, None))) if total_row is not None else 0.0
 
-    rows = [
-        leg(fixed["commission"], "Credit card commission", anchor_amt("commis_amt"), 0.0),
-        leg(fixed["tax"], "Input Tax", anchor_amt("tax_amt"), 0.0),
-        leg(fixed["net"], "Bank Account", anchor_amt("total"), 0.0),
-    ]
+    # Credit legs first, the three fixed debit legs last — same order as the fee-invoice branch.
+    rows = []
     for key, raw in grouped.items():
         cfg = mappings.get(key) or {}
         amt = r2(raw)
@@ -244,6 +241,11 @@ def build_jv_rows(
                 key,
             )
         )
+    rows += [
+        leg(fixed["commission"], "Credit card commission", anchor_amt("commis_amt"), 0.0),
+        leg(fixed["tax"], "Input Tax", anchor_amt("tax_amt"), 0.0),
+        leg(fixed["net"], "Bank Account", anchor_amt("total"), 0.0),
+    ]
     return rows
 
 

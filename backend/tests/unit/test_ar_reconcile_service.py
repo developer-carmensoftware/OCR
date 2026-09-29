@@ -149,18 +149,18 @@ async def test_jv_for_document_builds_the_entry_the_reviewer_approves():
 
     assert out is not None
     assert len(out.rows) == 6, "3 fixed debit legs + VS + MC + JCB"
-    debits = {r.desc: r for r in out.rows[:3]}
+    debits = {r.desc: r for r in out.rows[-3:]}
     assert debits["Credit card commission"].acc == "5001"
     assert debits["Credit card commission"].debit == 300.0
     assert debits["Input Tax"].acc == "5002" and debits["Input Tax"].debit == 20.0
     assert debits["Bank Account"].acc == "1010" and debits["Bank Account"].debit == 11376.0
-    credits = {r.acc: r.credit for r in out.rows[3:]}
+    credits = {r.acc: r.credit for r in out.rows[:-3]}
     assert credits == {"1021001": 5451.0, "1021002": 5945.0, "1021003": 300.0}
     assert out.total_debit == out.total_credit == 11696.0
     assert out.balanced is True
     assert out.unmapped == []
     assert out.description == "Credit Card AR Reconcile 21/07/2026"
-    assert out.rows[3].desc.startswith("Tax Inv.# 210726E00035291 - ")
+    assert out.rows[0].desc.startswith("Tax Inv.# 210726E00035291 - ")
 
 
 @pytest.mark.asyncio
@@ -235,7 +235,7 @@ async def test_jv_for_document_names_the_types_that_would_block_the_post():
     # The rows still come back — they are what the reviewer has to look at — but approve
     # refuses on this list rather than posting a leg with a blank account.
     assert sorted(out.unmapped) == ["JCB", "MC"]
-    assert [r.acc for r in out.rows[3:] if not r.acc] != []
+    assert [r.acc for r in out.rows[:-3] if not r.acc] != []
     assert out.balanced is True
 
 
@@ -253,8 +253,8 @@ async def test_jv_for_document_survives_a_document_with_no_number():
     out = await svc.jv_for_document(db, TENANT, "KBANK", {**EXTRACTED, "doc_no": ""})
 
     assert out.doc_no == ""
-    assert out.rows[0].desc == "Credit card commission", "fixed legs never carried the prefix"
-    assert out.rows[3].desc == "VS", "credit legs drop it too, when there is no number"
+    assert out.rows[-3].desc == "Credit card commission", "fixed legs never carried the prefix"
+    assert out.rows[0].desc == "VS", "credit legs drop it too, when there is no number"
 
 
 @pytest.mark.asyncio

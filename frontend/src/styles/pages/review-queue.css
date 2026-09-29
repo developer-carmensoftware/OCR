@@ -1375,10 +1375,10 @@
   color: var(--text-3);
 }
 
-/* The counterpart leg, now first. Ruled off with the raised border on the row *after* it
-   rather than the subtle one `tbody tr + tr td` already draws: it is a different kind of
-   row, not the first of the report's own lines. */
-.arv-row-control + tr td {
+/* The three debit legs, now last. Ruled off with the raised border above the first of them
+   rather than the subtle one `tbody tr + tr td` already draws: they are a different kind of
+   row, not more of the report's own lines. */
+tr:not(.arv-row-control) + .arv-row-control td {
   border-top: 1px solid var(--border-raised, var(--border));
 }
 
@@ -1631,9 +1631,9 @@
     border-top: 0;
   }
 
-  /* The row separator moves from the cell to the row at this width; the counterpart leg
-     keeps its heavier edge by recolouring the row after it rather than adding a second. */
-  .arv-row-control + tr {
+  /* The row separator moves from the cell to the row at this width; the debit legs keep
+     their heavier edge by recolouring the first of them rather than adding a second. */
+  tr:not(.arv-row-control) + .arv-row-control {
     border-top-color: var(--border-raised, var(--border));
   }
 

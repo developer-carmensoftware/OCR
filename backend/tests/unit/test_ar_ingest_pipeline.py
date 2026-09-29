@@ -246,17 +246,17 @@ async def test_ar_posts_three_fixed_debit_legs_and_one_credit_per_scheme():
     detail = payload["Detail"]
     assert len(detail) == 6, "3 fixed debit legs + VS + MC + JCB"
 
-    debits = {r["Description"]: r for r in detail[:3]}
+    debits = {r["Description"]: r for r in detail[-3:]}
     assert debits["Credit card commission"]["AccCode"] == "5100"
     assert debits["Credit card commission"]["DrAmount"] == 300.0
     assert debits["Input Tax"]["AccCode"] == "1150" and debits["Input Tax"]["DrAmount"] == 20.0
     assert debits["Bank Account"]["AccCode"] == "1010"
     assert debits["Bank Account"]["DrAmount"] == 11376.0
-    credits = {r["AccCode"]: r["CrAmount"] for r in detail[3:]}
+    credits = {r["AccCode"]: r["CrAmount"] for r in detail[:-3]}
     assert credits == {"1021001": 5451.0, "1021002": 5945.0, "1021003": 300.0}
     assert sum(r["DrAmount"] for r in detail) == sum(r["CrAmount"] for r in detail)
     assert payload["Description"] == "Credit Card AR Reconcile 21/07/2026"
-    assert detail[3]["Description"].startswith("Tax Inv.# 210726E00035291 - ")
+    assert detail[0]["Description"].startswith("Tax Inv.# 210726E00035291 - ")
 
 
 @pytest.mark.asyncio

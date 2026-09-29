@@ -86,7 +86,7 @@ export default function ARJvPreview({ preview, loading, postTypeLabel }: Props) 
                 </thead>
                 <tbody>
                   {preview.rows.map((r, i) => (
-                    <tr key={`${r.acc}-${r.desc}-${i}`} className={i === 0 ? 'ar-row-debit' : ''}>
+                    <tr key={`${r.acc}-${r.desc}-${i}`} className={r.key ? '' : 'ar-row-debit'}>
                       <td>{r.dept || <span className="ar-missing">—</span>}</td>
                       <td>
                         {r.acc || <span className="ar-missing">{t('review.arNotMapped')}</span>}

@@ -1,16 +1,16 @@
 # Graph Report - OCR  (2026-09-29)
 
 ## Corpus Check
-- 392 files · ~274,930 words
+- 392 files · ~274,931 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2074 nodes · 5713 edges · 159 communities (102 shown, 57 thin omitted)
+- 2074 nodes · 5713 edges · 158 communities (101 shown, 57 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 64 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `f050bcde`
+- Built from commit: `aeb65b0f`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -43,7 +43,7 @@
 - Pricing.tsx
 - devDependencies
 - storage.ts
-- endpoints.ts
+- CreditsPage.tsx
 - useOcrSubmission.test.ts
 - useOcrWizard
 - OrderActions.tsx
@@ -76,7 +76,6 @@
 - CLAUDE.md
 - Contributing
 - @vitejs/plugin-react
-- CreditsPage.tsx
 - AdminRouter.tsx
 - AdminLogin.tsx
 - APGroupModal.tsx
@@ -196,7 +195,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (159 total, 57 thin omitted)
+## Communities (158 total, 57 thin omitted)
 
 ### Community 0 - "useOcrWizard.ts"
 Cohesion: 0.25
@@ -211,8 +210,8 @@ Cohesion: 0.08
 Nodes (19): AdminKey, en, th, en, th, DICT, en, th (+11 more)
 
 ### Community 3 - "adminFetch"
-Cohesion: 0.25
-Nodes (20): unwrapDetail(), endMaintenanceNow(), fetchMaintenance(), MaintenanceStatus, setMaintenanceSchedule(), setTenantMaintenance(), AdminUserRow, createAdminUser() (+12 more)
+Cohesion: 0.24
+Nodes (21): unwrapDetail(), endMaintenanceNow(), fetchMaintenance(), MaintenanceStatus, setMaintenanceSchedule(), setTenantMaintenance(), TenantRow, AdminUserRow (+13 more)
 
 ### Community 4 - "ManualScan.tsx"
 Cohesion: 0.06
@@ -267,8 +266,8 @@ Cohesion: 0.15
 Nodes (18): CreditLedgerEntry, fetchCreditBalance(), fetchAdminOrderDocuments(), getOrderSlipUrl(), listCreditOrders(), CompanyPanel(), ContactBuyer(), num() (+10 more)
 
 ### Community 19 - "ExtractionsPage.tsx"
-Cohesion: 0.17
-Nodes (16): ExtractionFailureRow, fetchExtractionFailures(), DateRangePicker(), DateRangePickerProps, causeLabel(), classify(), ERROR_RULES, ExtractionsPage() (+8 more)
+Cohesion: 0.13
+Nodes (19): ExtractionFailureRow, fetchExtractionFailures(), DateRangePicker(), DateRangePickerProps, EmptyState(), EmptyStateProps, Tab, Tabs() (+11 more)
 
 ### Community 20 - "EmailAutomationPage.tsx"
 Cohesion: 0.21
@@ -302,9 +301,9 @@ Nodes (23): autoprefixer, @eslint/js, devDependencies, autoprefixer, @eslint/js,
 Cohesion: 0.14
 Nodes (23): bankCodeFromHash(), getAccountingConfig, seedOcrBranch(), useBankConfig(), PaymentTypesHook, usePaymentTypes(), AccountingConfigHook, MAIN_KEYS (+15 more)
 
-### Community 28 - "endpoints.ts"
-Cohesion: 0.18
-Nodes (18): buildQs(), QueryParams, fetchAlerts(), ModuleCatalogEntry, ModuleUsageRow, QuotaOverviewResponse, TenantQuotaOverviewRow, TenantSubscriptionSummary (+10 more)
+### Community 28 - "CreditsPage.tsx"
+Cohesion: 0.20
+Nodes (17): buildQs(), QueryParams, adjustCredits(), CreditBalance, fetchCreditLedger(), fetchCreditPacks(), topupCredits(), ModuleUsageRow (+9 more)
 
 ### Community 29 - "useOcrSubmission.test.ts"
 Cohesion: 0.12
@@ -371,12 +370,12 @@ Cohesion: 0.27
 Nodes (12): formatWhen(), fullWhen(), Message(), pad(), parseWhen(), QueueRow(), reasonFor(), STATUS_META (+4 more)
 
 ### Community 45 - "QuotaModulesPage.tsx"
-Cohesion: 0.14
-Nodes (17): fetchQuotaOverview(), toggleTenantModule(), KPICard(), KPICardProps, EmptyState(), EmptyStateProps, Tab, Tabs() (+9 more)
+Cohesion: 0.13
+Nodes (22): fetchAlerts(), fetchQuotaOverview(), ModuleCatalogEntry, TenantQuotaOverviewRow, toggleTenantModule(), fetchUsageTotals(), KPICard(), KPICardProps (+14 more)
 
 ### Community 46 - "useT"
 Cohesion: 0.11
-Nodes (26): resolveAlert(), fetchTenantDetail(), fetchTenants(), fetchPerformanceLogs(), label(), Tenant, TenantSelector(), TenantSelectorProps (+18 more)
+Nodes (26): resolveAlert(), fetchTenantDetail(), fetchTenants(), fetchUserUsage(), label(), Tenant, TenantSelector(), TenantSelectorProps (+18 more)
 
 ### Community 47 - "main.tsx"
 Cohesion: 0.18
@@ -412,7 +411,7 @@ Nodes (12): compilerOptions, allowSyntheticDefaultImports, composite, module, mo
 
 ### Community 55 - "PeriodPicker.tsx"
 Cohesion: 0.11
-Nodes (39): fetchJobs(), fetchErrorBreakdown(), fetchLLMLogs(), fetchTenantRanking(), fetchUserUsage(), Column, daysAgo(), endOfDay() (+31 more)
+Nodes (37): fetchJobs(), fetchLLMLogs(), fetchPerformanceLogs(), fetchTenantRanking(), Column, daysAgo(), endOfDay(), granularityFor() (+29 more)
 
 ### Community 56 - "shared/api/credits.ts"
 Cohesion: 0.10
@@ -429,10 +428,6 @@ Nodes (10): Adding a New Bank (current flow — code-based), Adding a New Module
 ### Community 59 - "Contributing"
 Cohesion: 0.18
 Nodes (11): Before every commit (automated via pre-commit), Branch strategy, Commit conventions, Contributing, Deploy, mypy strict modules, Pull request checklist, Running locally (+3 more)
-
-### Community 61 - "CreditsPage.tsx"
-Cohesion: 0.47
-Nodes (7): adjustCredits(), CreditBalance, fetchCreditLedger(), fetchCreditPacks(), topupCredits(), CreditsPage(), getCols()
 
 ### Community 62 - "AdminRouter.tsx"
 Cohesion: 0.33
@@ -552,7 +547,7 @@ Nodes (24): ApiFieldError, BankCode, call(), deleteToken(), EmailApiError, Email
 
 ### Community 111 - "UsagePage.tsx"
 Cohesion: 0.14
-Nodes (15): LazyMetricChart, MetricChart(), axisTick, ChartType, FALLBACK_COLORS, MetricChart(), MetricChartProps, Series (+7 more)
+Nodes (16): fetchUsageSummary(), LazyMetricChart, MetricChart(), axisTick, ChartType, FALLBACK_COLORS, MetricChart(), MetricChartProps (+8 more)
 
 ### Community 112 - "TKey"
 Cohesion: 0.15
@@ -590,7 +585,7 @@ Nodes (4): en, th, en, th
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `useT()` connect `useT` to `APReviewStep.tsx`, `adminFetch`, `ManualScan.tsx`, `ReviewQueue.tsx`, `parseNum`, `TutorialModal.tsx`, `screens.tsx`, `orders.ts`, `OrderDrawer.tsx`, `Mapping.tsx`, `apiFetch`, `showToast`, `OrderWorkspace.tsx`, `ExtractionsPage.tsx`, `EmailAutomationPage.tsx`, `banks.ts`, `useMapping.ts`, `Pricing.tsx`, `endpoints.ts`, `useOcrWizard`, `OrderActions.tsx`, `FieldMapping`, `APInvoice.tsx`, `TopLevelConfigSection.tsx`, `FeatureFlows.tsx`, `NotificationBell.tsx`, `useAPExtraction.ts`, `QueueRow.tsx`, `QuotaModulesPage.tsx`, `APLineItem`, `OrderHistory.tsx`, `AccountingReview.tsx`, `ArCustomerProfiles.tsx`, `PeriodPicker.tsx`, `shared/api/credits.ts`, `shared/api/auth.ts`, `CreditsPage.tsx`, `AdminRouter.tsx`, `AdminLogin.tsx`, `APGroupModal.tsx`, `CheckoutFlow.tsx`, `PaymentTypeModal.test.tsx`, `client.ts`, `useReviewDocument.ts`, `AppHeader.tsx`, `DocumentPreview.tsx`, `LanguageProvider`, `OrderTable.tsx`, `SlipViewer.tsx`, `UsagePage.tsx`, `TKey`, `APUploadStep.tsx`, `DataTable.tsx`, `getCarmenUrl`?**
+- **Why does `useT()` connect `useT` to `APReviewStep.tsx`, `adminFetch`, `ManualScan.tsx`, `ReviewQueue.tsx`, `parseNum`, `TutorialModal.tsx`, `screens.tsx`, `orders.ts`, `OrderDrawer.tsx`, `Mapping.tsx`, `apiFetch`, `showToast`, `OrderWorkspace.tsx`, `ExtractionsPage.tsx`, `EmailAutomationPage.tsx`, `banks.ts`, `useMapping.ts`, `Pricing.tsx`, `CreditsPage.tsx`, `useOcrWizard`, `OrderActions.tsx`, `FieldMapping`, `APInvoice.tsx`, `TopLevelConfigSection.tsx`, `FeatureFlows.tsx`, `NotificationBell.tsx`, `useAPExtraction.ts`, `QueueRow.tsx`, `QuotaModulesPage.tsx`, `APLineItem`, `OrderHistory.tsx`, `AccountingReview.tsx`, `ArCustomerProfiles.tsx`, `PeriodPicker.tsx`, `shared/api/credits.ts`, `shared/api/auth.ts`, `AdminRouter.tsx`, `AdminLogin.tsx`, `APGroupModal.tsx`, `CheckoutFlow.tsx`, `PaymentTypeModal.test.tsx`, `client.ts`, `useReviewDocument.ts`, `AppHeader.tsx`, `DocumentPreview.tsx`, `LanguageProvider`, `OrderTable.tsx`, `SlipViewer.tsx`, `UsagePage.tsx`, `TKey`, `APUploadStep.tsx`, `DataTable.tsx`, `getCarmenUrl`?**
   _High betweenness centrality (0.266) - this node is a cross-community bridge._
 - **Why does `ManualScan()` connect `useOcrWizard` to `storage.ts`, `ManualScan.tsx`, `useT`?**
   _High betweenness centrality (0.020) - this node is a cross-community bridge._
