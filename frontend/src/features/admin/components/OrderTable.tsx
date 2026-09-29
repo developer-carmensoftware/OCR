@@ -305,7 +305,7 @@ export default function OrderTable({
                     <td className="orev-td-desc">
                       {o.pack_code} · {t('orev.credits', { n: o.credits.toLocaleString() })}
                     </td>
-                    <td className="orev-col-amt mono">฿{formatThb(o.amount_thb)}</td>
+                    <td className="orev-col-amt mono">฿{formatThb(o.amount_thb, true)}</td>
                     <td>
                       <span className={`orev-badge is-${STAGE_TONE[stage]}`}>
                         {t(STAGE_LABEL[stage])}

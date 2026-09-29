@@ -160,7 +160,7 @@ function OrderRow({
             )}
           </span>
         </div>
-        <span className="order-row-amount text-mono">฿{formatThb(order.amount_thb)}</span>
+        <span className="order-row-amount text-mono">฿{formatThb(order.amount_thb, true)}</span>
         <button
           type="button"
           className="pending-order-toggle"

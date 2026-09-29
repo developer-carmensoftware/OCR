@@ -40,7 +40,7 @@ export default function OrderKpiCards({ kpi }: { kpi: KpiSummary | null }) {
           <CircleDollarSign size={16} strokeWidth={2} aria-hidden="true" />
           <span className="orev-kpi-title">{t('orev.kpi.unpaid')}</span>
         </div>
-        <span className="orev-kpi-amt orev-kpi-amt--lg">฿{formatThb(unpaidAmt)}</span>
+        <span className="orev-kpi-amt orev-kpi-amt--lg">฿{formatThb(unpaidAmt, true)}</span>
         <span className="orev-kpi-desc">{t('orev.kpi.orderCount', { n: unpaidCnt })}</span>
       </div>
       <div className="orev-kpi-card">
@@ -49,7 +49,7 @@ export default function OrderKpiCards({ kpi }: { kpi: KpiSummary | null }) {
           <span className="orev-kpi-title">{t('orev.kpi.paid')}</span>
         </div>
         <span className="orev-kpi-amt orev-kpi-amt--lg orev-kpi-amt--ok">
-          ฿{formatThb(paidAmt)}
+          ฿{formatThb(paidAmt, true)}
         </span>
         <span className="orev-kpi-desc">{t('orev.kpi.orderCount', { n: paidCnt })}</span>
       </div>
@@ -59,7 +59,7 @@ export default function OrderKpiCards({ kpi }: { kpi: KpiSummary | null }) {
           <span className="orev-kpi-title">{t('orev.kpi.toReview')}</span>
         </div>
         <span className="orev-kpi-amt orev-kpi-amt--lg orev-kpi-amt--warn">{cnt('to_review')}</span>
-        <span className="orev-kpi-desc">฿{formatThb(kpi.to_review_amount)}</span>
+        <span className="orev-kpi-desc">฿{formatThb(kpi.to_review_amount, true)}</span>
       </div>
       <div className="orev-kpi-card">
         <div className="orev-kpi-header">
@@ -67,7 +67,7 @@ export default function OrderKpiCards({ kpi }: { kpi: KpiSummary | null }) {
           <span className="orev-kpi-title">{t('orev.kpi.totalOrders')}</span>
         </div>
         <span className="orev-kpi-amt orev-kpi-amt--lg">{totalCnt}</span>
-        <span className="orev-kpi-desc">฿{formatThb(totalAmt)}</span>
+        <span className="orev-kpi-desc">฿{formatThb(totalAmt, true)}</span>
       </div>
     </div>
   )

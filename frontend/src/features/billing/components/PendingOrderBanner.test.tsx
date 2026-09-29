@@ -142,3 +142,14 @@ describe('PendingOrderBanner plan-change confirmation', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 })
+
+/**
+ * An order amount includes VAT, so it usually carries satang. formatThb's default
+ * drops trailing zeros (catalog prices are whole), which rendered this as ฿1,059.3.
+ */
+describe('PendingOrderBanner amount', () => {
+  it('shows the VAT-inclusive amount to the satang', () => {
+    renderBanner({ ...order('sub_growth', 500, 'monthly'), amount_thb: 1059.3 }, null)
+    expect(screen.getByText('฿1,059.30')).toBeTruthy()
+  })
+})

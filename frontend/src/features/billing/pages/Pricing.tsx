@@ -5,6 +5,7 @@ import AppHeader from '@/shared/components/common/AppHeader'
 import { useT } from '@/i18n/LanguageContext'
 import { PlanCard, EnterpriseCard } from '@/features/billing/components/PlanCard'
 import PackList from '@/features/billing/components/PackList'
+import { cardVariants, containerVariants } from '@/features/billing/motion'
 import FeatureFlows from '@/features/billing/components/FeatureFlows'
 import CheckoutFlow from '@/features/billing/components/CheckoutFlow'
 import PendingOrderBanner from '@/features/billing/components/PendingOrderBanner'
@@ -111,29 +112,6 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
 const PurchaseTutorial = lazy(
   () => import('@/features/billing/components/tutorial/PurchaseTutorial')
 )
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.05,
-    },
-  },
-}
-
-const cardVariants = {
-  hidden: { opacity: 0, y: 12 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      type: 'spring' as const,
-      stiffness: 120,
-      damping: 14,
-    },
-  },
-}
 
 export default function Pricing() {
   const { t } = useT()
@@ -366,7 +344,12 @@ export default function Pricing() {
                     <p className="pricing-section-sub">{t('pricing.topupSub')}</p>
                     <p className="pricing-note">{t('pricing.topupNote')}</p>
                   </div>
-                  <PackList packs={packs} onSelect={startCheckout} disabled={hasOpenOrder} />
+                  <PackList
+                    packs={packs}
+                    onSelect={startCheckout}
+                    disabled={hasOpenOrder}
+                    enter={enter}
+                  />
                 </section>
 
                 <section className="pricing-section" aria-labelledby="flows-heading">

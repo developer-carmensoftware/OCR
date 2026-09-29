@@ -121,7 +121,7 @@ async function detail(res: Response, fallback: string): Promise<string> {
 /** Full catalog (subscription tiers + top-up packs), cheapest-first within kind. */
 export async function getCreditPacks(): Promise<CreditPack[]> {
   const res = await apiFetch(API.credits.packs)
-  if (!res.ok) throw new Error(`Failed to load plans (${res.status})`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`) // the page wraps it in pricing.loadError
   return res.json() as Promise<CreditPack[]>
 }
 
@@ -196,7 +196,7 @@ export async function listOrders(
   if (opts.limit !== undefined) q.set('limit', String(opts.limit))
   if (opts.offset) q.set('offset', String(opts.offset))
   const res = await apiFetch(`${API.credits.orders}?${q}`)
-  if (!res.ok) throw new Error(`Failed to load order history (${res.status})`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`) // the page wraps it in order.loadError
   return res.json() as Promise<Page<CreditOrder>>
 }
 
