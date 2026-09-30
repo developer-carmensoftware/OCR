@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { appKey } from '@/shared/lib/storage'
 import type { FieldMapping } from '@/shared/types/api'
-import type { AddError } from '@/features/credit-card/components/payment-mapping/types'
+import type { AddError, Undo } from '@/features/credit-card/components/payment-mapping/types'
 
 export interface PaymentTypesHook {
   paymentAmount: Record<string, FieldMapping>
@@ -19,7 +19,8 @@ export interface PaymentTypesHook {
   /** Upper-cased and trimmed; refused when blank or already a code in `taken` (this
    *  set's own rows plus any other set's, so one key is never edited from two places). */
   addCustomType: (raw: string, taken: Set<string>) => AddError
-  handleRemoveCustomType: (type: string) => void
+  /** Removes a typed-in type and its mapping; the returned undo puts both back. */
+  handleRemoveCustomType: (type: string) => Undo
   openAmountModal: () => void
   cancelAmountSelection: (clearSuggestions?: (() => void) | null) => void
   saveAmountSelection: () => void
@@ -75,13 +76,26 @@ export function usePaymentTypes(): PaymentTypesHook {
     setCustomPaymentTypes([])
   }
 
-  const handleRemoveCustomType = (type: string) => {
+  const handleRemoveCustomType = (type: string): Undo => {
+    const index = customPaymentTypes.indexOf(type)
+    const mapping = paymentAmount[type]
     setCustomPaymentTypes(prev => prev.filter(t => t !== type))
     setPaymentAmount(prev => {
       const next = { ...prev }
       delete next[type]
       return next
     })
+    return () => {
+      setCustomPaymentTypes(prev => {
+        if (prev.includes(type)) return prev
+        const next = [...prev]
+        next.splice(index < 0 ? next.length : Math.min(index, next.length), 0, type)
+        return next
+      })
+      setPaymentAmount(prev =>
+        type in prev ? prev : { ...prev, [type]: mapping ?? { dept: '', acc: '' } }
+      )
+    }
   }
 
   const openAmountModal = () => {

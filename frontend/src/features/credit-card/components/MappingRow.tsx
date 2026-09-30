@@ -1,5 +1,4 @@
-import { Check, X } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { Check, Trash2 } from 'lucide-react'
 import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
 import '@/styles/components/mapping-row.css'
 import { allowedAccountsForDept } from '@/shared/lib/deptAccounts'
@@ -24,6 +23,13 @@ import type { MappingStatus } from './payment-mapping/types'
  * for a screen reader (WCAG 1.4.1). The old solid red/green badges made a list of fifteen
  * unmapped types read as fifteen errors.
  *
+ * Two kinds of action, kept apart on purpose. Accept/Dismiss answer the AI suggestion —
+ * pressed often, row after row, and harmless (the AI can be asked again). Remove takes the
+ * payment type and the account already picked for it out of the list — pressed rarely,
+ * and it loses work. They used to be three same-size icons 5px apart, two of them an X;
+ * now the suggestion's pair is labelled words beside the suggestion, and Remove is a
+ * trash icon in its own slot at the far edge, past a divider, with an undo behind it.
+ *
  * The `pm-*` class names are the ones it was born with in the payment-type modal.
  */
 
@@ -43,7 +49,7 @@ interface Props {
   onAccept?: () => void
   onReject?: () => void
   acceptLabel?: string
-  rejectLabel?: string
+  dismissLabel?: string
   /** Checkbox for bulk apply; omitted = no selection column. */
   selected?: boolean
   onSelect?: (checked: boolean) => void
@@ -52,8 +58,9 @@ interface Props {
   tag?: string
   /** Shown for a code the AI proposed that Carmen's master list does not describe. */
   fallbackName?: string
-  /** Rendered in the actions cell — the remove button. */
-  trailing?: ReactNode
+  /** Omitted for a row that cannot be removed (a type printed on the scan). */
+  onRemove?: () => void
+  removeLabel?: string
   deptPlaceholder?: string
   accPlaceholder?: string
   /** Names the two pickers once the row stacks and the column header is gone. A
@@ -77,13 +84,14 @@ export default function MappingRow({
   onAccept,
   onReject,
   acceptLabel = 'Accept',
-  rejectLabel = 'Reject',
+  dismissLabel = 'Dismiss',
   selected = false,
   onSelect,
   selectLabel,
   tag,
   fallbackName = '(AI/History code)',
-  trailing,
+  onRemove,
+  removeLabel = 'Remove',
   deptPlaceholder = 'Dept...',
   accPlaceholder = 'Acc...',
   deptLabel = 'Dept',
@@ -173,28 +181,37 @@ export default function MappingRow({
       </div>
       <div className="pm-actions">
         {suggestion && onAccept && onReject && (
-          <>
+          <div className="pm-suggest" role="group" aria-label={`${acceptLabel} / ${dismissLabel}`}>
             <button
               type="button"
               className="pm-accept-btn"
               onClick={onAccept}
-              title={acceptLabel}
               aria-label={`${acceptLabel} — ${type}`}
             >
-              <Check size={13} />
+              <Check size={13} aria-hidden="true" />
+              {acceptLabel}
             </button>
             <button
               type="button"
-              className="pm-reject-btn"
+              className="pm-dismiss-btn"
               onClick={onReject}
-              title={rejectLabel}
-              aria-label={`${rejectLabel} — ${type}`}
+              aria-label={`${dismissLabel} — ${type}`}
             >
-              <X size={13} />
+              {dismissLabel}
             </button>
-          </>
+          </div>
         )}
-        {trailing}
+        {onRemove && (
+          <button
+            type="button"
+            className="pm-row-remove"
+            onClick={onRemove}
+            title={removeLabel}
+            aria-label={removeLabel}
+          >
+            <Trash2 size={15} aria-hidden="true" />
+          </button>
+        )}
       </div>
     </div>
   )

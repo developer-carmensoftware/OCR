@@ -169,7 +169,7 @@ export const en = {
     "{n} payment types need an account. Documents that use them wait for review until they're mapped.",
   'cc.pmMsgInvalid':
     "{n} accounts aren't allowed for their department. Pick one from the department's list before you finish.",
-  'cc.pmMsgSuggested': '{n} AI suggestions to review. Accept or reject each, or accept them all.',
+  'cc.pmMsgSuggested': '{n} AI suggestions to review. Accept or dismiss each, or accept them all.',
   'cc.pmMsgAllMapped': 'All {n} mapped — ready to post.',
   'cc.pmMsgEmpty':
     'No payment types yet. Add the ones this bank prints, or they will appear after the first document.',
@@ -182,8 +182,10 @@ export const en = {
   'cc.pmStatusSuggested': 'AI suggestion to review',
   'cc.pmStatusMapped': 'Mapped',
   'cc.pmAccept': 'Accept',
-  'cc.pmReject': 'Reject',
+  'cc.pmDismiss': 'Dismiss',
   'cc.pmRemove': 'Remove {code}',
+  'cc.pmRemoved': 'Removed {code}',
+  'cc.pmUndo': 'Undo',
   'cc.pmAdd': 'Add payment type',
   'cc.pmAddPlaceholder': 'e.g. AMEX PREM',
   'cc.pmAddConfirm': 'Add',
@@ -380,7 +382,7 @@ export const th: Record<keyof typeof en, string> = {
   'cc.pmMsgMissing':
     'ยังมี {n} ประเภทที่ยังไม่ได้ผูกบัญชี เอกสารที่มีประเภทเหล่านี้จะถูกพักไว้ให้ตรวจจนกว่าจะผูกครบ',
   'cc.pmMsgInvalid': 'มี {n} บัญชีที่แผนกไม่อนุญาต เลือกบัญชีจากรายการของแผนกก่อนกดเสร็จสิ้น',
-  'cc.pmMsgSuggested': 'มีคำแนะนำจาก AI {n} รายการ กดรับหรือปฏิเสธทีละรายการ หรือรับทั้งหมด',
+  'cc.pmMsgSuggested': 'มีคำแนะนำจาก AI {n} รายการ กดรับหรือไม่ใช้ทีละรายการ หรือรับทั้งหมด',
   'cc.pmMsgAllMapped': 'จับคู่ครบทั้ง {n} รายการ พร้อมโพสต์',
   'cc.pmMsgEmpty':
     'ยังไม่มีประเภทการชำระเงิน เพิ่มประเภทที่ธนาคารนี้พิมพ์ หรือรอให้ขึ้นหลังเอกสารใบแรก',
@@ -393,8 +395,10 @@ export const th: Record<keyof typeof en, string> = {
   'cc.pmStatusSuggested': 'มีคำแนะนำจาก AI ให้ตรวจ',
   'cc.pmStatusMapped': 'จับคู่แล้ว',
   'cc.pmAccept': 'รับ',
-  'cc.pmReject': 'ปฏิเสธ',
+  'cc.pmDismiss': 'ไม่ใช้คำแนะนำ',
   'cc.pmRemove': 'ลบ {code}',
+  'cc.pmRemoved': 'นำ {code} ออกแล้ว',
+  'cc.pmUndo': 'ย้อนกลับ',
   'cc.pmAdd': 'เพิ่มประเภทการชำระเงิน',
   'cc.pmAddPlaceholder': 'เช่น AMEX PREM',
   'cc.pmAddConfirm': 'เพิ่ม',

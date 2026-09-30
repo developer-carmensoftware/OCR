@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, XCircle } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import MappingRow from '@/features/credit-card/components/MappingRow'
 import { useT } from '@/i18n/LanguageContext'
 import type { TKey } from '@/i18n/dict'
@@ -28,6 +28,8 @@ interface Props {
   selected: Set<string>
   onToggle: (code: string, checked: boolean) => void
   onToggleAll: (checked: boolean) => void
+  /** The dialog removes, so it can offer the undo and put focus somewhere sensible. */
+  onRemove: (code: string) => void
   masterAccounts: MasterAccount[]
   masterDepartments: MasterDepartment[]
   /** Open the add row on mount — the empty state's own call to action. */
@@ -40,6 +42,7 @@ export default function MappingTable({
   selected,
   onToggle,
   onToggleAll,
+  onRemove,
   masterAccounts,
   masterDepartments,
   startAdding = false,
@@ -66,7 +69,9 @@ export default function MappingTable({
   }
 
   return (
-    <div className="pm-table">
+    // The actions column widens for the whole table at once while any row carries a
+    // suggestion (labelled Accept/Dismiss need the room) — never row by row under the cursor.
+    <div className={`pm-table${items.some(i => i.suggestion) ? ' pm-table--suggesting' : ''}`}>
       {items.length > 0 && (
         <div className="pm-grid-header pm-row--selectable">
           <label className="pm-select">
@@ -103,7 +108,7 @@ export default function MappingTable({
             onAccept={() => set.accept(item.code)}
             onReject={() => set.reject(item.code)}
             acceptLabel={t('cc.pmAccept')}
-            rejectLabel={t('cc.pmReject')}
+            dismissLabel={t('cc.pmDismiss')}
             selected={selected.has(item.code)}
             onSelect={checked => onToggle(item.code, checked)}
             selectLabel={t('cc.pmSelectRow', { code: item.code })}
@@ -114,19 +119,8 @@ export default function MappingTable({
             deptLabel={t('cc.mapDeptCode')}
             accLabel={t('cc.mapAccCode')}
             allowedNotice={(n, dept) => t('cc.mapAllowedAcc', { n, dept })}
-            trailing={
-              item.removable && set.remove ? (
-                <button
-                  type="button"
-                  className="pm-remove-btn"
-                  onClick={() => set.remove?.(item.code)}
-                  title={t('cc.pmRemove', { code: item.code })}
-                  aria-label={t('cc.pmRemove', { code: item.code })}
-                >
-                  <XCircle size={16} />
-                </button>
-              ) : undefined
-            }
+            onRemove={item.removable && set.remove ? () => onRemove(item.code) : undefined}
+            removeLabel={t('cc.pmRemove', { code: item.code })}
           />
         )
       })}

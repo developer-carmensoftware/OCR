@@ -12,12 +12,22 @@
  */
 
 /* One template for the header and every row, so they cannot drift apart. The last track
-   is fixed, not `auto`: it holds accept/reject and remove, which render only on some rows,
-   and as `auto` it was 0 on the others — the Dept/Account columns landed at different
-   widths and acting on a suggestion resized the row under the cursor. */
+   is fixed, not `auto`: it holds the actions, which render only on some rows, and as
+   `auto` it was 0 on the others — the Dept/Account columns landed at different widths and
+   acting on a suggestion resized the row under the cursor. It is wide only while the
+   table has a suggestion somewhere (`.pm-table--suggesting`, set by MappingTable), so the
+   whole table changes once when AI Suggest returns, never one row at a time. */
+.pm-table {
+  --pm-actions: 2.25rem;
+}
+
+.pm-table--suggesting {
+  --pm-actions: 12.5rem;
+}
+
 .pm-grid-header,
 .pm-row {
-  --pm-cols: minmax(130px, 1.1fr) 1fr 1fr 5.5rem;
+  --pm-cols: minmax(130px, 1.1fr) 1fr 1fr var(--pm-actions, 2.25rem);
 
   display: grid;
   grid-template-columns: var(--pm-cols);
@@ -27,7 +37,7 @@
 
 .pm-grid-header.pm-row--selectable,
 .pm-row.pm-row--selectable {
-  --pm-cols: 1.5rem minmax(130px, 1.1fr) 1fr 1fr 5.5rem;
+  --pm-cols: 1.5rem minmax(130px, 1.1fr) 1fr 1fr var(--pm-actions, 2.25rem);
 }
 
 .pm-grid-header {
@@ -147,47 +157,102 @@
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 0.3rem;
 }
 
-.pm-remove-btn {
+/* ─── The suggestion's own pair: labelled, tinted like the suggestion it answers ── */
+
+.pm-suggest {
   display: inline-flex;
   align-items: center;
-  padding: 0.2rem;
-  border: none;
-  border-radius: var(--radius-xs);
-  background: none;
-  color: var(--text-3);
-  line-height: 1;
-  cursor: pointer;
-}
-
-.pm-remove-btn:hover {
-  background: var(--rose-light);
-  color: var(--rose-text);
+  gap: 0.25rem;
 }
 
 .pm-accept-btn,
-.pm-reject-btn {
-  display: flex;
+.pm-dismiss-btn {
+  display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
+  gap: 0.25rem;
+  height: 28px;
+  padding: 0 0.6rem;
   border-radius: var(--radius-sm);
   font-size: 0.75rem;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .pm-accept-btn {
-  border: 1px solid var(--btn-ok-border);
-  background: var(--btn-ok-bg);
-  color: var(--btn-ok-text);
+  border: 1px solid var(--primary-mid);
+  background: var(--primary-light);
+  color: var(--primary);
 }
 
-.pm-reject-btn {
-  border: 1px solid var(--border);
-  background: var(--card-bg);
+.pm-accept-btn:hover {
+  background: color-mix(in srgb, var(--primary-light) 60%, var(--primary-mid));
+}
+
+.pm-dismiss-btn {
+  border: 1px solid transparent;
+  background: none;
   color: var(--text-2);
+}
+
+.pm-dismiss-btn:hover {
+  background: var(--muted);
+  color: var(--text);
+}
+
+/* ─── Remove: its own slot at the far edge, past a divider, a trash and not an X ─ */
+
+.pm-row-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.pm-row-remove:hover,
+.pm-row-remove:focus-visible {
+  background: var(--rose-light);
+  color: var(--rose-text);
+}
+
+/* 24px of air and a rule between "answer the suggestion" and "take the row out". */
+.pm-suggest + .pm-row-remove {
+  position: relative;
+  margin-left: 1.5rem;
+}
+
+.pm-suggest + .pm-row-remove::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: -0.75rem;
+  width: 1px;
+  background: var(--border);
+}
+
+/* Where there is a hover, Remove waits for it (or for keyboard focus in the row): a rare,
+   work-losing action does not need to sit in every row's eyeline while suggestions are
+   being answered. A touch screen has no hover, so there it is always shown. */
+@media (hover: hover) {
+  .pm-row .pm-row-remove {
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+
+  .pm-row:hover .pm-row-remove,
+  .pm-row:focus-within .pm-row-remove {
+    opacity: 1;
+  }
 }
 
 /* Above the stacking breakpoint the label wrappers are not in the layout at all: the two
@@ -229,9 +294,29 @@
     grid-column: 1 / -1;
   }
 
+  /* Its children join the row's grid: Remove on the first line beside the code, the
+     suggestion's pair on a line of its own under the pickers — never side by side. */
   .pm-actions {
+    display: contents;
+  }
+
+  .pm-row-remove {
     grid-row: 1;
     grid-column: -2 / -1;
+    justify-self: end;
+  }
+
+  .pm-suggest {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .pm-suggest + .pm-row-remove {
+    margin-left: 0;
+  }
+
+  .pm-suggest + .pm-row-remove::before {
+    display: none;
   }
 
   .pm-cell {
@@ -257,8 +342,8 @@
    any width — so this keys off the pointer rather than the viewport. */
 @media (pointer: coarse) {
   .pm-accept-btn,
-  .pm-reject-btn,
-  .pm-remove-btn,
+  .pm-dismiss-btn,
+  .pm-row-remove,
   .pm-select {
     min-width: 44px;
     min-height: 44px;

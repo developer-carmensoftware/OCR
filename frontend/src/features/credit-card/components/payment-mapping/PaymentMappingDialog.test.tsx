@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, within, act } from '@testing-library/react'
+import { toast as realToast } from 'sonner'
 import { LanguageProvider } from '@/i18n/LanguageContext'
 import PaymentMappingDialog from './PaymentMappingDialog'
 import type { MappingItem, MappingSet } from './types'
@@ -38,6 +39,25 @@ vi.mock('@/shared/components/common/CustomSearchSelect', () => ({
     </select>
   ),
 }))
+
+// Each toast gets its own id, the way sonner hands them out, so a test can tell which one
+// was dismissed.
+vi.mock('sonner', () => {
+  let n = 0
+  return {
+    toast: Object.assign(
+      vi.fn(() => `toast-${++n}`),
+      { dismiss: vi.fn() }
+    ),
+  }
+})
+const toast = vi.mocked(realToast)
+
+/** The Undo of the n-th toast raised (0-based), as a user would press it. */
+function pressUndo(n = 0) {
+  const opts = toast.mock.calls[n][1] as unknown as { action: { onClick: () => void } }
+  act(() => opts.action.onClick())
+}
 
 const ACCOUNTS: MasterAccount[] = [
   { code: '1130V', name: 'AR Visa' },
@@ -77,6 +97,7 @@ function Harness({
   onCancel: () => void
 }) {
   const [data, setData] = useState(initial)
+  const [open, setOpen] = useState(true)
   const patchItems = (id: string, codes: string[], patch: { dept?: string; acc?: string }) =>
     setData(prev => ({
       ...prev,
@@ -106,7 +127,22 @@ function Harness({
       }))
       return null
     },
-    remove: code => spies.remove(id, code),
+    remove: code => {
+      spies.remove(id, code)
+      const index = d.items.findIndex(i => i.code === code)
+      const removed = d.items[index]
+      setData(prev => ({
+        ...prev,
+        [id]: { ...prev[id], items: prev[id].items.filter(i => i.code !== code) },
+      }))
+      return () =>
+        setData(prev => {
+          if (prev[id].items.some(i => i.code === code)) return prev
+          const items = [...prev[id].items]
+          items.splice(index, 0, removed)
+          return { ...prev, [id]: { ...prev[id], items } }
+        })
+    },
     suggest: () => spies.suggest(id),
     suggesting: false,
     accept: code => spies.accept(id, code),
@@ -115,14 +151,20 @@ function Harness({
   }))
   return (
     <PaymentMappingDialog
-      open
+      open={open}
       sets={sets}
       context="KBANK"
       masterAccounts={ACCOUNTS}
       masterDepartments={DEPARTMENTS}
       loadingOpts={false}
-      onCancel={onCancel}
-      onDone={onDone}
+      onCancel={() => {
+        onCancel()
+        setOpen(false)
+      }}
+      onDone={() => {
+        onDone()
+        setOpen(false)
+      }}
     />
   )
 }
@@ -150,6 +192,16 @@ const SUMMARY: Data = {
       item('MC'),
       item('JCB', blank, { removable: true }),
     ],
+  },
+}
+
+/** Every row removable and mapped, so the order stays the order given. */
+const REMOVABLE: Data = {
+  settlement_summary: {
+    label: 'Settlement report · Summary',
+    items: ['VS', 'MC', 'JCB'].map(code =>
+      item(code, { dept: 'GEN', acc: '1130V' }, { removable: true })
+    ),
   },
 }
 
@@ -276,11 +328,14 @@ describe('PaymentMappingDialog', () => {
     expect(row('MC').dataset.status).toBe('invalid')
   })
 
-  it('finishes when every pair is legal, and Escape cancels', () => {
-    const { onDone, onCancel } = renderDialog(SUMMARY)
+  it('finishes when every pair is legal', () => {
+    const { onDone } = renderDialog(SUMMARY)
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(onDone).toHaveBeenCalledTimes(1)
+  })
 
+  it('cancels on Escape', () => {
+    const { onCancel } = renderDialog(SUMMARY)
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
@@ -321,5 +376,80 @@ describe('PaymentMappingDialog', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Accept All/ }))
     expect(spies.acceptAll).toHaveBeenCalledWith('settlement_summary')
+  })
+
+  // ── Remove is kept away from the suggestion's buttons, and can be undone ──────────
+
+  it('keeps Remove out of the suggestion group, as a trash in its own slot', () => {
+    renderDialog({
+      settlement_summary: {
+        label: 'Settlement report · Summary',
+        items: [
+          item('MC', blank, {
+            suggestion: { dept: 'GEN', acc: '1130M', source: 'ai' },
+            removable: true,
+          }),
+        ],
+      },
+    })
+
+    const group = within(row('MC')).getByRole('group')
+    // The suggestion's pair says what it does in words, not an X beside another X.
+    expect(within(group).getByRole('button', { name: 'Accept — MC' })).toHaveTextContent('Accept')
+    expect(within(group).getByRole('button', { name: 'Dismiss — MC' })).toHaveTextContent('Dismiss')
+    const remove = within(row('MC')).getByRole('button', { name: 'Remove MC' })
+    expect(group.contains(remove)).toBe(false)
+    expect(remove.className).toBe('pm-row-remove')
+  })
+
+  it('removes at once, offers Undo, and Undo puts the row back where it was with its mapping', () => {
+    renderDialog(REMOVABLE)
+    fireEvent.click(within(row('MC')).getByRole('button', { name: 'Remove MC' }))
+
+    expect(rowCodes()).toEqual(['VS', 'JCB'])
+    expect(toast).toHaveBeenCalledWith(
+      'Removed MC',
+      expect.objectContaining({
+        action: expect.objectContaining({ label: 'Undo' }),
+      })
+    )
+    // Where every other toast in the app appears — no position of its own.
+    expect(toast.mock.calls[0][1]).not.toHaveProperty('position')
+
+    pressUndo()
+    expect(rowCodes()).toEqual(['VS', 'MC', 'JCB'])
+    expect(row('MC').dataset.status).toBe('mapped')
+  })
+
+  it('gives each removal its own Undo, and one does not dismiss the other', () => {
+    renderDialog(REMOVABLE)
+    fireEvent.click(within(row('VS')).getByRole('button', { name: 'Remove VS' }))
+    fireEvent.click(within(row('JCB')).getByRole('button', { name: 'Remove JCB' }))
+
+    expect(toast).toHaveBeenCalledTimes(2)
+    expect(toast.dismiss).not.toHaveBeenCalled()
+
+    pressUndo(0)
+    expect(rowCodes()).toEqual(['VS', 'MC'])
+  })
+
+  it('takes its Undo toasts with it when it closes', () => {
+    renderDialog(REMOVABLE)
+    fireEvent.click(within(row('VS')).getByRole('button', { name: 'Remove VS' }))
+    fireEvent.click(within(row('JCB')).getByRole('button', { name: 'Remove JCB' }))
+
+    const ids = toast.mock.results.map(r => r.value)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(ids).toHaveLength(2)
+    ids.forEach(id => expect(toast.dismiss).toHaveBeenCalledWith(id))
+  })
+
+  it('puts focus on the next row after a remove, so Escape still reaches the dialog', async () => {
+    renderDialog(REMOVABLE)
+    fireEvent.click(within(row('VS')).getByRole('button', { name: 'Remove VS' }))
+    await act(() => new Promise(r => requestAnimationFrame(() => r(undefined))))
+
+    expect(document.activeElement).toBe(screen.getByLabelText('Select MC'))
   })
 })

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
+import { toast } from 'sonner'
 import { AlertTriangle, CheckCircle2, Info, Search, X } from 'lucide-react'
 import AISuggestBar from '@/shared/components/common/AISuggestBar'
 import { useT } from '@/i18n/LanguageContext'
@@ -29,7 +30,10 @@ import '@/styles/components/payment-modal.css'
  *    under the cursor;
  *  - bulk apply for the rows that share an account;
  *  - colour means state (amber = needs mapping, red = only a pair Carmen will refuse), and
- *    the state is always words as well.
+ *    the state is always words as well;
+ *  - Remove is undone from a toast rather than confirmed up front (the Gmail/Linear
+ *    pattern, and AP invoice's `removeItemWithUndo`): a confirm on every remove trains
+ *    people to click through it, and Cancel is no undo — it throws away every other edit.
  */
 
 type Filter = 'all' | 'attention' | 'suggested'
@@ -80,6 +84,9 @@ export default function PaymentMappingDialog({
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [attemptedDone, setAttemptedDone] = useState(false)
+  // Undo toasts this dialog raised. They go when it closes: an Undo pressed after Cancel
+  // or Done would change rows nobody can see any more.
+  const undoToasts = useRef<Array<string | number>>([])
 
   const active = sets.find(s => s.id === activeId) ?? sets[0]
 
@@ -96,6 +103,12 @@ export default function PaymentMappingDialog({
     dialogRef.current?.focus()
     // Only on the open edge — re-ordering on every edit is exactly what this avoids.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  useEffect(() => {
+    if (open) return
+    undoToasts.current.forEach(id => toast.dismiss(id))
+    undoToasts.current = []
   }, [open])
 
   const stats = useMemo(
@@ -168,6 +181,38 @@ export default function PaymentMappingDialog({
       const el = dialogRef.current?.querySelector(`[data-pt="${CSS.escape(code)}"]`)
       const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
       el?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
+    })
+  }
+
+  const handleRemove = (code: string) => {
+    if (!active.remove) return
+    // Where focus goes once the row is gone: the next row, else the one before, else the
+    // add button. Left alone it falls to <body>, and Escape stops reaching the dialog.
+    const at = visible.findIndex(i => i.code === code)
+    const next = visible[at + 1]?.code ?? visible[at - 1]?.code ?? null
+
+    const undo = active.remove(code)
+    setSelected(prev => {
+      if (!prev.has(code)) return prev
+      const copy = new Set(prev)
+      copy.delete(code)
+      return copy
+    })
+    // Just the code: which list it left is already the dialog's own heading.
+    const id = toast(t('cc.pmRemoved', { code }), {
+      duration: 6000,
+      // Where every other toast in the app is (bottom-center). On a phone, where this
+      // dialog is the whole screen, payment-modal.css lifts the toaster above its footer.
+      action: { label: t('cc.pmUndo'), onClick: () => undo() },
+    })
+    undoToasts.current.push(id)
+
+    requestAnimationFrame(() => {
+      const root = dialogRef.current
+      const target = next
+        ? root?.querySelector<HTMLElement>(`[data-pt="${CSS.escape(next)}"] .pm-select input`)
+        : root?.querySelector<HTMLElement>('.pm-add-trigger')
+      ;(target ?? root)?.focus()
     })
   }
 
@@ -371,6 +416,7 @@ export default function PaymentMappingDialog({
             onToggleAll={checked =>
               setSelected(checked ? new Set(visible.map(i => i.code)) : new Set())
             }
+            onRemove={handleRemove}
             masterAccounts={masterAccounts}
             masterDepartments={masterDepartments}
             startAdding={stats.total === 0}

@@ -312,4 +312,28 @@ describe('useSettlementMapping', () => {
     expect(err).toBe('duplicate')
     expect(result.current.rows).toEqual([])
   })
+
+  it('the undo a remove returns puts the row back with its mapping and tag', async () => {
+    getARSettings.mockResolvedValue(settingsResponse({ post_type: 'Summary' }))
+    const saved = {
+      VS: { dept: 'GEN', acc: '1021004', source: 'settlement_summary' },
+      MC: { dept: 'GEN', acc: '1021005', source: 'settlement_summary' },
+    }
+    const { result } = renderHook(() => useSettlementMapping('KBANK', saved, [], [], ''))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    let undo = () => {}
+    act(() => {
+      undo = result.current.removeType('VS')
+    })
+    expect(result.current.mappingsToSave).not.toHaveProperty('VS')
+
+    act(() => undo())
+    expect(result.current.mappingsToSave.VS).toEqual(saved.VS)
+
+    // Idempotent: a second press, or one after Cancel restored the row, changes nothing.
+    act(() => result.current.setRowMapping('VS', 'acc', '9999'))
+    act(() => undo())
+    expect(result.current.mappingsToSave.VS.acc).toBe('9999')
+  })
 })

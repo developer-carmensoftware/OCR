@@ -3,6 +3,7 @@ import type {
   AddError,
   MappingItem,
   MappingSet,
+  Undo,
 } from '@/features/credit-card/components/payment-mapping/types'
 import type { ActiveScan } from './useMapping'
 import type { Suggestion } from './useMappingSuggestions'
@@ -32,7 +33,7 @@ export interface FeeInvoiceSource {
   handlePaymentMappingChange: (type: string, field: keyof FieldMapping, value: string) => void
   applyPaymentMappings: (codes: string[], patch: { dept?: string; acc?: string }) => void
   addPaymentType: (raw: string, taken: Set<string>) => AddError
-  handleRemoveCustomType: (type: string) => void
+  handleRemoveCustomType: (type: string) => Undo
   autoSuggestPaymentTypes: (types?: string[] | null) => Promise<void>
   confirmPaymentSuggestion: (type: string) => void
   rejectPaymentSuggestion: (type: string) => void

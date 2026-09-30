@@ -30,6 +30,10 @@ export interface MappingItem {
 /** Why an add was refused, or null when it went in. */
 export type AddError = 'blank' | 'duplicate' | null
 
+/** Puts back what a remove took out — the row, its mapping and its place. Doing nothing
+ *  when the code is already there again (e.g. Cancel restored it) is part of the contract. */
+export type Undo = () => void
+
 export interface MappingSet {
   id: string
   /** Already translated, e.g. "Fee invoice", "Settlement report · Summary". */
@@ -39,7 +43,8 @@ export interface MappingSet {
   /** One write for many rows — bulk apply. Only the fields present are written. */
   applyToMany: (codes: string[], patch: { dept?: string; acc?: string }) => void
   add?: (code: string) => AddError
-  remove?: (code: string) => void
+  /** Returns the undo for the toast that follows. */
+  remove?: (code: string) => Undo
   suggest: () => void
   suggesting: boolean
   accept: (code: string) => void

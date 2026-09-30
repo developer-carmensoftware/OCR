@@ -450,6 +450,20 @@
   }
 }
 
+/* The app's toasts stay where they always are, bottom-center (main.tsx). While this dialog
+   is the whole screen, its footer is the bottom of the screen, so the toaster is lifted
+   above it — an Undo toast must never sit on Cancel/Done. Both of sonner's offsets, since
+   its own phone breakpoint (600px) is not this one (640px). `!important` because sonner
+   writes them as inline styles on the toaster. 8rem clears the footer as measured at
+   320–640px in both languages (99–104px, ~110px once touch sizes the buttons to 44px) —
+   raise it if the footer grows. */
+@media (max-width: 640px) {
+  body:has(.pm-dialog) [data-sonner-toaster] {
+    --offset-bottom: 8rem !important;
+    --mobile-offset-bottom: 8rem !important;
+  }
+}
+
 /* Cancel and Done decide whether a mapping is kept — the last thing touched on a phone
    and the easiest to fat-finger. */
 @media (pointer: coarse) {

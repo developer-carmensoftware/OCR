@@ -12,7 +12,7 @@ import {
 import { suggestPaymentTypes } from '@/features/credit-card/api/mapping'
 import { useT } from '@/i18n/LanguageContext'
 import { isAccountAllowed, mergeSuggestion } from '@/shared/lib/deptAccounts'
-import type { AddError } from '@/features/credit-card/components/payment-mapping/types'
+import type { AddError, Undo } from '@/features/credit-card/components/payment-mapping/types'
 import type { Suggestion } from './useMappingSuggestions'
 import type { MasterAccount, MasterDepartment } from './useMappingData'
 import type { FieldMapping } from '@/shared/types/api'
@@ -92,7 +92,9 @@ export interface SettlementMappingHook {
   /** Refused when blank or when the code is already in this set or in `taken` (another
    *  set's codes, so one key is never edited from two places). */
   addCustomType: (code: string, taken?: Set<string>) => AddError
-  removeType: (code: string) => void
+  /** Removes a row of the post type in use; the returned undo puts it back, mapping and
+   *  tag included, into that same post type. */
+  removeType: (code: string) => Undo
   suggestions: Record<string, Suggestion | null>
   suggestLoading: boolean
   runSuggest: () => Promise<void>
@@ -276,12 +278,18 @@ export function useSettlementMapping(
     return null
   }
 
-  const removeType = (code: string) => {
+  const removeType = (code: string): Undo => {
+    const pt = postType
+    const mapping = sets[pt]?.[code]
     setSets(prev => {
-      const next = { ...prev[postType] }
+      const next = { ...prev[pt] }
       delete next[code]
-      return { ...prev, [postType]: next }
+      return { ...prev, [pt]: next }
     })
+    return () =>
+      setSets(prev =>
+        !mapping || prev[pt]?.[code] ? prev : { ...prev, [pt]: { ...prev[pt], [code]: mapping } }
+      )
   }
 
   const runSuggest = async () => {
