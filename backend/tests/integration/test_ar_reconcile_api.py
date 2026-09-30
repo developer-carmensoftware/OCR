@@ -186,15 +186,19 @@ def test_save_settings_rejects_an_unknown_post_type():
         assert resp.status_code == 422
 
 
-def test_enabling_a_bank_with_no_settlement_layout_is_refused():
-    """Replaces `SUPPORTED_BANKS`/`RECONCILABLE_BANKS` (decision #8): `make_mock_db()`
-    with no `execute_rows` answers every query — including `get_settlement_grouping` —
-    with nothing, which is exactly "this bank has no settlement layout on file"."""
-    mock_db = make_mock_db()
-    with make_test_client(mock_db) as client:
+def test_saving_a_grouping_for_a_bank_with_no_settlement_layout_is_refused():
+    """Every save, not only an "enabling" one. Since 2026-09-29 (`60c09c86`) this PUT carries
+    `post_type` alone — the switch is the bank's email rule, set in Carmen — and nothing reads
+    a grouping for a bank no settlement report can arrive from. It used to let an unsupported
+    bank through "switched off" as a draft; with no switch left here there is no draft either.
+
+    `make_mock_db()` with no `execute_rows` answers every query — including
+    `get_settlement_grouping` — with nothing: "this bank has no settlement layout on file"
+    (what replaced `SUPPORTED_BANKS`/`RECONCILABLE_BANKS`, decision #8)."""
+    with make_test_client(make_mock_db()) as client:
         resp = client.put(
             f"{BASE}/settings",
-            json={"bank_code": "SCB", "enabled": True},
+            json={"bank_code": "SCB", "post_type": "Summary"},
             headers=AUTH,
         )
         assert resp.status_code == 400
@@ -202,17 +206,21 @@ def test_enabling_a_bank_with_no_settlement_layout_is_refused():
         assert "SCB" in detail and "settlement" in detail.lower()
 
 
-def test_an_unsupported_bank_can_still_be_saved_switched_off():
-    """A draft is fine; arming a pipeline with no prompt behind it is not."""
+def test_a_bank_with_a_settlement_layout_saves_its_grouping():
+    """The mapping page's only call here. A client still sending `enabled` changes nothing:
+    it is not a field of `ARSettingsIn` any more."""
     mock_db = make_mock_db()
-    mock_db.execute.return_value.scalars.return_value.first.return_value = None
+    mock_db.execute.return_value.scalar_one_or_none.return_value = "scheme"  # has a layout
+    mock_db.execute.return_value.scalars.return_value.first.return_value = None  # never saved
     with make_test_client(mock_db) as client:
         resp = client.put(
             f"{BASE}/settings",
-            json={"bank_code": "SCB", "enabled": False},
+            json={"bank_code": "kbank", "post_type": "Summary", "enabled": True},
             headers=AUTH,
         )
         assert resp.status_code == 200
+    row = mock_db.add.call_args.args[0]
+    assert (row.bank_code, row.post_type) == ("KBANK", "Summary")
 
 
 # ── sample payment types ──────────────────────────────────────────────────────
