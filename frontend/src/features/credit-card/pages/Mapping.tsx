@@ -1,6 +1,5 @@
-import { Network, Loader2, CheckCircle2, Scale } from 'lucide-react'
+import { Network, Loader2, CheckCircle2 } from 'lucide-react'
 import CustomModal from '@/shared/components/common/CustomModal'
-import Card from '@/shared/components/ui/Card'
 import '@/styles/pages/mapping.css'
 import '@/styles/pages/ar-reconcile.css'
 import '@/styles/components/mapping-row.css'
@@ -200,6 +199,68 @@ export default function Mapping() {
           missingCompanyFields={mappingCtrl.missingCompanyFields}
         />
 
+        {/* Settlement — a settlement report's Detail/Summary grouping. Only for a bank with
+            a settlement layout (`banks.settlement_grouping`); every other bank's page goes
+            straight to the mapping. Above it, not below: the grouping decides which payment
+            types there are to map, so it is chosen first. The same flat section + form row
+            as the rest of this page: since the "Reconcile this bank" toggle moved to Carmen
+            (2026-09-29) this is one control, and a card around one control was most of the
+            page's height. */}
+        {showSettlement && (
+          <div className="section">
+            <div className="section-title">{t('cc.settlementCardTitle')}</div>
+            {/* Whether this bank reconciles at all is its email rule, switched in Carmen's
+                settings — said here, not set here. */}
+            {!settlementCtrl.enabled && (
+              <p className="ar-hint ar-hint-warn" style={{ margin: '0 0 1rem' }}>
+                {t('ar.enabledOffHint')}
+              </p>
+            )}
+            <div className="form-grid">
+              <label id="ar-posttype-label">
+                {t('ar.postType')}
+                <span className="gl-help-tip" title={t('ar.postTypeHintShared')}>
+                  ?
+                </span>
+              </label>
+              <div className="ar-posttype-row">
+                <div
+                  className="segmented-control ar-posttype"
+                  role="radiogroup"
+                  aria-labelledby="ar-posttype-label"
+                >
+                  {POST_TYPES.map(pt => (
+                    <button
+                      key={pt}
+                      type="button"
+                      role="radio"
+                      aria-checked={settlementCtrl.postType === pt}
+                      className={`segmented-btn ${settlementCtrl.postType === pt ? 'active' : ''}`}
+                      onClick={() => settlementCtrl.setPostType(pt)}
+                    >
+                      {postTypeLabel(pt)}
+                      <span
+                        className="ar-seg-count"
+                        title={t('ar.postTypeMapped', {
+                          mapped: settlementCtrl.mappedCount(pt),
+                          total: settlementCtrl.rowCount(pt),
+                        })}
+                      >
+                        {settlementCtrl.mappedCount(pt)}/{settlementCtrl.rowCount(pt)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <span className="ar-hint" style={{ margin: 0 }}>
+                  {settlementCtrl.postType === 'Detail'
+                    ? t('ar.postTypeHintDetail')
+                    : t('ar.postTypeHintSummary')}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <MainMappingTable
           masterAccounts={mappingCtrl.masterAccounts}
           masterDepartments={mappingCtrl.masterDepartments}
@@ -218,61 +279,6 @@ export default function Mapping() {
           requiredMissingCount={requiredMissingCount}
           openAmountModal={mappingCtrl.openAmountModal}
         />
-
-        {/* Settlement — a settlement report's own posting profile. Only for a bank with
-            a settlement layout (`banks.settlement_grouping`); every other bank's page
-            ends at the section above, exactly as it did before this merge. */}
-        {showSettlement && (
-          <div className="ar-page" style={{ padding: 0, marginTop: '2.5rem' }}>
-            <div className="ar-grid">
-              <div className="ar-col">
-                <Card title={t('cc.settlementCardTitle')} icon={<Scale size={16} />}>
-                  {/* Whether this bank reconciles at all is its email rule, switched in
-                      Carmen's settings (2026-09-29) — said here, not set here. */}
-                  {!settlementCtrl.enabled && (
-                    <p className="ar-hint ar-hint-warn" style={{ margin: '0 0 1rem' }}>
-                      {t('ar.enabledOffHint')}
-                    </p>
-                  )}
-
-                  <fieldset className="ar-field ar-posttype">
-                    <legend>{t('ar.postType')}</legend>
-                    <div
-                      className="segmented-control"
-                      role="radiogroup"
-                      aria-label={t('ar.postType')}
-                    >
-                      {POST_TYPES.map(pt => (
-                        <button
-                          key={pt}
-                          type="button"
-                          role="radio"
-                          aria-checked={settlementCtrl.postType === pt}
-                          className={`segmented-btn ${settlementCtrl.postType === pt ? 'active' : ''}`}
-                          onClick={() => settlementCtrl.setPostType(pt)}
-                        >
-                          <span className="ar-seg-name">{postTypeLabel(pt)}</span>
-                          <span className="ar-seg-count">
-                            {t('ar.postTypeMapped', {
-                              mapped: settlementCtrl.mappedCount(pt),
-                              total: settlementCtrl.rowCount(pt),
-                            })}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="ar-hint">
-                      {settlementCtrl.postType === 'Detail'
-                        ? t('ar.postTypeHintDetail')
-                        : t('ar.postTypeHintSummary')}{' '}
-                      {t('ar.postTypeHintShared')}
-                    </p>
-                  </fieldset>
-                </Card>
-              </div>
-            </div>
-          </div>
-        )}
 
         <div style={{ marginTop: '2.5rem' }}>
           <button

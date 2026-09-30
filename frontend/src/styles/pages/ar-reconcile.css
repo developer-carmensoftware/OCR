@@ -15,13 +15,6 @@
  * this page with no width limit and no spacing at all.
  */
 
-/* ─── Page shell ──────────────────────────────────────────────────────────── */
-
-.ar-page {
-  max-width: 1240px;
-  margin: 0 auto;
-}
-
 /* ─── Context bar ─────────────────────────────────────────────────────────────
  *
  * Which bank the page is about and whether it is on — the scope of every card below,
@@ -44,11 +37,6 @@
   gap: var(--space-4);
 }
 
-.ar-bar-controls .ar-field {
-  margin-bottom: 0;
-  min-width: 15rem;
-}
-
 /* The switch sits on the select's line, not on its label's. */
 .ar-bar-controls .ui-switch-label {
   padding-bottom: 0.55rem;
@@ -63,53 +51,7 @@
   text-wrap: pretty;
 }
 
-/* ─── One column ──────────────────────────────────────────────────────────────
- *
- * Had a 460px JV-preview rail on the right at ≥1200px until 2026-09-29; the preview card
- * is gone and the settlement card takes the full width.
- */
-
-.ar-grid {
-  display: grid;
-  /* `minmax(0, 1fr)`, not the implicit `auto`: the mapping table's fixed pm-* columns give
-     this column a min-content width of ~490px, and an `auto` track honours it and pushes
-     the whole page into a horizontal scroll on a phone. Capping the track at 0 lets the
-     table's own `.table-wrapper` scroll instead. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-5);
-}
-
-.ar-col {
-  min-width: 0;
-}
-
 /* ─── Fields ──────────────────────────────────────────────────────────────── */
-
-.ar-field {
-  margin-bottom: var(--space-5);
-  border: 0;
-  padding: 0;
-  min-width: 0;
-}
-
-.ar-field:last-child {
-  margin-bottom: 0;
-}
-
-.ar-field > label,
-.ar-field > legend,
-.ar-field > .ar-field-label {
-  display: block;
-  margin-bottom: 0.4rem;
-  padding: 0;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.ar-field > .admin-form-input {
-  width: 100%;
-}
 
 .ar-mono {
   font-family: 'IBM Plex Mono', monospace;
@@ -129,23 +71,45 @@
   color: var(--amber-text);
 }
 
-/* ─── Post type ───────────────────────────────────────────────────────────── */
+/* ─── Post type ─────────────────────────────────────────────────────────────
+ *
+ * One compact row in the Mapping page's own `.form-grid`, not a card (2026-09-29): the
+ * segmented control sizes to its two buttons instead of the shared 300px/centred default,
+ * and the selected one gets the surface `.segmented-indicator` gives other toggles — this
+ * one renders no indicator, so without it only the text colour said which was chosen.
+ */
 
-.ar-posttype .segmented-btn {
-  flex-direction: column;
-  gap: 0.1rem;
-  padding-block: 0.5rem;
-  height: auto;
+.ar-posttype-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
 }
 
-.ar-seg-name {
-  font-weight: 700;
+.ar-posttype {
+  margin: 0;
+  width: auto;
+  max-width: none;
+}
+
+.ar-posttype .segmented-btn {
+  flex: 0 0 auto;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.8rem;
+}
+
+.ar-posttype .segmented-btn.active {
+  background: var(--card-bg);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 1px 1px rgba(0, 0, 0, 0.04);
 }
 
 .ar-seg-count {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.68rem;
-  opacity: 0.8;
+  font-size: 0.7rem;
+  font-weight: 500;
+  opacity: 0.75;
 }
 
 /* ─── Description field's settlement extras (Ticket E redesign, 2026-09-23) ───────
@@ -293,10 +257,6 @@
     width: 100%;
   }
 
-  .ar-bar-controls .ar-field {
-    flex: 1;
-  }
-
   .ar-add-row .btn,
   .ui-actionbar .btn {
     min-height: 44px;
@@ -305,19 +265,6 @@
   .ar-row-count {
     margin-left: 0;
     width: 100%;
-  }
-}
-
-/* The mapping card's header carries AI Suggest + Refresh. On a phone those leave the
-   title about 50px, which wraps "Payment type mapping" into three words stacked. Give the
-   title its own line and let the controls sit under it. */
-@media (max-width: 640px) {
-  .ar-page .ui-card-header {
-    flex-wrap: wrap;
-  }
-
-  .ar-page .ui-card-heading {
-    flex: 1 0 100%;
   }
 }
 
