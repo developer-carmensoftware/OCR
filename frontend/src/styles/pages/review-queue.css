@@ -783,6 +783,14 @@
   flex: 1 1 14rem;
 }
 
+/* The fields posted after the description's text (Document date, …) — named, not typed:
+   they are picked on the Mapping page. Inset to the field's own text like the label. */
+.rd-f-suffix {
+  padding-left: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
 /* The input-tax panel's fields carry no width modifier: they are grid cells, sized by the
    tracks on `.itx-grid`. Sizing them here as well is what made the two rows there stop at
    different places. */

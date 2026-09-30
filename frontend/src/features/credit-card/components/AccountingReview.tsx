@@ -22,6 +22,7 @@ import { useAccountingConfig } from '@/features/credit-card/hooks'
 import { buildJvRows } from '@/features/credit-card/lib/ccJv'
 import { GROUP_DEBIT_BY_TRANSACTION } from '@/shared/constants/banks'
 import { codeToSource, descriptionForBank } from '@/features/credit-card/lib/bankTransforms'
+import { renderDescription } from '@/features/credit-card/lib/ccJv'
 import SwapLabel from '@/shared/components/common/SwapLabel'
 import type { DetailRow } from './DetailTable'
 import type { JvRow } from '@/features/credit-card/hooks/useOcrSubmission'
@@ -120,10 +121,15 @@ export default function AccountingReview({
   }
   const hasMissing = !rawConfig || unmappedFields.length > 0
 
-  const reviewDescription = descriptionForBank(
-    rawConfig?.description as string | undefined,
-    rawConfig?.bankDescriptions as Record<string, string> | undefined,
-    bank
+  const reviewDescription = renderDescription(
+    descriptionForBank(
+      rawConfig?.description as string | undefined,
+      rawConfig?.bankDescriptions as Record<string, string> | undefined,
+      bank
+    ),
+    headerData.DocDate,
+    headerData.DocNo,
+    bank || undefined
   )
   const configBadges = rawConfig
     ? [
@@ -137,7 +143,7 @@ export default function AccountingReview({
           // Resolved per bank, exactly as the JV and the input-tax record do — this
           // badge is a preview of what will post, so reading the BU-wide value here
           // showed the old wording after a per-bank one had been saved.
-          label: `Description: ${reviewDescription ? `${reviewDescription}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}` : '-'}`,
+          label: `Description: ${reviewDescription || '-'}`,
           variant: 'gray' as const,
         },
       ]

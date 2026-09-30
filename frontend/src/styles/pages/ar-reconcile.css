@@ -112,31 +112,45 @@
   opacity: 0.75;
 }
 
-/* ─── Description field's settlement extras (Ticket E redesign, 2026-09-23) ───────
-   Breaks out of the form-grid's 200px/1fr value column — a row of tag buttons plus a
-   preview line needs more width than a single-line field does, and squeezing it into
-   that column is what made the original version read as cluttered. `gridColumn: 1/-1`
-   (set inline at the call site, since only the settlement case needs it) spans both
-   grid tracks so this reads as its own row under Description rather than a stack
-   fighting the label column for space. */
+/* ─── Description field's settlement extras (2026-09-30) ──────────────────────────
+   Inside the Description input's own value column, under its hint — not a full-width
+   row behind a divider (Ticket E's version), which started the chips under the *label*
+   and read as a separate section. The chips act on this one field and the preview is
+   what it renders to, so they line up with it. */
+
+/* `.form-grid` centres each label on its whole cell; with the extras under it that cell is
+   tall, and the label floated down beside the chips. Pin it to the input's line instead. */
+.form-grid > .ar-desc-label {
+  align-self: start;
+  padding-top: 0.75rem;
+}
 
 .ar-desc-extras {
-  margin-top: 0.65rem;
-  padding-top: 0.65rem;
-  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
 }
 
 .ar-tags {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.4rem;
 }
 
-/* Each tag can only be in the description once — five settlement dates in one
-   sentence is not a real state, so the button *is* the state: available (+) or
-   already present (✓, disabled). Whether it's present is read straight off the
-   current text (`current.includes(tag)`), not a separate "used" flag, so deleting
-   the tag by hand re-enables the button with no extra bookkeeping. */
+.ar-tags-label {
+  margin-right: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-3);
+}
+
+/* Each field can only be attached once — five settlement dates in one sentence is not
+   a real state, so the chip *is* the state, a toggle: + attaches the field after the
+   text, ✓ (aria-pressed) means it is attached and pressing again detaches it. Not
+   `disabled` — a disabled button drops hover and focus, so its tooltip never showed and a
+   keyboard could not reach it. Whether it is attached is read off the saved string
+   (`splitDescription`), not a separate "used" flag. */
 .ar-tag {
   display: inline-flex;
   align-items: center;
@@ -155,34 +169,49 @@
     border-color 0.15s ease-out;
 }
 
-.ar-tag:hover:not(:disabled) {
+.ar-tag:hover {
   background: var(--primary-light);
   color: var(--primary);
   border-color: var(--primary-mid);
 }
 
-.ar-tag:disabled {
-  cursor: default;
+.ar-tag[aria-pressed='true'] {
   color: var(--emerald-text);
   background: var(--emerald-light);
   border-color: transparent;
 }
 
-/* The server's rendering of the description above, right under the buttons that build
-   it — a plain line, not a boxed callout, so it reads as "and here's what that means"
-   rather than a second card competing with the input for attention. */
-.ar-example {
+.ar-tag[aria-pressed='true']:hover {
+  border-color: var(--emerald-text);
+}
+
+.ar-tag:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* The rendering of the description above — labelled, on a muted surface, so it reads as
+   output rather than as a second field. */
+.ar-preview {
   display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  margin: 0.55rem 0 0;
-  font-size: 0.75rem;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-xs);
+  background: var(--muted);
+}
+
+.ar-preview-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--text-3);
 }
 
-.ar-example-value {
+.ar-preview-value {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   color: var(--text-2);
   overflow-wrap: anywhere;
 }
@@ -255,6 +284,11 @@
 @media (max-width: 768px) {
   .ar-bar-controls {
     width: 100%;
+  }
+
+  /* Stacked: the label sits above its field, so there is no line to pin it to. */
+  .form-grid > .ar-desc-label {
+    padding-top: 0;
   }
 
   .ar-add-row .btn,

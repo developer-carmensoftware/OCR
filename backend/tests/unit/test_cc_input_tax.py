@@ -70,6 +70,15 @@ def test_sums_the_lines_and_derives_the_tax_period_from_the_document_date():
     assert p["Source"] == "ACTX"
 
 
+def test_description_renders_like_the_jv_tags_filled_nothing_appended():
+    """The JV's own `render_description` (2026-09-30). This used to append ` - doc_date`
+    itself and post any `{Tag}` raw, so the two records from one statement disagreed."""
+    assert _build()["InvhDesc"] == "Credit card commission"
+    tagged = _build(description="{Bank_Name} fee {Tax_Invoice_No} {Settlement_Date}")
+    assert tagged["InvhDesc"] == "KTC fee INV-001 15/01/2026"
+    assert _build(description=None)["InvhDesc"] == ""
+
+
 def test_carries_the_issuers_registered_identity_not_the_hotels():
     """ACTX records the party that issued the tax invoice — the bank."""
     p = _build()

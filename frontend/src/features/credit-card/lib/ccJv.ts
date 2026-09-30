@@ -1,6 +1,7 @@
 import { parseNum, round2 } from '@/shared/lib/format'
 import { codeToSource, descriptionForBank } from './bankTransforms'
 import { normalizeYearToCE } from '@/shared/lib/date'
+import type { TKey } from '@/i18n/dict'
 
 /** The four accounting-config fields a JV header needs, already normalised. */
 export interface GljvConfig {
@@ -213,42 +214,53 @@ export function applyJvAmount<T extends Detail>(details: T[], row: JvRow, next: 
   return out
 }
 
-const TEMPLATE_TAGS = ['{Settlement_Date}', '{Tax_Invoice_No}', '{Bank_Name}'] as const
-
-function hasTemplateTags(s: string): boolean {
-  return TEMPLATE_TAGS.some(tag => s.includes(tag))
-}
-
-/** Fill a JV description template's three tags. Twin of `render_jv_description` in
- *  cc_jv.py — was settlement-only until Ticket D (2026-09-22) gave the fee-invoice
- *  path a browser-side renderer too, since the wizard is the one place a tagged
- *  description can now be typed for a bank with no settlement layout at all. */
-function renderJvDescription(
-  template: string,
-  tags: { settlementDate?: string; taxInvoiceNo?: string; bankName?: string }
-): string {
-  let out = template
-  out = out.split('{Settlement_Date}').join(tags.settlementDate || '')
-  out = out.split('{Tax_Invoice_No}').join(tags.taxInvoiceNo || '')
-  out = out.split('{Bank_Name}').join(tags.bankName || '')
-  return out.split(/\s+/).filter(Boolean).join(' ')
-}
-
-/** The one decision point the fee-invoice default and (since Ticket D) a settlement
- *  JV share: a saved value with a template tag is a full template; one without is
- *  today's plain `base - docDate` concatenation, unchanged for every BU that has
- *  never touched the tags. Twin of `render_description` in cc_jv.py. */
-function renderDescription(
+/** The saved description with its three tags filled — and nothing added: the date is
+ *  there only where the BU put `{Settlement_Date}` (no auto ` - docDate` since
+ *  2026-09-30). Twin of `render_description` in credit_card/jv.py; the JV, the
+ *  input-tax record and every preview of them go through this one function. */
+export function renderDescription(
   base: string,
   docDate: string | undefined,
   docNo: string | undefined,
   bankName: string | undefined
 ): string {
-  if (!base) return ''
-  if (hasTemplateTags(base)) {
-    return renderJvDescription(base, { settlementDate: docDate, taxInvoiceNo: docNo, bankName })
-  }
-  return docDate ? `${base} - ${docDate}` : base
+  return (base || '')
+    .split('{Settlement_Date}')
+    .join(docDate || '')
+    .split('{Tax_Invoice_No}')
+    .join(docNo || '')
+    .split('{Bank_Name}')
+    .join(bankName || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(' ')
+}
+
+/** The three fields a description can carry, in the order the chips show them. */
+export const DESCRIPTION_TAGS: ReadonlyArray<{ tag: string; labelKey: TKey }> = [
+  { tag: '{Settlement_Date}', labelKey: 'ar.tagSettlementDate' },
+  { tag: '{Tax_Invoice_No}', labelKey: 'ar.tagTaxInvoiceNo' },
+  { tag: '{Bank_Name}', labelKey: 'ar.tagBankName' },
+]
+
+const TAG_RE = /\{(?:Settlement_Date|Tax_Invoice_No|Bank_Name)\}/g
+const TAG_WITH_SPACE_RE = /\s?\{(?:Settlement_Date|Tax_Invoice_No|Bank_Name)\}/g
+
+/** A saved description as the screens edit it: the free text, and the fields attached
+ *  after it. The tokens never sit in a text box — one stray backspace (`{Settlement_Dat`)
+ *  would post the broken token to Carmen verbatim. `text` is deliberately untrimmed:
+ *  the box is controlled from the stored string, so trimming would eat a space as it is
+ *  typed. A token found mid-text (saved before 2026-09-30) is lifted out the same way and
+ *  lands after the text on the next edit. */
+export function splitDescription(saved: string): { text: string; tags: string[] } {
+  const s = saved || ''
+  return { text: s.replace(TAG_WITH_SPACE_RE, ''), tags: [...new Set(s.match(TAG_RE) ?? [])] }
+}
+
+/** Inverse of `splitDescription`: `join(split(s))` round-trips any value it produced.
+ *  A doubled space ('test ' + tag) is harmless — rendering collapses whitespace. */
+export function joinDescription(text: string, tags: string[]): string {
+  return text ? text + tags.map(t => ` ${t}`).join('') : tags.join(' ')
 }
 
 /**

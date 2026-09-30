@@ -174,11 +174,10 @@ async def test_jv_for_document_builds_the_entry_the_reviewer_approves():
 
 
 @pytest.mark.asyncio
-async def test_jv_for_document_description_falls_back_to_plain_concatenation():
-    """A saved description with no template tag renders exactly as the fee-invoice
-    path always has — `base - doc_date` — not the bare wording. Backward compatibility
-    is the whole point of Ticket D's merge: a BU that never touches the new tags sees
-    no change to their settlement JV's wording either."""
+async def test_jv_for_document_description_with_no_tag_has_no_date():
+    """A saved description with no template tag posts exactly as saved — the
+    ` - doc_date` suffix it used to get on its own went away 2026-09-30, the same for
+    this settlement JV as for the fee-invoice path."""
     db = _db(
         [_rules()],
         [_row()],
@@ -188,7 +187,7 @@ async def test_jv_for_document_description_falls_back_to_plain_concatenation():
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
     assert out is not None
-    assert out.description == "AR Recon - 21/07/2026"
+    assert out.description == "AR Recon"
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-﻿# Decision Log
+# Decision Log
 
 ADR-style record of what was decided, why, what it cost, and — where relevant — what was
 tried first and reverted. Sourced from migration headers, service docstrings, and the
@@ -822,3 +822,30 @@ in Carmen and the toggle in our app; the rule already said everything the toggle
 
 **No data migration.** The only writes to `ar_reconcile_settings` came from an unpushed
 branch, and its `post_type` column keeps meaning what it meant.
+
+## 32. A description posts as saved — no automatic date (2026-09-30)
+
+**Decided:** 2026-09-30, reversing the backward-compat half of #30. `render_description()`
+used to append ` - doc_date` to any saved description with no template tag. That was the
+fee-invoice path's original behaviour, and #30 kept it so no BU's wording would change. It
+was also a rule no screen showed: the date moved around depending on whether a tag was
+present, and the Mapping page could only say so after the fact.
+
+**Decision.** The saved Description is the whole sentence. Its `{Settlement_Date}` /
+`{Tax_Invoice_No}` / `{Bank_Name}` tags are filled and nothing is added.
+
+- One function per side: `render_description()` in `credit_card/jv.py` and its twin
+  `renderDescription()` in `ccJv.ts`, pinned by `contracts/cc-jv.contract.json`.
+- The JV (wizard and email), the settlement JV, the input-tax record (`InvhDesc`, wizard and
+  email) and every preview of them go through these. The two input-tax builders used to
+  append the date themselves and post any tag raw.
+- The Mapping page's tag chips are offered for every bank, not only settlement-capable
+  ones, because a tag is now the only way a date reaches the description. The date chip
+  reads "Document date", since on a fee invoice it is not a settlement date. The stored
+  token stays `{Settlement_Date}`.
+- Tokens never appear in a text box: the Mapping page and the review queue edit the free
+  text, and the fields ride after it (`splitDescription`/`joinDescription` in `ccJv.ts`).
+  A typed token broke with one backspace and posted verbatim.
+
+**No data migration, on purpose (the user's call).** Every description saved before this
+date posts without the date from the next document on, until its BU inserts the tag.

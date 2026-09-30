@@ -301,10 +301,6 @@ def is_balanced(rows: list[dict]) -> bool:
 _TEMPLATE_TAGS = ("{Settlement_Date}", "{Tax_Invoice_No}", "{Bank_Name}")
 
 
-def _has_template_tags(s: str) -> bool:
-    return any(tag in s for tag in _TEMPLATE_TAGS)
-
-
 def render_jv_description(
     template: str,
     *,
@@ -313,9 +309,8 @@ def render_jv_description(
     bank_name: str | None,
 ) -> str:
     """Fill a JV description template's three tags. An unset tag renders empty, not as
-    itself. Low-level: callers that have a saved description string rather than a
-    known-good template should go through `render_description` below, which decides
-    whether this function even applies."""
+    itself. Callers holding a saved description go through `render_description` below,
+    which only renames the arguments to the document's own field names."""
     out = template or ""
     for tag, value in zip(_TEMPLATE_TAGS, (settlement_date, tax_invoice_no, bank_name)):
         out = out.replace(tag, value or "")
@@ -329,25 +324,18 @@ def render_description(
     doc_no: str | None,
     bank_name: str | None,
 ) -> str:
-    """The one decision point both the fee-invoice default and the settlement JV share
-    (folded into one mechanism 2026-09-22 — previously the fee-invoice path only ever
-    did the plain-concatenation branch below, and settlement only ever did the
-    template branch, as two separate functions).
+    """The one rendering every JV and input-tax description shares — fee invoice,
+    settlement, wizard and email alike.
 
-    A saved value containing one of the three template tags is treated as a full
-    template (`render_jv_description`) and the date is not additionally appended — the
-    tag is the BU's own opt-in to control exactly where it lands. A plain value with no
-    tag keeps the original fee-invoice behaviour verbatim: `base - doc_date`. This is
-    what makes the merge backward-compatible — every saved description that predates
-    the tags renders identically to before.
+    The saved value is the whole sentence: its tags are filled and nothing is added.
+    Until 2026-09-30 a value with no tag had ` - doc_date` appended on its own, a rule
+    the settings screen never showed; now the date is there only where the BU put
+    `{Settlement_Date}`. Deliberately not migrated — a description saved before then
+    posts without the date until its BU inserts the tag.
     """
-    if not base:
-        return ""
-    if _has_template_tags(base):
-        return render_jv_description(
-            base, settlement_date=doc_date, tax_invoice_no=doc_no, bank_name=bank_name
-        )
-    return f"{base} - {doc_date}" if doc_date else base
+    return render_jv_description(
+        base or "", settlement_date=doc_date, tax_invoice_no=doc_no, bank_name=bank_name
+    )
 
 
 def resolve_jv_description(

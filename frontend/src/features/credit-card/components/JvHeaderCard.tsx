@@ -2,6 +2,11 @@ import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
 import DateInput from '@/shared/components/common/DateInput'
 import { useT } from '@/i18n/LanguageContext'
 import { useGlMasters } from '@/features/credit-card/hooks/mapping/useGlMasters'
+import {
+  DESCRIPTION_TAGS,
+  joinDescription,
+  splitDescription,
+} from '@/features/credit-card/lib/ccJv'
 import type { BankCode } from '@/shared/types/api'
 
 /**
@@ -21,10 +26,11 @@ import type { BankCode } from '@/shared/types/api'
  * rule and the parent persists it on approve — the same contract the GL pickers have. Two
  * consequences worth knowing:
  *
- * - The input edits the description's **base**. What posts is `base - docDate`, and the
- *   date is machine-appended per document and is not rendered here — it is the document
- *   date already on screen two fields along, and what this system appends on post is not
- *   news to the person approving.
+ * - The input edits the description's **text** only. The fields attached after it
+ *   (`{Settlement_Date}` and friends, picked on the Mapping page) are kept as they are and
+ *   named beside the box, never typed in it — a stray backspace would post a broken token.
+ *   What posts is that text with the fields filled from this document (`renderDescription`);
+ *   nothing else is appended, so no date field means no date (2026-09-30).
  * - **The description is per bank**, as it is in the wizard's config editor. The box holds
  *   this bank's own entry and the BU-wide sentence is only the placeholder, so a correction
  *   made about one bank's statements cannot rewrite the wording for every other bank the BU
@@ -113,6 +119,14 @@ export default function JvHeaderCard({
   // What posts when this bank has no wording of its own — which is all `descriptionForBank`
   // falls back to, so naming the field directly says the same thing with less ceremony.
   const fallback = ((config?.description as string) || '').trim()
+  const own = splitDescription(effectiveOwn)
+  const fb = splitDescription(fallback)
+  const fallbackText = fb.text.trim()
+  // The fields that will post: this bank's own, or — while it has no wording of its own —
+  // the BU-wide sentence's, which the first keystroke then carries into the bank's entry.
+  const tags = effectiveOwn ? own.tags : fb.tags
+  // An emptied box still means "use the BU-wide sentence", as it did before fields existed.
+  const editText = (v: string) => onDescription(v ? joinDescription(v, tags) : '')
 
   return (
     <div className="rd-doc">
@@ -190,10 +204,9 @@ export default function JvHeaderCard({
         )}
       </div>
 
-      {/* Takes whatever the three fixed-width fields leave. The JV builder appends
-          " - <doc date>" to whatever is typed here; that tail used to render beside the
-          field and has been dropped — it is the same date already on screen two fields
-          along, and what this system appends on post is not news to the person approving. */}
+      {/* Takes whatever the three fixed-width fields leave. The fields this bank attaches
+          after the text are named under the box, read-only — they are picked on the
+          Mapping page, and filled from this document's own number and date on post. */}
       <div className="rd-f rd-f--grow">
         {readOnly ? (
           <ReadOnlyField
@@ -213,15 +226,24 @@ export default function JvHeaderCard({
               type="text"
               aria-label={t('review.fDescription')}
               className="rd-f-input rd-f-input--optional"
-              value={effectiveOwn}
+              value={own.text}
               /* The BU-wide wording when this bank has none, so the field says what will post.
              Not `fMissing` ("Not on the document"), which the two fields above earn by
              being document fields the extractor could not fill: this one is BU config and
              was never on the document, so that placeholder accused the statement of an
              omission it could not have. */
-              placeholder={fallback || t('review.fDescriptionPlaceholder')}
-              onChange={e => onDescription(e.target.value)}
+              placeholder={fallbackText || t('review.fDescriptionPlaceholder')}
+              onChange={e => editText(e.target.value)}
             />
+            {tags.length > 0 && (
+              <span className="rd-f-suffix">
+                +{' '}
+                {tags
+                  .map(tag => DESCRIPTION_TAGS.find(d => d.tag === tag))
+                  .map(d => (d ? t(d.labelKey) : ''))
+                  .join(' · ')}
+              </span>
+            )}
           </>
         )}
       </div>

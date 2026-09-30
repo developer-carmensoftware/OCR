@@ -3,10 +3,11 @@ import { BANKS } from '@/shared/constants'
 import { BANK_CODE_MAP } from '@/shared/constants/banks'
 import type { BankDisplayName } from '@/shared/types/api'
 import { useT } from '@/i18n/LanguageContext'
-import type { TKey } from '@/i18n/dict'
 import CustomSearchSelect, {
   type SelectOption,
 } from '@/shared/components/common/CustomSearchSelect'
+import { descriptionForBank } from '../lib/bankTransforms'
+import { DESCRIPTION_TAGS, joinDescription, renderDescription, splitDescription } from '../lib/ccJv'
 import '@/styles/pages/ar-reconcile.css'
 
 const BANK_OPTIONS: SelectOption[] = BANKS.map(b => ({
@@ -27,23 +28,16 @@ interface Props {
   bankDescriptions: Record<string, string>
   setBankDescriptions: (v: Record<string, string>) => void
   /** Whether the selected bank has a settlement layout (`banks.settlement_grouping`) —
-   *  gates the tag-insert buttons and live preview below, since a settlement JV is the
-   *  only reason `description` needs to be a template rather than a plain label
-   *  (Ticket D, 2026-09-22 — this field now also feeds a settlement JV's wording, the
-   *  same one `ar_reconcile_service.resolve_jv_description` reads at posting time). */
+   *  such a bank's preview comes from the server, over its own latest real report. */
   hasSettlementLayout?: boolean
   /** The live "renders as" example for the currently-selected bank's settlement JV,
    *  from `useSettlementMapping`'s own preview call. */
   settlementPreview?: string
 }
 
-// A tag can only be in the description once — see `ar-desc-extras`'s CSS comment for
-// why availability is read off the current text rather than tracked separately.
-const TEMPLATE_TAGS: Array<{ tag: string; labelKey: TKey }> = [
-  { tag: '{Settlement_Date}', labelKey: 'ar.tagSettlementDate' },
-  { tag: '{Tax_Invoice_No}', labelKey: 'ar.tagTaxInvoiceNo' },
-  { tag: '{Bank_Name}', labelKey: 'ar.tagBankName' },
-]
+// Every other bank's preview is rendered here, by the same twin the JV posts through,
+// over an example document: today's date and a made-up number.
+const SAMPLE_DOC_NO = 'INV-0001'
 
 export default function TopLevelConfigSection({
   bank,
@@ -69,11 +63,22 @@ export default function TopLevelConfigSection({
   const ownDescription = (bankCode && bankDescriptions[bankCode]) || ''
   const fallback = description || ''
   const current = bankCode ? ownDescription : fallback
-  const appendTag = (tag: string) => {
-    const next = `${current} ${tag}`.trim()
-    if (bankCode) setBankDescriptions({ ...bankDescriptions, [bankCode]: next })
-    else setDescription(next)
-  }
+  const write = (next: string) =>
+    bankCode ? setBankDescriptions({ ...bankDescriptions, [bankCode]: next }) : setDescription(next)
+  // The box edits the free text only; the fields ride after it and are toggled by the
+  // chips (`splitDescription`), so a backspace can never break a token.
+  const { text, tags } = splitDescription(current)
+  const toggleTag = (tag: string) =>
+    write(joinDescription(text, tags.includes(tag) ? tags.filter(x => x !== tag) : [...tags, tag]))
+  const fallbackText = splitDescription(fallback).text.trim()
+  const preview =
+    (hasSettlementLayout && settlementPreview) ||
+    renderDescription(
+      descriptionForBank(description, bankDescriptions, bankCode),
+      new Date().toLocaleDateString('en-GB'),
+      SAMPLE_DOC_NO,
+      bankCode || undefined
+    )
   return (
     <div className="section">
       <div className="form-grid">
@@ -144,7 +149,7 @@ export default function TopLevelConfigSection({
             Editing writes it against the selected bank, which the line underneath
             says out loud; the BU-wide value stays in place as the fallback for
             banks nobody has got to yet, and needs no field of its own to do that. */}
-        <label htmlFor="description">
+        <label htmlFor="description" className="ar-desc-label">
           {t('cc.cfgDescription')}
           <span className="gl-help-tip" title={t('cc.cfgDescriptionHelp')}>
             ?
@@ -155,39 +160,42 @@ export default function TopLevelConfigSection({
             id="description"
             type="text"
             aria-label={t('cc.cfgDescription')}
-            placeholder={(bankCode && fallback) || t('cc.cfgDescriptionPlaceholder')}
-            value={bankCode ? ownDescription : fallback}
-            onChange={e =>
-              bankCode
-                ? setBankDescriptions({ ...bankDescriptions, [bankCode]: e.target.value })
-                : setDescription(e.target.value)
-            }
+            placeholder={(bankCode && fallbackText) || t('cc.cfgDescriptionPlaceholder')}
+            value={text}
+            onChange={e => write(joinDescription(e.target.value, tags))}
           />
           <small style={{ display: 'block', marginTop: 2, color: 'var(--text-3)' }}>
             {!bankCode
               ? t('cc.cfgDescSelectBank')
               : !ownDescription && fallback
-                ? t('cc.cfgDescEmpty', { bank: bankCode, fallback })
+                ? t('cc.cfgDescEmpty', { bank: bankCode, fallback: fallbackText || preview })
                 : t('cc.cfgDescApplies', { bank: bankCode })}
           </small>
-        </div>
 
-        {hasSettlementLayout && (
-          <div className="ar-desc-extras" style={{ gridColumn: '1 / -1' }}>
-            <div className="ar-tags" role="group">
-              {TEMPLATE_TAGS.map(({ tag, labelKey }) => {
+          {/* In the input's own column, not a full-width row under a divider: the chips
+              act on this field and the preview is what it renders to, so they line up
+              with it. Each chip is a toggle — ✓ means the field is attached after the
+              text, in the order picked; pressing it again detaches it. Every bank gets
+              them: nothing is appended on post, so a field is the only way a date or
+              number reaches the description. */}
+          <div className="ar-desc-extras">
+            <div className="ar-tags" role="group" aria-labelledby="ar-tags-label">
+              <span id="ar-tags-label" className="ar-tags-label">
+                {t('ar.addAfterText')}
+              </span>
+              {DESCRIPTION_TAGS.map(({ tag, labelKey }) => {
                 const label = t(labelKey)
-                const added = current.includes(tag)
+                const added = tags.includes(tag)
                 return (
                   <button
                     key={tag}
                     type="button"
                     className="ar-tag"
-                    disabled={added}
-                    onClick={() => appendTag(tag)}
+                    aria-pressed={added}
+                    onClick={() => toggleTag(tag)}
                     title={
                       added
-                        ? t('ar.tagAdded', { field: label })
+                        ? t('ar.tagRemove', { field: label })
                         : t('ar.tagInsert', { field: label })
                     }
                   >
@@ -197,12 +205,12 @@ export default function TopLevelConfigSection({
                 )
               })}
             </div>
-            <p className="ar-example">
-              <span aria-hidden="true">→</span>
-              <span className="ar-example-value">{settlementPreview || t('ar.templateEmpty')}</span>
-            </p>
+            <div className="ar-preview" aria-live="polite">
+              <span className="ar-preview-label">{t('ar.preview')}</span>
+              <span className="ar-preview-value">{preview || t('ar.templateEmpty')}</span>
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

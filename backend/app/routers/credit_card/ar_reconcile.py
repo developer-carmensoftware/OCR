@@ -104,9 +104,8 @@ async def preview(
     `req.jv_description_template` is whatever the page's one Description field currently
     holds (Ticket D, 2026-09-22 — no longer settlement-only) — no separate
     accounting-config read needed, since the page already holds everything this
-    arithmetic needs in memory. `render_description` applies the same backward-compat
-    rule posting does: a value with no template tag renders as `value - doc_date`, one
-    with a tag is treated as a full template.
+    arithmetic needs in memory. `render_description` renders it exactly as posting does:
+    tags filled, nothing appended (no auto date since 2026-09-30).
 
     The example itself is this tenant's own most recently parked report for this bank
     when it has one (`svc.latest_real_sample`) — real labels, not invented ones, because

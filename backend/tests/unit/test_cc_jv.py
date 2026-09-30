@@ -607,15 +607,15 @@ def test_settlement_every_tag_is_supported_and_unset_ones_collapse():
 #
 # `render_jv_description` used to be settlement-only; the fee-invoice path did its own
 # plain `base - doc_date` concatenation inside `build_gljv_payload`. Both now go
-# through `render_description`, which decides between the two by whether the saved
-# value contains a template tag -- backward-compatible by construction, since every
-# description saved before this ticket has no tag in it.
+# through `render_description`. Until 2026-09-30 a value with no tag had ` - doc_date`
+# appended; now the saved text is the whole sentence and the date appears only where a
+# `{Settlement_Date}` tag puts it.
 
 
-def test_render_description_with_no_tag_falls_back_to_plain_concatenation():
+def test_render_description_with_no_tag_posts_exactly_as_saved():
     assert (
         render_description("AR Recon", doc_date="21/07/2026", doc_no=AR_DOC_NO, bank_name="KBANK")
-        == "AR Recon - 21/07/2026"
+        == "AR Recon"
     )
 
 
@@ -624,8 +624,8 @@ def test_render_description_with_no_tag_and_no_date_is_just_the_base():
 
 
 def test_render_description_with_a_tag_is_treated_as_a_full_template():
-    """The date is not additionally appended once a tag is present -- the tag is the
-    BU's own opt-in to say exactly where it lands."""
+    """The tag is the only way the date reaches the description, and it lands exactly
+    where the BU put it."""
     out = render_description(
         "Credit Card AR Reconcile {Settlement_Date}",
         doc_date="21/07/2026",
@@ -646,7 +646,7 @@ def test_resolve_jv_description_reads_the_bank_scoped_config_entry():
     config = SimpleNamespace(description=None, bank_descriptions={"KBANK": "AR Recon"})
     assert (
         resolve_jv_description(config, "KBANK", doc_date="21/07/2026", doc_no=AR_DOC_NO)
-        == "AR Recon - 21/07/2026"
+        == "AR Recon"
     )
 
 
@@ -679,9 +679,9 @@ def test_build_gljv_payload_default_description_is_tag_aware():
     assert payload["Description"] == "Credit Card AR Reconcile 21/07/2026"
 
 
-def test_build_gljv_payload_default_description_without_a_tag_still_appends_the_date():
-    """The fee-invoice behaviour every other BU's saved description still gets,
-    unchanged by the merge."""
+def test_build_gljv_payload_default_description_without_a_tag_has_no_date():
+    """No auto date since 2026-09-30, deliberately not migrated: a description saved
+    before then posts as saved until its BU inserts `{Settlement_Date}`."""
     config = SimpleNamespace(
         file_prefix="IC",
         file_source="ACBY",
@@ -695,7 +695,7 @@ def test_build_gljv_payload_default_description_without_a_tag_still_appends_the_
         bank_code="BAY",
         config=config,
     )
-    assert payload["Description"] == "Credit Card Commission - 15/06/2026"
+    assert payload["Description"] == "Credit Card Commission"
 
 
 def test_build_gljv_payload_an_explicit_description_overrides_the_default():

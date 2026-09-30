@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.models.schemas import ExtractedDetailRow
-from app.services.credit_card.jv import num, r2
+from app.services.credit_card.jv import num, r2, render_description
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +184,11 @@ def build_input_tax_payload(
         "ToDate": f"{year}-{month}-{last_day:02d}",
         "InvhTInvNo": doc_no or "",
         "InvhTInvDt": f"{year}-{mon.zfill(2)}-{day.zfill(2)}T00:00:00.000Z",
-        "InvhDesc": f"{description} - {doc_date}" if description else "",
+        # The JV's own rendering, so the two records from one statement read the same —
+        # this used to append the date itself and post any `{Tag}` raw.
+        "InvhDesc": render_description(
+            description, doc_date=doc_date, doc_no=doc_no, bank_name=getattr(bank, "code", None)
+        ),
         "VnName": legal_name,
         "TaxProfileCode": profile["code"],
         "BfTaxAmt": f"{net:.2f}",

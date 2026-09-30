@@ -133,15 +133,27 @@ function Harness({ initial = {} as Record<string, string> }) {
 // Ticket E (2026-09-23): the buttons read in plain language (not literal `{Tag}`
 // syntax) and each one disables itself once its tag is already in the description —
 // inserting the same tag five times was never a real state to allow.
-describe('TopLevelConfigSection — settlement tag extras', () => {
-  it('is absent for a bank with no settlement layout', () => {
-    setup({ hasSettlementLayout: false })
-    expect(screen.queryByText('Settlement date')).not.toBeInTheDocument()
+// 2026-09-30: "disables itself" became a toggle (aria-pressed). Same day, nothing is
+// appended on post any more (no auto date), so every bank gets the tags — a tag is the
+// only way a date reaches the description — and the tags left the text box.
+describe('TopLevelConfigSection — tag extras', () => {
+  it('offers the tags to a bank with no settlement layout too, previewed locally', () => {
+    setup({
+      hasSettlementLayout: false,
+      bankDescriptions: { SCB: 'Fee {Bank_Name} {Tax_Invoice_No}' },
+    })
+    expect(screen.getByText('Document date')).toBeInTheDocument()
+    expect(screen.getByText('Fee SCB INV-0001')).toBeInTheDocument()
+  })
+
+  it('previews a description with no tag exactly as saved — no date appended', () => {
+    setup({ bankDescriptions: { SCB: 'Commission' } })
+    expect(screen.getByText('Commission')).toHaveClass('ar-preview-value')
   })
 
   it('offers all three tags and shows the live preview for a settlement-capable bank', () => {
     setup({ hasSettlementLayout: true, settlementPreview: 'AR Recon 21/07/2026' })
-    expect(screen.getByText('Settlement date')).toBeInTheDocument()
+    expect(screen.getByText('Document date')).toBeInTheDocument()
     expect(screen.getByText('Tax invoice no.')).toBeInTheDocument()
     expect(screen.getByText('Bank name')).toBeInTheDocument()
     expect(screen.getByText('AR Recon 21/07/2026')).toBeInTheDocument()
@@ -152,7 +164,7 @@ describe('TopLevelConfigSection — settlement tag extras', () => {
       hasSettlementLayout: true,
       bankDescriptions: { SCB: 'AR Recon' },
     })
-    fireEvent.click(screen.getByText('Settlement date'))
+    fireEvent.click(screen.getByText('Document date'))
     expect(setBankDescriptions).toHaveBeenCalledWith({ SCB: 'AR Recon {Settlement_Date}' })
   })
 
@@ -162,25 +174,41 @@ describe('TopLevelConfigSection — settlement tag extras', () => {
     expect(setDescription).toHaveBeenCalledWith('Generic settlement {Bank_Name}')
   })
 
-  it('disables a tag already present in the description, so it cannot be inserted twice', () => {
+  // 2026-09-30: a toggle, not a disabled button — disabled dropped the tooltip and focus,
+  // and left no way to take a tag back out short of editing the raw `{Tag}` text.
+  it('marks a present tag pressed, and pressing it again takes the tag out', () => {
     const { setBankDescriptions } = setup({
       hasSettlementLayout: true,
-      bankDescriptions: { SCB: 'AR Recon {Settlement_Date}' },
+      bankDescriptions: { SCB: 'AR {Settlement_Date} Recon' },
     })
-    const addedButton = screen.getByText('Settlement date').closest('button')
-    expect(addedButton).toBeDisabled()
+    const addedButton = screen.getByText('Document date').closest('button') as HTMLElement
+    expect(addedButton).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Bank name').closest('button')).toHaveAttribute('aria-pressed', 'false')
 
-    fireEvent.click(addedButton as HTMLElement)
-    expect(setBankDescriptions).not.toHaveBeenCalled()
-
-    // The other two tags are still fresh and stay clickable.
-    const freshButton = screen.getByText('Bank name').closest('button')
-    expect(freshButton).not.toBeDisabled()
+    fireEvent.click(addedButton)
+    expect(setBankDescriptions).toHaveBeenCalledWith({ SCB: 'AR Recon' })
   })
 
-  it('re-enables a tag once it is removed from the text by hand', () => {
-    // Availability is derived from the current text on every render, not a separate
-    // "used" flag — a real stateful parent proves the round trip a mock setter cannot.
+  // Same day, later: the tokens left the box — one backspace used to leave
+  // `{Settlement_Dat`, which posts to Carmen verbatim. The box is text; fields ride after it.
+  it('never shows a token in the box, and typing keeps the attached fields', () => {
+    const { setBankDescriptions, field } = setup({
+      bankDescriptions: { SCB: 'AR {Settlement_Date}' },
+    })
+    expect(field).toHaveValue('AR')
+    fireEvent.change(field, { target: { value: 'AR Recon' } })
+    expect(setBankDescriptions).toHaveBeenCalledWith({ SCB: 'AR Recon {Settlement_Date}' })
+  })
+
+  it('attaches fields after the text in the order they are picked', () => {
+    const { setBankDescriptions } = setup({ bankDescriptions: { SCB: 'Fee {Bank_Name}' } })
+    fireEvent.click(screen.getByText('Document date'))
+    expect(setBankDescriptions).toHaveBeenCalledWith({ SCB: 'Fee {Bank_Name} {Settlement_Date}' })
+  })
+
+  it('keeps a space as it is typed, with a field attached', () => {
+    // The box is controlled from the saved string, so the split must not trim — a real
+    // stateful parent proves the round trip a mock setter cannot.
     function StatefulHarness() {
       const [bankDescriptions, setBankDescriptions] = useState<Record<string, string>>({
         SCB: 'AR Recon',
@@ -203,11 +231,16 @@ describe('TopLevelConfigSection — settlement tag extras', () => {
     }
     render(<StatefulHarness />)
 
-    fireEvent.click(screen.getByText('Settlement date'))
-    expect(screen.getByText('Settlement date').closest('button')).toBeDisabled()
-
-    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'AR Recon' } })
-    expect(screen.getByText('Settlement date').closest('button')).not.toBeDisabled()
+    const field = screen.getByLabelText('Description')
+    fireEvent.click(screen.getByText('Document date'))
+    fireEvent.change(field, { target: { value: 'AR Recon ' } })
+    expect(field).toHaveValue('AR Recon ')
+    fireEvent.change(field, { target: { value: 'AR Recon K' } })
+    expect(field).toHaveValue('AR Recon K')
+    expect(screen.getByText('Document date').closest('button')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
   })
 })
 

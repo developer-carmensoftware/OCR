@@ -277,8 +277,8 @@ describe('the screen', () => {
     // the field impossible to clear, and made a correction about KTC's documents rewrite
     // the wording for every other bank on save.
     //
-    // The field holds the BASE either way — the JV builder appends " - <doc date>" on post,
-    // and that tail is not rendered: it is the date already on screen two fields along.
+    // The field holds the TEXT either way; nothing is appended on post (no auto date since
+    // 2026-09-30), so no " - <doc date>" tail may appear beside it.
     storedConfig = { ...storedConfig, filePrefix: 'JV', description: 'Card settlement' }
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
@@ -782,9 +782,33 @@ describe('approving', () => {
     await waitFor(() => expect(cfgApi.patchAccountingConfig).toHaveBeenCalled())
     expect(vi.mocked(cfgApi.patchAccountingConfig).mock.calls[0][0]).toMatchObject({
       file_prefix: 'AJ',
-      // The base only. The " - 15/01/2026" tail is appended per document by the JV
-      // builder, and saving it would bake one document's date into the BU's rule.
+      // The text only — a date reaches it through a field ({Settlement_Date}) filled per
+      // document; saving a typed date would bake one document's date into the BU's rule.
       description: 'Settlement',
+      bank_code: 'KTC',
+    })
+  })
+
+  it('edits only the text, keeping the fields attached after it', async () => {
+    // 2026-09-30: a token typed in a box breaks with one backspace and posts verbatim, so
+    // the box holds the text and the fields are named under it — picked on the Mapping page.
+    storedConfig = {
+      ...storedConfig,
+      filePrefix: 'JV',
+      bankDescriptions: { KTC: 'KTC fee {Settlement_Date}' },
+    }
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
+    mount()
+    const field = await screen.findByLabelText('Description')
+    expect(field).toHaveValue('KTC fee')
+    expect(screen.getByText('+ Document date')).toBeInTheDocument()
+
+    fireEvent.change(field, { target: { value: 'KTC merchant fee' } })
+    await clickApprove()
+    await waitFor(() => expect(cfgApi.patchAccountingConfig).toHaveBeenCalled())
+    expect(vi.mocked(cfgApi.patchAccountingConfig).mock.calls[0][0]).toMatchObject({
+      description: 'KTC merchant fee {Settlement_Date}',
       bank_code: 'KTC',
     })
   })

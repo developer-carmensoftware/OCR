@@ -11,6 +11,7 @@ import { useT } from '@/i18n/LanguageContext'
 import { useAccountingConfig } from '@/features/credit-card/hooks'
 import { resolveTaxProfileForRate } from '@/shared/lib/apTax'
 import { descriptionForBank } from '@/features/credit-card/lib/bankTransforms'
+import { renderDescription } from '@/features/credit-card/lib/ccJv'
 import { BANK_INFO, OCR_BANK_MAP } from '@/shared/constants/banks'
 import type { BankCode } from '@/shared/types/api'
 import type { DetailRow } from './DetailTable'
@@ -103,9 +104,12 @@ export default function InputTaxReconciliation({
     config?.bankDescriptions,
     bank
   )
-  const description = resolvedDescription
-    ? `${resolvedDescription}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`
-    : ''
+  const description = renderDescription(
+    resolvedDescription,
+    headerData.DocDate,
+    headerData.DocNo,
+    bank || undefined
+  )
 
   const hasData = netAmount > 0 || taxAmount > 0
   // Carmen rejects a record with no vendor identity, and it does so *after* accepting the
