@@ -130,6 +130,9 @@ export const en = {
   // Mapping config page — account code mapping table
   'cc.mapTitle': 'ACCOUNT CODE MAPPING',
   'cc.mapLoadingCodes': 'Loading account codes...',
+  'cc.mapLoadingBank': 'Loading {bank} mappings...',
+  'cc.mapBankLoadFailed': "Couldn't load {bank}'s mappings.",
+  'cc.mapRetry': 'Try again',
   'cc.mapDeptCode': 'Department Code',
   'cc.mapDeptCodeHelp': 'Department code from Carmen Cloud — e.g. ACC, SALE, MKT',
   'cc.mapAccCode': 'Account Code',
@@ -345,6 +348,9 @@ export const th: Record<keyof typeof en, string> = {
   // Mapping config page — account code mapping table
   'cc.mapTitle': 'การจับคู่รหัสบัญชี',
   'cc.mapLoadingCodes': 'กำลังโหลดรหัสบัญชี...',
+  'cc.mapLoadingBank': 'กำลังโหลดผังบัญชีของ {bank}...',
+  'cc.mapBankLoadFailed': 'โหลดผังบัญชีของ {bank} ไม่สำเร็จ',
+  'cc.mapRetry': 'ลองอีกครั้ง',
   'cc.mapDeptCode': 'รหัสแผนก',
   'cc.mapDeptCodeHelp': 'รหัสแผนกจาก Carmen Cloud เช่น ACC, SALE, MKT',
   'cc.mapAccCode': 'รหัสบัญชี',

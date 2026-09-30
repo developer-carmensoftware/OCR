@@ -269,6 +269,11 @@ export function useMapping() {
 
   const saveAllSettings = async (shouldClose = false, settlement?: SettlementSave) => {
     if (saving) return
+    // Until the selected bank's own mappings have landed, what the form holds is the
+    // previous bank's — and the PUT replaces this bank's entries with them. The page
+    // disables Save meanwhile; this is the same rule where the write actually happens.
+    const selectedCode = bankConfig.bank ? BANK_CODE_MAP[bankConfig.bank as BankDisplayName] : null
+    if (selectedCode && bankConfig.mappingsBankCode !== selectedCode) return
     const allMissing = [...missingTopFields, ...missingCompanyFields]
     if (allMissing.length > 0) {
       setModalConfig({
@@ -447,6 +452,8 @@ export function useMapping() {
     // Settlement card to seed its own Detail/Summary rows from without a second fetch.
     savedMappings: bankConfig.savedMappings,
     mappingsBankCode: bankConfig.mappingsBankCode,
+    bankError: bankConfig.bankError,
+    retryBank: bankConfig.retryBank,
     company: bankConfig.company,
     setCompany: bankConfig.setCompany,
     handleCompanyChange,

@@ -124,21 +124,91 @@ describe('useSettlementMapping', () => {
   // Mappings are per bank, and the page fetches the new bank's *after* the dropdown moves.
   // Loading on the bank change alone seeded the card from the previous bank's mappings and
   // never looked again, so a KBANK mapping that was saved showed as blank rows.
-  it("waits for its own bank's mappings instead of seeding from the previous bank's", async () => {
+  // 2026-09-30: the settings *request* now goes out on the bank change (in parallel with
+  // the page's config fetch — they used to run in series); only the seeding waits.
+  it("fetches settings at once but seeds only from its own bank's mappings", async () => {
     getARSettings.mockResolvedValue(settingsResponse({ post_type: 'Detail' }))
     const kbank = { 'JCB PREM': { dept: 'GEN', acc: '1021008', source: 'settlement_detail' } }
+    const scb: Record<string, { dept: string; acc: string; source: string }> = {
+      'VS PREM': { dept: 'OLD', acc: '999', source: 'settlement_detail' },
+    }
 
     const { result, rerender } = renderHook(
       ({ saved, of }: { saved: Record<string, { dept: string; acc: string }>; of: string }) =>
         useSettlementMapping('KBANK', saved, [], [], '', of),
-      { initialProps: { saved: {}, of: 'SCB' } }
+      { initialProps: { saved: scb, of: 'SCB' } }
     )
-    expect(getARSettings).not.toHaveBeenCalled()
+    expect(getARSettings).toHaveBeenCalledTimes(1)
+    expect(getARSettings).toHaveBeenCalledWith('KBANK')
+    await act(async () => {}) // the settings answer lands, the mappings have not
+    expect(result.current.loading).toBe(true)
+    expect(result.current.rows).toEqual([])
 
     rerender({ saved: kbank, of: 'KBANK' })
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.rows).toEqual([{ code: 'JCB PREM', mapping: kbank['JCB PREM'] }])
+    expect(getARSettings).toHaveBeenCalledTimes(1) // the early request, reused
+  })
+
+  it("fires no preview for the new bank off the old bank's rows", async () => {
+    getARSettings.mockImplementation(code =>
+      Promise.resolve(
+        settingsResponse({ bank_code: code, has_settlement_layout: code === 'KBANK' })
+      )
+    )
+    const { result, rerender } = renderHook(
+      ({ bank }) => useSettlementMapping(bank, {}, [], [], ''),
+      { initialProps: { bank: 'KBANK' } }
+    )
+    await waitFor(() => expect(previewARJv).toHaveBeenCalled())
+    previewARJv.mockClear()
+
+    // `loading` flipped one render late, so the render that changed the bank still read
+    // KBANK's "loaded, has a layout" and posted a preview for SCB with KBANK's rows.
+    rerender({ bank: 'SCB' })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(previewARJv).not.toHaveBeenCalled()
+  })
+
+  it('goes back to loading the moment the bank changes', async () => {
+    getARSettings.mockResolvedValue(settingsResponse({ has_settlement_layout: false }))
+    const { result, rerender } = renderHook(
+      ({ bank }) => useSettlementMapping(bank, {}, [], [], ''),
+      {
+        initialProps: { bank: 'SCB' },
+      }
+    )
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    // The page shows a skeleton off this flag; staying false here left SCB's card state up
+    // under KBANK until KBANK's own answer arrived.
+    rerender({ bank: 'KBANK' })
+    expect(result.current.loading).toBe(true)
+    await waitFor(() => expect(result.current.loading).toBe(false))
+  })
+
+  it('drops a late answer for the bank it switched away from', async () => {
+    let answerKbank!: (v: ReturnType<typeof settingsResponse>) => void
+    getARSettings.mockImplementation(code =>
+      code === 'KBANK'
+        ? new Promise(resolve => {
+            answerKbank = resolve
+          })
+        : Promise.resolve(settingsResponse({ bank_code: 'SCB', has_settlement_layout: false }))
+    )
+    const { result, rerender } = renderHook(
+      ({ bank }) => useSettlementMapping(bank, {}, [], [], ''),
+      {
+        initialProps: { bank: 'KBANK' },
+      }
+    )
+    rerender({ bank: 'SCB' })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.hasSettlementLayout).toBe(false)
+
+    await act(async () => answerKbank(settingsResponse({ has_settlement_layout: true })))
+    expect(result.current.hasSettlementLayout).toBe(false) // SCB's, not KBANK's late one
   })
 
   it('seeds Summary by folding the sample onto each scheme’s first token, deduped', async () => {

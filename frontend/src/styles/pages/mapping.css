@@ -5,6 +5,15 @@
   animation: shimmer 1.6s ease infinite;
 }
 
+/* Now a bank switch shows it too, not only the first page load — a shimmer on every
+   switch is motion someone who asked for less should not get. The shape still says
+   "loading" on its own. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
 .skeleton-card {
   background: var(--card-bg);
   border: 1px solid var(--border);

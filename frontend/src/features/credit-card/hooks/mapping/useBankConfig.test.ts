@@ -229,4 +229,25 @@ describe('useBankConfig — bank scoping', () => {
     await waitFor(() => expect(result.current.savedMappings).toEqual({}))
     expect(getAccountingConfig).not.toHaveBeenCalled()
   })
+
+  // 2026-09-30: a failed switch used to be swallowed, leaving the previous bank's rows up
+  // under the new bank's name — and a Save then wrote them into the new bank.
+  it('names the bank a failed switch was for, and retries it on request', async () => {
+    getAccountingConfig.mockResolvedValueOnce(apiConfig({ bank_code: 'GHL' }) as never)
+    const { result } = renderHook(() => useBankConfig())
+    await waitFor(() => expect(result.current.configLoading).toBe(false))
+
+    getAccountingConfig.mockRejectedValueOnce(new Error('offline'))
+    act(() => result.current.setBank('Siam Commercial Bank (SCB)'))
+    await waitFor(() => expect(result.current.bankError).toBe('SCB'))
+    expect(result.current.mappingsBankCode).not.toBe('SCB') // nothing pretends it landed
+
+    getAccountingConfig.mockResolvedValueOnce(
+      apiConfig({ bank_code: 'SCB', mappings: { commission: { dept: '1', acc: '2' } } }) as never
+    )
+    act(() => result.current.retryBank())
+    await waitFor(() => expect(result.current.mappingsBankCode).toBe('SCB'))
+    expect(result.current.bankError).toBeNull()
+    expect(result.current.savedMappings.commission.acc).toBe('2')
+  })
 })

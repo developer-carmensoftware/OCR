@@ -7,6 +7,7 @@ import {
   POST_TYPES,
   type ARMappingItem,
   type ARPreview,
+  type ARSettingsResponse,
   type PostType,
 } from '@/features/credit-card/api/arReconcile'
 import { suggestPaymentTypes } from '@/features/credit-card/api/mapping'
@@ -139,6 +140,10 @@ export function useSettlementMapping(
   tRef.current = t
 
   const [loading, setLoading] = useState(true)
+  // Which bank the card's state belongs to. `loading` alone lags a bank change by one
+  // render (the effect that sets it runs after the render that changed the bank), and in
+  // that render the preview effect fired for the new bank with the old bank's rows.
+  const [loadedBank, setLoadedBank] = useState<string | null>(null)
   const [hasSettlementLayout, setHasSettlementLayout] = useState(false)
   const [enabled, setEnabled] = useState(false)
   const [postType, setPostType] = useState<PostType>('Detail')
@@ -152,68 +157,103 @@ export function useSettlementMapping(
   const [savedPrint, setSavedPrint] = useState<string | null>(null)
 
   const previewSeq = useRef(0)
+  // Which load is current. A bank switch bumps it too, so a response still in flight for
+  // the previous bank lands on nothing instead of painting that bank's card under this one.
+  const loadSeq = useRef(0)
+  // The settings fetch for the selected bank, started the moment the bank changes — in
+  // parallel with the page's own config fetch, not after it (2026-09-30: the two ran in
+  // series, ~0.5 s each, and the card sat on the previous bank's state meanwhile).
+  const settingsRef = useRef<{ code: string; promise: Promise<ARSettingsResponse> } | null>(null)
   const draftRef = useRef<{
     sets: Record<PostType, Record<string, FieldMapping>>
     suggestions: Record<string, Suggestion | null>
   } | null>(null)
 
-  const load = useCallback(async (code: string, mappings: Record<string, FieldMapping>) => {
-    setLoading(true)
-    setSuggestions({})
-    try {
-      const s = await getARSettings(code)
-      setHasSettlementLayout(s.has_settlement_layout)
-      setEnabled(s.enabled)
-      setPostType(s.post_type)
+  const startSettings = (code: string) => {
+    const promise = getARSettings(code)
+    promise.catch(() => {}) // surfaced by `load`, which awaits this same promise
+    settingsRef.current = { code, promise }
+    return promise
+  }
 
-      const bySource = (source: string): Record<string, FieldMapping> => {
-        const out: Record<string, FieldMapping> = {}
-        for (const [code2, m] of Object.entries(mappings)) {
-          if (m.source === source) out[code2] = m
+  const load = useCallback(
+    async (code: string, mappings: Record<string, FieldMapping>, refetch = false) => {
+      const seq = ++loadSeq.current
+      setLoading(true)
+      setSuggestions({})
+      try {
+        const pending = settingsRef.current
+        const s = await (!refetch && pending?.code === code ? pending.promise : startSettings(code))
+
+        const bySource = (source: string): Record<string, FieldMapping> => {
+          const out: Record<string, FieldMapping> = {}
+          for (const [code2, m] of Object.entries(mappings)) {
+            if (m.source === source) out[code2] = m
+          }
+          return out
         }
-        return out
-      }
-      const detail = bySource(SOURCE_BY_POST_TYPE.Detail)
-      const summary = bySource(SOURCE_BY_POST_TYPE.Summary)
+        const detail = bySource(SOURCE_BY_POST_TYPE.Detail)
+        const summary = bySource(SOURCE_BY_POST_TYPE.Summary)
 
-      // A BU with no rows yet cannot map anything, and the only other way to get rows is
-      // to receive a document and be charged for it. Seed the printed vocabulary instead
-      // — per post type, not only when both are empty: a BU that mapped Detail by hand
-      // and never switched to Summary must not be stuck at "0/0 mapped" with no seed
-      // offered.
-      const needsSample =
-        s.has_settlement_layout &&
-        (Object.keys(detail).length === 0 || Object.keys(summary).length === 0)
-      const sample = needsSample
-        ? await getSamplePaymentTypes(code).catch(() => [] as ARMappingItem[])
-        : []
-      const next: Record<PostType, Record<string, FieldMapping>> = {
-        Detail:
-          Object.keys(detail).length > 0
-            ? detail
-            : blankRows(
-                sample.map(i => i.payment_type_code),
-                SOURCE_BY_POST_TYPE.Detail,
-                mappings
-              ),
-        Summary:
-          Object.keys(summary).length > 0
-            ? summary
-            : blankRows(
-                dedupe(sample.map(i => firstToken(i.payment_type_code))),
-                SOURCE_BY_POST_TYPE.Summary,
-                mappings
-              ),
+        // A BU with no rows yet cannot map anything, and the only other way to get rows is
+        // to receive a document and be charged for it. Seed the printed vocabulary instead
+        // — per post type, not only when both are empty: a BU that mapped Detail by hand
+        // and never switched to Summary must not be stuck at "0/0 mapped" with no seed
+        // offered.
+        const needsSample =
+          s.has_settlement_layout &&
+          (Object.keys(detail).length === 0 || Object.keys(summary).length === 0)
+        const sample = needsSample
+          ? await getSamplePaymentTypes(code).catch(() => [] as ARMappingItem[])
+          : []
+        const next: Record<PostType, Record<string, FieldMapping>> = {
+          Detail:
+            Object.keys(detail).length > 0
+              ? detail
+              : blankRows(
+                  sample.map(i => i.payment_type_code),
+                  SOURCE_BY_POST_TYPE.Detail,
+                  mappings
+                ),
+          Summary:
+            Object.keys(summary).length > 0
+              ? summary
+              : blankRows(
+                  dedupe(sample.map(i => firstToken(i.payment_type_code))),
+                  SOURCE_BY_POST_TYPE.Summary,
+                  mappings
+                ),
+        }
+        if (seq !== loadSeq.current) return
+        setLoadedBank(code)
+        setHasSettlementLayout(s.has_settlement_layout)
+        setEnabled(s.enabled)
+        setPostType(s.post_type)
+        setSets(next)
+        setSavedPrint(fingerprint(s.post_type, next))
+      } catch (err) {
+        if (seq !== loadSeq.current) return
+        console.error('AR settings load failed:', err)
+        // Not the previous bank's layout: without this, a failed load left its card up.
+        setLoadedBank(code)
+        setHasSettlementLayout(false)
+        toast.error(tRef.current('ar.toastLoadFailed'))
+      } finally {
+        if (seq === loadSeq.current) setLoading(false)
       }
-      setSets(next)
-      setSavedPrint(fingerprint(s.post_type, next))
-    } catch (err) {
-      console.error('AR settings load failed:', err)
-      toast.error(tRef.current('ar.toastLoadFailed'))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+    },
+    []
+  )
+
+  // Step 2 starts on the bank change itself: loading at once (the page swaps the card for
+  // a skeleton, and no preview fires for a bank whose state has not landed), and the
+  // settings request goes out alongside the page's config fetch.
+  useEffect(() => {
+    if (!bankCode) return // the page's own config is still deciding which bank it is
+    loadSeq.current++
+    setLoading(true)
+    startSettings(bankCode)
+  }, [bankCode])
 
   useEffect(() => {
     if (mappingsBankCode !== undefined && mappingsBankCode !== bankCode) return
@@ -221,7 +261,8 @@ export function useSettlementMapping(
     // `savedMappings` intentionally excluded: it is the page's load-once snapshot, and a
     // later edit elsewhere on the page (commission/tax/net, a fee-invoice payment type)
     // must not re-seed this card's rows out from under the user. `mappingsBankCode` is
-    // in: it changes only when a bank's mappings land, never on an edit.
+    // in: it changes only when a bank's mappings land, never on an edit. The seeding
+    // waits for them — only the settings request itself goes out early.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bankCode, mappingsBankCode, load])
 
@@ -389,10 +430,14 @@ export function useSettlementMapping(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bankCode, postType, description, sets])
 
+  // Loading until the state on hand is this bank's — true in the very render that changed
+  // the bank, not one render later.
+  const busy = loading || loadedBank !== bankCode
+
   useEffect(() => {
-    if (loading || !hasSettlementLayout) return
+    if (busy || !hasSettlementLayout) return
     refreshPreview()
-  }, [loading, hasSettlementLayout, refreshPreview])
+  }, [busy, hasSettlementLayout, refreshPreview])
 
   const rowCount = (pt: PostType) => Object.keys(sets[pt] || {}).length
   const mappedCount = (pt: PostType) =>
@@ -403,7 +448,7 @@ export function useSettlementMapping(
   const mappingsToSave: Record<string, FieldMapping> = { ...sets.Detail, ...sets.Summary }
 
   return {
-    loading,
+    loading: busy,
     hasSettlementLayout,
     enabled,
     postType,
@@ -428,7 +473,9 @@ export function useSettlementMapping(
     refreshPreview,
     mappingsToSave,
     dirty,
-    reset: () => void load(bankCode, savedMappings),
+    // A fresh request, not the one the bank switch started: this is "discard my edits",
+    // and what the server holds may have moved since (a save in between).
+    reset: () => void load(bankCode, savedMappings, true),
   }
 }
 

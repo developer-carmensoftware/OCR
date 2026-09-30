@@ -122,6 +122,25 @@ describe('useMapping — switching banks', () => {
     expect(result.current.paymentAmount[AR]).toBeUndefined()
     expect(result.current.customPaymentTypes).toEqual([])
   })
+
+  // 2026-09-30: until the new bank's mappings land, the form still holds the old bank's —
+  // and the PUT replaces the *new* bank's entries with whatever it is sent.
+  it("will not save while the new bank's mappings are still on their way", async () => {
+    getAccountingConfig.mockResolvedValueOnce({
+      bank_code: 'GHL',
+      file_prefix: 'IC',
+      mappings: { commission: { dept: '307', acc: '6080008' } },
+      custom_types: [],
+    } as never)
+    const { result } = renderHook(() => useMapping())
+    await waitFor(() => expect(result.current.mappings.commission.acc).toBe('6080008'))
+
+    getAccountingConfig.mockReturnValueOnce(new Promise(() => {}) as never) // never lands
+    act(() => result.current.handleBankChange('Siam Commercial Bank (SCB)'))
+    await act(() => result.current.saveAllSettings(false))
+
+    expect(saveAccountingConfig).not.toHaveBeenCalled()
+  })
 })
 
 // A settlement-report bank's Detail/Summary keys are `useSettlementMapping`'s, not payment

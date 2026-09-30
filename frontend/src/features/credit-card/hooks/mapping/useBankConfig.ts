@@ -32,6 +32,10 @@ export interface BankConfigHook {
    *  off this instead of off `bank` (which changes one render before the fetch for it
    *  resolves). Null before anything has loaded or when no bank is selected. */
   mappingsBankCode: string | null
+  /** The bank_code whose mappings failed to load on a switch — the page shows a retry in
+   *  place of its mapping sections rather than the previous bank's rows. */
+  bankError: string | null
+  retryBank: () => void
 }
 
 import type React from 'react'
@@ -64,6 +68,8 @@ export function useBankConfig(): BankConfigHook {
   const [savedMappings, setSavedMappings] = useState<Record<string, FieldMapping>>({})
   const [savedCustomTypes, setSavedCustomTypes] = useState<string[]>([])
   const [mappingsBankCode, setMappingsBankCode] = useState<string | null>(null)
+  const [bankError, setBankError] = useState<string | null>(null)
+  const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
     let ocrBank: BankDisplayName | '' = ''
@@ -177,6 +183,7 @@ export function useBankConfig(): BankConfigHook {
       return
     }
     let cancelled = false
+    setBankError(null)
     getAccountingConfig(bankCode)
       .then(apiData => {
         if (cancelled) return
@@ -185,13 +192,14 @@ export function useBankConfig(): BankConfigHook {
         setMappingsBankCode(bankCode)
       })
       .catch(() => {
-        /* Keep whatever mappings are already on screen rather than blanking a bank
-           switch out from under an in-progress edit over a transient network error. */
+        // Said, not swallowed: leaving the previous bank's rows up under this bank's name
+        // is what a Save then wrote into this bank. The page offers `retryBank` instead.
+        if (!cancelled) setBankError(bankCode)
       })
     return () => {
       cancelled = true
     }
-  }, [bank, configLoading, mappingsBankCode])
+  }, [bank, configLoading, mappingsBankCode, retryKey])
 
   return {
     bank,
@@ -205,6 +213,8 @@ export function useBankConfig(): BankConfigHook {
     company,
     setCompany,
     configLoading,
+    bankError,
+    retryBank: () => setRetryKey(k => k + 1),
     savedMappings,
     savedCustomTypes,
     mappingsBankCode,
