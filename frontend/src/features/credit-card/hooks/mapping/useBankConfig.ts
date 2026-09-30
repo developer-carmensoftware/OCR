@@ -7,7 +7,7 @@ import {
   BANK_SOURCE_MAP,
 } from '@/shared/constants/banks'
 import { normalizeConfigShape, codeToDisplayName } from '@/features/credit-card/lib/bankTransforms'
-import { appKey, readAccountingConfig } from '@/shared/lib/storage'
+import { appKey } from '@/shared/lib/storage'
 import type { BankDisplayName, FieldMapping } from '@/shared/types/api'
 import type { CompanyData } from '@/features/credit-card/lib/bankTransforms'
 
@@ -52,10 +52,15 @@ export function useBankConfig(): BankConfigHook {
   const [fileSource, setFileSource] = useState('')
   const [description, setDescription] = useState('')
   const [bankDescriptions, setBankDescriptions] = useState<Record<string, string>>({})
+  // Branch defaults to head office: a tax invoice that states no branch was issued by the
+  // head office, Revenue Department code "00000" — `_HEAD_OFFICE` in
+  // backend/app/services/credit_card/input_tax.py, whose frontend twin is
+  // InputTaxReconciliation.tsx. Without it every new BU opened with this required field
+  // blank and could not save its GL mapping until someone typed the default by hand.
   const [company, setCompany] = useState<CompanyData>({
     name: '',
     taxId: '',
-    branch: '',
+    branch: '00000',
     address: '',
   })
   const [savedMappings, setSavedMappings] = useState<Record<string, FieldMapping>>({})
@@ -64,7 +69,6 @@ export function useBankConfig(): BankConfigHook {
 
   useEffect(() => {
     let ocrBank: BankDisplayName | '' = ''
-    let ocrBranch = ''
     try {
       const ocrState = JSON.parse(
         localStorage.getItem(appKey('ocr_wizard_state')) || '{}'
@@ -73,9 +77,6 @@ export function useBankConfig(): BankConfigHook {
     } catch {
       /* ignore */
     }
-    // Branch comes off the document (useOcrExtraction writes it here); the saved
-    // accounting config has no branch of its own, so it must not blank this out.
-    ocrBranch = readAccountingConfig().company?.branch || ''
     // An explicit `?bank=` names the bank a specific document belongs to, which is more
     // specific than either an in-progress wizard scan or the tenant's last-saved default,
     // so it wins over both.
@@ -96,9 +97,12 @@ export function useBankConfig(): BankConfigHook {
           (source.bankDescriptions as Record<string, string>) ??
           {}
       )
+      // The BU's saved branch, else head office. Not the last scanned document's branch:
+      // that is one document's fact (KTC's is even the merchant's own), and a document's
+      // branch reaches the input-tax record from the document itself anyway.
       setCompany({
         ...normalized.companyData,
-        branch: normalized.companyData.branch || ocrBranch,
+        branch: normalized.companyData.branch || '00000',
       })
     }
 
@@ -142,7 +146,6 @@ export function useBankConfig(): BankConfigHook {
               name: info.name,
               taxId: info.taxId,
               address: info.address,
-              branch: prev.branch || ocrBranch,
             }))
           }
         } else {

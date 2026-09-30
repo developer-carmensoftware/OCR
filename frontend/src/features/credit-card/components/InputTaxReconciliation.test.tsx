@@ -28,6 +28,7 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
+  vi.clearAllMocks()
   vi.mocked(fetchTaxProfiles).mockResolvedValue([{ code: 'VAT07', desc: 'VAT 7%', rate: 7 }])
   vi.mocked(submitInputTax).mockResolvedValue({ Code: 0 })
   // No saved config anywhere: the state left behind by clearAppStorage() on a session
@@ -36,12 +37,12 @@ beforeEach(() => {
   localStorage.clear()
 })
 
-function setup(bank: BankCode | '' = 'KBANK') {
+function setup(bank: BankCode | '' = 'KBANK', header: Record<string, string> = {}) {
   const onFinish = vi.fn()
   render(
     <InputTaxReconciliation
       details={[{ CommisAmt: '500', TaxAmt: '35' }]}
-      headerData={{ DocNo: '240826E00035168', DocDate: '24/08/2026' }}
+      headerData={{ DocNo: '240826E00035168', DocDate: '24/08/2026', ...header }}
       bank={bank}
       onBack={vi.fn()}
       onFinish={onFinish}
@@ -73,6 +74,33 @@ describe('InputTaxReconciliation — vendor identity', () => {
     const { addButton } = setup('')
     await waitFor(() => expect(screen.getByText(/could not be resolved/i)).toBeInTheDocument())
     expect(addButton).toBeDisabled()
+  })
+})
+
+describe('InputTaxReconciliation — branch', () => {
+  // Every BU now saves a head-office default, so the saved branch winning over the document
+  // would post "00000" for every invoice. Same order as email_automation/pipeline.py.
+  it("posts the document's branch over the BU's saved one", async () => {
+    vi.mocked(getAccountingConfig).mockResolvedValue({
+      bank_code: 'KBANK',
+      file_prefix: 'IC',
+      branch: '00000',
+      mappings: {},
+      custom_types: [],
+    } as never)
+    const { addButton } = setup('KBANK', { BranchNo: '00012' })
+    await confirmSubmit(addButton)
+
+    await waitFor(() => expect(submitInputTax).toHaveBeenCalled())
+    expect(vi.mocked(submitInputTax).mock.lastCall?.[0]).toMatchObject({ BranchNo: '00012' })
+  })
+
+  it('posts head office when neither the document nor the BU names a branch', async () => {
+    const { addButton } = setup('KBANK')
+    await confirmSubmit(addButton)
+
+    await waitFor(() => expect(submitInputTax).toHaveBeenCalled())
+    expect(vi.mocked(submitInputTax).mock.lastCall?.[0]).toMatchObject({ BranchNo: '00000' })
   })
 })
 

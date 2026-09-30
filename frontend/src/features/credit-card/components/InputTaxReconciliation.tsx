@@ -63,6 +63,14 @@ export default function InputTaxReconciliation({
     taxId: bankInfo?.taxId || company.taxId || '',
     address: bankInfo?.address || company.address || '',
   }
+  // Branch is the one identity field that comes off the document, not the registry: the
+  // document's own, then the BU's saved fallback, then head office. A tax invoice stating no
+  // branch was issued by the head office, whose Revenue Department code is "00000" — the
+  // printed convention, not a stand-in for a fact nobody read, which is why it defaults where
+  // the name and tax ID above refuse. Same order as its server twin: `extracted.branch_no or
+  // config.branch` in email_automation/pipeline.py, then `_HEAD_OFFICE` in
+  // services/credit_card/input_tax.py.
+  const branchNo = headerData.BranchNo || company.branch || '00000'
   const netAmount = details.reduce((s, d) => s + parseNum(d.CommisAmt), 0)
   const taxAmount = details.reduce((s, d) => s + parseNum(d.TaxAmt), 0)
   const total = netAmount + taxAmount
@@ -138,12 +146,7 @@ export default function InputTaxReconciliation({
       TaxAmt: round2(taxAmount),
       TotalAmt: round2(total).toFixed(2),
       TaxId: vendor.taxId,
-      // Branch is the one identity field that comes off the document, not the registry.
-      // A tax invoice stating no branch was issued by the head office, whose Revenue
-      // Department code is "00000" — the printed convention, not a stand-in for a fact
-      // nobody read, which is why it defaults where the name and tax ID above refuse.
-      // Kept in step with `_HEAD_OFFICE` in services/cc_input_tax.py, its server twin.
-      BranchNo: company.branch || '00000',
+      BranchNo: branchNo,
       Address: vendor.address,
       UserModified: 'admin',
       TaxProfileDesc: resolvedProfileItem?.desc ?? `VAT ${Math.round(taxRate)}%`,
@@ -234,7 +237,7 @@ export default function InputTaxReconciliation({
                     <td>{headerData.DocDate || '—'}</td>
                     <td className="cc-max-w-160-wrap">{vendor.name || '—'}</td>
                     <td className="cc-mono-text">{vendor.taxId || '—'}</td>
-                    <td>{company.branch || '—'}</td>
+                    <td>{branchNo}</td>
                     <td className="cc-desc-cell">{description || '—'}</td>
                     <td>
                       <span className="cc-badge-primary-nowrap">{taxProfile}</span>

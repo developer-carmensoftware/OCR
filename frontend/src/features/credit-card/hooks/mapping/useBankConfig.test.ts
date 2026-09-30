@@ -28,9 +28,22 @@ describe('useBankConfig — branch', () => {
     vi.clearAllMocks()
   })
 
-  it('falls back to the OCR-extracted branch when the saved config carries none', async () => {
-    seedOcrBranch('00000')
+  // A BU-wide fallback, not the last document's branch: that one reaches the input-tax
+  // record from the document itself, and copying it here made it every document's.
+  it('defaults to head office when the saved config carries none, ignoring the OCR one', async () => {
+    seedOcrBranch('00012')
     getAccountingConfig.mockResolvedValue(apiConfig() as never)
+
+    const { result } = renderHook(() => useBankConfig())
+    await waitFor(() => expect(result.current.configLoading).toBe(false))
+
+    expect(result.current.company.branch).toBe('00000')
+  })
+
+  // A brand-new BU: nothing saved server-side, nothing in this browser. The required field
+  // used to open blank here and block the GL mapping save until typed by hand.
+  it('defaults to head office with no config anywhere', async () => {
+    getAccountingConfig.mockRejectedValue(new Error('empty'))
 
     const { result } = renderHook(() => useBankConfig())
     await waitFor(() => expect(result.current.configLoading).toBe(false))
