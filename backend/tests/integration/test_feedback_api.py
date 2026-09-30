@@ -110,6 +110,20 @@ def test_I2_3_batch_mixed_counts_correct():
         assert body["skipped"] == 1
 
 
+def test_batch_accepts_branch_no_and_bank_company_name():
+    """Header fields the wizard lets a reviewer edit. Missing from FieldName, they 422'd
+    the whole batch — including every other correction sent alongside them."""
+    mock_db = make_mock_db()
+    batch = [
+        {**CORRECTION, "field_name": "branch_no", "original_value": "", "corrected_value": "00002"},
+        {**CORRECTION, "field_name": "bank_company_name"},
+    ]
+    with make_test_client(mock_db) as client:
+        resp = client.post(f"{BASE}/corrections", json={"corrections": batch}, headers=AUTH)
+        assert resp.status_code == 200
+        assert resp.json()["saved"] == 2
+
+
 def test_batch_empty_returns_zero_counts():
     mock_db = make_mock_db()
     with make_test_client(mock_db) as client:
