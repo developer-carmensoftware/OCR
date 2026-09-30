@@ -18,9 +18,8 @@ export interface BankConfigHook {
   setFilePrefix: React.Dispatch<React.SetStateAction<string>>
   fileSource: string
   setFileSource: React.Dispatch<React.SetStateAction<string>>
-  description: string
-  setDescription: React.Dispatch<React.SetStateAction<string>>
-  /** bank_code -> description, for a BU whose banks should not all read alike. */
+  /** bank_code -> description, the only description there is: a bank with no entry
+   *  posts none (the BU-wide fallback was retired 2026-09-30). */
   bankDescriptions: Record<string, string>
   setBankDescriptions: React.Dispatch<React.SetStateAction<Record<string, string>>>
   company: CompanyData
@@ -50,7 +49,6 @@ export function useBankConfig(): BankConfigHook {
   const [bank, setBank] = useState<BankDisplayName | ''>('')
   const [filePrefix, setFilePrefix] = useState('IC')
   const [fileSource, setFileSource] = useState('')
-  const [description, setDescription] = useState('')
   const [bankDescriptions, setBankDescriptions] = useState<Record<string, string>>({})
   // Branch defaults to head office: a tax invoice that states no branch was issued by the
   // head office, Revenue Department code "00000" — `_HEAD_OFFICE` in
@@ -91,7 +89,6 @@ export function useBankConfig(): BankConfigHook {
       setBank(normalized.finalBank)
       setFilePrefix(normalized.finalPrefix)
       setFileSource(normalized.finalSource)
-      setDescription((source.description as string) || '')
       setBankDescriptions(
         (source.bank_descriptions as Record<string, string>) ??
           (source.bankDescriptions as Record<string, string>) ??
@@ -160,8 +157,8 @@ export function useBankConfig(): BankConfigHook {
   }, [])
 
   // Re-fetch this bank's own GL mappings when the dropdown changes to one the initial
-  // load didn't already cover. Header fields (file_prefix, description, company) stay
-  // BU-wide and are deliberately left alone here.
+  // load didn't already cover. Header fields (file_prefix, company) stay BU-wide and are
+  // deliberately left alone here; descriptions are already keyed per bank.
   //
   // Keyed off `mappingsBankCode`, not `bank`: `bank` commits a render before the fetch
   // for it resolves, so latching an "applied" ref off `bank` in a consumer (useMapping)
@@ -203,8 +200,6 @@ export function useBankConfig(): BankConfigHook {
     setFilePrefix,
     fileSource,
     setFileSource,
-    description,
-    setDescription,
     bankDescriptions,
     setBankDescriptions,
     company,

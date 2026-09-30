@@ -138,11 +138,11 @@ export interface AccountingConfigRequest {
   bank_code: string | null
   file_prefix: string | null
   file_source: string | null
-  description: string | null
   branch: string | null
   mappings: Record<string, FieldMapping> | null
   custom_types: string[] | null
-  /** bank_code -> description. Omit entirely to keep what the server has stored. */
+  /** bank_code -> description, the only description there is (no BU-wide one since
+   *  2026-09-30). Omit entirely to keep what the server has stored. */
   bank_descriptions?: Record<string, string>
 }
 
@@ -150,7 +150,6 @@ export interface AccountingConfigResponse {
   bank_code: string | null
   file_prefix: string | null
   file_source: string | null
-  description: string | null
   branch: string | null
   mappings: Record<string, FieldMapping>
   custom_types: string[]

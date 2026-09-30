@@ -106,14 +106,9 @@ export default function Mapping() {
   const mappingCtrl = useMapping()
 
   const bankCode = mappingCtrl.bank ? BANK_CODE_MAP[mappingCtrl.bank as BankDisplayName] : ''
-  // The *effective* description for this bank — own wording if set, else the BU-wide
-  // fallback — same resolution `description_for` applies server-side at posting time.
-  // Ticket D (2026-09-22): this is what a settlement JV's wording is now, too.
-  const resolvedDescription = descriptionForBank(
-    mappingCtrl.description,
-    mappingCtrl.bankDescriptions,
-    bankCode
-  )
+  // This bank's own description — the same resolution `description_for` applies
+  // server-side at posting time. Ticket D (2026-09-22): a settlement JV's wording too.
+  const resolvedDescription = descriptionForBank(mappingCtrl.bankDescriptions, bankCode)
   const settlementCtrl = useSettlementMapping(
     bankCode,
     mappingCtrl.savedMappings,
@@ -187,8 +182,6 @@ export default function Mapping() {
           setFilePrefix={mappingCtrl.setFilePrefix}
           prefixes={mappingCtrl.masterGLPrefixes}
           fileSource={mappingCtrl.fileSource}
-          description={mappingCtrl.description}
-          setDescription={mappingCtrl.setDescription}
           bankDescriptions={mappingCtrl.bankDescriptions}
           setBankDescriptions={mappingCtrl.setBankDescriptions}
           hasSettlementLayout={Boolean(showSettlement)}

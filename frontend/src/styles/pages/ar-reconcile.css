@@ -169,10 +169,17 @@
     border-color 0.15s ease-out;
 }
 
-.ar-tag:hover {
+.ar-tag:hover:not(:disabled) {
   background: var(--primary-light);
   color: var(--primary);
   border-color: var(--primary-mid);
+}
+
+/* Only while no bank is selected: a Description belongs to a bank, so there is nothing to
+   attach a field to yet — the hint under the box says to pick one. */
+.ar-tag:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .ar-tag[aria-pressed='true'] {
@@ -181,7 +188,7 @@
   border-color: transparent;
 }
 
-.ar-tag[aria-pressed='true']:hover {
+.ar-tag[aria-pressed='true']:hover:not(:disabled) {
   border-color: var(--emerald-text);
 }
 

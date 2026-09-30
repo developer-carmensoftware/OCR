@@ -100,7 +100,7 @@ async def test_a_half_filled_suggestion_is_dropped_not_written():
     db.commit.assert_not_awaited()
 
 
-# ── description_for: per-bank wording, with the BU's single one as fallback ────
+# ── description_for: a bank's own wording, or nothing (no fallback since 2026-09-30) ──
 
 
 class _Cfg(SimpleNamespace):
@@ -117,18 +117,19 @@ def test_a_bank_with_its_own_wording_gets_it():
     assert description_for(cfg, "KTC") == "KTC fee invoice"
 
 
-def test_a_bank_without_one_falls_back_to_the_bus_single_description():
-    """The whole point of the fallback: nothing changes for a BU that never sets one."""
+def test_a_bank_without_one_gets_none_whatever_the_retired_column_holds():
+    """The BU-wide `description` was read everywhere and editable nowhere (dev `carmen`
+    sat behind "TEST ACC" on every bank). It is history now: the migration copied it into
+    each bank the BU used, and a bank with no entry posts no description."""
     cfg = _cfg("Generic settlement", {"SCB": "SCB settlement"})
-    assert description_for(cfg, "BBL") == "Generic settlement"
-    assert description_for(cfg, None) == "Generic settlement"
-    assert description_for(_cfg("Generic settlement"), "SCB") == "Generic settlement"
+    assert description_for(cfg, "BBL") is None
+    assert description_for(cfg, None) is None
+    assert description_for(_cfg("Generic settlement"), "SCB") is None
 
 
-def test_a_blank_per_bank_entry_is_not_treated_as_wording():
-    """An empty string on the JV reads as a missing description, not an override."""
-    assert description_for(_cfg("Generic", {"SCB": "   "}), "SCB") == "Generic"
-    assert description_for(_cfg("Generic", {"SCB": ""}), "SCB") == "Generic"
+def test_a_blank_per_bank_entry_is_no_description():
+    assert description_for(_cfg("Generic", {"SCB": "   "}), "SCB") is None
+    assert description_for(_cfg("Generic", {"SCB": ""}), "SCB") is None
 
 
 def test_no_description_anywhere_is_none_not_a_crash():
@@ -266,15 +267,17 @@ async def test_a_description_starts_this_banks_own_entry_when_it_had_none():
 
 
 @pytest.mark.asyncio
-async def test_a_description_with_no_bank_still_writes_the_bu_wide_one():
-    """The fallback is the only thing an edit can mean when nothing named a bank."""
+async def test_a_description_with_no_bank_is_dropped_not_parked_in_the_retired_column():
+    """There is no BU-wide description to write since 2026-09-30, and nothing would read
+    it back — so with no bank named, a description alone is a no-op."""
     row = SimpleNamespace(id=1, file_prefix=None, description="Generic", bank_descriptions={})
     db = _db(row, [])
 
     await patch_config(db, TENANT_ID, description="Card settlement")
 
-    assert row.description == "Card settlement"
+    assert row.description == "Generic"
     assert row.bank_descriptions == {}
+    db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

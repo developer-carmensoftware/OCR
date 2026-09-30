@@ -4,15 +4,12 @@ import { useState } from 'react'
 import TopLevelConfigSection from './TopLevelConfigSection'
 import type { BankDisplayName } from '@/shared/types/api'
 
-/** Description is one field scoped to the selected bank.
- *
- * It was briefly two — a BU-wide box and a per-bank box below it — which put the
- * storage layout on screen and left the user to work out which one won. The single
- * box shows the wording a document would actually carry; the BU-wide value stays
- * behind it as the fallback for banks nobody has configured yet. */
+/** Description is one field scoped to the selected bank — and, since 2026-09-30, that
+ * bank's entry is all there is. The BU-wide fallback that used to sit behind it was
+ * read everywhere and editable nowhere (dev `carmen` showed "TEST ACC" on every bank),
+ * so it was retired and copied into each bank the BU used (decision-log #33). */
 function setup(over: Partial<React.ComponentProps<typeof TopLevelConfigSection>> = {}) {
   const setBankDescriptions = vi.fn()
-  const setDescription = vi.fn()
   const props = {
     bank: 'Siam Commercial Bank (SCB)' as BankDisplayName,
     handleBankChange: vi.fn(),
@@ -20,14 +17,12 @@ function setup(over: Partial<React.ComponentProps<typeof TopLevelConfigSection>>
     setFilePrefix: vi.fn(),
     prefixes: [] as { code: string; name: string }[],
     fileSource: 'ACSC',
-    description: 'Generic settlement',
-    setDescription,
     bankDescriptions: {} as Record<string, string>,
     setBankDescriptions,
     ...over,
   }
   render(<TopLevelConfigSection {...props} />)
-  return { setBankDescriptions, setDescription, field: screen.getByLabelText('Description') }
+  return { setBankDescriptions, field: screen.getByLabelText('Description') }
 }
 
 describe('TopLevelConfigSection — Description', () => {
@@ -43,15 +38,16 @@ describe('TopLevelConfigSection — Description', () => {
     expect(screen.getByText('Applies to SCB documents')).toBeInTheDocument()
   })
 
-  it('is empty when the bank has none, and names the fallback instead of pretending', () => {
+  it('is empty when the bank has none, and says the JV will carry no description', () => {
     const { field } = setup({ bankDescriptions: { KTC: 'KTC Merchant Fee' } })
     expect(field).toHaveValue('')
-    expect(field).toHaveAttribute('placeholder', 'Generic settlement')
-    expect(screen.getByText('Empty — SCB documents use "Generic settlement"')).toBeInTheDocument()
+    // Not another bank's wording, and not a BU-wide one: there is nothing behind it.
+    expect(field).toHaveAttribute('placeholder', 'Additional details')
+    expect(screen.getByText('Empty — SCB documents post no description')).toBeInTheDocument()
   })
 
   it('writes against the selected bank, leaving other banks alone', () => {
-    const { setBankDescriptions, setDescription, field } = setup({
+    const { setBankDescriptions, field } = setup({
       bankDescriptions: { KTC: 'KTC Merchant Fee' },
     })
     fireEvent.change(field, { target: { value: 'SCB Credit Card Settlement' } })
@@ -59,19 +55,18 @@ describe('TopLevelConfigSection — Description', () => {
       KTC: 'KTC Merchant Fee',
       SCB: 'SCB Credit Card Settlement',
     })
-    expect(setDescription).not.toHaveBeenCalled() // the BU-wide fallback is untouched
   })
 
-  it('leaves the fallback alone when the field is merely displayed, never typed in', () => {
+  it('writes nothing when the field is merely displayed, never typed in', () => {
     const { setBankDescriptions } = setup()
     expect(setBankDescriptions).not.toHaveBeenCalled()
   })
 
-  it('edits the BU-wide value while no bank is selected — the only sensible target', () => {
-    const { setDescription, setBankDescriptions, field } = setup({ bank: '', fileSource: '' })
-    expect(screen.getByText('Select a bank to set this per bank')).toBeInTheDocument()
-    fireEvent.change(field, { target: { value: 'Generic' } })
-    expect(setDescription).toHaveBeenCalledWith('Generic')
+  it('cannot be edited with no bank selected — a Description belongs to a bank', () => {
+    const { setBankDescriptions, field } = setup({ bank: '', fileSource: '' })
+    expect(screen.getByText('Select a bank to set its description')).toBeInTheDocument()
+    expect(field).toBeDisabled()
+    expect(screen.getByText('Document date').closest('button')).toBeDisabled()
     expect(setBankDescriptions).not.toHaveBeenCalled()
   })
 })
@@ -107,9 +102,9 @@ describe('TopLevelConfigSection — File Prefix', () => {
  *
  * The field once took the *resolved* value, so deleting the last character emptied
  * the per-bank entry, the BU-wide fallback resolved in its place, and the old text
- * reappeared under the cursor — the box could not be cleared. */
+ * reappeared under the cursor — the box could not be cleared. The fallback is gone
+ * (2026-09-30), but the round trip is still worth pinning. */
 function Harness({ initial = {} as Record<string, string> }) {
-  const [description, setDescription] = useState('test')
   const [bankDescriptions, setBankDescriptions] = useState(initial)
   return (
     <TopLevelConfigSection
@@ -119,8 +114,6 @@ function Harness({ initial = {} as Record<string, string> }) {
       setFilePrefix={() => {}}
       prefixes={[]}
       fileSource="ACSC"
-      description={description}
-      setDescription={setDescription}
       bankDescriptions={bankDescriptions}
       setBankDescriptions={setBankDescriptions}
     />
@@ -159,19 +152,13 @@ describe('TopLevelConfigSection — tag extras', () => {
     expect(screen.getByText('AR Recon 21/07/2026')).toBeInTheDocument()
   })
 
-  it('appends a tag to the bank-scoped description, not the BU-wide fallback', () => {
+  it("appends a tag to the selected bank's own description", () => {
     const { setBankDescriptions } = setup({
       hasSettlementLayout: true,
       bankDescriptions: { SCB: 'AR Recon' },
     })
     fireEvent.click(screen.getByText('Document date'))
     expect(setBankDescriptions).toHaveBeenCalledWith({ SCB: 'AR Recon {Settlement_Date}' })
-  })
-
-  it('appends a tag to the BU-wide fallback when no bank is selected', () => {
-    const { setDescription } = setup({ hasSettlementLayout: true, bank: '', fileSource: '' })
-    fireEvent.click(screen.getByText('Bank name'))
-    expect(setDescription).toHaveBeenCalledWith('Generic settlement {Bank_Name}')
   })
 
   // 2026-09-30: a toggle, not a disabled button — disabled dropped the tooltip and focus,
@@ -220,8 +207,6 @@ describe('TopLevelConfigSection — tag extras', () => {
           filePrefix="IC"
           setFilePrefix={() => {}}
           fileSource="ACSC"
-          description=""
-          setDescription={() => {}}
           bankDescriptions={bankDescriptions}
           setBankDescriptions={setBankDescriptions}
           prefixes={[]}
@@ -245,19 +230,20 @@ describe('TopLevelConfigSection — tag extras', () => {
 })
 
 describe('TopLevelConfigSection — Description survives re-render', () => {
-  it('can be cleared all the way, with a fallback sitting behind it', () => {
+  it('can be cleared all the way, and then says so', () => {
     render(<Harness initial={{ SCB: 'SCB Credit Card Settlement' }} />)
     const field = screen.getByLabelText('Description')
     fireEvent.change(field, { target: { value: '' } })
     expect(field).toHaveValue('')
+    expect(screen.getByText('Empty — SCB documents post no description')).toBeInTheDocument()
   })
 
-  it('keeps what was typed instead of snapping back to the fallback', () => {
+  it('keeps what was typed, character by character', () => {
     render(<Harness />)
     const field = screen.getByLabelText('Description')
     fireEvent.change(field, { target: { value: 'SCB only' } })
     expect(field).toHaveValue('SCB only')
     fireEvent.change(field, { target: { value: 'SCB onl' } })
-    expect(field).toHaveValue('SCB onl') // not 'test'
+    expect(field).toHaveValue('SCB onl')
   })
 })

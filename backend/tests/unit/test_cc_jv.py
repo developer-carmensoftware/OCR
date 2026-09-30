@@ -242,7 +242,6 @@ def _config(case: dict) -> SimpleNamespace:
     return SimpleNamespace(
         file_prefix=cfg["filePrefix"],
         file_source=cfg["fileSource"],
-        description=cfg["description"],
         bank_descriptions=cfg["bankDescriptions"],
     )
 
@@ -685,8 +684,7 @@ def test_build_gljv_payload_default_description_without_a_tag_has_no_date():
     config = SimpleNamespace(
         file_prefix="IC",
         file_source="ACBY",
-        description="Credit Card Commission",
-        bank_descriptions={},
+        bank_descriptions={"BAY": "Credit Card Commission"},
     )
     payload = build_gljv_payload(
         [{"dept": "GEN", "acc": "1130V", "desc": "Visa", "debit": 0.0, "credit": 100.0, "key": ""}],

@@ -80,6 +80,23 @@ def test_get_accounting_with_config_returns_file_prefix():
         resp = client.get(f"{BASE}/accounting", headers=AUTH)
         assert resp.status_code == 200
         assert resp.json()["file_prefix"] == "PRE"
+        # 2026-09-30: the BU-wide description is retired — the row still holds "Monthly",
+        # but nothing may read it back, so no screen can show it as a fallback again.
+        assert "description" not in resp.json()
+
+
+def test_put_accounting_ignores_a_stale_bu_wide_description():
+    """A tab loaded before 2026-09-30 still sends `description`; it must not land in the
+    retired column (or anywhere) — only `bank_descriptions` carries wording now."""
+    row = _config_row(description="Monthly")
+    mock_db = make_mock_db()
+    mock_db.execute.return_value.scalar_one_or_none.return_value = row
+    with make_test_client(mock_db) as client:
+        resp = client.put(
+            f"{BASE}/accounting", json=_accounting_payload(description="Changed"), headers=AUTH
+        )
+        assert resp.status_code == 200
+    assert row.description == "Monthly"
 
 
 # ── I3: PUT /accounting ───────────────────────────────────────────────────────

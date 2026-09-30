@@ -113,9 +113,9 @@ export const en = {
   'cc.cfgDescriptionHelp':
     "Goes on the journal voucher and the input-tax record for this bank's documents.",
   'cc.cfgDescriptionPlaceholder': 'Additional details',
-  'cc.cfgDescSelectBank': 'Select a bank to set this per bank',
+  'cc.cfgDescSelectBank': 'Select a bank to set its description',
   'cc.cfgDescApplies': 'Applies to {bank} documents',
-  'cc.cfgDescEmpty': 'Empty — {bank} documents use "{fallback}"',
+  'cc.cfgDescEmpty': 'Empty — {bank} documents post no description',
   // Mapping config page — company information
   'cc.companyTitle': 'COMPANY INFORMATION',
   'cc.companyMissing': '{n} missing fields',
@@ -328,9 +328,9 @@ export const th: Record<keyof typeof en, string> = {
   'cc.cfgDescription': 'คำอธิบาย',
   'cc.cfgDescriptionHelp': 'จะปรากฏบนใบสำคัญรายวันและรายการภาษีซื้อของเอกสารจากธนาคารนี้',
   'cc.cfgDescriptionPlaceholder': 'รายละเอียดเพิ่มเติม',
-  'cc.cfgDescSelectBank': 'เลือกธนาคารเพื่อตั้งค่าแยกตามธนาคาร',
+  'cc.cfgDescSelectBank': 'เลือกธนาคารก่อนเพื่อตั้งคำอธิบาย',
   'cc.cfgDescApplies': 'ใช้กับเอกสารของ {bank}',
-  'cc.cfgDescEmpty': 'ว่าง — เอกสารของ {bank} จะใช้ "{fallback}"',
+  'cc.cfgDescEmpty': 'ว่าง — เอกสารของ {bank} จะไม่มีคำอธิบาย',
   // Mapping config page — company information
   'cc.companyTitle': 'ข้อมูลบริษัท',
   'cc.companyMissing': 'ยังไม่ได้กรอก {n} ช่อง',

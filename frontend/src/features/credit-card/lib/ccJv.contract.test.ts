@@ -27,7 +27,6 @@ interface Case {
   config: {
     filePrefix: string
     fileSource: string
-    description: string
     bankDescriptions: Record<string, string>
   }
   mappings: Record<string, { dept: string; acc: string }>

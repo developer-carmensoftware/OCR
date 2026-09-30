@@ -31,11 +31,10 @@ import type { BankCode } from '@/shared/types/api'
  *   named beside the box, never typed in it — a stray backspace would post a broken token.
  *   What posts is that text with the fields filled from this document (`renderDescription`);
  *   nothing else is appended, so no date field means no date (2026-09-30).
- * - **The description is per bank**, as it is in the wizard's config editor. The box holds
- *   this bank's own entry and the BU-wide sentence is only the placeholder, so a correction
- *   made about one bank's statements cannot rewrite the wording for every other bank the BU
- *   receives. The parent names the bank on save, and `patch_config` writes that entry —
- *   which is also the one `description_for` prefers when the JV is built.
+ * - **The description is per bank**, as it is in the wizard's config editor — and since
+ *   2026-09-30 there is nothing else: no BU-wide sentence behind it (decision-log #33). The
+ *   parent names the bank on save, and `patch_config` writes that entry, the only one
+ *   `description_for` reads when the JV is built.
  */
 interface Props {
   headerData: Record<string, string>
@@ -103,30 +102,15 @@ export default function JvHeaderCard({
   const storedPrefix = (config?.filePrefix as string) || ''
   const effectivePrefix = prefix ?? storedPrefix
 
-  // **This bank's own wording, raw — not the resolved value.** Same shape as the wizard's
-  // config editor (`TopLevelConfigSection`), and for the same two reasons. Feeding the
-  // fallback into the box makes the field impossible to clear: delete the last character,
-  // the fallback resolves in its place, and the old text reappears under the cursor. And
-  // the box is what gets saved, so showing the BU-wide sentence here meant a reviewer
-  // correcting the wording for *this* bank silently rewrote it for every other one.
-  //
-  // The fallback belongs in the placeholder, where it says what will post without
-  // pretending to be what you typed — the muted "already answered" treatment, since it is
-  // a preview rather than a gap.
+  // **This bank's own wording** — the uncommitted correction if there is one, else what is
+  // saved. It is all that posts: there is no BU-wide sentence behind it since 2026-09-30.
   const storedOwn =
     ((config?.bankDescriptions as Record<string, string> | undefined) || {})[bank || ''] || ''
   const effectiveOwn = description ?? storedOwn
-  // What posts when this bank has no wording of its own — which is all `descriptionForBank`
-  // falls back to, so naming the field directly says the same thing with less ceremony.
-  const fallback = ((config?.description as string) || '').trim()
-  const own = splitDescription(effectiveOwn)
-  const fb = splitDescription(fallback)
-  const fallbackText = fb.text.trim()
-  // The fields that will post: this bank's own, or — while it has no wording of its own —
-  // the BU-wide sentence's, which the first keystroke then carries into the bank's entry.
-  const tags = effectiveOwn ? own.tags : fb.tags
-  // An emptied box still means "use the BU-wide sentence", as it did before fields existed.
-  const editText = (v: string) => onDescription(v ? joinDescription(v, tags) : '')
+  const { text, tags } = splitDescription(effectiveOwn)
+  // The box edits the text; the bank's fields ride along untouched (picked on the Mapping
+  // page), so clearing the text leaves e.g. just the date, and clearing both leaves ''.
+  const editText = (v: string) => onDescription(joinDescription(v, tags))
 
   return (
     <div className="rd-doc">
@@ -213,7 +197,7 @@ export default function JvHeaderCard({
             label={t('review.fDescription')}
             /* What posts, not what this bank's credit-card wording says: on the AR path
                the sentence is rendered server-side from a different template entirely. */
-            value={descriptionOverride ?? effectiveOwn ?? fallback}
+            value={descriptionOverride ?? effectiveOwn}
             mono={false}
           />
         ) : (
@@ -226,13 +210,12 @@ export default function JvHeaderCard({
               type="text"
               aria-label={t('review.fDescription')}
               className="rd-f-input rd-f-input--optional"
-              value={own.text}
-              /* The BU-wide wording when this bank has none, so the field says what will post.
-             Not `fMissing` ("Not on the document"), which the two fields above earn by
+              value={text}
+              /* Not `fMissing` ("Not on the document"), which the two fields above earn by
              being document fields the extractor could not fill: this one is BU config and
              was never on the document, so that placeholder accused the statement of an
              omission it could not have. */
-              placeholder={fallbackText || t('review.fDescriptionPlaceholder')}
+              placeholder={t('review.fDescriptionPlaceholder')}
               onChange={e => editText(e.target.value)}
             />
             {tags.length > 0 && (

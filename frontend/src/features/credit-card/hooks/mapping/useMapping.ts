@@ -258,7 +258,7 @@ export function useMapping() {
   /** What the merged page's Settlement card contributes to a save — omitted entirely
    *  for a bank with no settlement layout, since there is then nothing to add. No
    *  `template` any more (Ticket D, 2026-09-22) — a settlement JV's wording is
-   *  `bankConfig.description`/`bankDescriptions`, already part of the one
+   *  `bankConfig.bankDescriptions[bank]`, already part of the one
    *  `saveAccountingConfig` call below. */
   interface SettlementSave {
     hasSettlementLayout: boolean
@@ -320,7 +320,6 @@ export function useMapping() {
         bank: bankConfig.bank,
         filePrefix: bankConfig.filePrefix,
         fileSource: bankConfig.fileSource,
-        description: bankConfig.description,
         bankDescriptions: bankConfig.bankDescriptions,
         company: bankConfig.company,
         mappings,
@@ -348,7 +347,6 @@ export function useMapping() {
             : null,
           file_prefix: bankConfig.filePrefix,
           file_source: bankConfig.fileSource,
-          description: bankConfig.description,
           bank_descriptions: bankConfig.bankDescriptions,
           branch: bankConfig.company.branch || null,
           mappings: allMappings,
@@ -442,8 +440,6 @@ export function useMapping() {
     setFilePrefix: bankConfig.setFilePrefix,
     fileSource: bankConfig.fileSource,
     setFileSource: bankConfig.setFileSource,
-    description: bankConfig.description,
-    setDescription: bankConfig.setDescription,
     bankDescriptions: bankConfig.bankDescriptions,
     setBankDescriptions: bankConfig.setBankDescriptions,
     configLoading: bankConfig.configLoading,

@@ -345,7 +345,7 @@ def resolve_jv_description(
     doc_date: str | None,
     doc_no: str | None,
 ) -> str:
-    """`render_description` starting from the BU's saved per-bank/BU-wide wording
+    """`render_description` starting from this bank's own saved wording
     (`description_for`) rather than a caller-supplied string — what
     `build_gljv_payload` falls back to, and what a settlement JV resolves to now that
     it reads the same field the fee-invoice path always has (Ticket D, 2026-09-22)."""

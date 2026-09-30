@@ -9,12 +9,12 @@ class AccountingConfigRequest(BaseModel):
     bank_code: str | None = None
     file_prefix: str | None = None
     file_source: str | None = None
-    description: str | None = None
     branch: str | None = None
     mappings: dict[str, FieldMapping] | None = None
     custom_types: list[str] | None = None
-    # bank_code -> description. Omitted entirely = keep what is stored; see
-    # accounting_config_service.save_accounting_config.
+    # bank_code -> description, the only description there is (no BU-wide one since
+    # 2026-09-30). Omitted entirely = keep what is stored; see
+    # accounting_config.save_accounting_config.
     bank_descriptions: dict[str, str] | None = None
 
 
@@ -28,8 +28,8 @@ class ConfigPatchRequest(BaseModel):
 
     Every field is optional and `None` means "not mentioned", never "clear it".
     `bank_code` is not written by itself — it scopes the other two: which bank's wording
-    `description` belongs to (`description_for` prefers a per-bank entry over the BU-wide
-    one) and which bank's entries `mappings` reads and writes (a BU handling more than one
+    `description` belongs to (without one the description is dropped — there is no BU-wide
+    description since 2026-09-30) and which bank's entries `mappings` reads and writes (a BU handling more than one
     bank has a separate GL mapping per bank — see 20260924000000_bank_scoped_mapping_entries).
     """
 
@@ -43,7 +43,6 @@ class AccountingConfigResponse(BaseModel):
     bank_code: str | None = None
     file_prefix: str | None = None
     file_source: str | None = None
-    description: str | None = None
     branch: str | None = None
     mappings: dict[str, Any] = {}
     custom_types: list[str] = []

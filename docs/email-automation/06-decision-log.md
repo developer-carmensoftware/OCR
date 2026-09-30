@@ -849,3 +849,42 @@ present, and the Mapping page could only say so after the fact.
 
 **No data migration, on purpose (the user's call).** Every description saved before this
 date posts without the date from the next document on, until its BU inserts the tag.
+
+## 33. A Description belongs to a bank — the BU-wide fallback is retired (2026-09-30)
+
+**Decided:** 2026-09-30, the same day as #32, reversing the fallback half of #30.
+`bu_accounting_configs.description` was what every bank without its own
+`bank_descriptions` entry posted under (`description_for`, `descriptionForBank`). It was
+**read everywhere and editable nowhere**:
+
+- the Mapping page wrote it only while no bank was selected, which never happens once a BU
+  has saved one;
+- the review queue's `patch_config` wrote it only for a document with no bank;
+- the Mapping save sent it back unchanged every time.
+
+So a stray value sat behind every unconfigured bank, and no screen could change it. On dev
+`carmen`, "TEST ACC" was shown as *Empty — KTC documents use "TEST ACC"* on every bank but
+KBANK.
+
+**Decision.** A bank's Description is `bank_descriptions[bank_code]`, or nothing.
+
+- `description_for` returns `None` for a bank without one. Its twin `descriptionForBank`
+  loses the parameter.
+- `AccountingConfigRequest`/`Response` drop `description`. Pydantic ignores it when a stale
+  tab still sends it.
+- `save_accounting_config` stops writing the column. `patch_config` drops a description when
+  no bank is named.
+- The Mapping page's field is disabled until a bank is selected. An empty bank reads
+  "Empty — {bank} documents post no description".
+- The review queue shows no BU-wide placeholder.
+
+**Migrated (the user's call, unlike #32).** `20260930000000_description_per_bank_only.sql`
+copies the old value into each bank the BU uses (its GL mapping entries' banks, plus the
+config's own `bank_code`), only where that bank's entry is empty. It never overwrites and is
+idempotent. `queries.sql` item 29 is the dry run.
+
+- The column stays in the schema, unread and unwritten: the precedent of #30 and #31.
+- A bank the BU starts using after this date begins with no description.
+- Push the migration after this branch merges ([[supabase_push_branch_migration]]). It is
+  safe to push before the code deploys, because the old code's fallback and the copies say
+  the same thing.

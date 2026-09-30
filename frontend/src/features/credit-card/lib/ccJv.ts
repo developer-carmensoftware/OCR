@@ -3,11 +3,10 @@ import { codeToSource, descriptionForBank } from './bankTransforms'
 import { normalizeYearToCE } from '@/shared/lib/date'
 import type { TKey } from '@/i18n/dict'
 
-/** The four accounting-config fields a JV header needs, already normalised. */
+/** The three accounting-config fields a JV header needs, already normalised. */
 export interface GljvConfig {
   filePrefix?: string
   fileSource?: string
-  description?: string
   bankDescriptions?: Record<string, string>
 }
 
@@ -280,10 +279,10 @@ export function buildGljvPayload(
   opts: { docDate?: string; docNo?: string; bankCode?: string; config: GljvConfig }
 ): Record<string, unknown> {
   const { docDate, docNo, bankCode, config } = opts
-  // Per-bank wording when the BU set one, else the BU's single description — the
-  // input-tax record built from the same statement resolves it the same way, so the
-  // two documents never disagree about what they are.
-  const base = descriptionForBank(config.description, config.bankDescriptions, bankCode)
+  // This bank's own wording, or none — the input-tax record built from the same
+  // statement resolves it the same way, so the two documents never disagree about what
+  // they are.
+  const base = descriptionForBank(config.bankDescriptions, bankCode)
 
   return {
     JvhSeq: -1,

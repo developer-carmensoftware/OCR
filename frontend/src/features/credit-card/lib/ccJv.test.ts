@@ -119,9 +119,23 @@ describe('buildGljvPayload — Description', () => {
       docDate: '15/06/2026',
       docNo: 'DOC-1',
       bankCode: 'BAY',
-      config: { filePrefix: 'IC', fileSource: 'ACBY', description: 'Credit Card Commission' },
+      config: {
+        filePrefix: 'IC',
+        fileSource: 'ACBY',
+        bankDescriptions: { BAY: 'Credit Card Commission' },
+      },
     })
     expect(payload.Description).toBe('Credit Card Commission')
+  })
+
+  // 2026-09-30: no BU-wide fallback either — a bank with no entry posts no description.
+  it('posts no description for a bank with no wording of its own, even if another bank has one', () => {
+    const payload = buildGljvPayload([], {
+      docDate: '15/06/2026',
+      bankCode: 'BAY',
+      config: { filePrefix: 'IC', fileSource: 'ACBY', bankDescriptions: { KBANK: 'KBank fee' } },
+    })
+    expect(payload.Description).toBe('')
   })
 
   it('treats a value with a tag as a full template, and does not also append the date', () => {

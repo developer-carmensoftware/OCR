@@ -13,7 +13,6 @@ export interface AccountingConfigHook {
   refresh: () => void
   filePrefix: string
   fileSource: string
-  description: string
   bankDescriptions: Record<string, string>
   company: AccountingConfig['company']
   mappings: Record<string, FieldMapping>
@@ -93,7 +92,6 @@ export function useAccountingConfig(): AccountingConfigHook {
           bank: apiData.bank_code || '',
           filePrefix: apiData.file_prefix || '',
           fileSource: apiData.file_source || '',
-          description: apiData.description || '',
           bankDescriptions: apiData.bank_descriptions || {},
           company: { ...lsCompany, ...(apiData.branch ? { branch: apiData.branch } : {}) },
           mappings,
@@ -119,7 +117,6 @@ export function useAccountingConfig(): AccountingConfigHook {
     refresh,
     filePrefix: config?.filePrefix || '',
     fileSource: config?.fileSource || '',
-    description: config?.description || '',
     bankDescriptions: config?.bankDescriptions || {},
     company: config?.company || {},
     mappings: config?.mappings || {},

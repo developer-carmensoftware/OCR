@@ -727,3 +727,28 @@ WHERE s.deleted_at IS NULL
   AND COALESCE(TRIM(c.bank_descriptions ->> s.bank_code), '') <> ''
   AND TRIM(c.bank_descriptions ->> s.bank_code) <> TRIM(s.jv_description_template)
 ORDER BY s.tenant_id, s.bank_code;
+
+-- 29. What the 2026-09-30 per-bank-only Description migration copies (dry run).
+--
+-- 20260930000000_description_per_bank_only.sql stops the BU-wide
+-- bu_accounting_configs.description from being a fallback, and first copies it into
+-- every bank the BU uses (GL mapping entries, or the config's own bank_code) whose own
+-- bank_descriptions entry is empty. Same selection as the migration's UPDATE, as rows:
+-- run before `supabase db push` to see what each BU gets, and again after -- an empty
+-- result then means every bank that used the default now carries it as its own.
+SELECT
+    c.tenant_id,
+    b.code         AS bank_code,
+    c.description  AS copied_description
+FROM bu_accounting_configs c
+CROSS JOIN LATERAL (
+    SELECT DISTINCT e.bank_code AS code
+    FROM bu_accounting_mapping_entries e
+    WHERE e.config_id = c.id AND e.deleted_at IS NULL AND e.bank_code IS NOT NULL
+    UNION
+    SELECT c.bank_code WHERE c.bank_code IS NOT NULL
+) b
+WHERE c.deleted_at IS NULL
+  AND COALESCE(TRIM(c.description), '') <> ''
+  AND COALESCE(TRIM(c.bank_descriptions ->> b.code), '') = ''
+ORDER BY c.tenant_id, b.code;

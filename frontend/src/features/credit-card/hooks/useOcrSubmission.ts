@@ -105,7 +105,6 @@ export function useOcrSubmission({
           config: {
             filePrefix: cfg.file_prefix || cfg.filePrefix,
             fileSource: cfg.file_source || cfg.fileSource,
-            description: cfg.description,
             bankDescriptions: ((carmenConfig as Record<string, unknown>).bank_descriptions ??
               (carmenConfig as Record<string, unknown>).bankDescriptions) as
               Record<string, string> | undefined,

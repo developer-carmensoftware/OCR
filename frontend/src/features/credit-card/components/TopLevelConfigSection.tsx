@@ -23,8 +23,6 @@ interface Props {
   /** Carmen's GL prefixes (`GET /carmen/gl-prefix`). */
   prefixes: SelectOption[]
   fileSource: string
-  description: string
-  setDescription: (v: string) => void
   bankDescriptions: Record<string, string>
   setBankDescriptions: (v: Record<string, string>) => void
   /** Whether the selected bank has a settlement layout (`banks.settlement_grouping`) —
@@ -46,8 +44,6 @@ export default function TopLevelConfigSection({
   setFilePrefix,
   prefixes,
   fileSource,
-  description,
-  setDescription,
   bankDescriptions,
   setBankDescriptions,
   hasSettlementLayout = false,
@@ -55,26 +51,23 @@ export default function TopLevelConfigSection({
 }: Props) {
   const { t } = useT()
   const bankCode = bank ? BANK_CODE_MAP[bank] : ''
-  // The box holds this bank's own wording, raw — NOT the resolved value. Feeding it
-  // the fallback makes the field impossible to clear: deleting the last character
-  // empties the per-bank entry, the fallback resolves in its place, and the old text
-  // reappears under the cursor. The fallback belongs in the placeholder, where it
-  // says what will be used without pretending to be what you typed.
-  const ownDescription = (bankCode && bankDescriptions[bankCode]) || ''
-  const fallback = description || ''
-  const current = bankCode ? ownDescription : fallback
-  const write = (next: string) =>
-    bankCode ? setBankDescriptions({ ...bankDescriptions, [bankCode]: next }) : setDescription(next)
+  // This bank's own wording is the whole story — there is no BU-wide fallback behind it
+  // since 2026-09-30, so an empty box is an empty description on the JV. With no bank
+  // selected there is nothing to write to, and the field says so rather than editing a
+  // default no screen could ever show again.
+  const current = (bankCode && bankDescriptions[bankCode]) || ''
+  const write = (next: string) => {
+    if (bankCode) setBankDescriptions({ ...bankDescriptions, [bankCode]: next })
+  }
   // The box edits the free text only; the fields ride after it and are toggled by the
   // chips (`splitDescription`), so a backspace can never break a token.
   const { text, tags } = splitDescription(current)
   const toggleTag = (tag: string) =>
     write(joinDescription(text, tags.includes(tag) ? tags.filter(x => x !== tag) : [...tags, tag]))
-  const fallbackText = splitDescription(fallback).text.trim()
   const preview =
     (hasSettlementLayout && settlementPreview) ||
     renderDescription(
-      descriptionForBank(description, bankDescriptions, bankCode),
+      descriptionForBank(bankDescriptions, bankCode),
       new Date().toLocaleDateString('en-GB'),
       SAMPLE_DOC_NO,
       bankCode || undefined
@@ -143,12 +136,9 @@ export default function TopLevelConfigSection({
           </small>
         </div>
 
-        {/* One field, scoped to the selected bank — the same way File Source is.
-            It shows the wording that is actually in effect: this bank's own if it
-            has one, else the value the BU set before descriptions were per-bank.
-            Editing writes it against the selected bank, which the line underneath
-            says out loud; the BU-wide value stays in place as the fallback for
-            banks nobody has got to yet, and needs no field of its own to do that. */}
+        {/* One field, scoped to the selected bank — the same way File Source is. It is
+            that bank's Description and nothing else: no BU-wide fallback since 2026-09-30
+            (decision-log #33), so what the box and preview show is what the JV posts. */}
         <label htmlFor="description" className="ar-desc-label">
           {t('cc.cfgDescription')}
           <span className="gl-help-tip" title={t('cc.cfgDescriptionHelp')}>
@@ -160,15 +150,16 @@ export default function TopLevelConfigSection({
             id="description"
             type="text"
             aria-label={t('cc.cfgDescription')}
-            placeholder={(bankCode && fallbackText) || t('cc.cfgDescriptionPlaceholder')}
+            placeholder={t('cc.cfgDescriptionPlaceholder')}
             value={text}
+            disabled={!bankCode}
             onChange={e => write(joinDescription(e.target.value, tags))}
           />
           <small style={{ display: 'block', marginTop: 2, color: 'var(--text-3)' }}>
             {!bankCode
               ? t('cc.cfgDescSelectBank')
-              : !ownDescription && fallback
-                ? t('cc.cfgDescEmpty', { bank: bankCode, fallback: fallbackText || preview })
+              : !current.trim()
+                ? t('cc.cfgDescEmpty', { bank: bankCode })
                 : t('cc.cfgDescApplies', { bank: bankCode })}
           </small>
 
@@ -192,6 +183,7 @@ export default function TopLevelConfigSection({
                     type="button"
                     className="ar-tag"
                     aria-pressed={added}
+                    disabled={!bankCode}
                     onClick={() => toggleTag(tag)}
                     title={
                       added

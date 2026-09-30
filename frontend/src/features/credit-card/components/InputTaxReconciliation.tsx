@@ -99,11 +99,7 @@ export default function InputTaxReconciliation({
   // Same resolution the JV uses (useOcrSubmission) and the same the email-ingest job
   // uses server-side — two documents from one statement must not disagree about what
   // they are.
-  const resolvedDescription = descriptionForBank(
-    config?.description,
-    config?.bankDescriptions,
-    bank
-  )
+  const resolvedDescription = descriptionForBank(config?.bankDescriptions, bank)
   const description = renderDescription(
     resolvedDescription,
     headerData.DocDate,

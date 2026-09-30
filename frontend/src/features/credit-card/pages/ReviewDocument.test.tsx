@@ -271,13 +271,11 @@ describe('the screen', () => {
   })
 
   it('previews the prefix and description exactly as the JV will carry them', async () => {
-    // The description box holds THIS BANK's own wording, like the wizard's config editor:
-    // the BU-wide sentence is the fallback and belongs in the placeholder, where it says
-    // what will post without pretending to be what you typed. Putting it in the value made
-    // the field impossible to clear, and made a correction about KTC's documents rewrite
-    // the wording for every other bank on save.
+    // The description box holds THIS BANK's own wording, like the wizard's config editor —
+    // and since 2026-09-30 that is all there is: a stale BU-wide `description` in the stored
+    // config must not surface, not even as the placeholder (decision-log #33).
     //
-    // The field holds the TEXT either way; nothing is appended on post (no auto date since
+    // The field holds the TEXT; nothing is appended on post (no auto date since
     // 2026-09-30), so no " - <doc date>" tail may appear beside it.
     storedConfig = { ...storedConfig, filePrefix: 'JV', description: 'Card settlement' }
     vi.mocked(api.getPending).mockResolvedValue(detail())
@@ -285,15 +283,15 @@ describe('the screen', () => {
     await screen.findByDisplayValue('INV-001')
     expect(screen.getByLabelText('Prefix')).toHaveValue('JV')
     expect(screen.getByLabelText('Description')).toHaveValue('')
-    expect(screen.getByLabelText('Description')).toHaveAttribute('placeholder', 'Card settlement')
+    expect(screen.getByLabelText('Description')).toHaveAttribute('placeholder', 'Description')
+    expect(screen.queryByText(/Card settlement/)).not.toBeInTheDocument()
     expect(screen.queryByText(/- 15\/01\/2026/)).not.toBeInTheDocument()
   })
 
-  it("shows this bank's own description over the BU-wide one", async () => {
+  it("shows this bank's own description", async () => {
     // The document is KTC, so KTC's entry is what posts and what the box edits.
     storedConfig = {
       ...storedConfig,
-      description: 'Card settlement',
       bankDescriptions: { KTC: 'KTC fee invoice' },
     }
     vi.mocked(api.getPending).mockResolvedValue(detail())

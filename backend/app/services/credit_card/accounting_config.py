@@ -61,7 +61,6 @@ async def get_accounting_config(
         bank_code=row.bank_code,
         file_prefix=row.file_prefix,
         file_source=row.file_source,
-        description=row.description,
         branch=row.branch,
         mappings=mappings,
         custom_types=custom_types,
@@ -70,14 +69,15 @@ async def get_accounting_config(
 
 
 def description_for(config: Any, bank_code: str | None) -> str | None:
-    """The description this bank's documents should carry.
+    """The description this bank's documents should carry: its own entry, or nothing.
 
-    A BU receiving statements from several banks can give each its own wording;
-    `description` is what everything else still falls back to, so a BU that never
-    sets one behaves exactly as it did before the column existed.
+    There is no BU-wide fallback since 2026-09-30 (decision-log #33). The old
+    `description` column was read everywhere and editable nowhere, so a stray value sat
+    behind every unconfigured bank; 20260930000000_description_per_bank_only copied it
+    into each bank the BU used, and nothing reads the column any more.
     """
     per_bank = getattr(config, "bank_descriptions", None) or {}
-    return (per_bank.get(bank_code or "") or "").strip() or getattr(config, "description", None)
+    return (per_bank.get(bank_code or "") or "").strip() or None
 
 
 async def save_accounting_config(
@@ -89,7 +89,6 @@ async def save_accounting_config(
         row.bank_code = req.bank_code
         row.file_prefix = req.file_prefix
         row.file_source = req.file_source
-        row.description = req.description
         row.branch = req.branch
         # Omitted = keep. The wizard does not send this field yet, and it must not
         # wipe per-bank wording every time someone saves a GL mapping.
@@ -102,7 +101,6 @@ async def save_accounting_config(
             bank_code=req.bank_code,
             file_prefix=req.file_prefix,
             file_source=req.file_source,
-            description=req.description,
             branch=req.branch,
             bank_descriptions={k: v for k, v in (req.bank_descriptions or {}).items() if v},
         )
@@ -209,9 +207,8 @@ async def patch_config(
     The third writer of this table, and it exists because neither of the other two fits a
     reviewer correcting one GL rule from the review screen:
 
-    * `save_accounting_config` is a full replace — it assigns `file_prefix`, `file_source`,
-      `description` and `branch` unconditionally and deletes every mapping entry before
-      re-inserting. Sending a partial config through it wipes the rest, and two reviewers
+    * `save_accounting_config` is a full replace — it assigns `file_prefix`, `file_source`
+      and `branch` unconditionally and deletes every mapping entry before re-inserting. Sending a partial config through it wipes the rest, and two reviewers
       with the queue open is the expected case, not the edge case.
     * `fill_missing_mappings` never overwrites what the BU already set, which is exactly
       what a correction has to do.
@@ -221,16 +218,12 @@ async def patch_config(
     `bank_descriptions`.
 
     `description` is written to **the named bank's own entry**, creating it if this BU had
-    none, and only falls back to the BU-wide field when no bank is known. Two reasons, and
-    they are the same ones the wizard's config editor has always had:
-
-    * It is the field that wins at posting time — `description_for` prefers
-      `bank_descriptions[bank_code]` — so writing the BU-wide one while a per-bank entry
-      exists would look like the edit did nothing.
-    * It is the field the caller was editing. The review screen shows this bank's own
-      wording, so a correction made about one bank's documents must not silently rewrite
-      every other bank's.
+    none — the only place a description lives since 2026-09-30 (`description_for`). With no
+    bank known there is nowhere to write it, so it is dropped rather than parked in the
+    retired BU-wide column, where nothing would ever read it back.
     """
+    if not bank_code:
+        description = None
     usable = {k: v for k, v in (mappings or {}).items() if v.get("dept") and v.get("acc")}
     if not usable and file_prefix is None and description is None:
         return
@@ -243,18 +236,10 @@ async def patch_config(
 
     if file_prefix is not None:
         row.file_prefix = file_prefix
-    if description is not None:
-        if bank_code:
-            # The named bank's own entry, whether or not it had one. The review screen edits
-            # that entry directly (as the wizard's config editor always has), so writing the
-            # BU-wide sentence instead would take a correction made about *this* bank and
-            # apply it to every other one — and then read back as a placeholder rather than
-            # the value that was typed. `description_for` prefers this entry, so it is also
-            # the field that wins at posting time.
-            row.bank_descriptions = {**(row.bank_descriptions or {}), bank_code: description}
-        else:
-            # No bank identified — the BU-wide fallback is the only thing this can mean.
-            row.description = description
+    if description is not None and bank_code:
+        # The named bank's own entry, whether or not it had one — the entry the review
+        # screen edits and the only one `description_for` reads.
+        row.bank_descriptions = {**(row.bank_descriptions or {}), bank_code: description}
 
     if not usable:
         await db.commit()

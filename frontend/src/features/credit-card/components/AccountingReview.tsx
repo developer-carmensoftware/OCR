@@ -122,11 +122,7 @@ export default function AccountingReview({
   const hasMissing = !rawConfig || unmappedFields.length > 0
 
   const reviewDescription = renderDescription(
-    descriptionForBank(
-      rawConfig?.description as string | undefined,
-      rawConfig?.bankDescriptions as Record<string, string> | undefined,
-      bank
-    ),
+    descriptionForBank(rawConfig?.bankDescriptions as Record<string, string> | undefined, bank),
     headerData.DocDate,
     headerData.DocNo,
     bank || undefined

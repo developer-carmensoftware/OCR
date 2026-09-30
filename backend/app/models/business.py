@@ -226,10 +226,12 @@ class BUAccountingConfig(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
     )
     file_prefix: Mapped[str | None] = mapped_column(String(20), nullable=True)
     file_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Unread since 2026-09-30: copied into bank_descriptions by
+    # 20260930000000_description_per_bank_only, kept only as history.
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     branch: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    # bank_code -> description, for a BU whose banks should not all read alike.
-    # `description` above stays the fallback; see accounting_config_service.description_for.
+    # bank_code -> description — the only JV description there is; a bank with no entry
+    # posts none. See accounting_config.description_for.
     bank_descriptions: Mapped[dict] = mapped_column(_JSON, nullable=False, default=dict)
 
     entries = relationship(
