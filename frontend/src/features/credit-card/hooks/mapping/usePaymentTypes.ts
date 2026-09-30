@@ -1,13 +1,12 @@
 import { useState, useRef } from 'react'
 import { appKey } from '@/shared/lib/storage'
 import type { FieldMapping } from '@/shared/types/api'
+import type { AddError } from '@/features/credit-card/components/payment-mapping/types'
 
 export interface PaymentTypesHook {
   paymentAmount: Record<string, FieldMapping>
   setPaymentAmount: React.Dispatch<React.SetStateAction<Record<string, FieldMapping>>>
   customPaymentTypes: string[]
-  newCustomType: string
-  setNewCustomType: React.Dispatch<React.SetStateAction<string>>
   isAmountModalOpen: boolean
   setIsAmountModalOpen: React.Dispatch<React.SetStateAction<boolean>>
   initFromData: (mappings?: Record<string, FieldMapping>, customTypes?: string[]) => void
@@ -17,10 +16,9 @@ export interface PaymentTypesHook {
    *  calls this, then `initFromData` with the new bank's saved data. */
   resetPaymentTypes: () => void
   handlePaymentMappingChange: (type: string, field: keyof FieldMapping, value: string) => void
-  handleAddCustomType: (
-    activeScanPaymentTypes: Set<string>,
-    onSuggest?: ((types: string[]) => void) | null
-  ) => void
+  /** Upper-cased and trimmed; refused when blank or already a code in `taken` (this
+   *  set's own rows plus any other set's, so one key is never edited from two places). */
+  addCustomType: (raw: string, taken: Set<string>) => AddError
   handleRemoveCustomType: (type: string) => void
   openAmountModal: () => void
   cancelAmountSelection: (clearSuggestions?: (() => void) | null) => void
@@ -32,7 +30,6 @@ import type React from 'react'
 export function usePaymentTypes(): PaymentTypesHook {
   const [paymentAmount, setPaymentAmount] = useState<Record<string, FieldMapping>>({})
   const [customPaymentTypes, setCustomPaymentTypes] = useState<string[]>([])
-  const [newCustomType, setNewCustomType] = useState('')
   const [isAmountModalOpen, setIsAmountModalOpen] = useState(false)
   const paymentAmountSnapshot = useRef<Record<string, FieldMapping> | null>(null)
   const customPaymentTypesSnapshot = useRef<string[] | null>(null)
@@ -61,20 +58,16 @@ export function usePaymentTypes(): PaymentTypesHook {
     }))
   }
 
-  const handleAddCustomType = (
-    activeScanPaymentTypes: Set<string>,
-    onSuggest?: ((types: string[]) => void) | null
-  ) => {
+  const addCustomType = (raw: string, taken: Set<string>): AddError => {
     // ponytail: custom types are upper-cased here but activeScan keys are raw document
     // strings (useMapping rescan), so a mixed-case doc value renders a duplicate row.
     // Fixing means normalizing both sides + migrating already-saved keys — own change.
-    const trimmed = newCustomType.trim().toUpperCase()
-    if (!trimmed || activeScanPaymentTypes.has(trimmed) || customPaymentTypes.includes(trimmed))
-      return
-    setCustomPaymentTypes(prev => [...prev, trimmed])
-    setPaymentAmount(prev => ({ ...prev, [trimmed]: { dept: '', acc: '' } }))
-    setNewCustomType('')
-    if (onSuggest) onSuggest([trimmed])
+    const code = raw.trim().toUpperCase()
+    if (!code) return 'blank'
+    if (taken.has(code) || customPaymentTypes.includes(code)) return 'duplicate'
+    setCustomPaymentTypes(prev => [...prev, code])
+    setPaymentAmount(prev => ({ ...prev, [code]: { dept: '', acc: '' } }))
+    return null
   }
 
   const resetPaymentTypes = () => {
@@ -125,14 +118,12 @@ export function usePaymentTypes(): PaymentTypesHook {
     paymentAmount,
     setPaymentAmount,
     customPaymentTypes,
-    newCustomType,
-    setNewCustomType,
     isAmountModalOpen,
     setIsAmountModalOpen,
     initFromData,
     resetPaymentTypes,
     handlePaymentMappingChange,
-    handleAddCustomType,
+    addCustomType,
     handleRemoveCustomType,
     openAmountModal,
     cancelAmountSelection,

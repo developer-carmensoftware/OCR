@@ -2415,9 +2415,11 @@ input[type='text'].detail-input:focus {
   flex-shrink: 0;
 }
 
+/* Amber, not red: an unmapped payment type waits for review, it is not an error — the
+   same colour the payment-type dialog gives it (PaymentMappingDialog). */
 .cc-map-ar-count.missing {
-  color: var(--rose-text);
-  background: var(--btn-err-bg, var(--rose-light));
+  color: var(--amber-text);
+  background: var(--amber-light);
 }
 
 .cc-map-ar-count.ready {
@@ -2451,9 +2453,9 @@ input[type='text'].detail-input:focus {
 }
 
 .cc-mapping-status.missing {
-  color: var(--rose-text);
-  background: var(--btn-err-bg, var(--rose-light));
-  border-color: var(--rose-mid);
+  color: var(--amber-text);
+  background: var(--amber-light);
+  border-color: var(--amber-mid);
 }
 
 .cc-mapping-status.ready {

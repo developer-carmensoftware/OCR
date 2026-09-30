@@ -11,6 +11,8 @@ import {
 } from '@/features/credit-card/api/arReconcile'
 import { suggestPaymentTypes } from '@/features/credit-card/api/mapping'
 import { useT } from '@/i18n/LanguageContext'
+import { isAccountAllowed, mergeSuggestion } from '@/shared/lib/deptAccounts'
+import type { AddError } from '@/features/credit-card/components/payment-mapping/types'
 import type { Suggestion } from './useMappingSuggestions'
 import type { MasterAccount, MasterDepartment } from './useMappingData'
 import type { FieldMapping } from '@/shared/types/api'
@@ -44,6 +46,10 @@ const SOURCE_BY_POST_TYPE: Record<PostType, string> = {
   Detail: 'settlement_detail',
   Summary: 'settlement_summary',
 }
+
+/** A saved entry this hook owns (either post type's) rather than the fee-invoice list. */
+export const isSettlementSource = (source: string | null | undefined): boolean =>
+  Boolean(source && source.startsWith('settlement_'))
 
 export interface SettlementRow {
   code: string
@@ -81,13 +87,23 @@ export interface SettlementMappingHook {
   mappedCount: (pt: PostType) => number
   rowCount: (pt: PostType) => number
   setRowMapping: (code: string, field: 'dept' | 'acc', value: string) => void
-  addCustomType: (code: string) => void
+  /** Bulk apply — one write for many rows of the post type in use. */
+  applyToMany: (codes: string[], patch: { dept?: string; acc?: string }) => void
+  /** Refused when blank or when the code is already in this set or in `taken` (another
+   *  set's codes, so one key is never edited from two places). */
+  addCustomType: (code: string, taken?: Set<string>) => AddError
   removeType: (code: string) => void
   suggestions: Record<string, Suggestion | null>
   suggestLoading: boolean
   runSuggest: () => Promise<void>
   acceptSuggestion: (code: string) => void
+  acceptAllSuggestions: () => void
   rejectSuggestion: (code: string) => void
+  /** The payment-type dialog edits a draft: `snapshot` when it opens, `restore` on Cancel,
+   *  `dropSnapshot` on Done. Both post types and the open suggestions come back. */
+  snapshot: () => void
+  restore: () => void
+  dropSnapshot: () => void
   preview: ARPreview | null
   refreshPreview: () => void
   /** Both post-type sets, source-tagged, in the shape the page's own mapping dict
@@ -134,6 +150,10 @@ export function useSettlementMapping(
   const [savedPrint, setSavedPrint] = useState<string | null>(null)
 
   const previewSeq = useRef(0)
+  const draftRef = useRef<{
+    sets: Record<PostType, Record<string, FieldMapping>>
+    suggestions: Record<string, Suggestion | null>
+  } | null>(null)
 
   const load = useCallback(async (code: string, mappings: Record<string, FieldMapping>) => {
     setLoading(true)
@@ -208,23 +228,44 @@ export function useSettlementMapping(
     mapping,
   }))
 
-  const setRowMapping = (code: string, field: 'dept' | 'acc', value: string) => {
-    setSets(prev => ({
-      ...prev,
-      [postType]: {
-        ...prev[postType],
-        [code]: { ...(prev[postType][code] || {}), [field]: value },
-      },
-    }))
+  /** One row's next value — the rule every edit path shares with the fee-invoice list: a
+   *  department that forbids the current account (Carmen `DefaultAccount`) clears it. */
+  const nextMapping = (cur: FieldMapping | undefined, patch: { dept?: string; acc?: string }) => {
+    const next: FieldMapping = {
+      dept: cur?.dept || '',
+      acc: cur?.acc || '',
+      ...patch,
+      // Tagged even when the row was saved untagged (before seeds were tagged), or the
+      // next load cannot find it and re-seeds it blank.
+      source: cur?.source || SOURCE_BY_POST_TYPE[postType],
+    }
+    if (patch.dept !== undefined && patch.acc === undefined) {
+      if (!isAccountAllowed(next.dept, next.acc, masterDepartments)) next.acc = ''
+    }
+    return next
   }
 
-  const addCustomType = (raw: string) => {
+  const applyToMany = (codes: string[], patch: { dept?: string; acc?: string }) => {
+    setSets(prev => {
+      const set = { ...prev[postType] }
+      for (const code of codes) set[code] = nextMapping(set[code], patch)
+      return { ...prev, [postType]: set }
+    })
+    // A hand edit answers the suggestion; leaving it open would offer to undo the edit.
+    setSuggestions(prev => {
+      const next = { ...prev }
+      for (const code of codes) next[code] = null
+      return next
+    })
+  }
+
+  const setRowMapping = (code: string, field: 'dept' | 'acc', value: string) =>
+    applyToMany([code], { [field]: value })
+
+  const addCustomType = (raw: string, taken?: Set<string>): AddError => {
     const code = raw.trim().toUpperCase()
-    if (!code) return
-    if (sets[postType]?.[code]) {
-      toast.error(t('ar.toastDuplicateType', { code }))
-      return
-    }
+    if (!code) return 'blank'
+    if (sets[postType]?.[code] || taken?.has(code)) return 'duplicate'
     setSets(prev => ({
       ...prev,
       [postType]: {
@@ -232,6 +273,7 @@ export function useSettlementMapping(
         [code]: { dept: '', acc: '', source: SOURCE_BY_POST_TYPE[postType] },
       },
     }))
+    return null
   }
 
   const removeType = (code: string) => {
@@ -275,21 +317,43 @@ export function useSettlementMapping(
     }
   }
 
-  const acceptSuggestion = (code: string) => {
-    const s = suggestions[code]
-    if (!s) return
-    setSets(prev => ({
-      ...prev,
-      [postType]: {
-        ...prev[postType],
-        [code]: {
-          ...(prev[postType][code] || {}),
-          dept: s.dept || prev[postType][code]?.dept || '',
-          acc: s.acc || prev[postType][code]?.acc || '',
-        },
-      },
-    }))
-    setSuggestions(prev => ({ ...prev, [code]: null }))
+  const acceptSuggestions = (codes: string[]) => {
+    setSets(prev => {
+      const set = { ...prev[postType] }
+      for (const code of codes) {
+        const sugg = suggestions[code]
+        if (!sugg) continue
+        const cur = set[code]
+        set[code] = {
+          ...nextMapping(cur, {}),
+          ...mergeSuggestion(cur || {}, sugg, masterDepartments),
+        }
+      }
+      return { ...prev, [postType]: set }
+    })
+    setSuggestions(prev => {
+      const next = { ...prev }
+      for (const code of codes) next[code] = null
+      return next
+    })
+  }
+
+  const acceptSuggestion = (code: string) => acceptSuggestions([code])
+  const acceptAllSuggestions = () =>
+    acceptSuggestions(Object.keys(sets[postType] || {}).filter(code => suggestions[code]))
+
+  const snapshot = () => {
+    draftRef.current = { sets: structuredClone(sets), suggestions: { ...suggestions } }
+  }
+  const restore = () => {
+    if (draftRef.current) {
+      setSets(draftRef.current.sets)
+      setSuggestions(draftRef.current.suggestions)
+    }
+    draftRef.current = null
+  }
+  const dropSnapshot = () => {
+    draftRef.current = null
   }
 
   const rejectSuggestion = (code: string) => setSuggestions(prev => ({ ...prev, [code]: null }))
@@ -340,13 +404,18 @@ export function useSettlementMapping(
     rowCount,
     mappedCount,
     setRowMapping,
+    applyToMany,
     addCustomType,
     removeType,
     suggestions,
     suggestLoading,
     runSuggest,
     acceptSuggestion,
+    acceptAllSuggestions,
     rejectSuggestion,
+    snapshot,
+    restore,
+    dropSnapshot,
     preview,
     refreshPreview,
     mappingsToSave,

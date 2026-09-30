@@ -43,18 +43,8 @@ export const en = {
     'Point your KBANK filename rule at KB1P554V2_SUM so the settlement report — not the commission fee invoice — is the file that reaches this pipeline.',
 
   // Payment type → credit GL.
-  'ar.mappingTitle': 'Payment type mapping',
-  'ar.mappingEmpty': 'Add the payment types this bank prints, or wait for the first report',
-  'ar.mappingMissing': '{missing} of {total} still to map',
-  'ar.mappingBlocks': 'Blocks auto-posting',
-  'ar.mappingAllMapped': 'All {total} payment types mapped',
-  'ar.mappingReady': 'Ready for JV',
   'ar.colDeptCode': 'Department Code',
   'ar.colAccCode': 'Account Code',
-  'ar.addPlaceholder': 'Add a payment type, e.g. AMEX PREM',
-  'ar.addType': 'Add type',
-  'ar.rowCount': '{count} in {postType}',
-  'ar.removeType': 'Remove {type}',
 
   // Save bar + the guard on the way out. The state sentence exists so a disabled primary
   // is not read as a broken control.
@@ -72,7 +62,6 @@ export const en = {
   'ar.toastLoadFailed': 'Could not load AR reconciliation settings',
   'ar.toastSaved': 'Settings saved',
   'ar.toastSaveFailed': 'Save failed',
-  'ar.toastDuplicateType': '{code} is already in the table',
   'ar.toastAllMapped': 'Every payment type is already mapped',
   'ar.toastNoSuggestion': 'No suggestion could be made',
 } as const
@@ -112,18 +101,8 @@ export const th: Record<keyof typeof en, string> = {
   'ar.fixedDebitRuleNote':
     'ตั้งกฎชื่อไฟล์ KBANK ให้จับ KB1P554V2_SUM เพื่อให้รายงาน settlement — ไม่ใช่ใบแจ้งค่าธรรมเนียม — เป็นไฟล์ที่เข้าสู่กระบวนการนี้',
 
-  'ar.mappingTitle': 'ผูกผังบัญชีตามประเภทบัตร',
-  'ar.mappingEmpty': 'เพิ่มประเภทบัตรที่ธนาคารนี้พิมพ์ หรือรอรายงานใบแรก',
-  'ar.mappingMissing': 'ยังต้องผูกอีก {missing} จาก {total}',
-  'ar.mappingBlocks': 'ทำให้โพสต์อัตโนมัติไม่ได้',
-  'ar.mappingAllMapped': 'ผูกครบแล้วทั้ง {total} ประเภทบัตร',
-  'ar.mappingReady': 'พร้อมสร้าง JV',
   'ar.colDeptCode': 'รหัสฝ่าย',
   'ar.colAccCode': 'รหัสบัญชี',
-  'ar.addPlaceholder': 'เพิ่มประเภทบัตร เช่น AMEX PREM',
-  'ar.addType': 'เพิ่มประเภทบัตร',
-  'ar.rowCount': '{count} รายการใน {postType}',
-  'ar.removeType': 'ลบ {type}',
 
   'ar.unsaved': 'มีการแก้ไขที่ยังไม่บันทึก',
   'ar.allSaved': 'บันทึกทุกอย่างในหน้านี้แล้ว',
@@ -138,7 +117,6 @@ export const th: Record<keyof typeof en, string> = {
   'ar.toastLoadFailed': 'โหลดการตั้งค่ากระทบยอดไม่สำเร็จ',
   'ar.toastSaved': 'บันทึกการตั้งค่าแล้ว',
   'ar.toastSaveFailed': 'บันทึกไม่สำเร็จ',
-  'ar.toastDuplicateType': 'มี {code} อยู่ในตารางแล้ว',
   'ar.toastAllMapped': 'ผูกบัญชีครบทุกประเภทบัตรแล้ว',
   'ar.toastNoSuggestion': 'ไม่สามารถแนะนำบัญชีได้',
 }

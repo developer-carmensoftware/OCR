@@ -17,13 +17,12 @@ import { useT } from '@/i18n/LanguageContext'
 import { glFieldLabel } from '@/features/credit-card/lib/glFieldLabels'
 import { allowedAccountsForDept, isAccountAllowed } from '@/shared/lib/deptAccounts'
 import AISuggestBar from '@/shared/components/common/AISuggestBar'
-import Badge from '@/shared/components/common/Badge'
 import type { FieldMapping } from '@/shared/types/api'
 import type {
   MasterAccount,
   MasterDepartment,
 } from '@/features/credit-card/hooks/mapping/useMappingData'
-import type { MainMappings, ActiveScan } from '@/features/credit-card/hooks/mapping/useMapping'
+import type { MainMappings } from '@/features/credit-card/hooks/mapping/useMapping'
 import type {
   MainMappingKey,
   Suggestion,
@@ -44,8 +43,9 @@ interface Props {
   rejectMainSuggestion: (key: string) => void
   setAcceptAllModal: (v: boolean) => void
   loadInitialData: () => void
-  activeScan: ActiveScan
-  requiredMissingCount: number
+  /** The payment-type dialog's first list, as the credit row summarises it: its name
+   *  (e.g. "Settlement report · Summary"), and how many of its types have an account. */
+  paymentSummary: { label: string; mapped: number; total: number }
   openAmountModal: () => void
 }
 
@@ -63,11 +63,12 @@ export default function MainMappingTable({
   rejectMainSuggestion,
   setAcceptAllModal,
   loadInitialData,
-  activeScan,
-  requiredMissingCount,
+  paymentSummary,
   openAmountModal,
 }: Props) {
   const { t } = useT()
+  const total = paymentSummary.total
+  const missing = total - paymentSummary.mapped
   return (
     <div className="section">
       <div className="section-title cc-section-title-container">
@@ -122,16 +123,12 @@ export default function MainMappingTable({
             </div>
             <button type="button" className="cc-map-ar-btn" onClick={openAmountModal}>
               <span className="cc-map-ar-title">{t('cc.mapArBank')}</span>
-              {activeScan.paymentTypes.size > 0 && (
+              {total > 0 && (
                 <span
-                  className={`cc-map-ar-count ${requiredMissingCount > 0 ? 'missing' : 'ready'}`}
-                  title={t('cc.mapPtCount', {
-                    mapped: activeScan.paymentTypes.size - requiredMissingCount,
-                    total: activeScan.paymentTypes.size,
-                  })}
+                  className={`cc-map-ar-count ${missing > 0 ? 'missing' : 'ready'}`}
+                  title={t('cc.mapPtCount', { mapped: paymentSummary.mapped, total })}
                 >
-                  {activeScan.paymentTypes.size - requiredMissingCount}/
-                  {activeScan.paymentTypes.size}
+                  {paymentSummary.mapped}/{total}
                 </span>
               )}
               <ChevronRight size={14} className="cc-map-ar-chevron" />
@@ -140,28 +137,25 @@ export default function MainMappingTable({
               <div
                 id="amountMappingStatus"
                 role="status"
-                className={`cc-mapping-status ${requiredMissingCount > 0 ? 'missing' : 'ready'}`}
+                className={`cc-mapping-status ${missing > 0 ? 'missing' : 'ready'}`}
               >
-                {activeScan.paymentTypes.size === 0 ? (
+                {total === 0 ? (
                   <>
                     <Info size={14} className="cc-flex-shrink-0" />
                     <span>{t('cc.mapPtEmpty')}</span>
                   </>
-                ) : requiredMissingCount > 0 ? (
+                ) : missing > 0 ? (
                   <>
-                    <AlertTriangle size={14} color="var(--rose)" className="cc-flex-shrink-0" />
-                    <span>{t('cc.mapPtFound', { n: activeScan.paymentTypes.size })}</span>
+                    <AlertTriangle size={14} className="cc-flex-shrink-0" />
+                    <span>{t('cc.pmSummaryMissing', { missing, total })}</span>
                     <span className="cc-bullet-divider-missing">·</span>
-                    <span>{t('cc.mapPtPending', { n: requiredMissingCount })}</span>
-                    <Badge variant="error" className="cc-required-badge">
-                      {t('cc.mapPtRequired')}
-                    </Badge>
+                    <span>{paymentSummary.label}</span>
                   </>
                 ) : (
                   <>
                     <CheckCircle2 size={14} className="cc-flex-shrink-0" />
-                    <span>{t('cc.mapPtAllMapped', { n: activeScan.paymentTypes.size })}</span>
-                    <span className="cc-ready-subtext">{t('cc.mapReadyJv')}</span>
+                    <span>{t('cc.mapPtAllMapped', { n: total })}</span>
+                    <span className="cc-ready-subtext">{paymentSummary.label}</span>
                   </>
                 )}
               </div>

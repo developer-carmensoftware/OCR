@@ -12,6 +12,8 @@ import { useBankConfig } from './useBankConfig'
 import { useMappingData } from './useMappingData'
 import { useMappingSuggestions } from './useMappingSuggestions'
 import { usePaymentTypes } from './usePaymentTypes'
+import { isSettlementSource } from './useSettlementMapping'
+import type { AddError } from '@/features/credit-card/components/payment-mapping/types'
 import type { FieldMapping, BankDisplayName } from '@/shared/types/api'
 import type { ModalConfig } from '@/shared/hooks/useModal'
 import type { CompanyData } from '@/features/credit-card/lib/bankTransforms'
@@ -81,6 +83,11 @@ export function useMapping() {
   // useBankConfig), so there is no window where this fires on a bank whose mappings
   // have not actually landed yet.
   const appliedBankCodeRef = useRef<string | null | undefined>(undefined)
+  // This bank's settlement-report entries exactly as loaded. `useSettlementMapping` owns
+  // and saves them; this copy is only what a save sends when that hook has nothing to
+  // give (still loading) — the PUT replaces every entry of the bank, so leaving them out
+  // would delete them.
+  const settlementEntriesRef = useRef<Record<string, FieldMapping>>({})
   const { initFromData, resetPaymentTypes } = paymentTypes
 
   useEffect(() => {
@@ -95,15 +102,22 @@ export function useMapping() {
       net: { dept: '', acc: '' },
     }
     const paymentMappings: Record<string, FieldMapping> = {}
+    const settlementEntries: Record<string, FieldMapping> = {}
 
     Object.entries(bankConfig.savedMappings).forEach(([field, val]) => {
       const mapping: FieldMapping = { dept: val.dept || '', acc: val.acc || '' }
       if (MAIN_KEYS.has(field as MainMappingKey)) {
         mainMappings[field as MainMappingKey] = mapping
+      } else if (isSettlementSource(val.source)) {
+        // Not a fee-invoice payment type: listing it here too put every settlement key in
+        // the payment-type dialog twice, and a settlement type removed there came back
+        // on save, untagged, from this list.
+        settlementEntries[field] = val
       } else {
         paymentMappings[field] = mapping
       }
     })
+    settlementEntriesRef.current = settlementEntries
 
     // Full replace, not merge: a bank switch must not carry the previous bank's fixed
     // fields or payment types forward. `initFromData` merges on purpose — it preserves
@@ -112,7 +126,10 @@ export function useMapping() {
     // slate. The bootstrap case (nothing to clear yet) behaves exactly as before.
     setMappings(mainMappings)
     resetPaymentTypes()
-    initFromData(paymentMappings, bankConfig.savedCustomTypes)
+    initFromData(
+      paymentMappings,
+      bankConfig.savedCustomTypes.filter(code => !(code in settlementEntries))
+    )
   }, [
     bankConfig.configLoading,
     bankConfig.mappingsBankCode,
@@ -317,8 +334,12 @@ export function useMapping() {
       })
       // The Settlement card's own rows (both Detail and Summary, source-tagged) — the
       // same table now (decision #3), so they travel in the one PUT rather than a
-      // mapping payload of their own.
-      if (settlement) Object.assign(allMappings, settlement.mappingsToSave)
+      // mapping payload of their own. Without that hook's rows, what was loaded goes back
+      // unchanged: the PUT replaces the bank's entries, so absent means deleted.
+      Object.assign(
+        allMappings,
+        settlement ? settlement.mappingsToSave : settlementEntriesRef.current
+      )
 
       try {
         await saveAccountingConfig({
@@ -381,10 +402,37 @@ export function useMapping() {
     }
   }
 
-  const allPaymentTypes = [
-    ...activeScan.paymentTypes,
-    ...paymentTypes.customPaymentTypes.filter(t => !activeScan.paymentTypes.has(t)),
-  ]
+  /** Bulk apply for fee-invoice payment types — one write, the same dept→account rule as a
+   *  single edit, and each row's open suggestion answered by the edit. */
+  const applyPaymentMappings = (codes: string[], patch: { dept?: string; acc?: string }) => {
+    paymentTypes.setPaymentAmount(prev => {
+      const next = { ...prev }
+      for (const code of codes) {
+        const m: FieldMapping = {
+          ...next[code],
+          dept: patch.dept ?? next[code]?.dept ?? '',
+          acc: patch.acc ?? next[code]?.acc ?? '',
+        }
+        if (patch.dept !== undefined && patch.acc === undefined) {
+          if (!isAccountAllowed(m.dept, m.acc, masterData.masterDepartments)) m.acc = ''
+        }
+        next[code] = m
+      }
+      return next
+    })
+    codes.forEach(code => suggestions.rejectPaymentSuggestion(code))
+  }
+
+  /** Adds a fee-invoice payment type and asks the AI for it straight away, like a scanned
+   *  one. `taken` holds other sets' codes, so a key is never listed in two places. */
+  const addPaymentType = (raw: string, taken: Set<string>): AddError => {
+    const all = new Set([...taken, ...activeScan.paymentTypes])
+    const err = paymentTypes.addCustomType(raw, all)
+    if (!err && masterData.masterAccounts.length && masterData.masterDepartments.length) {
+      void suggestions.autoSuggestPaymentTypes([raw.trim().toUpperCase()])
+    }
+    return err
+  }
 
   return {
     bank: bankConfig.bank,
@@ -417,26 +465,18 @@ export function useMapping() {
     loadInitialData: masterData.loadInitialData,
     paymentAmount: paymentTypes.paymentAmount,
     customPaymentTypes: paymentTypes.customPaymentTypes,
-    newCustomType: paymentTypes.newCustomType,
-    setNewCustomType: paymentTypes.setNewCustomType,
     handlePaymentMappingChange,
-    handleAddCustomType: (activeScanPT?: Set<string>) =>
-      paymentTypes.handleAddCustomType(activeScanPT || activeScan.paymentTypes, types =>
-        masterData.masterAccounts.length && masterData.masterDepartments.length
-          ? suggestions.autoSuggestPaymentTypes(types)
-          : null
-      ),
+    applyPaymentMappings,
+    addPaymentType,
     handleRemoveCustomType: paymentTypes.handleRemoveCustomType,
     isAmountModalOpen: paymentTypes.isAmountModalOpen,
     openAmountModal: paymentTypes.openAmountModal,
     cancelAmountSelection: () =>
       paymentTypes.cancelAmountSelection(suggestions.clearAllSuggestions),
-    // Legality gate lives in PaymentTypeModal's OK handler (inline banner +
-    // auto-expand of additional mappings — an error modal naming a collapsed
-    // row confused users).
+    // Legality gate lives in PaymentMappingDialog's Done handler (it switches to the
+    // failing row) — an error modal naming a row the reader cannot see confused users.
     saveAmountSelection: paymentTypes.saveAmountSelection,
     activeScan,
-    allPaymentTypes,
     suggestionMeta: suggestions.suggestionMeta,
     mainSuggestions: suggestions.mainSuggestions,
     suggestLoading: suggestions.suggestLoading,

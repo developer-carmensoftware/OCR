@@ -230,4 +230,86 @@ describe('useSettlementMapping', () => {
       expect.objectContaining({ jv_description_template: 'AR Recon v2' })
     )
   })
+
+  // ── The payment-type dialog's draft (2026-09-30) ──────────────────────────────────
+
+  it('bulk-applies one department and account to several rows, keeping their tag', async () => {
+    getARSettings.mockResolvedValue(settingsResponse({ post_type: 'Detail' }))
+    getSamplePaymentTypes.mockResolvedValue([
+      { payment_type_code: 'VS INTER PREM' },
+      { payment_type_code: 'VS INTER UP PREM' },
+      { payment_type_code: 'JCB PREM' },
+    ])
+    const { result } = renderHook(() => useSettlementMapping('KBANK', {}, [], [], ''))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    act(() =>
+      result.current.applyToMany(['VS INTER PREM', 'VS INTER UP PREM'], {
+        dept: 'GEN',
+        acc: '1021004',
+      })
+    )
+
+    const saved = result.current.mappingsToSave
+    expect(saved['VS INTER PREM']).toEqual({
+      dept: 'GEN',
+      acc: '1021004',
+      source: 'settlement_detail',
+    })
+    expect(saved['VS INTER UP PREM']).toEqual({
+      dept: 'GEN',
+      acc: '1021004',
+      source: 'settlement_detail',
+    })
+    expect(saved['JCB PREM']).toEqual({ dept: '', acc: '', source: 'settlement_detail' })
+  })
+
+  it('clears an account the new department does not allow, as a fee-invoice row does', async () => {
+    getARSettings.mockResolvedValue(settingsResponse({ post_type: 'Summary' }))
+    const saved = { VS: { dept: 'GEN', acc: '1130M', source: 'settlement_summary' } }
+    const departments = [{ code: 'FIN', name: 'Finance', allowedAccounts: ['1130V'] }]
+    const { result } = renderHook(() => useSettlementMapping('KBANK', saved, [], departments, ''))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    act(() => result.current.setRowMapping('VS', 'dept', 'FIN'))
+    expect(result.current.mappingsToSave.VS).toEqual({
+      dept: 'FIN',
+      acc: '',
+      source: 'settlement_summary',
+    })
+  })
+
+  it('restores both post types on Cancel, and keeps them on Done', async () => {
+    getARSettings.mockResolvedValue(settingsResponse({ post_type: 'Summary' }))
+    const saved = { VS: { dept: 'GEN', acc: '1021004', source: 'settlement_summary' } }
+    const { result } = renderHook(() => useSettlementMapping('KBANK', saved, [], [], ''))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    act(() => result.current.snapshot())
+    act(() => result.current.setRowMapping('VS', 'acc', '9999'))
+    act(() => {
+      result.current.addCustomType('AMEX')
+    })
+    act(() => result.current.restore())
+    expect(result.current.mappingsToSave).toEqual(saved)
+
+    act(() => result.current.snapshot())
+    act(() => result.current.setRowMapping('VS', 'acc', '9999'))
+    act(() => result.current.dropSnapshot())
+    act(() => result.current.restore())
+    expect(result.current.mappingsToSave.VS.acc).toBe('9999')
+  })
+
+  it('refuses a code another list already owns', async () => {
+    getARSettings.mockResolvedValue(settingsResponse({ post_type: 'Summary' }))
+    const { result } = renderHook(() => useSettlementMapping('KBANK', {}, [], [], ''))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    let err: string | null = null
+    act(() => {
+      err = result.current.addCustomType('visa', new Set(['VISA']))
+    })
+    expect(err).toBe('duplicate')
+    expect(result.current.rows).toEqual([])
+  })
 })

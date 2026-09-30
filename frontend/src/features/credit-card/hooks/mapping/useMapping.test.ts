@@ -6,16 +6,24 @@ vi.mock('@/shared/api/config', () => ({
   getAccountingConfig: vi.fn(),
   saveAccountingConfig: vi.fn(),
 }))
+vi.mock('@/features/credit-card/api/arReconcile', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/features/credit-card/api/arReconcile')>()),
+  saveARSettings: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('@/shared/api/carmen', () => ({
   fetchAccountCodes: vi.fn().mockResolvedValue([]),
   fetchDepartments: vi.fn().mockResolvedValue([]),
   fetchGLPrefixes: vi.fn().mockResolvedValue([]),
 }))
 
-import { getAccountingConfig as realGetAccountingConfig } from '@/shared/api/config'
+import {
+  getAccountingConfig as realGetAccountingConfig,
+  saveAccountingConfig as realSaveAccountingConfig,
+} from '@/shared/api/config'
 import { appKey } from '@/shared/lib/storage'
 
 const getAccountingConfig = vi.mocked(realGetAccountingConfig)
+const saveAccountingConfig = vi.mocked(realSaveAccountingConfig)
 
 const AR = 'Account Receivable'
 
@@ -113,5 +121,88 @@ describe('useMapping — switching banks', () => {
     expect(result.current.mappings.commission).toEqual({ dept: '', acc: '' })
     expect(result.current.paymentAmount[AR]).toBeUndefined()
     expect(result.current.customPaymentTypes).toEqual([])
+  })
+})
+
+// A settlement-report bank's Detail/Summary keys are `useSettlementMapping`'s, not payment
+// types of the fee invoice. Loading them into both lists put every settlement key in the
+// payment-type dialog twice (2026-09-30), and a settlement type removed there came back
+// on save, untagged, from the fee-invoice list.
+describe('useMapping — settlement keys', () => {
+  const KBANK_CONFIG = {
+    bank_code: 'KBANK',
+    file_prefix: 'AR',
+    mappings: {
+      commission: { dept: 'GEN', acc: '6080008' },
+      Visa: { dept: 'GEN', acc: '1130V' },
+      'VS INTER PREM': { dept: 'GEN', acc: '1021004', source: 'settlement_detail' },
+      VS: { dept: '', acc: '', source: 'settlement_summary' },
+    },
+    custom_types: ['Visa', 'VS INTER PREM', 'VS'],
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  async function loaded() {
+    getAccountingConfig.mockResolvedValue(KBANK_CONFIG as never)
+    const hook = renderHook(() => useMapping())
+    await waitFor(() => expect(hook.result.current.mappings.commission.acc).toBe('6080008'))
+    // What `saveAllSettings` insists on before it will send anything.
+    act(() => {
+      hook.result.current.setFileSource('ACKB')
+      hook.result.current.setCompany({
+        name: 'Kasikornbank',
+        taxId: '0107536000315',
+        branch: '00000',
+        address: 'Bangkok',
+      })
+    })
+    return hook
+  }
+
+  it('keeps them out of the fee-invoice payment types', async () => {
+    const { result } = await loaded()
+
+    expect(Object.keys(result.current.paymentAmount)).toEqual(['Visa'])
+    expect(result.current.customPaymentTypes).toEqual(['Visa'])
+  })
+
+  it('sends them back unchanged when the settlement hook has nothing to give', async () => {
+    const { result } = await loaded()
+    await act(() => result.current.saveAllSettings(false))
+
+    // The PUT replaces every entry of the bank, so leaving them out would delete them.
+    const sent = saveAccountingConfig.mock.calls[0][0].mappings ?? {}
+    expect(sent['VS INTER PREM']).toEqual(KBANK_CONFIG.mappings['VS INTER PREM'])
+    expect(sent.VS).toEqual(KBANK_CONFIG.mappings.VS)
+  })
+
+  it('sends only what the settlement hook holds, so a removed type stays removed', async () => {
+    const { result } = await loaded()
+    await act(() =>
+      result.current.saveAllSettings(false, {
+        hasSettlementLayout: true,
+        // VS removed in the dialog; VS INTER PREM kept.
+        mappingsToSave: {
+          'VS INTER PREM': { dept: 'GEN', acc: '1021004', source: 'settlement_detail' },
+        },
+        postType: 'Detail',
+        bankCode: 'KBANK',
+      })
+    )
+
+    const call = saveAccountingConfig.mock.calls[0][0]
+    const sentMappings = call.mappings ?? {}
+    expect(sentMappings).not.toHaveProperty('VS')
+    expect(sentMappings['VS INTER PREM']).toEqual({
+      dept: 'GEN',
+      acc: '1021004',
+      source: 'settlement_detail',
+    })
+    expect(sentMappings.Visa).toEqual({ dept: 'GEN', acc: '1130V' })
+    expect(call.custom_types).toEqual(['Visa'])
   })
 })

@@ -12,7 +12,9 @@ import { POST_TYPES, type PostType } from '@/features/credit-card/api/arReconcil
 import TopLevelConfigSection from '@/features/credit-card/components/TopLevelConfigSection'
 import CompanyInfoSection from '@/features/credit-card/components/CompanyInfoSection'
 import MainMappingTable from '@/features/credit-card/components/MainMappingTable'
-import PaymentTypeModal from '@/features/credit-card/components/PaymentTypeModal'
+import PaymentMappingDialog from '@/features/credit-card/components/payment-mapping/PaymentMappingDialog'
+import { statsOf } from '@/features/credit-card/components/payment-mapping/types'
+import { buildMappingSets } from '../hooks/mapping/mappingSets'
 import SwapLabel from '@/shared/components/common/SwapLabel'
 import type { ModalConfig } from '@/shared/hooks/useModal'
 import type { BankDisplayName } from '@/shared/types/api'
@@ -123,21 +125,22 @@ export default function Mapping() {
 
   if (mappingCtrl.configLoading) return <MappingSkeleton />
 
-  const requiredMissingCount =
-    mappingCtrl.activeScan.paymentTypes.size > 0
-      ? [...mappingCtrl.activeScan.paymentTypes].filter(
-          t => !mappingCtrl.paymentAmount[t]?.dept || !mappingCtrl.paymentAmount[t]?.acc
-        ).length
-      : 0
-
-  const amountMappedCount = mappingCtrl.allPaymentTypes.filter(
-    t => mappingCtrl.paymentAmount[t]?.dept && mappingCtrl.paymentAmount[t]?.acc
-  ).length
-
   const postTypeLabel = (pt: PostType) =>
     t(pt === 'Detail' ? 'review.arPostTypeDetail' : 'review.arPostTypeSummary')
 
   const showSettlement = bankCode && !settlementCtrl.loading && settlementCtrl.hasSettlementLayout
+
+  // Every list of payment types this bank has, for the one dialog that maps them all.
+  const mappingSets = buildMappingSets({
+    fee: mappingCtrl,
+    settlement: showSettlement ? settlementCtrl : null,
+    labels: {
+      feeInvoice: t('cc.pmSetFeeInvoice'),
+      settlement: t('cc.pmSetSettlement', { postType: postTypeLabel(settlementCtrl.postType) }),
+    },
+  })
+  const primarySet = mappingSets.sets[0]
+  const primaryStats = statsOf(primarySet, mappingCtrl.masterDepartments)
 
   const handleSave = () =>
     void mappingCtrl.saveAllSettings(
@@ -275,9 +278,12 @@ export default function Mapping() {
           rejectMainSuggestion={mappingCtrl.rejectMainSuggestion}
           setAcceptAllModal={mappingCtrl.setAcceptAllModal}
           loadInitialData={mappingCtrl.loadInitialData}
-          activeScan={mappingCtrl.activeScan}
-          requiredMissingCount={requiredMissingCount}
-          openAmountModal={mappingCtrl.openAmountModal}
+          paymentSummary={{
+            label: primarySet.label,
+            mapped: primaryStats.mapped,
+            total: primaryStats.total,
+          }}
+          openAmountModal={mappingSets.open}
         />
 
         <div style={{ marginTop: '2.5rem' }}>
@@ -301,42 +307,15 @@ export default function Mapping() {
         </div>
       </div>
 
-      <PaymentTypeModal
-        isAmountModalOpen={mappingCtrl.isAmountModalOpen}
-        activeScan={mappingCtrl.activeScan}
-        amountMappedCount={amountMappedCount}
-        allPaymentTypes={mappingCtrl.allPaymentTypes}
-        paymentSuggestions={mappingCtrl.paymentSuggestions}
-        paymentSuggestLoading={mappingCtrl.paymentSuggestLoading}
-        autoSuggestPaymentTypes={mappingCtrl.autoSuggestPaymentTypes}
+      <PaymentMappingDialog
+        open={mappingCtrl.isAmountModalOpen}
+        sets={mappingSets.sets}
+        context={bankCode}
         masterAccounts={mappingCtrl.masterAccounts}
         masterDepartments={mappingCtrl.masterDepartments}
         loadingOpts={mappingCtrl.loadingOpts}
-        paymentAmount={mappingCtrl.paymentAmount}
-        handlePaymentMappingChange={mappingCtrl.handlePaymentMappingChange}
-        confirmPaymentSuggestion={mappingCtrl.confirmPaymentSuggestion}
-        rejectPaymentSuggestion={mappingCtrl.rejectPaymentSuggestion}
-        customPaymentTypes={mappingCtrl.customPaymentTypes}
-        handleRemoveCustomType={mappingCtrl.handleRemoveCustomType}
-        saveAmountSelection={mappingCtrl.saveAmountSelection}
-        cancelAmountSelection={mappingCtrl.cancelAmountSelection}
-        setAcceptAllModal={mappingCtrl.setAcceptAllModal}
-        settlement={
-          showSettlement
-            ? {
-                postTypeLabel: postTypeLabel(settlementCtrl.postType),
-                rows: settlementCtrl.rows,
-                setRowMapping: settlementCtrl.setRowMapping,
-                addCustomType: settlementCtrl.addCustomType,
-                removeType: settlementCtrl.removeType,
-                suggestions: settlementCtrl.suggestions,
-                suggestLoading: settlementCtrl.suggestLoading,
-                runSuggest: () => void settlementCtrl.runSuggest(),
-                acceptSuggestion: settlementCtrl.acceptSuggestion,
-                rejectSuggestion: settlementCtrl.rejectSuggestion,
-              }
-            : undefined
-        }
+        onCancel={mappingSets.cancel}
+        onDone={mappingSets.done}
       />
     </>
   )
