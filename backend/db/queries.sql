@@ -752,3 +752,42 @@ WHERE c.deleted_at IS NULL
   AND COALESCE(TRIM(c.description), '') <> ''
   AND COALESCE(TRIM(c.bank_descriptions ->> b.code), '') = ''
 ORDER BY c.tenant_id, b.code;
+
+-- 30. What the 2026-10-01 retire-bank-less-entries migration copies (dry run).
+--
+-- 20261001000000_retire_null_bank_entries.sql copies every bank-less GL mapping entry to
+-- each bank its BU has documents for (or the config's own bank_code) that has no entry of
+-- its own for that field, then retires the bank-less rows. Same selection as the
+-- migration's INSERT, as counts: run before `supabase db push` to see what each BU gets,
+-- and again after -- an empty result then means nothing bank-less is left to copy.
+-- The second query is what stays: bank-less entries of a BU that names no bank anywhere
+-- (the migration leaves them alone, and the code would no longer read them).
+SELECT t.bu_code, b.code AS bank_code, COUNT(*) AS entries_copied
+FROM bu_accounting_mapping_entries e
+JOIN bu_accounting_configs c ON c.id = e.config_id AND c.deleted_at IS NULL
+JOIN tenants t ON t.id = c.tenant_id
+CROSS JOIN LATERAL (
+    SELECT cc.bank_code AS code
+    FROM credit_cards cc
+    WHERE cc.tenant_id = c.tenant_id AND cc.deleted_at IS NULL AND cc.bank_code IS NOT NULL
+    UNION
+    SELECT c.bank_code WHERE c.bank_code IS NOT NULL
+) b
+WHERE e.deleted_at IS NULL AND e.bank_code IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM bu_accounting_mapping_entries o
+      WHERE o.config_id = e.config_id AND o.field_type = e.field_type
+        AND o.bank_code = b.code AND o.deleted_at IS NULL)
+GROUP BY t.bu_code, b.code
+ORDER BY t.bu_code, b.code;
+
+SELECT t.bu_code, COUNT(*) AS bankless_entries_left_alone
+FROM bu_accounting_mapping_entries e
+JOIN bu_accounting_configs c ON c.id = e.config_id AND c.deleted_at IS NULL
+JOIN tenants t ON t.id = c.tenant_id
+WHERE e.deleted_at IS NULL AND e.bank_code IS NULL
+  AND c.bank_code IS NULL
+  AND NOT EXISTS (SELECT 1 FROM credit_cards cc
+                  WHERE cc.tenant_id = c.tenant_id AND cc.deleted_at IS NULL
+                    AND cc.bank_code IS NOT NULL)
+GROUP BY t.bu_code;

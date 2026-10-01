@@ -49,16 +49,10 @@ async def get_accounting_config(
     # 20260924000000_bank_scoped_mapping_entries.sql).
     scope = bank_code or row.bank_code
     entries = await _get_entries(db, row.id, scope)
-    if scope is not None:
-        # Entries saved before bank scoping carry no bank: the migration could only backfill
-        # a bank where the config row named one, so a BU whose row did not (carmencloud: all
-        # 29) lost every mapping to per-bank reads — each document parked `mapping_missing`
-        # and an auto-post BU stopped posting (F-8, 2026-09-25 QA). They were the BU's
-        # choice for every bank, so they still answer for any field this bank has no entry
-        # of its own for; the bank's own entry always wins, and the next save of this bank
-        # writes them as its own.
-        own = {e.field_type for e in entries}
-        entries += [e for e in await _get_entries(db, row.id, None) if e.field_type not in own]
+    # A bank's entries are its own and nothing else. Until 2026-10-01 a bank-scoped read also
+    # took any bank-less entry for a field the bank lacked (F-8: carmencloud's 29 never got a
+    # bank), which the mapping page could not clear; 20261001000000_retire_null_bank_entries
+    # copied those to the banks that used them and retired them.
     mappings, custom_types = _entries_to_response(entries)
 
     return AccountingConfigResponse(

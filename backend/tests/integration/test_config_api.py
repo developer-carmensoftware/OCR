@@ -74,14 +74,8 @@ def test_I3_1_no_config_returns_empty_mappings():
 
 def test_get_accounting_with_config_returns_file_prefix():
     mock_db = make_mock_db()
-    # config row, this bank's entries, then the bank-less ones a bank-scoped read falls
-    # back to (F-8) — the row names a bank, so that third read happens
-    mock_db.execute.side_effect = [
-        _scalar(_config_row()),
-        _scalars([]),
-        _scalars([]),
-        _scalar(None),  # the version read
-    ]
+    # config row, this bank's entries, then the version read
+    mock_db.execute.side_effect = [_scalar(_config_row()), _scalars([]), _scalar(None)]
     with make_test_client(mock_db) as client:
         resp = client.get(f"{BASE}/accounting", headers=AUTH)
         assert resp.status_code == 200

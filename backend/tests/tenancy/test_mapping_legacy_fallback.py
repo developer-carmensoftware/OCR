@@ -1,10 +1,10 @@
-"""F-8 against the real dev DB (docs/email-automation/qa/2026-09-24-multi-bu-report.md).
+"""A bank's entries are its own, against the real dev DB.
 
-`20260924000000_bank_scoped_mapping_entries.sql` gave a mapping entry a bank only where its
-config row named one. A BU whose row did not — carmencloud, all 29 entries — kept bank-less
-entries that a per-bank read (`bank_code = 'KBANK'`) never matched, so every document parked
-`mapping_missing`. The read now falls back to a bank-less entry for any field the bank has no
-entry of its own for. The unit tests pin the merge; this pins the SQL it rests on.
+F-8 (docs/email-automation/qa/2026-09-24-multi-bu-report.md): `20260924000000` gave an entry a
+bank only where its config row named one, so carmencloud's 29 stayed bank-less and a per-bank
+read missed them. The read then borrowed a bank-less entry for any field the bank lacked —
+which the mapping page could not clear. `20261001000000_retire_null_bank_entries` copied them
+to the banks that used them, and the read stopped borrowing: this pins the SQL for that.
 """
 
 import pytest
@@ -20,7 +20,9 @@ pytestmark = pytest.mark.asyncio
 CARD = "บัตรเครดิต/เดบิต"
 
 
-async def test_a_bank_read_sees_the_bus_bankless_entries_its_own_entries_win(real_engine, tenants):
+async def test_a_bank_read_sees_only_its_own_entries_and_borrows_no_bankless_ones(
+    real_engine, tenants
+):
     async with real_engine.begin() as conn:
         config_id = (
             await conn.execute(
@@ -67,12 +69,8 @@ async def test_a_bank_read_sees_the_bus_bankless_entries_its_own_entries_win(rea
                 unscoped = await get_accounting_config(db, str(tenants.c))
                 other_bu = await get_accounting_config(db, str(tenants.b), "KBANK")
 
-        assert kbank.mappings[CARD] == {"dept": "GEN", "acc": "1021009"}  # was invisible
-        assert kbank.mappings["commission"] == {"dept": "OPS", "acc": "5199"}  # bank wins
-        assert scb.mappings == {
-            CARD: {"dept": "GEN", "acc": "1021009"},
-            "commission": {"dept": "GEN", "acc": "6080008"},
-        }
+        assert kbank.mappings == {"commission": {"dept": "OPS", "acc": "5199"}}  # its own only
+        assert scb.mappings == {}  # nothing borrowed from the bank-less rows
         assert unscoped.mappings["commission"] == {"dept": "GEN", "acc": "6080008"}
         assert other_bu.mappings == {}  # another BU's entries never leak in
     finally:

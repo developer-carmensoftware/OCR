@@ -290,7 +290,7 @@ async def test_naming_nothing_writes_nothing():
     db.commit.assert_not_awaited()
 
 
-# ── get_accounting_config: pre-bank-scoping entries still answer (F-8) ─────────
+# ── get_accounting_config: a bank reads its own entries ─────────────────────────
 
 
 def _config_row(bank_code=None):
@@ -321,31 +321,26 @@ def _reads(config_row, *entry_batches):
 
 
 @pytest.mark.asyncio
-async def test_a_bank_read_falls_back_to_the_bus_pre_scoping_entries():
-    """F-8 (2026-09-25 QA): #248's backfill could only give an entry a bank where the config
-    row named one, so carmencloud's 29 entries stayed bank-less and a KBANK read saw none of
-    them — every document parked `mapping_missing` and an auto-post BU stopped posting. A
-    bank-less entry was the BU's answer for every bank; the bank's own entry still wins."""
+async def test_a_bank_read_is_that_banks_own_entries_and_borrows_nothing():
+    """A bank-less entry used to answer for every bank that lacked the field (F-8,
+    2026-09-25), which the mapping page could not clear: a payment type deleted there came
+    back. 20261001000000 copied them to the banks that used them, so a bank's entries are
+    its own — and one read, no second query for the bank-less."""
     from app.services.credit_card.accounting_config import get_accounting_config
 
     kbank_own = [_typed("commission", "OPS", "5199")]
-    bankless = [
-        _typed("commission", "GEN", "6080008"),
-        _typed("บัตรเครดิต/เดบิต", "GEN", "1021009", custom=True),
-    ]
-    db = _reads(_config_row(), kbank_own, bankless)
+    db = _reads(_config_row(), kbank_own)
 
     cfg = await get_accounting_config(db, TENANT_ID, "KBANK")
 
-    assert cfg.mappings["commission"] == {"dept": "OPS", "acc": "5199", "source": None}  # bank wins
-    assert cfg.mappings["บัตรเครดิต/เดบิต"] == {"dept": "GEN", "acc": "1021009", "source": None}
-    assert cfg.custom_types == ["บัตรเครดิต/เดบิต"]
+    assert cfg.mappings == {"commission": {"dept": "OPS", "acc": "5199", "source": None}}
+    assert cfg.custom_types == []
+    assert db.execute.await_count == 2  # config row + this bank's entries
 
 
 @pytest.mark.asyncio
 async def test_an_unscoped_read_asks_for_the_bankless_entries_once():
-    """No bank named and none on the row: the bank-less entries are the whole answer, read
-    once — the fallback is only for a read scoped to a bank."""
+    """No bank named and none on the row: the one read is for entries with no bank."""
     from app.services.credit_card.accounting_config import get_accounting_config
 
     db = _reads(_config_row(), [_typed("tax", "GEN", "1022005")])
