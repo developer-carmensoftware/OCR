@@ -69,9 +69,11 @@ async def test_a_bank_read_sees_only_its_own_entries_and_borrows_no_bankless_one
                 unscoped = await get_accounting_config(db, str(tenants.c))
                 other_bu = await get_accounting_config(db, str(tenants.b), "KBANK")
 
-        assert kbank.mappings == {"commission": {"dept": "OPS", "acc": "5199"}}  # its own only
+        assert kbank.mappings == {
+            "commission": {"dept": "OPS", "acc": "5199", "source": None}
+        }  # its own only
         assert scb.mappings == {}  # nothing borrowed from the bank-less rows
-        assert unscoped.mappings["commission"] == {"dept": "GEN", "acc": "6080008"}
+        assert unscoped.mappings["commission"] == {"dept": "GEN", "acc": "6080008", "source": None}
         assert other_bu.mappings == {}  # another BU's entries never leak in
     finally:
         async with real_engine.begin() as conn:

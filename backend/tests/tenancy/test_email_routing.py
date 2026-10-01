@@ -332,8 +332,8 @@ def test_the_same_doc_no_parked_in_two_bus_is_not_a_cross_bu_duplicate(real_engi
 
     run(_park(tenants.a))
     try:
-        assert run(_already_pending(str(tenants.a), "KTC", doc_no)) is True
-        assert run(_already_pending(str(tenants.b), "KTC", doc_no)) is False, (
+        assert run(_already_pending(str(tenants.a), "KTC", doc_no, "fee_invoice")) is True
+        assert run(_already_pending(str(tenants.b), "KTC", doc_no, "fee_invoice")) is False, (
             "BU-A's parked document blocked BU-B's own copy"
         )
     finally:
