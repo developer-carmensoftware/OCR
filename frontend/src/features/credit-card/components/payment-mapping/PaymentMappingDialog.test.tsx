@@ -285,6 +285,46 @@ describe('PaymentMappingDialog', () => {
     expect(row('MC').dataset.status).toBe('mapped')
   })
 
+  // The bulk bar checks an account against the department it is *also* given. Written alone
+  // it met each row's own department, and a row whose department forbids it turned red.
+  it('writes an account alone only to rows whose department allows it, and says how many it skipped', () => {
+    renderDialog({
+      settlement_summary: {
+        label: 'Settlement report · Summary',
+        items: [
+          item('VS', { dept: 'FIN', acc: '1130V' }), // FIN allows only 1130V
+          item('MC', { dept: 'GEN', acc: '' }),
+          item('JCB', blank),
+        ],
+      },
+    })
+    for (const c of ['VS', 'MC', 'JCB']) fireEvent.click(screen.getByLabelText(`Select ${c}`))
+
+    const bulk = screen.getByRole('region', { name: 'Apply to selected payment types' })
+    fireEvent.change(within(bulk).getByLabelText('Account'), { target: { value: '1130M' } })
+    fireEvent.click(within(bulk).getByRole('button', { name: 'Apply' }))
+
+    expect(spies.apply).toHaveBeenCalledWith('settlement_summary', ['MC', 'JCB'], { acc: '1130M' })
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('1130M'))
+    expect(row('VS').dataset.status).toBe('mapped')
+  })
+
+  it('writes a department and an account to every selected row, as before', () => {
+    renderDialog(SUMMARY)
+    fireEvent.click(screen.getByLabelText('Select VS'))
+    fireEvent.click(screen.getByLabelText('Select MC'))
+    const bulk = screen.getByRole('region', { name: 'Apply to selected payment types' })
+    fireEvent.change(within(bulk).getByLabelText('Department'), { target: { value: 'GEN' } })
+    fireEvent.change(within(bulk).getByLabelText('Account'), { target: { value: '1130M' } })
+    fireEvent.click(within(bulk).getByRole('button', { name: 'Apply' }))
+
+    expect(spies.apply).toHaveBeenCalledWith('settlement_summary', ['VS', 'MC'], {
+      dept: 'GEN',
+      acc: '1130M',
+    })
+    expect(toast).not.toHaveBeenCalled()
+  })
+
   it('shows a tab per list when a bank has more than one, and AI Suggest acts on the one open', () => {
     renderDialog({
       ...SUMMARY,

@@ -15,9 +15,9 @@ import type {
  *
  * The account list follows the department exactly as a row's does, so a bulk write that
  * names a department never produces a pair it would refuse. Either field may be left blank
- * to write only the other — and an account written alone is not checked against each
- * row's own department: a row that forbids it turns red, and Done stops on it
- * (`PaymentMappingDialog.handleDone`).
+ * to write only the other; an account written alone is checked per row by the dialog, which
+ * skips the rows whose own department forbids it (`PaymentMappingDialog`). A single row's
+ * edit can still make a bad pair, and Done is the last gate for that.
  */
 
 interface Props {

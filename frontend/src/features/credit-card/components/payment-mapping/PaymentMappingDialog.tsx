@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { AlertTriangle, CheckCircle2, Info, Search, X } from 'lucide-react'
 import AISuggestBar from '@/shared/components/common/AISuggestBar'
 import { useT } from '@/i18n/LanguageContext'
+import { isAccountAllowed } from '@/shared/lib/deptAccounts'
 import type {
   MasterAccount,
   MasterDepartment,
@@ -365,7 +366,22 @@ export default function PaymentMappingDialog({
             masterAccounts={masterAccounts}
             masterDepartments={masterDepartments}
             onApply={patch => {
-              active.applyToMany([...selected], patch)
+              // An account written alone meets each row's own department, which the bar
+              // cannot have checked: skip the rows that department forbids it for (and
+              // say so) rather than turn them red for the reader to find.
+              let codes = [...selected]
+              if (patch.acc && !patch.dept) {
+                const byCode = new Map(active.items.map(i => [i.code, i]))
+                const ok = codes.filter(c => {
+                  const dept = byCode.get(c)?.mapping.dept
+                  return !dept || isAccountAllowed(dept, patch.acc, masterDepartments)
+                })
+                if (ok.length < codes.length) {
+                  toast(t('cc.pmBulkSkipped', { n: codes.length - ok.length, acc: patch.acc }))
+                }
+                codes = ok
+              }
+              if (codes.length) active.applyToMany(codes, patch)
               setSelected(new Set())
             }}
             onClear={() => setSelected(new Set())}
