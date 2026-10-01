@@ -65,6 +65,10 @@ export async function submitToCarmen(
     company_name?: string
     bank_code?: string
     branch_no?: string
+    /** Σ commission and Σ VAT — what the input-tax record will claim. Stored on the card
+     *  so the activity table can tell a posted JV whose ACTX never followed, and file it. */
+    commis_amt?: number
+    tax_amt?: number
   }
 ): Promise<unknown> {
   let url: string = API.carmen.gljv
@@ -75,6 +79,9 @@ export async function submitToCarmen(
     if (metadata.company_name) params.append('company_name', metadata.company_name)
     if (metadata.bank_code) params.append('bank_code', metadata.bank_code)
     if (metadata.branch_no) params.append('branch_no', metadata.branch_no)
+    // `!= null`, not truthiness: a statement with no VAT is 0, and 0 is an answer.
+    if (metadata.commis_amt != null) params.append('commis_amt', metadata.commis_amt.toFixed(2))
+    if (metadata.tax_amt != null) params.append('tax_amt', metadata.tax_amt.toFixed(2))
   }
   const q = params.toString()
   if (q) url += `?${q}`
@@ -115,8 +122,15 @@ export async function submitAPInvoiceToCarmen(
   return res.json()
 }
 
-export async function submitInputTax(payload: unknown): Promise<unknown> {
-  const res = await apiFetch(API.carmen.inputTax, {
+export async function submitInputTax(
+  payload: unknown,
+  credit_card_id: string | null = null
+): Promise<unknown> {
+  // The card id is what lets the server stamp `input_tax_at` — and refuse a second filing.
+  const url = credit_card_id
+    ? `${API.carmen.inputTax}?credit_card_id=${encodeURIComponent(credit_card_id)}`
+    : API.carmen.inputTax
+  const res = await apiFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

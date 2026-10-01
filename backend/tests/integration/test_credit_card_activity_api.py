@@ -12,8 +12,11 @@ mock DB cannot execute it.
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+
+import pytest
 
 from app.auth.session import SessionInfo
 from app.services.credit_card.activity import (
@@ -79,6 +82,9 @@ def _manual(**overrides):
         # does not care about the scanner's name costs no `db.execute` and cannot shift the
         # positional `side_effect` below.
         carmen_user_id=None,
+        # Posted before the input-tax sums were stamped, by default: no note either way.
+        tax_amt=None,
+        input_tax_at=None,
     )
     for k, v in overrides.items():
         setattr(card, k, v)
@@ -268,6 +274,31 @@ def test_an_unposted_manual_scan_is_listed_under_not_posted():
     assert row["created_at"].startswith((NOW - timedelta(hours=2)).isoformat()[:19])
     assert body["counts"]["unposted"] == 1
     assert body["counts"]["all"] == 1
+
+
+@pytest.mark.parametrize(
+    ("overrides", "owed"),
+    [
+        # The case this exists for: JV posted, VAT owed, the ACTX never followed.
+        ({"tax_amt": Decimal("70.00")}, True),
+        # Filed — by step 4 or by the row's own button.
+        ({"tax_amt": Decimal("70.00"), "input_tax_at": NOW}, False),
+        # No VAT on the statement: nothing was owed.
+        ({"tax_amt": Decimal("0.00")}, False),
+        # Posted before the sums were stored — nobody knows what it owed, so it says nothing.
+        ({}, False),
+        # Never posted: there is no JV for an input-tax record to follow.
+        ({"tax_amt": Decimal("70.00"), "submitted_at": None, "jv_no": None}, False),
+    ],
+)
+def test_a_manual_row_says_when_its_input_tax_is_still_owed(overrides, owed):
+    """A session that died on step 4 used to lose the VAT claim with no trace anywhere."""
+    card = _manual(**overrides)
+    db = _db(statuses={}, manual_count=1, emails=[], manuals=[card])
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(BASE, headers=AUTH).json()
+
+    assert body["data"][0]["input_tax_owed"] is owed
 
 
 def test_an_unposted_manual_scan_lights_no_dot():

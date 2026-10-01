@@ -322,6 +322,9 @@ def _manual_row(card: CreditCard, task: OCRTask, name: str | None) -> ActivityRo
     missing one — the same rule `_summarise` follows for a resolved email document.
 
     `name` is the scanner, already resolved in bulk by the caller — see `posted_by_name`.
+
+    `input_tax_owed` needs `tax_amt`, which is stamped with the JV since 20260929000000. A
+    card posted before that has none and raises nothing: nobody knows what it owed.
     """
     posted = card.submitted_at is not None
     return ActivityRow(
@@ -334,6 +337,7 @@ def _manual_row(card: CreditCard, task: OCRTask, name: str | None) -> ActivityRo
         doc_no=card.doc_no,
         jv_no=card.jv_no,
         posted_by_name=name,
+        input_tax_owed=bool(posted and (card.tax_amt or 0) > 0 and card.input_tax_at is None),
     )
 
 

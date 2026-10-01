@@ -41,6 +41,7 @@ export default function ManualScan() {
     closeModal,
     setStep,
     bank,
+    cardId,
     handleFileChange,
     reExtract,
     updateHeader,
@@ -218,6 +219,7 @@ export default function ManualScan() {
                 details={details}
                 headerData={headerData as Record<string, string>}
                 bank={bank}
+                cardId={cardId}
                 onBack={() => setStep(3)}
                 onFinish={resetAll}
               />

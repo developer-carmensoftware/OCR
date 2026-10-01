@@ -104,8 +104,12 @@ export function clearDraft(kind: DraftKind): void {
  * The "image is not kept" line is not boilerplate: the File cannot be serialized, so a
  * restored document shows an empty preview pane. Saying so up front is the difference
  * between a known limitation and a bug report.
+ *
+ * `posted` is the credit-card wizard's case of a JV already in Carmen with its input tax
+ * still to file. "Never submitted" is false there, and discarding it on that word is how
+ * the VAT claim gets lost.
  */
-export function draftPromptMessage(label: string | undefined, at: number): string {
+export function draftPromptMessage(label: string | undefined, at: number, posted = false): string {
   const when = new Date(at).toLocaleString('en-GB', {
     day: '2-digit',
     month: '2-digit',
@@ -114,7 +118,9 @@ export function draftPromptMessage(label: string | undefined, at: number): strin
   })
   const what = label ? `“${label}”` : 'A document'
   return (
-    `${what} from ${when} was never submitted.\n\n` +
+    (posted
+      ? `${what} from ${when} was posted as a JV, but its input tax was never recorded.\n\n`
+      : `${what} from ${when} was never submitted.\n\n`) +
     'Restore it to carry on where you left off, or discard it and start over.\n' +
     'The scanned image itself is not kept, so the preview will be empty.'
   )
