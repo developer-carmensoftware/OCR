@@ -26,6 +26,8 @@ import type { EmailRule } from '@/features/email-settings/api/emailAutomation'
  */
 
 const save = vi.fn(async () => true)
+/** The rule dialog and row switch save the whole rules list at once through this. */
+const saveRules = vi.fn(async (_rules: RuleDraft[]) => true)
 const removeToken = vi.fn()
 let tokenStatus: unknown = null
 let fieldErrors: Record<string, string> = {}
@@ -72,6 +74,7 @@ vi.mock('@/features/email-settings/hooks', async importOriginal => {
           rerender?.()
         },
         save,
+        saveRules,
         reset: () => {
           draft = seedDraft(settings as never)
           rerender?.()
@@ -102,13 +105,16 @@ function mount() {
   return view
 }
 
-/** The rules the form would send. `save()` reads the draft, so this is what it sees. */
-const sentRules = (): RuleDraft[] => draft.rules
+/** The rules the last `saveRules` call sent. */
+const sentRules = (): RuleDraft[] => {
+  const calls = saveRules.mock.calls
+  return calls.length ? calls[calls.length - 1][0] : []
+}
 
-/** A rule is a summary row until opened; its fields live in the editor that opens under it. */
+/** A rule is a summary row; it is edited in the dialog the row opens. */
 const openRule = (n: number) =>
   fireEvent.click(screen.getByRole('button', { name: new RegExp(`^Rule ${n}:`) }))
-const ruleCard = (n: number) => within(screen.getByRole('group', { name: `Rule ${n}` }))
+const dialog = () => within(screen.getByRole('dialog'))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -137,15 +143,19 @@ describe('bank rules', () => {
     // Otherwise there is no way to switch AR reconciliation on at all: the rule's document
     // type is the only switch (decision #31), and this is its only screen (#34).
     mountWith([])
-    fireEvent.click(screen.getByRole('button', { name: /ADD RULE/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Add rule/i }))
 
-    const rule = ruleCard(1)
-    fireEvent.change(rule.getByLabelText(/Document type/i), { target: { value: 'ar_reconcile' } })
+    const rule = dialog()
+    // Nothing to save until the rule names at least one filename pattern.
+    expect(rule.getByRole('button', { name: 'Add rule' })).toBeDisabled()
+    fireEvent.change(rule.getByLabelText(/^Document type/i), { target: { value: 'ar_reconcile' } })
     fireEvent.change(rule.getByLabelText(/^Bank$/i), { target: { value: 'KBANK' } })
-    fireEvent.change(rule.getByLabelText(/Filename patterns/i), { target: { value: 'KB1P554V2' } })
-    fireEvent.click(screen.getByRole('button', { name: /Save changes/i }))
+    fireEvent.change(rule.getByLabelText(/^Filename patterns/i), { target: { value: 'KB1P554V2' } })
+    fireEvent.click(rule.getByRole('button', { name: 'Add rule' }))
 
-    await waitFor(() => expect(save).toHaveBeenCalled())
+    // Saved by the dialog itself; the page's own Save is not involved.
+    await waitFor(() => expect(saveRules).toHaveBeenCalledTimes(1))
+    expect(save).not.toHaveBeenCalled()
     expect(sentRules()).toEqual([
       expect.objectContaining({
         bank_code: 'KBANK',
@@ -175,14 +185,16 @@ describe('bank rules', () => {
 
     // Touch the KTC rule only.
     openRule(2)
-    fireEvent.change(ruleCard(2).getByLabelText(/Bank sender email/i), {
+    fireEvent.change(dialog().getByLabelText(/^Bank sender email/i), {
       target: { value: 'noreply@ktc.co.th' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Save changes/i }))
+    fireEvent.click(dialog().getByRole('button', { name: 'Save rule' }))
 
-    await waitFor(() => expect(save).toHaveBeenCalled())
+    await waitFor(() => expect(saveRules).toHaveBeenCalled())
     expect(sentRules()[0].doc_type).toBe('ar_reconcile')
-    expect(sentRules()[1].doc_type).toBe('fee_invoice')
+    expect(sentRules()[1]).toEqual(
+      expect.objectContaining({ doc_type: 'fee_invoice', bank_sender_email: 'noreply@ktc.co.th' })
+    )
   })
 
   it('deleting a rule leaves the others’ document types alone', async () => {
@@ -197,12 +209,13 @@ describe('bank rules', () => {
       { bank_code: 'KTC', bank_sender_email: null, filename_patterns: ['.pdf'], is_active: true },
     ])
 
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     openRule(2)
-    fireEvent.click(screen.getByRole('button', { name: /Remove rule 2/i }))
-    fireEvent.click(screen.getByRole('button', { name: /Save changes/i }))
+    fireEvent.click(dialog().getByRole('button', { name: /Remove rule/i }))
 
-    await waitFor(() => expect(save).toHaveBeenCalled())
+    await waitFor(() => expect(saveRules).toHaveBeenCalled())
     expect(sentRules()).toEqual([expect.objectContaining({ doc_type: 'ar_reconcile' })])
+    confirm.mockRestore()
   })
 
   it('a rule stored before the field existed reads as the type it was', () => {
@@ -211,11 +224,22 @@ describe('bank rules', () => {
     ])
     // Explicit rather than absent: on a full-replace payload the two only mean the same
     // thing because the server defaults, and leaving that to chance is what this is about.
-    expect(sentRules()[0].doc_type).toBe('fee_invoice')
+    expect(draft.rules[0].doc_type).toBe('fee_invoice')
     openRule(1)
-    expect((ruleCard(1).getByLabelText(/Document type/i) as HTMLSelectElement).value).toBe(
+    expect((dialog().getByLabelText(/^Document type/i) as HTMLSelectElement).value).toBe(
       'fee_invoice'
     )
+  })
+
+  it('switching a rule off in its row saves it at once', async () => {
+    mountWith([
+      { bank_code: 'KTC', bank_sender_email: null, filename_patterns: ['.pdf'], is_active: true },
+    ])
+    fireEvent.click(screen.getByRole('switch', { name: 'Rule 1 active' }))
+
+    await waitFor(() => expect(saveRules).toHaveBeenCalledTimes(1))
+    expect(sentRules()[0].is_active).toBe(false)
+    expect(save).not.toHaveBeenCalled()
   })
 })
 
@@ -224,7 +248,7 @@ describe('the dirty form', () => {
     mountWith([])
     expect(screen.getByRole('button', { name: /Save changes/i })).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText(/Company Tax IDs/i), {
+    fireEvent.change(screen.getByLabelText(/^Company tax IDs/i), {
       target: { value: '0105536000123, 0105536000127' },
     })
 
@@ -249,35 +273,43 @@ describe('the dirty form', () => {
       { bank_code: 'KTC', bank_sender_email: null, filename_patterns: ['.pdf'], is_active: true },
     ])
 
-    fireEvent.change(screen.getByLabelText(/Company Tax IDs/i), { target: { value: '999' } })
-    fireEvent.click(screen.getByRole('button', { name: /ADD RULE/i }))
-    expect(sentRules()).toHaveLength(2)
+    fireEvent.change(screen.getByLabelText(/^Company tax IDs/i), { target: { value: '999' } })
+    fireEvent.click(screen.getByRole('switch', { name: /Post without review/i }))
 
     fireEvent.click(screen.getByRole('button', { name: /Discard changes/i }))
 
-    expect((screen.getByLabelText(/Company Tax IDs/i) as HTMLTextAreaElement).value).toBe(
+    expect((screen.getByLabelText(/^Company tax IDs/i) as HTMLTextAreaElement).value).toBe(
       '0105536000123'
     )
-    expect(sentRules()).toHaveLength(1)
+    expect(draft.auto_post).toBe(false)
+    expect(draft.rules).toHaveLength(1)
     expect(screen.getByRole('button', { name: /Save changes/i })).toBeDisabled()
     expect(save).not.toHaveBeenCalled()
   })
 })
 
 describe('a refused save', () => {
-  it('opens the rule the server refused, with its message under the field', () => {
-    // Rules are collapsed summary rows; a 422 about one of them must not stay hidden in a
-    // closed row while the save bar says nothing was saved.
+  it('flags the rule the server refused, and its dialog shows the message under the field', () => {
+    // Rules are summary rows; a 422 about one of them must not stay invisible in the list.
     fieldErrors = { 'rules[1].filename_patterns': 'Add at least one filename pattern.' }
     mountWith([
       { bank_code: 'KTC', bank_sender_email: null, filename_patterns: ['.pdf'], is_active: true },
       { bank_code: 'KBANK', bank_sender_email: null, filename_patterns: [], is_active: true },
     ])
 
-    expect(ruleCard(2).getByText('Add at least one filename pattern.')).toBeInTheDocument()
     expect(screen.getByText('Needs attention')).toBeInTheDocument()
-    // The rule nothing was said about stays closed.
-    expect(screen.queryByRole('group', { name: 'Rule 1' })).not.toBeInTheDocument()
+    // Nothing pops open on its own; the reader opens the flagged rule.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    openRule(2)
+    expect(dialog().getByText('Add at least one filename pattern.')).toBeInTheDocument()
+  })
+
+  it('keeps every explanation reachable behind its (i)', () => {
+    // The page shows state and controls only; the help text moved, it did not go away.
+    mountWith([])
+    expect(
+      screen.getByRole('button', { name: 'About company tax IDs' })
+    ).toHaveAccessibleDescription(/13 digits each/)
   })
 })
 
@@ -286,7 +318,7 @@ describe('the two exits that lose something', () => {
     // The queue's fix buttons land here in the same tab, so this link is how a reviewer
     // goes home — and a hash change fires no beforeunload to catch an unsaved form.
     mountWith([])
-    fireEvent.change(screen.getByLabelText(/Company Tax IDs/i), { target: { value: '999' } })
+    fireEvent.change(screen.getByLabelText(/^Company tax IDs/i), { target: { value: '999' } })
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
     const followed = fireEvent.click(screen.getByRole('link', { name: /Back to queue/i }))

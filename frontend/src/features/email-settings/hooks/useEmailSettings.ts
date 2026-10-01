@@ -1,10 +1,10 @@
 /**
  * State behind #/email-settings.
  *
- * A dirty form with one Save, matching the screen Carmen builds (CARMEN_INTEGRATION.md
- * §2.8): every control edits a local `draft`, and `save()` sends the whole thing in a
- * single `PUT /settings` — which is a full replace and answers with the new state, so
- * there is still no reload-after-write. One PUT per editing session rather than one per
+ * A dirty form with one Save: every control edits a local `draft`, and `save()` sends the
+ * whole thing in a single `PUT /settings`, which is a full replace and answers with the new
+ * state, so there is no reload-after-write. Bank rules are the exception (2026-10-01): the
+ * page edits them in a dialog that saves at once, through `saveRules`. One PUT per editing session rather than one per
  * keystroke also matters: these endpoints are rate-limited to 20/min per IP.
  *
  * The draft holds the list fields as **raw text**, exactly as typed. Splitting on every
@@ -130,6 +130,9 @@ export interface EmailSettingsController {
   /** Local only — no network. */
   patch: (p: Partial<Draft>) => void
   save: () => Promise<boolean>
+  /** Saves a new rules list on its own, now. The other fields go out as the server last
+   *  confirmed them, so an unsaved edit elsewhere on the page is neither sent nor lost. */
+  saveRules: (rules: RuleDraft[]) => Promise<boolean>
   reset: () => void
   saveToken: (token: string) => Promise<boolean>
   removeToken: () => Promise<boolean>
@@ -244,6 +247,43 @@ export function useEmailSettings(): EmailSettingsController {
     }
   }, [uri, bu, draft, seed, report])
 
+  /**
+   * One rule added, edited, removed or switched, saved at once (the settings page's rule
+   * dialog and row switch, 2026-10-01).
+   *
+   * `PUT /settings` is a full replace, so a rules save has to send the other fields too, and
+   * it sends them **as the server last confirmed them** (`seed`), not as the draft holds them:
+   * a tax ID the user is halfway through typing must not ride along with a rule. `auto_post`
+   * is left out, which the endpoint reads as "keep". On success only the draft's rules are
+   * replaced, so the page's other unsaved edits stay exactly where they were, still unsaved.
+   */
+  const saveRules = useCallback(
+    async (rules: RuleDraft[]): Promise<boolean> => {
+      setSaving(true)
+      try {
+        const next = await saveSettings({
+          uri,
+          bu,
+          enabled: seed.enabled,
+          owner_emails: splitList(seed.owner_emails),
+          tax_ids: splitList(seed.tax_ids),
+          rules: toPayloadRules(rules),
+        })
+        setSettings(next)
+        setDraft(prev => ({ ...prev, rules: seedDraft(next).rules }))
+        setError(null)
+        setFieldErrors({})
+        return true
+      } catch (err) {
+        report(err)
+        return false
+      } finally {
+        setSaving(false)
+      }
+    },
+    [uri, bu, seed, report]
+  )
+
   const saveToken = useCallback(
     async (token: string) => {
       setSaving(true)
@@ -293,6 +333,7 @@ export function useEmailSettings(): EmailSettingsController {
     fieldErrors,
     patch,
     save,
+    saveRules,
     reset,
     saveToken,
     removeToken,

@@ -89,6 +89,36 @@ describe('the one field that must not ride along', () => {
 })
 
 /**
+ * A rule saved from its dialog (or its row switch) goes out on its own, but `PUT /settings`
+ * is a full replace — so the other fields still travel, and they must travel as the server
+ * last confirmed them. A tax ID the user is halfway through typing must neither be sent with
+ * a rule nor lost by it.
+ */
+describe('a rule saved on its own', () => {
+  it('sends the other fields as last saved, omits auto_post, and keeps unsaved edits', async () => {
+    const result = await loaded()
+    act(() => result.current.patch({ tax_ids: '0105536000999', auto_post: false }))
+
+    const rules = [
+      ...result.current.draft.rules,
+      { ...result.current.draft.rules[1], bank_code: 'SCB' },
+    ]
+    await act(async () => {
+      await result.current.saveRules(rules)
+    })
+
+    expect(sentBody().tax_ids).toEqual(['0105536000127']) // the saved value, not the draft's
+    expect(sentBody().enabled).toBe(true)
+    expect('auto_post' in sentBody()).toBe(false)
+    expect(sentBody().rules.map(r => r.bank_code)).toEqual(['KBANK', 'KTC', 'SCB'])
+    // The half-typed edits are still the user's to save or discard.
+    expect(result.current.draft.tax_ids).toBe('0105536000999')
+    expect(result.current.draft.auto_post).toBe(false)
+    expect(result.current.dirty).toBe(true)
+  })
+})
+
+/**
  * The same shape of bug one field over. `PUT /settings` replaces the rules array whole, and
  * Save sends the WHOLE draft — the review switch, a new tax ID, turning ingestion on. So a
  * field `seedDraft` forgets is a field that any unrelated save deletes from every rule the
