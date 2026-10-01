@@ -52,9 +52,12 @@ let storedConfig: Record<string, unknown> | null = null
 // Which bank each render asked the rules for. GL rules are per bank, and the JV is built —
 // and posted — from these, so only the document's own bank's are right.
 let configBanks: Array<string | undefined> = []
+// …and the renders that were told to wait, which read nothing.
+let configWaits: boolean[] = []
 vi.mock('@/features/credit-card/hooks', () => ({
-  useAccountingConfig: (bank?: string) => {
-    configBanks.push(bank)
+  useAccountingConfig: (bank?: string, options?: { wait?: boolean }) => {
+    if (options?.wait) configWaits.push(true)
+    else configBanks.push(bank)
     return { config: storedConfig, loading: false }
   },
 }))
@@ -179,6 +182,7 @@ const mapApi = await import('@/features/credit-card/api/mapping')
 beforeEach(() => {
   vi.clearAllMocks()
   configBanks = []
+  configWaits = []
   // JvEditor asks for a suggestion whenever a payment type has no account. Most tests
   // never reach that branch, but an unresolved mock throws inside the effect.
   vi.mocked(mapApi.suggestPaymentTypes).mockResolvedValue({})
@@ -227,6 +231,16 @@ describe('the screen', () => {
     mount()
     await screen.findByLabelText('Credit for Visa line 1')
     expect(configBanks[configBanks.length - 1]).toBe('KTC')
+  })
+
+  it('reads no rules at all until the document names its bank', async () => {
+    // Opened by link: no queue row, so no hint. An unscoped read here would answer for the
+    // bank the mapping page saved last.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByLabelText('Credit for Visa line 1')
+    expect(configWaits.length).toBeGreaterThan(0)
+    expect(configBanks).not.toContain(undefined)
   })
 
   it('asks for that bank from the first render when the queue already knows it', async () => {

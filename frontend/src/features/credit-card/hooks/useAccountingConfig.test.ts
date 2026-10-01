@@ -152,6 +152,29 @@ describe('useAccountingConfig', () => {
     expect(result.current.config).toBeNull()
   })
 
+  // A review opened by its link knows no bank until the document arrives; the read that
+  // used to go out meanwhile answered for whichever bank the mapping page saved last.
+  it('reads nothing while it is told to wait, and then reads once', async () => {
+    getAccountingConfig.mockResolvedValue({
+      bank_code: 'KTC',
+      file_prefix: 'IC',
+      mappings: { net: { dept: 'GEN', acc: 'KTC-ACC' } },
+    } as never)
+    const { result, rerender } = renderHook(
+      ({ bank, wait }) => useAccountingConfig(bank, { wait }),
+      { initialProps: { bank: undefined as string | undefined, wait: true } }
+    )
+
+    await act(async () => {})
+    expect(getAccountingConfig).not.toHaveBeenCalled()
+    expect(result.current.loading).toBe(true)
+
+    rerender({ bank: 'KTC', wait: false })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(getAccountingConfig).toHaveBeenCalledTimes(1)
+    expect(getAccountingConfig).toHaveBeenCalledWith('KTC')
+  })
+
   it('refresh re-reads the config', async () => {
     getAccountingConfig.mockResolvedValue({
       bank_code: 'GHL',

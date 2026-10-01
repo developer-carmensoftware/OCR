@@ -62,8 +62,14 @@ function readFromLocalStorage(): AccountingConfig | null {
  * bank since 20260924000000, and an unscoped read answers with whichever bank the mapping
  * page saved last, so a JV built for one bank's statement took another bank's accounts.
  * Omit only where no mapping is read (header fields and per-bank descriptions).
+ * @param options.wait The bank is not known yet (a document still loading): read nothing and
+ * stay `loading`, rather than send the unscoped read that answers for the wrong bank.
  */
-export function useAccountingConfig(bankCode?: string): AccountingConfigHook {
+export function useAccountingConfig(
+  bankCode?: string,
+  options: { wait?: boolean } = {}
+): AccountingConfigHook {
+  const wait = options.wait === true
   const [config, setConfigState] = useState<AccountingConfig | null>(null)
   const [loading, setLoading] = useState(true)
   // Which bank `config` was read for. `loading` alone lags a bank change by one render, and
@@ -85,6 +91,7 @@ export function useAccountingConfig(bankCode?: string): AccountingConfigHook {
   }, [refresh])
 
   useEffect(() => {
+    if (wait) return
     let cancelled = false
     setLoading(true)
 
@@ -122,11 +129,11 @@ export function useAccountingConfig(bankCode?: string): AccountingConfigHook {
     return () => {
       cancelled = true
     }
-  }, [refreshKey, bankCode])
+  }, [refreshKey, bankCode, wait])
 
   return {
     config,
-    loading: loading || loadedFor !== bankCode,
+    loading: loading || wait || loadedFor !== bankCode,
     refresh,
     filePrefix: config?.filePrefix || '',
     fileSource: config?.fileSource || '',

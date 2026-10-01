@@ -94,7 +94,11 @@ export function useReviewDocument(
   // identity — name, tax ID and address — for a bank sitting right there in the registry.
   const bankCode = (doc?.bank_code || bank || bankHint || '') as BankCode | ''
   // This bank's own GL rules: the JV is built from them and approve posts that JV.
-  const { config, loading: configLoading } = useAccountingConfig(bankCode || undefined)
+  // Until the document (or the queue's hint) names the bank there is nothing to ask for: wait,
+  // rather than read whichever bank the mapping page saved last.
+  const { config, loading: configLoading } = useAccountingConfig(bankCode || undefined, {
+    wait: loading && !bankCode,
+  })
 
   const [busy, setBusy] = useState(false)
   const [postError, setPostError] = useState<string | null>(null)
