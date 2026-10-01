@@ -11,7 +11,8 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   // stripped later, inside a React effect (useCarmenSSO) — so the pageload transaction,
   // navigation breadcrumbs, or any early error can carry it off-site. It cannot be
   // stripped before init (the effect still needs to read it), so redact it on the way out.
-  const redact = (u: string) => u.replace(/([?&]token=)[^&]*/gi, '$1[redacted]')
+  // `posting_token` too: the settings link carries a BU posting token (decision #35).
+  const redact = (u: string) => u.replace(/([?&](?:posting_)?token=)[^&]*/gi, '$1[redacted]')
   const scrub = <T extends Sentry.Event>(event: T): T => {
     if (event.request?.url) event.request.url = redact(event.request.url)
     if (typeof event.transaction === 'string') event.transaction = redact(event.transaction)

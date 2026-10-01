@@ -13,8 +13,9 @@
 > `#/CreditCardOCR` ที่ใช้อยู่แล้ว ส่วนใครกดเมนูได้ Carmen กำหนดเองตามระบบสิทธิ์ที่มีอยู่
 > รายละเอียดอยู่ที่ §7 ท้ายหน้านี้ และ CARMEN_INTEGRATION.md §2.8
 >
-> ถ้าตกลงตามนี้ Carmen **ไม่ต้องเรียก §1–§2 เอง** (หน้าเราเรียกให้) ที่ต้องใช้มีแค่ §3–§4
-> (mint token ตอนเปิดเมนู) และ §6 (badge) ถ้ายังไม่ตกลง เนื้อหาข้างล่างทั้งหมดยังเป็นสัญญาที่ใช้งานจริง
+> ถ้าตกลงตามนี้ Carmen **ไม่ต้องเรียก API ของเราเลย** ทุกครั้งที่เปิดเมนูให้ mint token ของ BU ใหม่
+> แล้วใส่มาในลิงก์เป็น `posting_token` หน้าเราจะ `PUT /settings/token` ให้เอง ส่วน §6 (badge) ยังใช้ได้ถ้าต้องการ
+> ถ้ายังไม่ตกลง เนื้อหาข้างล่างทั้งหมดยังเป็นสัญญาที่ใช้งานจริง
 
 ---
 
@@ -322,18 +323,25 @@ curl "https://{ocr-host}/api/v1/carmen/notifications?uri=https%3A%2F%2Fhotelgrou
 
 ## 7 · เปิดหน้า settings จากเมนู Carmen — ข้อเสนอ v5.0 (ฝั่ง OCR พร้อมแล้ว รอเมนูของ Carmen)
 
-**Carmen ทำ 1 เมนู ไม่มีฟอร์ม** แสดงเฉพาะ user ที่ระบบสิทธิ์ของ Carmen อนุญาต กดแล้วทำ 3 ขั้น:
+**Carmen ทำ 1 เมนู ไม่มีฟอร์ม** แสดงเฉพาะ user ที่ระบบสิทธิ์ของ Carmen อนุญาต กดแล้วทำ 2 ขั้น:
 
 ```text
-1) GET /settings/token?uri=&bu=            (ใช้ token ของ user ที่กดอยู่)
-2) ถ้า configured=false หรือ verified_at=null
-     → mint token ของ BU → PUT /settings/token      (= ขั้น ON เดิม ย้ายมาทำตอนเปิดเมนู)
-3) เปิด tab ใหม่ไปที่
-   https://{ocr-app}/#/CreditCardOCR/email-settings?token=<token ของ user>&bu=<bu>&user=<user>&uri=<origin ของ Carmen>
+1) mint token ของ BU ตัวใหม่ (ทับตัวเดิม ตัวเดิมหมดอายุไปเอง)
+2) เปิด tab ใหม่ไปที่
+   https://{ocr-app}/#/CreditCardOCR/email-settings?token=<token ของ user>&posting_token=<token ของ BU ที่เพิ่ง mint>&bu=<bu>&user=<user>&uri=<origin ของ Carmen>
 ```
 
-ลิงก์ในขั้น 3 เป็นรูปแบบเดียวกับลิงก์ `#/CreditCardOCR` ที่ใช้อยู่แล้ว ต่างกันแค่ route
-หน้าเราจะเรียก §1–§2 ด้วย token นั้นเอง
+ไม่ต้องเรียก API ของเราเลย ลิงก์เป็นรูปแบบเดียวกับลิงก์ `#/CreditCardOCR` ที่ใช้อยู่แล้ว ต่างกันแค่ route
+กับ `posting_token` ที่เพิ่มมา หน้าเราจะ `PUT /settings/token` ด้วย `posting_token` ก่อนอ่านอย่างอื่น
+(เราเช็คกับ Carmen ก่อนเก็บเหมือนเดิม) แล้วใช้ `token` เรียก §1–§2 · สอง token นี้ห้ามสลับกัน:
+`token` คือคนที่เปิดหน้า `posting_token` คือ BU
+
+**ทำไมส่ง token ผ่านลิงก์ได้** — ค่าหลัง `#` ไม่ถูกส่งไป server ไหนเลย (ทั้งของเราและของ Carmen) และไม่อยู่ใน
+`Referer` หน้าเราลบ query ออกจาก address bar ทันทีที่อ่าน และระบบ error reporting ซ่อนทั้งสอง token
+ที่เหลือคือ browser history ในเครื่องนั้น ซึ่ง token จะใช้ไม่ได้แล้วตั้งแต่มีคนเปิดเมนูครั้งถัดไป
+
+**ถ้าเก็บไม่สำเร็จ** (Carmen ไม่รับ token, เน็ตหลุด) — เพราะการเปิดเมนูทำให้ token ตัวเดิมที่เราเก็บไว้ใช้ไม่ได้แล้ว
+หน้าเราจะขึ้นเตือนด้านบนสุด เก็บ token ไว้ให้กด *Reload* ลองใหม่ หรือเปิดจากเมนู Carmen อีกรอบก็ได้
 
 **สิทธิ์ใช้ของ Carmen ที่เดียว** — ใครเห็นเมนูนี้ Carmen กำหนดเองตามระบบสิทธิ์ที่มีอยู่ ฝั่งเราไม่เช็คซ้ำ
 และไม่มี role ของตัวเอง การเช็คฝั่งเรายังเหมือนวันนี้ทุกอย่าง (§Auth): token ที่ Carmen ของ host นั้นยอมรับ
@@ -346,7 +354,7 @@ curl "https://{ocr-host}/api/v1/carmen/notifications?uri=https%3A%2F%2Fhotelgrou
 - (ค) ยอมให้ token อยู่ต่อ (ถ้า BU ปิดอยู่ ระบบจะไม่รับเมลอยู่แล้ว)
 
 **token ที่ใช้ post ตาย ไม่ต้องทำอะไรเพิ่ม** — ปุ่ม *Reconnect* ในหน้า queue ของเราเปิดหน้า settings ของเรา
-ซึ่งจะแสดงว่า token ใช้ไม่ได้แล้ว และบอกให้เปิดหน้านี้ใหม่จากเมนู Carmen ขั้น 2 ข้างบนจะ mint ตัวใหม่ให้เอง
+ซึ่งจะแสดงว่า token ใช้ไม่ได้แล้ว และบอกให้เปิดหน้านี้ใหม่จากเมนู Carmen ขั้น 1 ข้างบนจะ mint ตัวใหม่ให้เอง
 จึงไม่ต้องมี route reconnect แยก
 
 **ถ้าตกลง Carmen ไม่ต้องทำต่อ:** ฟอร์ม settings, สวิตช์ `auto_post`, ช่อง `doc_type`, dropdown ธนาคาร

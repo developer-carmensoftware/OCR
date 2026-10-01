@@ -557,6 +557,28 @@ def test_token_status_never_contains_the_token_value():
     assert enc not in str(body)
 
 
+@pytest.mark.asyncio
+async def test_a_refused_old_token_does_not_mark_the_new_one_dead():
+    """Carmen's menu mints a fresh token on every open (decision #35). A post that set out
+    with the old one and was refused after the new one landed must leave the new one alone."""
+    from datetime import UTC, datetime
+
+    verified = datetime.now(UTC)
+    row = _fake_row(
+        carmen_token_fp=credential.fingerprint("new"), carmen_token_verified_at=verified
+    )
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=_exec(scalar_one_or_none=row))
+
+    await credential.mark_token_unverified(db, uuid4(), "old")
+    assert row.carmen_token_verified_at == verified
+    db.commit.assert_not_awaited()
+
+    await credential.mark_token_unverified(db, uuid4(), "new")
+    assert row.carmen_token_verified_at is None
+    db.commit.assert_awaited_once()
+
+
 # ── Readiness gates: the two ways `ready: true` used to lie ───────────────────
 
 

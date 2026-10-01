@@ -8,6 +8,7 @@ vi.mock('@/features/email-settings/api/emailAutomation', async importOriginal =>
   getSettings: vi.fn(),
   getBankCodes: vi.fn(),
   getToken: vi.fn(),
+  putToken: vi.fn(),
   saveSettings: vi.fn(),
 }))
 vi.mock('@/shared/contexts/AuthContext', () => ({
@@ -15,6 +16,7 @@ vi.mock('@/shared/contexts/AuthContext', () => ({
 }))
 
 import * as api from '@/features/email-settings/api/emailAutomation'
+import { CARMEN_POSTING_TOKEN_KEY } from '@/shared/api/client'
 
 const SETTINGS = {
   host: 'hotel.carmenwork.com',
@@ -239,5 +241,54 @@ describe('seedDraft', () => {
       doc_type: 'ar_reconcile',
       has_password: true,
     })
+  })
+})
+
+/** Carmen's menu mints a fresh posting token on every open and passes it in the link, which
+ *  kills the one we hold (decision #35). So it is stored before anything is read, and a
+ *  failure is kept where Reload can retry it rather than dropped. */
+describe('the posting token Carmen sends with the link', () => {
+  beforeEach(() => {
+    sessionStorage.removeItem(CARMEN_POSTING_TOKEN_KEY)
+    vi.mocked(api.putToken).mockResolvedValue({
+      configured: true,
+      fingerprint: 'abcd1234',
+      carmen_uri: 'https://hotel.carmenwork.com',
+      verified_at: '2026-10-01T07:00:00Z',
+    })
+  })
+
+  it('is stored before the settings are read, then forgotten', async () => {
+    sessionStorage.setItem(CARMEN_POSTING_TOKEN_KEY, 'fresh')
+    const result = await loaded()
+
+    expect(api.putToken).toHaveBeenCalledWith('https://hotel.carmenwork.com', 'hq', 'fresh')
+    expect(vi.mocked(api.putToken).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(api.getSettings).mock.invocationCallOrder[0]
+    )
+    expect(sessionStorage.getItem(CARMEN_POSTING_TOKEN_KEY)).toBeNull()
+    expect(result.current.tokenError).toBeNull()
+  })
+
+  it('says so when it cannot be stored, and keeps it until a token is set', async () => {
+    sessionStorage.setItem(CARMEN_POSTING_TOKEN_KEY, 'fresh')
+    vi.mocked(api.putToken).mockRejectedValueOnce(new Error('Carmen rejected this token'))
+    const result = await loaded()
+
+    expect(result.current.tokenError).toBe('Carmen rejected this token')
+    expect(sessionStorage.getItem(CARMEN_POSTING_TOKEN_KEY)).toBe('fresh')
+    expect(result.current.settings).not.toBeNull()
+
+    // A hand-set token wins: Reload must not write the unstored one back over it.
+    await act(async () => {
+      await result.current.saveToken('hand-set')
+    })
+    expect(sessionStorage.getItem(CARMEN_POSTING_TOKEN_KEY)).toBeNull()
+    expect(result.current.tokenError).toBeNull()
+  })
+
+  it('stores nothing when the link carried none', async () => {
+    await loaded()
+    expect(api.putToken).not.toHaveBeenCalled()
   })
 })

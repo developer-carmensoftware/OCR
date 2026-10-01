@@ -553,7 +553,7 @@ async def _run_document(
                 # is still flagged for the BU but the document keeps its own reason.
                 if verdict is None:
                     raise
-                await _flag_dead_token(tenant_id)
+                await _flag_dead_token(tenant_id, carmen_token)
                 suggested = {}
             if suggested:
                 # In memory only. Saving it here made the guess the BU's own rule before
@@ -747,7 +747,7 @@ async def _run_document(
         # postable the moment it is replaced, instead of a day of scanning burnt.
         unauthorized = exc.status_code in (401, 403)
         if unauthorized:
-            await _flag_dead_token(tenant_id)
+            await _flag_dead_token(tenant_id, carmen_token)
         note = (
             str(exc)
             if unauthorized
@@ -880,11 +880,11 @@ _FIXED_LABEL = {
 }
 
 
-async def _flag_dead_token(tenant_id: str) -> None:
+async def _flag_dead_token(tenant_id: str, carmen_token: str) -> None:
     """Mark this BU's posting credential unproven after Carmen refused it (401/403)."""
     try:
         async with async_session() as db:
-            await credential.mark_token_unverified(db, tenant_id)
+            await credential.mark_token_unverified(db, tenant_id, carmen_token)
     except Exception:  # never let the flag cost us the ledger row
         logger.exception("[email] Could not flag the credential for tenant %s", tenant_id)
 

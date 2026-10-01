@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/shared/contexts/AuthContext'
 import { exchangeSSOToken } from '@/shared/api/auth'
-import { CARMEN_RAW_TOKEN_KEY } from '@/shared/api/client'
+import { CARMEN_POSTING_TOKEN_KEY, CARMEN_RAW_TOKEN_KEY } from '@/shared/api/client'
 
 export interface CarmenSSOState {
   exchanging: boolean
@@ -35,6 +35,11 @@ export function useCarmenSSO(): CarmenSSOState {
     // Carmen", 429. Carmen's menu opens that page through this same link (decision #34).
     // sessionStorage, same lifetime and blast radius as `ocr_access_token`.
     sessionStorage.setItem(CARMEN_RAW_TOKEN_KEY, token)
+    // Only the settings link carries it: a BU posting token Carmen minted for this open,
+    // which killed the one we hold (decision #35). Stashed, not sent: the settings page
+    // stores it once /exchange has created the tenant it belongs to.
+    const postingToken = params.get('posting_token')
+    if (postingToken) sessionStorage.setItem(CARMEN_POSTING_TOKEN_KEY, postingToken)
 
     const cleanHash = hash.slice(0, qIndex) || '#/'
     window.history.replaceState(null, '', window.location.pathname + cleanHash)

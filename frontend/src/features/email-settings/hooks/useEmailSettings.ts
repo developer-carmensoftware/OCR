@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/shared/contexts/AuthContext'
+import { CARMEN_POSTING_TOKEN_KEY } from '@/shared/api/client'
 import {
   EmailApiError,
   deleteToken,
@@ -123,6 +124,9 @@ export interface EmailSettingsController {
   dirty: boolean
   banks: BankCode[]
   tokenStatus: TokenStatus | null
+  /** The posting token Carmen's menu sent with this open could not be stored. Minting it
+   *  killed the one we hold, so nothing posts until it is (decision #35). */
+  tokenError: string | null
   /** Whole-request failure: 401 Carmen rejected, 409 tax ID clash, 502 unreachable. */
   error: { status: number; message: string } | null
   /** Per-input failures from `errors[]`, keyed by `field`. */
@@ -153,6 +157,7 @@ export function useEmailSettings(): EmailSettingsController {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT)
   const [banks, setBanks] = useState<BankCode[]>([])
   const [tokenStatus, setTokenStatus] = useState<TokenStatus | null>(null)
+  const [tokenError, setTokenError] = useState<string | null>(null)
   const [error, setError] = useState<{ status: number; message: string } | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
@@ -180,6 +185,20 @@ export function useEmailSettings(): EmailSettingsController {
       return
     }
     setLoading(true)
+    // Carmen's menu mints a fresh posting token on every open, which kills the one we hold,
+    // so storing it comes first and the status read below already describes it. Kept on
+    // failure: Reload tries again, and nothing else can bring that token back.
+    const fresh = sessionStorage.getItem(CARMEN_POSTING_TOKEN_KEY)
+    let freshError: string | null = null
+    if (fresh) {
+      try {
+        await putToken(uri, bu, fresh)
+        sessionStorage.removeItem(CARMEN_POSTING_TOKEN_KEY)
+      } catch (err) {
+        freshError = err instanceof Error ? err.message : 'Request failed'
+      }
+    }
+    setTokenError(freshError)
     try {
       // Bank codes come from the `banks` table via the API, never from the frontend
       // BANKS constant — CARMEN_INTEGRATION.md §2.3 is explicit that a second
@@ -289,6 +308,10 @@ export function useEmailSettings(): EmailSettingsController {
       setSaving(true)
       try {
         setTokenStatus(await putToken(uri, bu, token))
+        // A hand-set token replaces whatever Carmen's link left unstored; a later Reload
+        // must not write that one back over it.
+        sessionStorage.removeItem(CARMEN_POSTING_TOKEN_KEY)
+        setTokenError(null)
         setError(null)
         return true
       } catch (err) {
@@ -329,6 +352,7 @@ export function useEmailSettings(): EmailSettingsController {
     dirty,
     banks,
     tokenStatus,
+    tokenError,
     error,
     fieldErrors,
     patch,

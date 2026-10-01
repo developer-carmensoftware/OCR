@@ -10,9 +10,9 @@
 > Nothing else moved; see §1.
 >
 > **2026-10-01 — PROPOSED, awaiting the Carmen team's agreement: the settings screen moves
-> into the OCR app.** Carmen stops building a settings form. Its menu instead mints the
-> posting credential if needed and opens our `#/CreditCardOCR/email-settings` through the SSO link it
-> already uses for the queue (§2.8). Carmen still decides **who** may open that screen, by
+> into the OCR app.** Carmen stops building a settings form. Its menu instead mints a fresh
+> posting credential on every open and passes it in the SSO link it already uses for the
+> queue, pointed at our `#/CreditCardOCR/email-settings` (§2.8). Carmen still decides **who** may open that screen, by
 > who it shows the menu item to; nothing else is checked twice. The API in §2 does
 > not change; what changes is which client calls it. Every section touched is marked
 > *(proposed 2026-10-01)*.
@@ -565,6 +565,8 @@ Four things worth stating plainly:
   credential cannot disagree.
 - **Rotation is off-then-on.** There is no separate rotate endpoint and Carmen needs no
   new concept: invalidate, mint, `PUT` again. `PUT` overwrites whatever is stored.
+  *(Proposed 2026-10-01, §2.8: every open of your menu mints a replacement and our page
+  `PUT`s it, so rotation happens on every open and nobody has to ask for it.)*
 - **`fingerprint`** lets both sides name a credential in a support conversation without
   either of them revealing it. Quote it in tickets.
 - **We will re-verify daily.** The token has no expiry, so nothing announces a revocation:
@@ -627,19 +629,31 @@ OCR app.
 **What Carmen builds: one menu item, no form.** Show it only to users your own permission
 model allows to configure Email Automation. When it is clicked:
 
-1. `GET /api/v1/carmen/settings/token?uri=&bu=` with the user's token (§2.6).
-2. If `configured` is `false` or `verified_at` is `null`, mint the BU's posting token and
-   `PUT /api/v1/carmen/settings/token`. This is the old ON step (§5 items 1–2), now run when
-   the menu opens rather than from a switch on your screen.
-3. Open, in a new tab, the same SSO link you already use for the queue, with a different
-   route:
+1. Mint a fresh posting token for the BU (§2.6). Minting replaces the previous one, which
+   stops working; that is what you told us your side does, and it is what we rely on.
+2. Open, in a new tab, the same SSO link you already use for the queue, with a different
+   route and one more parameter, `posting_token`:
 
    ```text
-   https://<ocr-app>/#/CreditCardOCR/email-settings?token=<user's Carmen token>&bu=<bu>&user=<user>&uri=<your origin>
+   https://<ocr-app>/#/CreditCardOCR/email-settings?token=<user's Carmen token>&posting_token=<the BU token you just minted>&bu=<bu>&user=<user>&uri=<your origin>
    ```
 
-Our screen then reads and writes through §2.2–§2.3 with that token, exactly as yours would
-have. Your developers never call those two endpoints.
+That is all. You call none of our endpoints. Our screen stores `posting_token` through
+`PUT /settings/token` (§2.6) before it reads anything, so it is checked against your Carmen
+on the way in, and then reads and writes §2.2–§2.3 with `token`, exactly as your screen would
+have. Keep the two apart: `token` is the person at the screen, `posting_token` is the BU.
+
+**Why a credential in a link is acceptable here.** Everything after `#` stays in the
+browser: it is never sent to our server or yours, and never appears in a `Referer`. Our page
+removes the query from the address bar the moment it reads it, and our error reporting
+redacts both tokens. What remains is the browser's own history on that machine, and a token
+there stops working the next time anyone opens the menu, because that open mints its
+replacement.
+
+**What this asks of our page.** Since every open kills the token we hold, storing the new one
+cannot be allowed to fail quietly. If it does (your Carmen refused it, the network dropped),
+the page says so at the top, keeps the token, and stores it on *Reload*. Reopening from your
+menu mints another and works too.
 
 **Who may open it is decided by your menu, and only there.** Your permission model already
 decides who sees the menu item, so we do not ask Carmen again and keep no roles of our own.
@@ -664,7 +678,7 @@ stops for a disabled BU either way.
 
 **A dead posting credential needs nothing extra.** Our queue's *Reconnect* button
 (`carmen_unauthorized`, §3.3) opens our settings screen. Its Posting credential card shows
-the token is no longer accepted and tells the user to reopen the page from your menu. Step 2
+the token is no longer accepted and tells the user to reopen the page from your menu. Step 1
 then mints a fresh one, so no separate reconnect route is needed. (An earlier draft of this
 section asked for one.)
 
@@ -942,7 +956,7 @@ Two consequences worth stating plainly:
 >
 > | # | We need | Blocks |
 > |---|---|---|
-> | A | A menu item, shown only to users you allow, that runs §2.8 steps 1–3: mint the BU token if needed, then open our `#/CreditCardOCR/email-settings` | every customer's way into the settings |
+> | A | A menu item, shown only to users you allow, that runs §2.8 steps 1–2: mint a fresh BU token, then open our `#/CreditCardOCR/email-settings` with it as `posting_token` | every customer's way into the settings |
 > | B | Item 3 below, unchanged: the JV endpoint accepts the BU token | automated posting |
 > | C | An answer on revocation once the OFF switch is on our screen (§2.8) | revocation |
 >

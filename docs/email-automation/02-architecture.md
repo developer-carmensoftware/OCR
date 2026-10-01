@@ -19,7 +19,7 @@ flowchart LR
     Ingest -->|"vision LLM call"| Vision["Vision LLM\n(OpenRouter)"]
     Ingest -->|"JV + input-tax post"| Carmen["This BU's Carmen ERP"]
 
-    CarmenMenu["Carmen menu item"] -->|"PUT /settings/token, then SSO link"| Settings["OCR #/CreditCardOCR/email-settings"]
+    CarmenMenu["Carmen menu item"] -->|"mint BU token, SSO link with posting_token"| Settings["OCR #/CreditCardOCR/email-settings"]
     Settings -->|"PUT/GET /api/v1/carmen/settings*"| API
 
     Ingest --> DB[("Postgres")]
@@ -45,12 +45,10 @@ sequenceDiagram
     participant API as OCR API
 
     User->>Carmen: Open AI JV Automation settings
-    Carmen->>API: GET /api/v1/carmen/settings/token
-    opt none configured, or verified_at is null
-        Carmen->>API: PUT /api/v1/carmen/settings/token (freshly minted BU token)
-        API->>Carmen: verify_token() — GET /department with it
-    end
-    Carmen->>Page: open #/CreditCardOCR/email-settings?token=&bu=&uri= (same SSO link as the queue)
+    Note over Carmen: mints a fresh BU token on every open,<br/>which retires the previous one (decision-log #35)
+    Carmen->>Page: open #/CreditCardOCR/email-settings?token=&posting_token=&bu=&uri= (same SSO link as the queue)
+    Page->>API: PUT /api/v1/carmen/settings/token (posting_token), before anything is read
+    API->>Carmen: verify_token() — GET /department with it
     User->>Page: tax IDs, rules, Enable
     Page->>API: PUT /api/v1/carmen/settings (user's Carmen token)
     Note over API: save_settings() allocates a fresh ingest_tag<br/>only here, only when none exists yet
@@ -410,7 +408,9 @@ copy of a screen Carmen was to build. Four things about it are deliberate:
   twice.
 - **English-only**, as CLAUDE.md makes English the default for a new surface.
 - **The posting credential shows status only**, plus paste/delete folded under *Set a token
-  manually* as support's fallback. Carmen mints the token when its menu opens the page.
+  manually* as support's fallback. Carmen mints a fresh token on every open of its menu
+  and passes it in the link as `posting_token`; the page stores it before reading anything,
+  and says so at the top if that fails (decision-log #35).
 - **Bypasses `apiFetch`** (`features/email-settings/api/emailAutomation.ts:108-128`) — it sends the raw Carmen
   token with no `Bearer` scheme, matching exactly what `_caller()` expects and what Carmen
   itself sends. A 401 here means *Carmen* rejected the token, which the page renders

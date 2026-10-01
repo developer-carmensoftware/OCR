@@ -4,6 +4,10 @@ const TOKEN_KEY = 'ocr_access_token'
  *  Carmen calls). Everything else uses our own session JWT above. */
 export const CARMEN_RAW_TOKEN_KEY = 'carmen_raw_token'
 
+/** The BU posting token Carmen's menu mints on every open and passes in the settings link
+ *  (decision #35). Held only until the settings page has stored it through the API. */
+export const CARMEN_POSTING_TOKEN_KEY = 'carmen_posting_token'
+
 export function getCarmenRawToken(): string | null {
   return sessionStorage.getItem(CARMEN_RAW_TOKEN_KEY)
 }
@@ -40,6 +44,7 @@ export function clearToken(): void {
   // Goes with it: both came from the same login, and a Carmen token outliving the
   // session it arrived with is a credential nobody is watching.
   sessionStorage.removeItem(CARMEN_RAW_TOKEN_KEY)
+  sessionStorage.removeItem(CARMEN_POSTING_TOKEN_KEY)
 }
 
 export interface ApiClientOptions {

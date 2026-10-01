@@ -953,3 +953,41 @@ place.
   `EmailSettings.tsx`).
 
 **No data migration, no API change.**
+
+## 35. The posting token rides the menu link (2026-10-01)
+
+**Decided:** 2026-10-01, the same day as #34, at the user's call. It replaces #34's "mints
+the BU's posting token if `GET /settings/token` says none is live, then opens our page".
+
+**Decision.** Carmen's menu mints a fresh BU posting token on **every** open and passes it
+in the settings link as `posting_token`, beside the user's `token`. Carmen calls none of our
+endpoints. Our page stores it through `PUT /settings/token` before it reads anything.
+
+- **Nothing piles up.** Carmen confirmed that minting replaces the BU's previous token, which
+  stops working. So minting on every open is a rotation, not a growing set of live
+  credentials that never expire.
+- **Two tokens, kept apart.** `token` is the person at the screen: SSO, and the auth for
+  every settings call. `posting_token` is the BU's, and it is only stored. `useCarmenSSO`
+  stashes it in sessionStorage (`CARMEN_POSTING_TOKEN_KEY`, cleared with the session) and does
+  not send it. A brand-new BU has no tenant row until `/exchange` has run, and a shared hook
+  has no business importing a feature's API. `useEmailSettings.reload()` sends it first.
+- **Storing it must not fail quietly.** The open that delivered the token also killed the one
+  we hold, so a failed store means nothing posts. The page then says so in the top banner and
+  on the credential card ("New token from Carmen not stored"), and keeps the token so
+  *Reload* retries. A token pasted by hand clears it, so a later Reload cannot write the
+  stale one back.
+- **A refused old token no longer marks the new one dead.** `mark_token_unverified` now takes
+  the token Carmen refused and clears `verified_at` only when its fingerprint matches what is
+  stored. Rotation on every open made the race routine: a post that set out before the open
+  is refused after the new token has landed.
+
+**Why a credential in a URL is acceptable.** It sits after `#`, so no server sees it,
+neither ours nor Carmen's, and it is never in a `Referer`. The SSO hook strips the query
+from the address bar on arrival, and Sentry's redaction now covers `posting_token=`. What is
+left is the local browser history, and a token there dies the next time anyone opens the
+menu.
+
+**What it costs.** If the person who opened the menu closes the tab before the page has
+stored the token (about a second), posting stops until the next open. The other way round,
+with Carmen `PUT`ting it before opening the link, had no browser in the middle, but took two
+API calls on Carmen's side. The user chose the link.

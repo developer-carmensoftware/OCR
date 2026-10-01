@@ -30,6 +30,7 @@ const save = vi.fn(async () => true)
 const saveRules = vi.fn(async (_rules: RuleDraft[]) => true)
 const removeToken = vi.fn()
 let tokenStatus: unknown = null
+let tokenError: string | null = null
 let fieldErrors: Record<string, string> = {}
 let rules: EmailRule[] = []
 /** The draft the page is editing, owned here so `patch` behaves like the real hook. */
@@ -65,6 +66,7 @@ vi.mock('@/features/email-settings/hooks', async importOriginal => {
         host: 'hotel.carmenwork.com',
         bu: 'hq',
         tokenStatus,
+        tokenError,
         banks: [
           { code: 'KBANK', name: 'Kasikornbank' },
           { code: 'KTC', name: 'Krungthai Card' },
@@ -119,6 +121,7 @@ const dialog = () => within(screen.getByRole('dialog'))
 beforeEach(() => {
   vi.clearAllMocks()
   tokenStatus = null
+  tokenError = null
   fieldErrors = {}
   rules = []
   draft = seedDraft(null)
@@ -345,5 +348,21 @@ describe('the two exits that lose something', () => {
     expect(confirm).toHaveBeenCalled()
     expect(removeToken).not.toHaveBeenCalled()
     confirm.mockRestore()
+  })
+
+  it('says at the top when the token Carmen sent could not be stored', () => {
+    // Minting it killed the stored one, so the card's "Connected" would be a lie.
+    tokenStatus = {
+      configured: true,
+      fingerprint: '9c1f3a2b',
+      carmen_uri: 'https://hotel.carmenwork.com',
+      verified_at: '2026-10-01T00:00:00Z',
+    }
+    tokenError = 'Carmen rejected this token'
+    mountWith([])
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/Carmen rejected this token/)
+    expect(screen.getByText('New token from Carmen not stored')).toBeInTheDocument()
+    expect(screen.queryByText('Connected')).not.toBeInTheDocument()
   })
 })

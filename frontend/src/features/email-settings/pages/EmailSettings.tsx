@@ -3,8 +3,9 @@
  * 2026-10-01; CARMEN_INTEGRATION.md §2.8).
  *
  * **Two ways in, both deliberate.** Carmen's menu opens it through the same SSO link as the
- * queue (`#/CreditCardOCR/email-settings?token=&bu=&uri=`), after minting the BU's posting token if it
- * needs one; and the queue's fix buttons open it in this tab. Carmen decides who sees its
+ * queue (`#/CreditCardOCR/email-settings?token=&posting_token=&bu=&uri=`), carrying a BU
+ * posting token minted fresh for this open, which the hook stores first (decision #35); and
+ * the queue's fix buttons open it in this tab. Carmen decides who sees its
  * menu item and we check nothing twice, so there is no role gate here — the same reach every
  * BU user already has when they approve a document. Nothing else links here (no Home tile, no
  * queue header link): the menu is the front door.
@@ -592,7 +593,9 @@ export default function EmailSettings() {
   if (ctrl.loading) return <Skeleton />
 
   const err = ctrl.error
-  const banner = err && (
+  // Up here, not only on the credential card at the foot of the page: minting the token that
+  // failed to store already killed the old one, so nothing posts until this is fixed.
+  const banner = err ? (
     <div className="email-banner" role="alert" data-tone={err.status === 409 ? 'warn' : undefined}>
       <AlertTriangle size={16} aria-hidden="true" />
       <span>
@@ -603,6 +606,16 @@ export default function EmailSettings() {
         {err.message}
       </span>
     </div>
+  ) : (
+    ctrl.tokenError && (
+      <div className="email-banner" role="alert">
+        <AlertTriangle size={16} aria-hidden="true" />
+        <span>
+          The posting token Carmen just sent could not be stored: {ctrl.tokenError}. Nothing will
+          post until it is. Press Reload to try again, or reopen this page from Carmen&apos;s menu.
+        </span>
+      </div>
+    )
   )
 
   const header = (
@@ -666,7 +679,12 @@ export default function EmailSettings() {
   const address = settings.ingest_address
   const entitled = settings.entitled !== false
   const token = ctrl.tokenStatus
-  const tokenTone = !token?.configured ? 'warn' : token.verified_at ? 'ok' : 'bad'
+  const tokenTone =
+    ctrl.tokenError || (token?.configured && !token.verified_at)
+      ? 'bad'
+      : token?.configured
+        ? 'ok'
+        : 'warn'
 
   return (
     <div className="email-settings-page">
@@ -916,19 +934,21 @@ export default function EmailSettings() {
           title="Posting credential"
           description="The key Carmen issues so approved and automatic entries can post."
         >
-          {/* Carmen issues it (its menu mints one before opening this page,
-              CARMEN_INTEGRATION.md §2.8), so the customer reads its status and nothing more.
+          {/* Carmen issues it (its menu mints a fresh one on every open and passes it in the
+              link, CARMEN_INTEGRATION.md §2.8), so the customer reads its status and nothing more.
               Pasting one by hand is support's fallback, folded away so a customer is not
               handed a box they have nothing to put in. */}
           <div className="email-panel">
             <p className="email-cred" data-tone={tokenTone}>
               <span className="email-dot" aria-hidden="true" />
               <strong>
-                {tokenTone === 'ok'
-                  ? 'Connected'
-                  : tokenTone === 'bad'
-                    ? 'No longer accepted by Carmen'
-                    : 'Not connected'}
+                {ctrl.tokenError
+                  ? 'New token from Carmen not stored'
+                  : tokenTone === 'ok'
+                    ? 'Connected'
+                    : tokenTone === 'bad'
+                      ? 'No longer accepted by Carmen'
+                      : 'Not connected'}
               </strong>
               {token?.configured && token.fingerprint && (
                 <span className="email-mono email-cred__fp">{token.fingerprint}</span>

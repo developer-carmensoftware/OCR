@@ -164,7 +164,7 @@ async def clear_token(db: AsyncSession, tenant: Tenant, actor: str) -> None:
     await db.commit()
 
 
-async def mark_token_unverified(db: AsyncSession, tenant_id: Any) -> None:
+async def mark_token_unverified(db: AsyncSession, tenant_id: Any, token: str) -> None:
     """A real post just proved this BU's credential dead — say so where it gets fixed.
 
     Writes the same `verified_at = null` the health sweep writes, for the same reason:
@@ -173,6 +173,10 @@ async def mark_token_unverified(db: AsyncSession, tenant_id: Any) -> None:
     in the document ledger, while `#/admin/email` and the customer's own settings screen
     keep showing a credential last verified days ago — which is what made a dead token
     take three burnt credits to notice on 2026-08-28.
+
+    `token` is the one Carmen refused, and only that one is marked. Carmen's menu mints a
+    fresh token on every open (decision #35), so a post that set out with the old one can
+    be refused after the new one is already stored — and must not mark the new one dead.
     """
     row = (
         await db.execute(
@@ -182,6 +186,8 @@ async def mark_token_unverified(db: AsyncSession, tenant_id: Any) -> None:
         )
     ).scalar_one_or_none()
     if row is None or row.carmen_token_verified_at is None:
+        return
+    if row.carmen_token_fp != fingerprint(token):
         return
     row.carmen_token_verified_at = None
     await db.commit()
