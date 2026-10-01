@@ -3,17 +3,15 @@ import { AlertCircle } from 'lucide-react'
 import { useT } from '@/i18n/LanguageContext'
 import type { TKey } from '@/i18n/dict'
 import type { CompanyData } from '@/features/credit-card/lib/bankTransforms'
-
-interface RequiredField {
-  key: keyof CompanyData
-  labelKey: TKey
-}
+import type { CompanyField } from '@/features/credit-card/hooks/mapping/useMapping'
 
 interface Props {
   company: CompanyData
   handleCompanyChange: (e: React.ChangeEvent<HTMLInputElement>, field: keyof CompanyData) => void
-  companyRequiredFields: RequiredField[]
-  missingCompanyFields: RequiredField[]
+  companyFields: CompanyField[]
+  missingCompanyFields: CompanyField[]
+  /** Per-field problems beyond "missing", e.g. a branch that is not five digits. */
+  companyErrors?: Partial<Record<keyof CompanyData, string>>
 }
 
 const PLACEHOLDER_KEYS: Record<string, TKey> = {
@@ -26,8 +24,9 @@ const PLACEHOLDER_KEYS: Record<string, TKey> = {
 export default function CompanyInfoSection({
   company,
   handleCompanyChange,
-  companyRequiredFields,
+  companyFields,
   missingCompanyFields,
+  companyErrors = {},
 }: Props) {
   const { t } = useT()
   return (
@@ -52,33 +51,54 @@ export default function CompanyInfoSection({
           </span>
         )}
       </div>
+      <p style={{ margin: '-0.25rem 0 0.75rem', fontSize: '0.8rem', color: 'var(--text-3)' }}>
+        {t('cc.companyFromRegistry')}
+      </p>
       <div className="form-grid">
-        {companyRequiredFields.map(({ key, labelKey }) => {
-          const missing = !company[key]?.trim()
+        {companyFields.map(({ key, labelKey, readOnly }) => {
+          const missing = !readOnly && !company[key]?.trim()
+          const error = companyErrors[key]
+          const bad = missing || Boolean(error)
           const label = t(labelKey)
           return (
             <React.Fragment key={`frag-${key}`}>
               <label
-                key={`lbl-${key}`}
                 htmlFor={`inp-${key}`}
-                style={missing ? { color: '#dc2626', fontWeight: 600 } : {}}
+                style={bad ? { color: '#dc2626', fontWeight: 600 } : {}}
               >
                 {label} {missing && <span style={{ color: '#dc2626' }}>*</span>}
               </label>
-              <input
-                key={`inp-${key}`}
-                id={`inp-${key}`}
-                type="text"
-                aria-label={label}
-                placeholder={t(PLACEHOLDER_KEYS[key])}
-                value={company[key]}
-                onChange={e => handleCompanyChange(e, key)}
-                style={
-                  missing
-                    ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' }
-                    : {}
-                }
-              />
+              <div>
+                <input
+                  id={`inp-${key}`}
+                  type="text"
+                  aria-label={label}
+                  placeholder={readOnly ? undefined : t(PLACEHOLDER_KEYS[key])}
+                  value={company[key]}
+                  readOnly={readOnly}
+                  inputMode={key === 'branch' ? 'numeric' : undefined}
+                  maxLength={key === 'branch' ? 5 : undefined}
+                  aria-invalid={bad || undefined}
+                  aria-describedby={error ? `err-${key}` : undefined}
+                  onChange={readOnly ? undefined : e => handleCompanyChange(e, key)}
+                  style={
+                    readOnly
+                      ? // The File Source field's look: the value is the registry's, not the form's.
+                        { cursor: 'default', background: 'var(--muted)' }
+                      : bad
+                        ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' }
+                        : {}
+                  }
+                />
+                {error && (
+                  <small
+                    id={`err-${key}`}
+                    style={{ display: 'block', marginTop: 2, color: 'var(--rose)' }}
+                  >
+                    {error}
+                  </small>
+                )}
+              </div>
             </React.Fragment>
           )
         })}

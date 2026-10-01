@@ -99,6 +99,34 @@ def test_put_accounting_ignores_a_stale_bu_wide_description():
     assert row.description == "Monthly"
 
 
+# ── Branch No ─────────────────────────────────────────────────────────────────
+
+
+def test_put_accounting_refuses_a_branch_that_is_not_five_digits():
+    """The input-tax record posts `branch` as stored, and `0000` (typed that way on one BU)
+    is not a Revenue Department branch number. The mapping page checks first; this is the
+    boundary that decides."""
+    mock_db = make_mock_db()
+    mock_db.execute.return_value.scalar_one_or_none.return_value = None
+    with make_test_client(mock_db) as client:
+        resp = client.put(
+            f"{BASE}/accounting", json=_accounting_payload(branch="0000"), headers=AUTH
+        )
+    assert resp.status_code == 422
+    mock_db.commit.assert_not_called()
+
+
+def test_put_accounting_accepts_a_five_digit_branch_or_none():
+    for branch in ("00000", "00012", None):
+        mock_db = make_mock_db()
+        mock_db.execute.return_value.scalar_one_or_none.return_value = None
+        with make_test_client(mock_db) as client:
+            resp = client.put(
+                f"{BASE}/accounting", json=_accounting_payload(branch=branch), headers=AUTH
+            )
+        assert resp.status_code == 200, branch
+
+
 # ── I3: PUT /accounting ───────────────────────────────────────────────────────
 
 

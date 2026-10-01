@@ -15,15 +15,24 @@ vi.mock('@/shared/api/carmen', () => ({
   fetchDepartments: vi.fn().mockResolvedValue([]),
   fetchGLPrefixes: vi.fn().mockResolvedValue([]),
 }))
+vi.mock('@/shared/lib/toast', () => ({ showToast: vi.fn() }))
+vi.mock('@/features/credit-card/api/mapping', () => ({
+  suggestMapping: vi.fn(),
+  suggestPaymentTypes: vi.fn(),
+}))
 
 import {
   getAccountingConfig as realGetAccountingConfig,
   saveAccountingConfig as realSaveAccountingConfig,
 } from '@/shared/api/config'
+import { saveARSettings as realSaveARSettings } from '@/features/credit-card/api/arReconcile'
+import { showToast as realShowToast } from '@/shared/lib/toast'
 import { appKey } from '@/shared/lib/storage'
 
 const getAccountingConfig = vi.mocked(realGetAccountingConfig)
 const saveAccountingConfig = vi.mocked(realSaveAccountingConfig)
+const saveARSettings = vi.mocked(realSaveARSettings)
+const showToast = vi.mocked(realShowToast)
 
 const AR = 'Account Receivable'
 
@@ -137,7 +146,7 @@ describe('useMapping — switching banks', () => {
 
     getAccountingConfig.mockReturnValueOnce(new Promise(() => {}) as never) // never lands
     act(() => result.current.handleBankChange('Siam Commercial Bank (SCB)'))
-    await act(() => result.current.saveAllSettings(false))
+    await act(() => result.current.saveAllSettings())
 
     expect(saveAccountingConfig).not.toHaveBeenCalled()
   })
@@ -191,7 +200,7 @@ describe('useMapping — settlement keys', () => {
 
   it('sends them back unchanged when the settlement hook has nothing to give', async () => {
     const { result } = await loaded()
-    await act(() => result.current.saveAllSettings(false))
+    await act(() => result.current.saveAllSettings())
 
     // The PUT replaces every entry of the bank, so leaving them out would delete them.
     const sent = saveAccountingConfig.mock.calls[0][0].mappings ?? {}
@@ -202,7 +211,7 @@ describe('useMapping — settlement keys', () => {
   it('sends only what the settlement hook holds, so a removed type stays removed', async () => {
     const { result } = await loaded()
     await act(() =>
-      result.current.saveAllSettings(false, {
+      result.current.saveAllSettings({
         hasSettlementLayout: true,
         // VS removed in the dialog; VS INTER PREM kept.
         mappingsToSave: {
@@ -223,5 +232,134 @@ describe('useMapping — settlement keys', () => {
     })
     expect(sentMappings.Visa).toEqual({ dept: 'GEN', acc: '1130V' })
     expect(call.custom_types).toEqual(['Visa'])
+  })
+})
+
+// The page's one button. A failed PUT used to be swallowed ("localStorage already saved"),
+// and the page carried on — saved the settlement grouping, closed the tab or went back to
+// the queue — exactly as if it had worked.
+describe('useMapping — saving', () => {
+  const KTC = {
+    bank_code: 'KTC',
+    file_prefix: 'IC',
+    branch: '00000',
+    mappings: { commission: { dept: '307', acc: '6080008' } },
+    custom_types: [],
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+    window.location.hash = '#/CreditCardOCR/mapping'
+  })
+
+  async function loaded(config: object = KTC) {
+    getAccountingConfig.mockResolvedValue(config as never)
+    const hook = renderHook(() => useMapping())
+    await waitFor(() => expect(hook.result.current.mappingsBankCode).toBe('KTC'))
+    return hook
+  }
+
+  it('stays on the page and says why when the save fails', async () => {
+    saveAccountingConfig.mockRejectedValue(
+      new Error('Account 999 is not allowed for department GEN')
+    )
+    const { result } = await loaded()
+
+    await act(() =>
+      result.current.saveAllSettings({
+        hasSettlementLayout: true,
+        mappingsToSave: {},
+        postType: 'Detail',
+        bankCode: 'KTC',
+      })
+    )
+
+    expect(saveARSettings).not.toHaveBeenCalled()
+    expect(window.location.hash).toBe('#/CreditCardOCR/mapping')
+    expect(result.current.modalConfig).toMatchObject({ show: true, type: 'error' })
+    expect(result.current.modalConfig.message).toContain('Account 999 is not allowed')
+    // Nothing tells the wizard's tab to re-read a config that was never saved.
+    expect(localStorage.getItem(appKey('accounting_config_updated'))).toBeNull()
+    expect(result.current.saving).toBe(false)
+  })
+
+  it('says it saved, then goes back to the queue', async () => {
+    saveAccountingConfig.mockResolvedValue({} as never)
+    const { result } = await loaded()
+
+    await act(() => result.current.saveAllSettings())
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('KTC'), 'success')
+    expect(window.location.hash).toBe('#/CreditCardOCR')
+  })
+
+  it('will not save a branch that is not five digits', async () => {
+    // `0000` is what nopackage1 has stored, typed that way; the input-tax record posts it.
+    const { result } = await loaded({ ...KTC, branch: '0000' })
+
+    await act(() => result.current.saveAllSettings())
+
+    expect(saveAccountingConfig).not.toHaveBeenCalled()
+    expect(result.current.modalConfig).toMatchObject({ show: true, type: 'error' })
+    expect(result.current.modalConfig.message).toMatch(/5 digits/)
+  })
+
+  it("does not ask for the bank's name, tax ID or address, which come from the registry", async () => {
+    // They are overwritten from BANK_INFO on every load and never reach the server; every
+    // reader takes the document's bank from the registry. Required, they only blocked Save.
+    const { result } = await loaded()
+    act(() => result.current.setCompany({ name: '', taxId: '', branch: '00000', address: '' }))
+
+    expect(result.current.missingCompanyFields).toEqual([])
+  })
+})
+
+// AI Suggest on the page and in the dialog. A failure went to the console only — the
+// button stopped spinning and nothing else happened — while the settlement list in the
+// same dialog raised a toast; and "all mapped" was a modal stacked over the dialog there.
+describe('useMapping — AI suggest says what happened', () => {
+  beforeEach(async () => {
+    localStorage.clear()
+    vi.clearAllMocks()
+    const carmen = await import('@/shared/api/carmen')
+    vi.mocked(carmen.fetchAccountCodes).mockResolvedValueOnce([
+      { AccCode: '6080008', Description: 'Commission' },
+    ] as never)
+    vi.mocked(carmen.fetchDepartments).mockResolvedValueOnce([
+      { DeptCode: 'GEN', Description: 'General' },
+    ] as never)
+  })
+
+  async function withMasters(mappings: object = {}) {
+    getAccountingConfig.mockResolvedValue({
+      bank_code: 'KTC',
+      file_prefix: 'IC',
+      mappings,
+      custom_types: ['VISA'],
+    } as never)
+    const hook = renderHook(() => useMapping())
+    await waitFor(() => expect(hook.result.current.masterAccounts).toHaveLength(1))
+    await waitFor(() => expect(hook.result.current.mappingsBankCode).toBe('KTC'))
+    return hook
+  }
+
+  it('says so when the suggestion fails, not only in the console', async () => {
+    const api = await import('@/features/credit-card/api/mapping')
+    vi.mocked(api.suggestMapping).mockRejectedValue(new Error('502'))
+    const { result } = await withMasters()
+
+    await act(() => result.current.autoSuggest())
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/suggestion failed/i), 'error')
+  })
+
+  it('answers "all mapped" with a toast, not a modal over the dialog', async () => {
+    const { result } = await withMasters({ VISA: { dept: 'GEN', acc: '6080008' } })
+
+    await act(() => result.current.autoSuggestPaymentTypes(['VISA']))
+
+    expect(showToast).toHaveBeenCalledWith('Every payment type is already mapped', 'info')
+    expect(result.current.modalConfig.show).toBe(false)
   })
 })

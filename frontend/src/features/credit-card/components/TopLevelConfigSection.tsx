@@ -10,11 +10,6 @@ import { descriptionForBank } from '../lib/bankTransforms'
 import { DESCRIPTION_TAGS, joinDescription, renderDescription, splitDescription } from '../lib/ccJv'
 import '@/styles/pages/ar-reconcile.css'
 
-const BANK_OPTIONS: SelectOption[] = BANKS.map(b => ({
-  code: b.full,
-  name: b.kind === 'gateway' ? 'Payment gateway' : 'Bank',
-}))
-
 interface Props {
   bank: BankDisplayName | ''
   handleBankChange: (bank: BankDisplayName | '') => void
@@ -50,6 +45,10 @@ export default function TopLevelConfigSection({
   settlementPreview,
 }: Props) {
   const { t } = useT()
+  const bankOptions: SelectOption[] = BANKS.map(b => ({
+    code: b.full,
+    name: t(b.kind === 'gateway' ? 'cc.bankKindGateway' : 'cc.bankKindBank'),
+  }))
   const bankCode = bank ? BANK_CODE_MAP[bank] : ''
   // This bank's own wording is the whole story — there is no BU-wide fallback behind it
   // since 2026-09-30, so an empty box is an empty description on the JV. With no bank
@@ -81,7 +80,7 @@ export default function TopLevelConfigSection({
         <CustomSearchSelect
           value={bank || null}
           onChange={v => handleBankChange(v as BankDisplayName)}
-          options={BANK_OPTIONS}
+          options={bankOptions}
           placeholder={t('cc.cfgBankPlaceholder')}
           hasError={!bank}
           aria-label={t('cc.cfgBank')}
@@ -98,7 +97,7 @@ export default function TopLevelConfigSection({
           value={filePrefix || null}
           onChange={setFilePrefix}
           options={prefixes}
-          placeholder="Select prefix..."
+          placeholder={t('cc.cfgFilePrefixPh')}
           hasError={!filePrefix}
           aria-label={t('cc.cfgFilePrefix')}
         />

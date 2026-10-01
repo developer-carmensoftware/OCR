@@ -171,7 +171,11 @@ export function useSettlementMapping(
 
   const startSettings = (code: string) => {
     const promise = getARSettings(code)
-    promise.catch(() => {}) // surfaced by `load`, which awaits this same promise
+    promise.catch(() => {
+      // Surfaced by `load`, which awaits this same promise. Not kept for reuse: the page's
+      // Try again reached `load` with this failure still cached, and the card stayed gone.
+      if (settingsRef.current?.promise === promise) settingsRef.current = null
+    })
     settingsRef.current = { code, promise }
     return promise
   }
@@ -360,7 +364,7 @@ export function useSettlementMapping(
       if (Object.keys(next).length === 0) toast.info(t('ar.toastNoSuggestion'))
     } catch (err) {
       console.error('AR suggest failed:', err)
-      toast.error('AI Auto-Map failed')
+      toast.error(t('cc.aiSuggestFailed'))
     } finally {
       setSuggestLoading(false)
     }
@@ -436,7 +440,10 @@ export function useSettlementMapping(
 
   useEffect(() => {
     if (busy || !hasSettlementLayout) return
-    refreshPreview()
+    // One request per pause, not per keystroke: each is a session check and a DB read, and
+    // the Description field feeds this as it is typed.
+    const timer = setTimeout(refreshPreview, 300)
+    return () => clearTimeout(timer)
   }, [busy, hasSettlementLayout, refreshPreview])
 
   const rowCount = (pt: PostType) => Object.keys(sets[pt] || {}).length

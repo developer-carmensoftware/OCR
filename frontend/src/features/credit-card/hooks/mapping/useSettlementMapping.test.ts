@@ -211,6 +211,41 @@ describe('useSettlementMapping', () => {
     expect(result.current.hasSettlementLayout).toBe(false) // SCB's, not KBANK's late one
   })
 
+  // One network blip fails the bank's config and settings together. The page offers Try
+  // again, the config lands — and the card stayed gone, because the load awaited the
+  // settings request that had already failed instead of asking again.
+  it('asks again for settings that failed, rather than reusing the failure', async () => {
+    getARSettings.mockRejectedValueOnce(new Error('offline'))
+    getARSettings.mockResolvedValue(settingsResponse())
+    const { result, rerender } = renderHook(
+      ({ of }: { of: string }) => useSettlementMapping('KBANK', {}, [], [], '', of),
+      { initialProps: { of: 'SCB' } } // this bank's mappings have not landed yet
+    )
+    await act(async () => {}) // the early settings request fails meanwhile
+
+    rerender({ of: 'KBANK' }) // Try again: the mappings land
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(getARSettings).toHaveBeenCalledTimes(2)
+    expect(result.current.hasSettlementLayout).toBe(true)
+  })
+
+  it('asks for one preview per pause in typing, not one per keystroke', async () => {
+    getARSettings.mockResolvedValue(settingsResponse())
+    const { rerender } = renderHook(
+      ({ description }) => useSettlementMapping('KBANK', {}, [], [], description),
+      { initialProps: { description: 'A' } }
+    )
+    await waitFor(() => expect(previewARJv).toHaveBeenCalledTimes(1))
+
+    // Each request is a session check and a DB read, for one line of text.
+    for (const description of ['AR', 'AR ', 'AR R', 'AR Re', 'AR Rec']) rerender({ description })
+    await waitFor(() => expect(previewARJv).toHaveBeenCalledTimes(2))
+    expect(previewARJv).toHaveBeenLastCalledWith(
+      expect.objectContaining({ jv_description_template: 'AR Rec' })
+    )
+  })
+
   it('seeds Summary by folding the sample onto each scheme’s first token, deduped', async () => {
     getARSettings.mockResolvedValue(settingsResponse({ post_type: 'Summary' }))
     getSamplePaymentTypes.mockResolvedValue([

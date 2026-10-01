@@ -33,7 +33,15 @@ export async function saveAccountingConfig(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
-  if (!res.ok) throw new Error(`Config save failed (${res.status})`)
+  if (!res.ok) {
+    // The server's own reason when it sends one as text — the mapping page shows it, and a
+    // status code names nothing the reader can fix. (A 422's `detail` is a list: status.)
+    const detail = await res
+      .json()
+      .then(d => (d as { detail?: unknown }).detail)
+      .catch(() => null)
+    throw new Error(typeof detail === 'string' ? detail : `Config save failed (${res.status})`)
+  }
   return res.json() as Promise<AccountingConfigResponse>
 }
 

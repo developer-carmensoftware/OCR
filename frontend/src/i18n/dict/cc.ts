@@ -101,6 +101,9 @@ export const en = {
   // Mapping config page — top-level config
   'cc.cfgBank': 'Bank',
   'cc.cfgBankPlaceholder': 'Select bank...',
+  'cc.bankKindBank': 'Bank',
+  'cc.bankKindGateway': 'Payment gateway',
+  'cc.cfgFilePrefixPh': 'Select prefix...',
   'cc.cfgFilePrefix': 'File Prefix',
   'cc.cfgFilePrefixHelp':
     'Prefix for the journal voucher file name sent to Carmen (e.g. IC for invoice credit, AP for accounts payable)',
@@ -127,6 +130,7 @@ export const en = {
   'cc.companyTaxIdPh': 'Enter TAX ID',
   'cc.companyBranchPh': 'Enter branch',
   'cc.companyAddressPh': 'Enter address',
+  'cc.companyFromRegistry': "Name, tax ID and address are the selected bank's registered details.",
   // Mapping config page — account code mapping table
   'cc.mapTitle': 'ACCOUNT CODE MAPPING',
   'cc.mapLoadingCodes': 'Loading account codes...',
@@ -209,8 +213,13 @@ export const en = {
   'cc.valIllegalTitle': 'Account not allowed for department',
   'cc.valIllegalPair': '{label}: {acc} is not allowed for department {dept}',
   'cc.valIllegalMsg': "{pairs}\nPlease pick an account from the department's allowed list.",
-  'cc.saveSuccessTitle': 'Save Successful',
-  'cc.saveSuccessMsg': 'Account Mapping settings have been saved successfully.',
+  'cc.valCheckTitle': 'Check before saving',
+  'cc.valBranchFormat': 'Branch No must be 5 digits — 00000 for the head office',
+  'cc.saveDone': "Saved {bank}'s account mapping",
+  'cc.saveFailedTitle': 'Account mapping not saved',
+  'cc.saveFailedMsg': 'Nothing was saved, and your changes are still here. {detail}',
+  'cc.aiSuggestFailed': 'AI suggestion failed — try again',
+  'cc.aiMainAllMapped': 'Commission, input tax and bank account are already mapped',
   'cc.settlementCardTitle': 'Settlement report',
   'cc.settlementNoLayoutHint':
     'This bank has no settlement-report layout yet — nothing to configure here.',
@@ -320,6 +329,9 @@ export const th: Record<keyof typeof en, string> = {
   // Mapping config page — top-level config
   'cc.cfgBank': 'ธนาคาร',
   'cc.cfgBankPlaceholder': 'เลือกธนาคาร...',
+  'cc.bankKindBank': 'ธนาคาร',
+  'cc.bankKindGateway': 'ผู้ให้บริการรับชำระเงิน',
+  'cc.cfgFilePrefixPh': 'เลือก Prefix...',
   'cc.cfgFilePrefix': 'รหัสสมุดรายวัน (Prefix)',
   'cc.cfgFilePrefixHelp':
     'คำนำหน้าชื่อไฟล์ใบสำคัญรายวันที่ส่งเข้า Carmen (เช่น IC สำหรับ invoice credit, AP สำหรับเจ้าหนี้)',
@@ -345,6 +357,8 @@ export const th: Record<keyof typeof en, string> = {
   'cc.companyTaxIdPh': 'กรอกเลขประจำตัวผู้เสียภาษี',
   'cc.companyBranchPh': 'กรอกสาขา',
   'cc.companyAddressPh': 'กรอกที่อยู่',
+  'cc.companyFromRegistry':
+    'ชื่อ เลขประจำตัวผู้เสียภาษี และที่อยู่ เป็นข้อมูลจดทะเบียนของธนาคารที่เลือก',
   // Mapping config page — account code mapping table
   'cc.mapTitle': 'การจับคู่รหัสบัญชี',
   'cc.mapLoadingCodes': 'กำลังโหลดรหัสบัญชี...',
@@ -425,8 +439,13 @@ export const th: Record<keyof typeof en, string> = {
   'cc.valIllegalTitle': 'บัญชีไม่อนุญาตสำหรับแผนกที่เลือก',
   'cc.valIllegalPair': '{label}: {acc} ไม่อนุญาตสำหรับแผนก {dept}',
   'cc.valIllegalMsg': '{pairs}\nกรุณาเลือกบัญชีจากรายการที่แผนกนั้นอนุญาต',
-  'cc.saveSuccessTitle': 'บันทึกสำเร็จ',
-  'cc.saveSuccessMsg': 'บันทึกการตั้งค่าการจับคู่บัญชีเรียบร้อยแล้ว',
+  'cc.valCheckTitle': 'ตรวจสอบก่อนบันทึก',
+  'cc.valBranchFormat': 'สาขาเลขที่ต้องเป็นตัวเลข 5 หลัก — สำนักงานใหญ่คือ 00000',
+  'cc.saveDone': 'บันทึกผังบัญชีของ {bank} แล้ว',
+  'cc.saveFailedTitle': 'บันทึกผังบัญชีไม่สำเร็จ',
+  'cc.saveFailedMsg': 'ยังไม่มีอะไรถูกบันทึก และสิ่งที่แก้ไว้ยังอยู่ครบ {detail}',
+  'cc.aiSuggestFailed': 'AI แนะนำไม่สำเร็จ ลองอีกครั้ง',
+  'cc.aiMainAllMapped': 'ค่าธรรมเนียม ภาษีซื้อ และบัญชีธนาคาร จับคู่ครบแล้ว',
   'cc.settlementCardTitle': 'รายงานเคลียร์ยอด (Settlement)',
   'cc.settlementNoLayoutHint':
     'ธนาคารนี้ยังไม่มีรูปแบบรายงานเคลียร์ยอด จึงไม่มีอะไรให้ตั้งค่าตรงนี้',

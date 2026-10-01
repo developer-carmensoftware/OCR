@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.schemas.common import FieldMapping
 
@@ -9,7 +9,10 @@ class AccountingConfigRequest(BaseModel):
     bank_code: str | None = None
     file_prefix: str | None = None
     file_source: str | None = None
-    branch: str | None = None
+    # A Revenue Department branch number — five digits, 00000 for the head office. The
+    # input-tax record posts it as stored, so `0000` (typed that way on one BU) reached
+    # Carmen as is. The mapping page checks first; this is the boundary that decides.
+    branch: str | None = Field(None, pattern=r"^\d{5}$")
     mappings: dict[str, FieldMapping] | None = None
     custom_types: list[str] | None = None
     # bank_code -> description, the only description there is (no BU-wide one since

@@ -222,6 +222,8 @@ export default function MainMappingTable({
                     onChange={(val: string) => handleMappingChange(key, 'dept', val)}
                     options={masterDepartments}
                     placeholder={t('cc.mapDeptPh')}
+                    // Named per row: three pickers sharing one placeholder read the same.
+                    aria-label={`${t('cc.mapDeptCode')} — ${glFieldLabel(key, t)}`}
                     topChoice={deptTopChoice?.code ? deptTopChoice : null}
                     suggestedValue={suggestion?.dept ?? null}
                     hasError={!mappings[key].dept}
@@ -234,6 +236,7 @@ export default function MainMappingTable({
                     options={acctOptions}
                     notice={acctNotice}
                     placeholder={t('cc.mapAccPh')}
+                    aria-label={`${t('cc.mapAccCode')} — ${glFieldLabel(key, t)}`}
                     topChoice={accTopChoice?.code ? accTopChoice : null}
                     suggestedValue={suggestion?.acc ?? null}
                     hasError={

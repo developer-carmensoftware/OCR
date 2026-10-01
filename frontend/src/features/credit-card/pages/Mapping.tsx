@@ -179,7 +179,6 @@ export default function Mapping() {
 
   const handleSave = () =>
     void mappingCtrl.saveAllSettings(
-      true,
       showSettlement
         ? {
             hasSettlementLayout: true,
@@ -209,7 +208,6 @@ export default function Mapping() {
         onConfirm={mappingCtrl.handleAcceptAll}
         onCancel={() => mappingCtrl.setAcceptAllModal(false)}
       />
-
       <div className="container">
         <h1>
           <Network size={20} /> {t('cc.mappingTitle')}
@@ -231,8 +229,9 @@ export default function Mapping() {
         <CompanyInfoSection
           company={mappingCtrl.company}
           handleCompanyChange={mappingCtrl.handleCompanyChange}
-          companyRequiredFields={mappingCtrl.companyRequiredFields}
+          companyFields={mappingCtrl.companyFields}
           missingCompanyFields={mappingCtrl.missingCompanyFields}
+          companyErrors={mappingCtrl.companyErrors}
         />
 
         {bankFailed ? (

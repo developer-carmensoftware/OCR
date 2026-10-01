@@ -13,9 +13,11 @@ import type {
  * VS INTER PREM and VS INTER UP PREM that all post to the same receivable — three picks
  * of the same two codes is the job this removes (A2X's "bulk apply", Polaris' bulk bar).
  *
- * The account list follows the department exactly as a row's does, so a bulk write can
- * never produce a pair the row would have refused. Either field may be left blank to
- * write only the other.
+ * The account list follows the department exactly as a row's does, so a bulk write that
+ * names a department never produces a pair it would refuse. Either field may be left blank
+ * to write only the other — and an account written alone is not checked against each
+ * row's own department: a row that forbids it turns red, and Done stops on it
+ * (`PaymentMappingDialog.handleDone`).
  */
 
 interface Props {
