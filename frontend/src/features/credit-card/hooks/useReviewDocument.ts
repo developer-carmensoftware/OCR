@@ -30,7 +30,14 @@ import type { BankCode } from '@/shared/types/api'
  * Not in the `hooks/` barrel, the way `useReviewQueue` is not: the page imports it by
  * path, so a test that mocks the barrel for `useAccountingConfig` still gets this one.
  */
-export function useReviewDocument(id: string, onClose: () => void, onDone: () => void) {
+export function useReviewDocument(
+  id: string,
+  onClose: () => void,
+  onDone: () => void,
+  /** The queue row's `bank_code`, when the queue has the row — lets the GL rules load
+   *  alongside the document instead of after it. */
+  bankHint?: string | null
+) {
   const { t } = useT()
   const [doc, setDoc] = useState<ReviewDocumentDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -75,7 +82,19 @@ export function useReviewDocument(id: string, onClose: () => void, onDone: () =>
     totalDr: 0,
     totalCr: 0,
   })
-  const { config, loading: configLoading } = useAccountingConfig()
+  // Which bank this posts against: what ingest stored on the row, which since 2026-09-03
+  // is the document's own answer and not a filename rule's guess. Re-detecting in the
+  // browser first put a weaker reading of the same payload ahead of it —
+  // `detectBankFromExtracted` misses whenever the header carries only the short code. The
+  // detection stays as the fallback for rows written before that change. Until the
+  // document arrives, the queue row's copy of that same column stands in for it.
+  //
+  // Resolved once here: the JV pane and the config write already fell back this way, and
+  // the input-tax panel took the bare detection and so lost the vendor's registered
+  // identity — name, tax ID and address — for a bank sitting right there in the registry.
+  const bankCode = (doc?.bank_code || bank || bankHint || '') as BankCode | ''
+  // This bank's own GL rules: the JV is built from them and approve posts that JV.
+  const { config, loading: configLoading } = useAccountingConfig(bankCode || undefined)
 
   const [busy, setBusy] = useState(false)
   const [postError, setPostError] = useState<string | null>(null)
@@ -190,17 +209,6 @@ export function useReviewDocument(id: string, onClose: () => void, onDone: () =>
     setDescs(d => ({ ...d, [id]: value }))
   }, [])
   const onJvState = useCallback((s: JvState) => setJv(s), [])
-
-  // Which bank this posts against: what ingest stored on the row, which since 2026-09-03
-  // is the document's own answer and not a filename rule's guess. Re-detecting in the
-  // browser first put a weaker reading of the same payload ahead of it —
-  // `detectBankFromExtracted` misses whenever the header carries only the short code. The
-  // detection stays as the fallback for rows written before that change.
-  //
-  // Resolved once here: the JV pane and the config write already fell back this way, and
-  // the input-tax panel took the bare detection and so lost the vendor's registered
-  // identity — name, tax ID and address — for a bank sitting right there in the registry.
-  const bankCode = (doc?.bank_code || bank || '') as BankCode | ''
 
   // The header and input-tax edits, named here rather than inlined in the page, so every
   // way the reviewer changes something marks the document dirty in one place.

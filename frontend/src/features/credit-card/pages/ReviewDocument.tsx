@@ -18,6 +18,8 @@ interface Props {
   onClose: () => void
   /** Approved, rejected, or found to be gone: the queue behind this is now stale. */
   onDone: () => void
+  /** The queue row's bank, so this bank's GL rules load alongside the document. */
+  bankHint?: string | null
 }
 
 /**
@@ -34,7 +36,7 @@ interface Props {
  * The GL rules are editable here rather than on `#/CreditCardOCR/mapping`. Leaving to fix
  * one meant losing the document you were reading.
  */
-export default function ReviewDocument({ id, onClose, onDone }: Props) {
+export default function ReviewDocument({ id, onClose, onDone, bankHint }: Props) {
   const { t } = useT()
   const {
     doc,
@@ -84,7 +86,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     onItxOverride,
     approve,
     reject,
-  } = useReviewDocument(id, onClose, onDone)
+  } = useReviewDocument(id, onClose, onDone, bankHint)
   const modalRef = useRef<HTMLDivElement>(null)
 
   // Dialog chrome: focus moves in, focus goes back, the page behind stops scrolling, Tab

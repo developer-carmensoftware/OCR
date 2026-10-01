@@ -57,9 +57,18 @@ function readFromLocalStorage(): AccountingConfig | null {
   }
 }
 
-export function useAccountingConfig(): AccountingConfigHook {
+/**
+ * @param bankCode The bank whose GL rules to read — the document's own. GL rules are per
+ * bank since 20260924000000, and an unscoped read answers with whichever bank the mapping
+ * page saved last, so a JV built for one bank's statement took another bank's accounts.
+ * Omit only where no mapping is read (header fields and per-bank descriptions).
+ */
+export function useAccountingConfig(bankCode?: string): AccountingConfigHook {
   const [config, setConfigState] = useState<AccountingConfig | null>(null)
   const [loading, setLoading] = useState(true)
+  // Which bank `config` was read for. `loading` alone lags a bank change by one render, and
+  // in that render the JV would be built from the previous bank's accounts.
+  const [loadedFor, setLoadedFor] = useState<string | undefined | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
   const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
@@ -79,7 +88,7 @@ export function useAccountingConfig(): AccountingConfigHook {
     let cancelled = false
     setLoading(true)
 
-    getAccountingConfig()
+    getAccountingConfig(bankCode)
       .then(apiData => {
         if (cancelled) return
         const hasData =
@@ -100,20 +109,24 @@ export function useAccountingConfig(): AccountingConfigHook {
       })
       .catch(() => {
         if (cancelled) return
-        setConfigState(readFromLocalStorage())
+        // The offline copy holds whichever bank the mapping page saved last, and a scan
+        // rewrites its `bank` on every run — it cannot answer for a bank asked for by name.
+        setConfigState(bankCode ? null : readFromLocalStorage())
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (cancelled) return
+        setLoadedFor(bankCode)
+        setLoading(false)
       })
 
     return () => {
       cancelled = true
     }
-  }, [refreshKey])
+  }, [refreshKey, bankCode])
 
   return {
     config,
-    loading,
+    loading: loading || loadedFor !== bankCode,
     refresh,
     filePrefix: config?.filePrefix || '',
     fileSource: config?.fileSource || '',

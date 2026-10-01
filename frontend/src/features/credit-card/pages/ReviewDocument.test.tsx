@@ -49,8 +49,14 @@ vi.mock('@/shared/api/carmen', () => ({
 // The BU's stored rules. Every payment type is mapped, which is the state a parked
 // document actually arrives in — ingest fills and saves before it parks.
 let storedConfig: Record<string, unknown> | null = null
+// Which bank each render asked the rules for. GL rules are per bank, and the JV is built —
+// and posted — from these, so only the document's own bank's are right.
+let configBanks: Array<string | undefined> = []
 vi.mock('@/features/credit-card/hooks', () => ({
-  useAccountingConfig: () => ({ config: storedConfig, loading: false }),
+  useAccountingConfig: (bank?: string) => {
+    configBanks.push(bank)
+    return { config: storedConfig, loading: false }
+  },
 }))
 
 // The picker is portaled and search-driven; its internals are not what this screen adds.
@@ -172,6 +178,7 @@ const mapApi = await import('@/features/credit-card/api/mapping')
 
 beforeEach(() => {
   vi.clearAllMocks()
+  configBanks = []
   // JvEditor asks for a suggestion whenever a payment type has no account. Most tests
   // never reach that branch, but an unresolved mock throws inside the effect.
   vi.mocked(mapApi.suggestPaymentTypes).mockResolvedValue({})
@@ -210,6 +217,30 @@ describe('the screen', () => {
     expect(await screen.findByLabelText('Credit for Visa line 1')).toHaveValue('1,000.00')
     expect(screen.queryByText(/no accounting configuration yet/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/There is nothing to post/i)).not.toBeInTheDocument()
+  })
+
+  // Unscoped, the server answers with whichever bank the mapping page saved last: a KBANK
+  // statement in a BU that last saved SCB was built against SCB's bank account, and approve
+  // posts the rows this screen built.
+  it("builds the JV from the document's own bank's rules", async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByLabelText('Credit for Visa line 1')
+    expect(configBanks[configBanks.length - 1]).toBe('KTC')
+  })
+
+  it('asks for that bank from the first render when the queue already knows it', async () => {
+    // The queue row carries the bank, so the rules load alongside the document rather than
+    // after it — no extra round trip on every open.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    render(
+      <LanguageProvider>
+        <ReviewDocument id="d1" bankHint="KTC" onClose={onClose} onDone={onDone} />
+      </LanguageProvider>
+    )
+    await screen.findByLabelText('Credit for Visa line 1')
+    expect(configBanks.length).toBeGreaterThan(0)
+    expect(configBanks.every(b => b === 'KTC')).toBe(true)
   })
 
   it('will not post without a prefix', async () => {

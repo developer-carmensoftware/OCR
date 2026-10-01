@@ -443,6 +443,7 @@ export default function ReviewQueue() {
       {openId && (
         <ReviewDocument
           id={openId}
+          bankHint={rows.find(r => r.id === openId)?.bank_code}
           onClose={() => {
             window.location.hash = QUEUE
           }}

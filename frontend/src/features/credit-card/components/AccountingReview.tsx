@@ -52,7 +52,12 @@ export default function AccountingReview({
   submitting = false,
 }: Props) {
   const { t } = useT()
-  const { config, loading: configLoading, refresh: loadConfig } = useAccountingConfig()
+  // The scanned bank's own rules: this JV is the one the wizard posts.
+  const {
+    config,
+    loading: configLoading,
+    refresh: loadConfig,
+  } = useAccountingConfig(bank || undefined)
   const [warningModal, setWarningModal] = useState(false)
   const [accNameMap, setAccNameMap] = useState<Record<string, string>>(_accCache || {})
   const [accLoading, setAccLoading] = useState(!_accCache)
