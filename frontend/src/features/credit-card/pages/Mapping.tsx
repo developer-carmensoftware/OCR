@@ -234,6 +234,16 @@ export default function Mapping() {
         onCancel={() => mappingCtrl.setAcceptAllModal(false)}
       />
       <CustomModal
+        show={mappingCtrl.conflictAsk}
+        title={t('cc.conflictTitle', { bank: bankCode })}
+        message={t('cc.conflictMsg', { bank: bankCode })}
+        type="warning"
+        confirmText={t('cc.conflictReload')}
+        cancelText={t('cc.conflictKeep')}
+        onConfirm={mappingCtrl.reloadBank}
+        onCancel={mappingCtrl.keepEditing}
+      />
+      <CustomModal
         show={pendingBank !== null}
         title={t('cc.switchBankTitle', { bank: bankCode })}
         message={t('cc.switchBankMsg', { bank: bankCode })}

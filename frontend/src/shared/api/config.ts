@@ -25,9 +25,15 @@ export async function getAccountingConfig(
   return res.json() as Promise<AccountingConfigResponse>
 }
 
+/** What a save answers: the bank's new `version`, so a page that stays open can save again. */
+export interface SaveAccountingConfigResult {
+  ok: boolean
+  version?: string | null
+}
+
 export async function saveAccountingConfig(
   payload: AccountingConfigRequest
-): Promise<AccountingConfigResponse> {
+): Promise<SaveAccountingConfigResult> {
   const res = await apiFetch(API.config.accounting, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -40,9 +46,14 @@ export async function saveAccountingConfig(
       .json()
       .then(d => (d as { detail?: unknown }).detail)
       .catch(() => null)
-    throw new Error(typeof detail === 'string' ? detail : `Config save failed (${res.status})`)
+    // `status` rides along: a 409 is "someone saved first", which the page answers with a
+    // choice rather than an error.
+    throw Object.assign(
+      new Error(typeof detail === 'string' ? detail : `Config save failed (${res.status})`),
+      { status: res.status }
+    )
   }
-  return res.json() as Promise<AccountingConfigResponse>
+  return res.json() as Promise<SaveAccountingConfigResult>
 }
 
 export interface ConfigPatch {

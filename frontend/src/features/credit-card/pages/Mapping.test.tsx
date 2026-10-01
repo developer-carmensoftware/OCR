@@ -224,6 +224,42 @@ describe('the mapping page — saving', () => {
   })
 })
 
+describe('the mapping page — someone else saved first', () => {
+  it('asks, and Reload latest brings in what they saved', async () => {
+    vi.mocked(cfg.saveAccountingConfig).mockRejectedValueOnce(
+      Object.assign(new Error('changed'), { status: 409 })
+    )
+    await mounted()
+    fireEvent.change(commissionAcc(), { target: { value: '6080009' } })
+    fireEvent.click(saveButton())
+
+    const ask = await screen.findByRole('dialog')
+    expect(within(ask).getByText(/changed after you opened it/i)).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/CreditCardOCR/mapping')
+
+    vi.mocked(cfg.getAccountingConfig).mockResolvedValue(
+      config('KTC', '6080008') as never // what the other person left
+    )
+    fireEvent.click(within(ask).getByRole('button', { name: 'Reload latest' }))
+
+    await waitFor(() => expect(commissionAcc().value).toBe('6080008'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('Keep editing leaves the form as it was', async () => {
+    vi.mocked(cfg.saveAccountingConfig).mockRejectedValueOnce(
+      Object.assign(new Error('changed'), { status: 409 })
+    )
+    await mounted()
+    fireEvent.change(commissionAcc(), { target: { value: '6080009' } })
+    fireEvent.click(saveButton())
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }))
+
+    expect(commissionAcc().value).toBe('6080009')
+  })
+})
+
 describe('the mapping page — unsaved changes', () => {
   it('asks before a bank switch throws them away', async () => {
     await mounted()

@@ -32,6 +32,16 @@ export interface BankConfigHook {
    *  off this instead of off `bank` (which changes one render before the fetch for it
    *  resolves). Null before anything has loaded or when no bank is selected. */
   mappingsBankCode: string | null
+  /** When those mappings last changed on the server — sent back with a save, which the
+   *  server refuses if someone else saved since. Null for an offline copy. */
+  version: string | null
+  /** Bumped each time a bank's mappings land, so a reload of the *same* bank is seen. */
+  loadId: number
+  /** Re-reads the selected bank from the server — "discard my edits, show me what is
+   *  there". */
+  reloadBank: () => void
+  /** After a save that kept the page open: the server's new version of what was saved. */
+  setVersion: (v: string | null) => void
   /** The bank_code whose mappings failed to load on a switch — the page shows a retry in
    *  place of its mapping sections rather than the previous bank's rows. */
   bankError: string | null
@@ -68,6 +78,8 @@ export function useBankConfig(): BankConfigHook {
   const [savedMappings, setSavedMappings] = useState<Record<string, FieldMapping>>({})
   const [savedCustomTypes, setSavedCustomTypes] = useState<string[]>([])
   const [mappingsBankCode, setMappingsBankCode] = useState<string | null>(null)
+  const [version, setVersion] = useState<string | null>(null)
+  const [loadId, setLoadId] = useState(0)
   const [bankError, setBankError] = useState<string | null>(null)
   const [retryKey, setRetryKey] = useState(0)
 
@@ -119,6 +131,8 @@ export function useBankConfig(): BankConfigHook {
           setSavedMappings(apiData.mappings || {})
           setSavedCustomTypes(apiData.custom_types || [])
           setMappingsBankCode(scopeBankCode ?? apiData.bank_code ?? null)
+          setVersion(apiData.version ?? null)
+          setLoadId(n => n + 1)
         } else {
           throw new Error('empty')
         }
@@ -190,6 +204,8 @@ export function useBankConfig(): BankConfigHook {
         setSavedMappings(apiData.mappings || {})
         setSavedCustomTypes(apiData.custom_types || [])
         setMappingsBankCode(bankCode)
+        setVersion(apiData.version ?? null)
+        setLoadId(n => n + 1)
       })
       .catch(() => {
         // Said, not swallowed: leaving the previous bank's rows up under this bank's name
@@ -215,6 +231,12 @@ export function useBankConfig(): BankConfigHook {
     configLoading,
     bankError,
     retryBank: () => setRetryKey(k => k + 1),
+    // Clearing `mappingsBankCode` is what makes the effect above fetch again; the page
+    // shows its loading state meanwhile, as for a switch.
+    reloadBank: () => setMappingsBankCode(null),
+    version,
+    setVersion,
+    loadId,
     savedMappings,
     savedCustomTypes,
     mappingsBankCode,

@@ -3,6 +3,7 @@ Integration tests for /api/v1/config/* endpoints.
 Sync test functions using starlette TestClient as a context manager.
 """
 
+from datetime import UTC
 from unittest.mock import MagicMock
 
 from tests.conftest import make_mock_db
@@ -75,7 +76,12 @@ def test_get_accounting_with_config_returns_file_prefix():
     mock_db = make_mock_db()
     # config row, this bank's entries, then the bank-less ones a bank-scoped read falls
     # back to (F-8) — the row names a bank, so that third read happens
-    mock_db.execute.side_effect = [_scalar(_config_row()), _scalars([]), _scalars([])]
+    mock_db.execute.side_effect = [
+        _scalar(_config_row()),
+        _scalars([]),
+        _scalars([]),
+        _scalar(None),  # the version read
+    ]
     with make_test_client(mock_db) as client:
         resp = client.get(f"{BASE}/accounting", headers=AUTH)
         assert resp.status_code == 200
@@ -97,6 +103,77 @@ def test_put_accounting_ignores_a_stale_bu_wide_description():
         )
         assert resp.status_code == 200
     assert row.description == "Monthly"
+
+
+# ── Concurrent edits ─────────────────────────────────────────────────────────
+
+
+def _stamped_row(updated_at, descriptions=None):
+    row = _config_row()
+    row.updated_at = updated_at
+    row.bank_descriptions = descriptions if descriptions is not None else {}
+    return row
+
+
+def _put(mock_db, **kw):
+    with make_test_client(mock_db) as client:
+        return client.put(f"{BASE}/accounting", json=_accounting_payload(**kw), headers=AUTH)
+
+
+def test_put_refuses_a_save_made_over_a_newer_one():
+    """The page loads a bank's rules, someone corrects one from the review queue, and the
+    page's PUT (a full replace of that bank) would silently undo the correction."""
+    from datetime import datetime
+
+    mock_db = make_mock_db()
+    mock_db.execute.return_value.scalar_one_or_none.return_value = _stamped_row(
+        datetime(2026, 10, 1, 9, 0, 5, tzinfo=UTC)
+    )
+    mock_db.execute.return_value.scalar.return_value = None  # no newer entry
+    resp = _put(mock_db, base_version="2026-10-01T09:00:00+00:00")
+    assert resp.status_code == 409
+    mock_db.commit.assert_not_called()
+
+
+def test_put_goes_through_when_nothing_changed_since_it_was_loaded():
+    from datetime import datetime
+
+    stamp = datetime(2026, 10, 1, 9, 0, 0, tzinfo=UTC)
+    mock_db = make_mock_db()
+    mock_db.execute.return_value.scalar_one_or_none.return_value = _stamped_row(stamp)
+    mock_db.execute.return_value.scalar.return_value = stamp
+    resp = _put(mock_db, base_version=stamp.isoformat())
+    assert resp.status_code == 200
+    assert "version" in resp.json()
+
+
+def test_put_without_a_version_is_accepted_as_before():
+    """A tab loaded before this check existed sends none."""
+    from datetime import datetime
+
+    mock_db = make_mock_db()
+    mock_db.execute.return_value.scalar_one_or_none.return_value = _stamped_row(
+        datetime(2026, 10, 1, tzinfo=UTC)
+    )
+    assert _put(mock_db).status_code == 200
+
+
+def test_put_merges_descriptions_by_bank_instead_of_replacing_them_all():
+    """The page edits one bank's wording; sending it must not erase another bank's, which
+    a reviewer may have just corrected from the queue."""
+    row = _stamped_row(None, {"KBANK": "old", "SCB": "scb wording"})
+    mock_db = make_mock_db()
+    mock_db.execute.return_value.scalar_one_or_none.return_value = row
+    assert _put(mock_db, bank_descriptions={"KBANK": "new"}).status_code == 200
+    assert row.bank_descriptions == {"KBANK": "new", "SCB": "scb wording"}
+
+
+def test_an_empty_description_clears_only_that_bank():
+    row = _stamped_row(None, {"KBANK": "old", "SCB": "scb wording"})
+    mock_db = make_mock_db()
+    mock_db.execute.return_value.scalar_one_or_none.return_value = row
+    assert _put(mock_db, bank_descriptions={"KBANK": ""}).status_code == 200
+    assert row.bank_descriptions == {"SCB": "scb wording"}
 
 
 # ── Branch No ─────────────────────────────────────────────────────────────────

@@ -294,6 +294,61 @@ describe('useMapping — saving', () => {
     expect(window.location.hash).toBe('#/CreditCardOCR')
   })
 
+  it("sends the version it loaded, and only the selected bank's description", async () => {
+    // The server merges descriptions per bank; sending the whole dict replaced a bank
+    // another person had corrected since this page loaded.
+    saveAccountingConfig.mockResolvedValue({ ok: true, version: 'V2' } as never)
+    const { result } = await loaded({
+      ...KTC,
+      version: 'V1',
+      bank_descriptions: { KTC: 'KTC fee', SCB: 'scb wording' },
+    })
+
+    await act(() => result.current.saveAllSettings())
+
+    const sent = saveAccountingConfig.mock.calls[0][0]
+    expect(sent.base_version).toBe('V1')
+    expect(sent.bank_descriptions).toEqual({ KTC: 'KTC fee' })
+  })
+
+  it('stops on a 409, keeps the edits, and lets the next Save overwrite on purpose', async () => {
+    saveAccountingConfig.mockRejectedValueOnce(
+      Object.assign(new Error('KTC mapping was changed after you opened it'), { status: 409 })
+    )
+    const { result } = await loaded({ ...KTC, version: 'V1' })
+    act(() => result.current.handleMappingChange('commission', 'acc', '6080009'))
+
+    await act(() => result.current.saveAllSettings())
+
+    expect(result.current.conflict).toBe(true)
+    expect(result.current.modalConfig.show).toBe(false) // the page asks, with its own dialog
+    expect(window.location.hash).toBe('#/CreditCardOCR/mapping')
+    expect(result.current.mappings.commission.acc).toBe('6080009')
+
+    saveAccountingConfig.mockResolvedValue({ ok: true, version: 'V3' } as never)
+    await act(() => result.current.saveAllSettings())
+
+    expect(saveAccountingConfig).toHaveBeenCalledTimes(2)
+    expect(saveAccountingConfig.mock.calls[1][0].base_version).toBeUndefined()
+    expect(result.current.conflict).toBe(false)
+  })
+
+  it('reloading takes the latest rules and drops the edits', async () => {
+    const { result } = await loaded({ ...KTC, version: 'V1' })
+    act(() => result.current.handleMappingChange('commission', 'acc', '6080009'))
+    expect(result.current.rulesDirty).toBe(true)
+
+    getAccountingConfig.mockResolvedValue({
+      ...KTC,
+      version: 'V2',
+      mappings: { commission: { dept: '307', acc: '6080010' } },
+    } as never)
+    act(() => result.current.reloadBank())
+
+    await waitFor(() => expect(result.current.mappings.commission.acc).toBe('6080010'))
+    expect(result.current.rulesDirty).toBe(false)
+  })
+
   it('will not save a branch that is not five digits', async () => {
     // `0000` is what nopackage1 has stored, typed that way; the input-tax record posts it.
     const { result } = await loaded({ ...KTC, branch: '0000' })

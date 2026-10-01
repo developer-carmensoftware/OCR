@@ -13,6 +13,10 @@ class AccountingConfigRequest(BaseModel):
     # input-tax record posts it as stored, so `0000` (typed that way on one BU) reached
     # Carmen as is. The mapping page checks first; this is the boundary that decides.
     branch: str | None = Field(None, pattern=r"^\d{5}$")
+    # The `version` this bank's rules had when the page loaded them. When the server holds
+    # something newer, the save is refused (409) instead of replacing it unseen. Omitted =
+    # no check, which is what a tab loaded before this existed sends.
+    base_version: str | None = None
     mappings: dict[str, FieldMapping] | None = None
     custom_types: list[str] | None = None
     # bank_code -> description, the only description there is (no BU-wide one since
@@ -47,6 +51,8 @@ class AccountingConfigResponse(BaseModel):
     file_prefix: str | None = None
     file_source: str | None = None
     branch: str | None = None
+    # When this bank's rules last changed (ISO timestamp) — sent back as `base_version`.
+    version: str | None = None
     mappings: dict[str, Any] = {}
     custom_types: list[str] = []
     bank_descriptions: dict[str, str] = {}

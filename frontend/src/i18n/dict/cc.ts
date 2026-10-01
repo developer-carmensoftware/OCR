@@ -219,6 +219,11 @@ export const en = {
   'cc.switchBankMsg':
     'Mappings are saved one bank at a time. Switching now drops what you changed for {bank} — save first to keep it.',
   'cc.switchBankConfirm': 'Discard and switch',
+  'cc.conflictTitle': '{bank} was changed after you opened it',
+  'cc.conflictMsg':
+    "Someone saved {bank}'s mappings — a reviewer correcting a rule, or another tab. Reload to see theirs and lose your edits, or keep editing and press Save again to overwrite them.",
+  'cc.conflictReload': 'Reload latest',
+  'cc.conflictKeep': 'Keep editing',
   'cc.valBranchFormat': 'Branch No must be 5 digits — 00000 for the head office',
   'cc.saveDone': "Saved {bank}'s account mapping",
   'cc.saveFailedTitle': 'Account mapping not saved',
@@ -450,6 +455,11 @@ export const th: Record<keyof typeof en, string> = {
   'cc.switchBankMsg':
     'ผังบัญชีบันทึกทีละธนาคาร ถ้าสลับตอนนี้ สิ่งที่แก้ไว้ของ {bank} จะหายไป — บันทึกก่อนถ้าต้องการเก็บไว้',
   'cc.switchBankConfirm': 'ทิ้งแล้วสลับ',
+  'cc.conflictTitle': 'มีการแก้ไข {bank} หลังจากที่คุณเปิดหน้านี้',
+  'cc.conflictMsg':
+    'มีคนบันทึกผังบัญชีของ {bank} ไปแล้ว — อาจเป็นผู้ตรวจที่แก้กฎจากคิว หรืออีกแท็บหนึ่ง โหลดใหม่เพื่อดูของเขาแล้วทิ้งสิ่งที่คุณแก้ หรือแก้ต่อแล้วกดบันทึกอีกครั้งเพื่อเขียนทับ',
+  'cc.conflictReload': 'โหลดล่าสุด',
+  'cc.conflictKeep': 'แก้ต่อ',
   'cc.valBranchFormat': 'สาขาเลขที่ต้องเป็นตัวเลข 5 หลัก — สำนักงานใหญ่คือ 00000',
   'cc.saveDone': 'บันทึกผังบัญชีของ {bank} แล้ว',
   'cc.saveFailedTitle': 'บันทึกผังบัญชีไม่สำเร็จ',

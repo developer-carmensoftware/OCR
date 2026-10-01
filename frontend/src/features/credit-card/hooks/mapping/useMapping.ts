@@ -90,6 +90,11 @@ export function useMapping() {
   const [acceptAllModal, setAcceptAllModal] = useState(false)
   // What the form held when this bank's rows landed, and when the page's own config did —
   // what `rulesDirty` and `headerDirty` measure edits against.
+  // Someone else saved this bank after it loaded (the server said 409). `conflict` stays
+  // true until the choice is made — the next Save then overwrites on purpose — while
+  // `conflictAsk` is only whether the question is on screen.
+  const [conflict, setConflict] = useState(false)
+  const [conflictAsk, setConflictAsk] = useState(false)
   const [rulesBaseline, setRulesBaseline] = useState<string | null>(null)
   const [headerBaseline, setHeaderBaseline] = useState<string | null>(null)
 
@@ -113,7 +118,9 @@ export function useMapping() {
   // ever changes in the same batch as `savedMappings`/`savedCustomTypes` (see
   // useBankConfig), so there is no window where this fires on a bank whose mappings
   // have not actually landed yet.
-  const appliedBankCodeRef = useRef<string | null | undefined>(undefined)
+  // Keyed on the load as well as the bank: reloading the *same* bank after a conflict has
+  // to be applied, and its `mappingsBankCode` does not change.
+  const appliedBankCodeRef = useRef<string | undefined>(undefined)
   // This bank's settlement-report entries exactly as loaded. `useSettlementMapping` owns
   // and saves them; this copy is only what a save sends when that hook has nothing to
   // give (still loading) — the PUT replaces every entry of the bank, so leaving them out
@@ -123,8 +130,9 @@ export function useMapping() {
 
   useEffect(() => {
     if (bankConfig.configLoading) return
-    if (appliedBankCodeRef.current === bankConfig.mappingsBankCode) return
-    appliedBankCodeRef.current = bankConfig.mappingsBankCode
+    const loadKey = `${bankConfig.mappingsBankCode}#${bankConfig.loadId}`
+    if (appliedBankCodeRef.current === loadKey) return
+    appliedBankCodeRef.current = loadKey
 
     const MAIN_KEYS = new Set<MainMappingKey>(['commission', 'tax', 'net'])
     const mainMappings: MainMappings = {
@@ -169,6 +177,7 @@ export function useMapping() {
   }, [
     bankConfig.configLoading,
     bankConfig.mappingsBankCode,
+    bankConfig.loadId,
     bankConfig.savedMappings,
     bankConfig.savedCustomTypes,
     initFromData,
@@ -402,19 +411,33 @@ export function useMapping() {
         settlement ? settlement.mappingsToSave : settlementEntriesRef.current
       )
 
+      let saved: Awaited<ReturnType<typeof saveAccountingConfig>>
       try {
-        await saveAccountingConfig({
-          bank_code: bankConfig.bank
-            ? BANK_CODE_MAP[bankConfig.bank as BankDisplayName] || null
-            : null,
+        saved = await saveAccountingConfig({
+          bank_code: selectedCode || null,
           file_prefix: bankConfig.filePrefix,
           file_source: bankConfig.fileSource,
-          bank_descriptions: bankConfig.bankDescriptions,
+          // This bank's wording only: the server merges per bank, so another bank's — which
+          // someone may have corrected since this page loaded — is not sent back over it.
+          ...(selectedCode
+            ? {
+                bank_descriptions: {
+                  [selectedCode]: bankConfig.bankDescriptions[selectedCode] ?? '',
+                },
+              }
+            : {}),
           branch: bankConfig.company.branch || null,
           mappings: allMappings,
           custom_types: paymentTypes.customPaymentTypes,
+          // Left out after a 409 the reader chose to overwrite.
+          ...(conflict || !bankConfig.version ? {} : { base_version: bankConfig.version }),
         })
       } catch (err) {
+        if ((err as { status?: number }).status === 409) {
+          setConflict(true)
+          setConflictAsk(true)
+          return
+        }
         // Said, and the page stays: this used to be swallowed ("localStorage already
         // saved"), and the page went on to save the settlement grouping and close the tab
         // exactly as if the mapping had been saved.
@@ -426,6 +449,15 @@ export function useMapping() {
         })
         return
       }
+      setConflict(false)
+      // The page may stay open (the settlement grouping below can still fail): it holds what
+      // the server now has, so the next save is checked against *that*, and nothing here
+      // counts as unsaved any more.
+      bankConfig.setVersion(saved?.version ?? null)
+      setRulesBaseline(
+        rulesPrint(mappings, paymentTypes.paymentAmount, paymentTypes.customPaymentTypes)
+      )
+      setHeaderBaseline(headerPrint)
       // Only what the server now holds: the wizard's tab re-reads on this key, and the
       // offline copy stands in for the server when it cannot be reached.
       writeAccountingConfig({
@@ -571,6 +603,16 @@ export function useMapping() {
     saving,
     saveAllSettings,
     missingTopFields,
+    /** Someone else saved this bank first — see `conflict` above. */
+    conflict,
+    conflictAsk,
+    keepEditing: () => setConflictAsk(false),
+    /** Take what the server has and drop this page's edits. */
+    reloadBank: () => {
+      setConflict(false)
+      setConflictAsk(false)
+      bankConfig.reloadBank()
+    },
     /** The selected bank's GL rules differ from what loaded — lost on a bank switch. */
     rulesDirty,
     /** Prefix, branch or a description differs from what loaded — kept across a switch. */

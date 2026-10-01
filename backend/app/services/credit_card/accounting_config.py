@@ -5,11 +5,13 @@ Encapsulates all ORM queries that were previously inline in routers/config.py.
 """
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.exceptions import ConflictError, ValidationError
 from app.models import (
     APVendorColumnMapping,
     APVendorFieldMappingEntry,
@@ -34,8 +36,10 @@ _UNSCOPED = _Unscoped()
 
 
 async def get_accounting_config(
-    db: AsyncSession, tenant_id: str, bank_code: str | None = None
+    db: AsyncSession, tenant_id: str, bank_code: str | None = None, *, with_version: bool = False
 ) -> AccountingConfigResponse:
+    """`with_version` is for the page that will save it back — the posting paths read the
+    rules and nothing else, and do not pay a query for a token they would not use."""
     row = await _get_config(db, tenant_id)
     if not row:
         return AccountingConfigResponse()
@@ -62,10 +66,29 @@ async def get_accounting_config(
         file_prefix=row.file_prefix,
         file_source=row.file_source,
         branch=row.branch,
+        version=await _version(db, row, scope) if with_version else None,
         mappings=mappings,
         custom_types=custom_types,
         bank_descriptions=dict(row.bank_descriptions or {}),
     )
+
+
+async def _version(db: AsyncSession, row: BUAccountingConfig, bank_code: str | None) -> str | None:
+    """When this bank's rules last changed: the newest of the config row and the bank's own
+    entries. A save that deletes and re-inserts the entries stamps the new ones, so any write
+    by anyone moves this forward. The config row is BU-wide, so another bank's header save
+    can too — a false alarm costs one "save anyway", a missed one costs someone's edit."""
+    newest = (
+        await db.execute(
+            select(func.max(BUAccountingMappingEntry.updated_at)).where(
+                BUAccountingMappingEntry.config_id == row.id,
+                BUAccountingMappingEntry.bank_code == bank_code,
+                BUAccountingMappingEntry.deleted_at.is_(None),
+            )
+        )
+    ).scalar()
+    stamps = [t for t in (getattr(row, "updated_at", None), newest) if isinstance(t, datetime)]
+    return max(stamps).isoformat() if stamps else None
 
 
 def description_for(config: Any, bank_code: str | None) -> str | None:
@@ -82,18 +105,33 @@ def description_for(config: Any, bank_code: str | None) -> str | None:
 
 async def save_accounting_config(
     db: AsyncSession, tenant_id: str, req: AccountingConfigRequest
-) -> None:
+) -> str | None:
+    """Returns the bank's new `version`, for a page that stays open after saving."""
     row = await _get_config(db, tenant_id)
+
+    if row and req.base_version:
+        try:
+            loaded = datetime.fromisoformat(req.base_version)
+        except ValueError as exc:
+            raise ValidationError("base_version is not a timestamp") from exc
+        current = await _version(db, row, req.bank_code)
+        if current and datetime.fromisoformat(current) > loaded:
+            raise ConflictError(
+                f"{req.bank_code or 'This'} mapping was changed after you opened it — "
+                "reload it, or save again to overwrite"
+            )
 
     if row:
         row.bank_code = req.bank_code
         row.file_prefix = req.file_prefix
         row.file_source = req.file_source
         row.branch = req.branch
-        # Omitted = keep. The wizard does not send this field yet, and it must not
-        # wipe per-bank wording every time someone saves a GL mapping.
+        # Merged per bank, not replaced: the page edits one bank's wording, and a reviewer
+        # may have corrected another's from the queue since it loaded. An empty string
+        # clears that bank. Omitted = keep.
         if req.bank_descriptions is not None:
-            row.bank_descriptions = {k: v for k, v in req.bank_descriptions.items() if v}
+            merged = {**(row.bank_descriptions or {}), **req.bank_descriptions}
+            row.bank_descriptions = {k: v for k, v in merged.items() if v}
         await db.flush()
     else:
         row = BUAccountingConfig(
@@ -145,8 +183,12 @@ async def save_accounting_config(
                 )
             )
 
+    await db.flush()
+    await db.refresh(row)  # `updated_at` is stamped by the database, not by us
+    version = await _version(db, row, req.bank_code)
     await db.commit()
     logger.info("Saved accounting config for tenant=%s", tenant_id)
+    return version
 
 
 async def fill_missing_mappings(
