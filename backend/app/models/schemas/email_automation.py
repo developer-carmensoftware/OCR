@@ -1,4 +1,7 @@
-"""Email Automation — request payloads for the Settings API Carmen calls.
+"""Email Automation — request payloads for the Settings API.
+
+Called by our own settings screen (`#/email-settings`, opened from Carmen's menu — decision
+#34) with the user's Carmen token, and by Carmen itself for the posting credential.
 
 Contract: docs/CARMEN_INTEGRATION.md §2.3 (settings) and §2.6 (posting credential).
 """
@@ -35,7 +38,7 @@ class RuleIn(BaseModel):
     #
     # `ar_reconcile` is also the switch itself (2026-09-29): an active rule of that type is
     # what "reconcile this bank" means. There is no second toggle on our mapping page any
-    # more — Carmen's settings screen is the one writer, same lesson as `auto_post`. How
+    # more — this payload is the one writer, same lesson as `auto_post`. How
     # the JV groups (Detail/Summary) is still ours: the mapping page, beside the accounts
     # each grouping needs.
     doc_type: str | None = None
@@ -58,8 +61,8 @@ class SettingsIn(BaseModel):
     # merges — the idiom `_merge_rule` already uses for `pdf_password_enc`. It has to,
     # because this route is now the *only* writer (the queue's own gear and
     # `PUT /api/v1/email/settings/auto-post` were deleted 2026-09-08): a caller that does
-    # not know the field — our own `#/email-settings` page, or a Carmen build that predates
-    # it — would otherwise turn review back on with every unrelated settings save, silently,
+    # not know the field — an old build of our `#/email-settings` page, or any script —
+    # would otherwise turn review back on with every unrelated settings save, silently,
     # for a customer who had deliberately switched it off.
     auto_post: bool | None = None
 

@@ -1,6 +1,9 @@
-"""Email Automation — the Settings API Carmen calls, plus the ingest job trigger.
+"""Email Automation — the Settings API, plus the ingest job trigger.
 
-Contract: docs/CARMEN_INTEGRATION.md §2 (settings) and §3 (outcomes).
+Contract: docs/CARMEN_INTEGRATION.md §2 (settings) and §3 (outcomes). Since 2026-10-01
+(decision #34) the settings screen is ours, `#/email-settings`, opened from Carmen's menu;
+it calls these routes with the user's Carmen token exactly as Carmen's own screen would
+have, and Carmen itself calls `/settings/token` and `/notifications`.
 
 **Carmen authenticates with the logged-in user's own Carmen token**, sent the way
 every other call in their world sends it — `Authorization: <token>`, no scheme label.
@@ -238,7 +241,7 @@ async def _resolve(db: AsyncSession, caller: Caller, uri: str, bu: str) -> Tenan
     The token is checked against the Carmen instance the payload names, so claiming
     another company's host means producing a credential that company's own Carmen
     validates. `validate_token`'s 401 ("re-login") and 502 ("cannot reach Carmen")
-    propagate unchanged: Carmen's screen needs to tell those two apart.
+    propagate unchanged: the settings screen needs to tell those two apart.
 
     The caller's `uri` and the `origin` below are deliberately separate names: the
     first is a lookup key that stops at `resolve_tenant`, the second is read back off
@@ -279,7 +282,7 @@ async def _safe_carmen_uri(tenant: Tenant) -> str:
     `validate_uri` (routers/auth.py) is the same check `/auth/exchange` already
     applies: https only, ALLOWED_CARMEN_HOSTS allowlist, loopback/private-IP
     rejection including what a hostname resolves to. Its 400 is re-raised as the
-    422 field-error shape Carmen's screen already renders inline.
+    422 field-error shape the settings screen already renders inline.
 
     Run in a thread because that check ends in a blocking `socket.getaddrinfo`: left
     on the event loop, one hostile or merely slow DNS answer stalls every other

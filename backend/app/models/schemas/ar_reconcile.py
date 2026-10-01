@@ -32,7 +32,7 @@ class ARSettingsIn(BaseModel):
     """One bank's settlement JV grouping, saved from the mapping page.
 
     Only `post_type` since 2026-09-29: whether the bank reconciles at all is its email
-    rule (`doc_type: ar_reconcile`), written by Carmen's settings API — not a field here.
+    rule (`doc_type: ar_reconcile`), written by the Settings API — not a field here.
     No `jv_description_template` either (Ticket D, 2026-09-22) — a settlement JV's wording
     is the fee-invoice path's own `description`/`bank_descriptions`.
     """
@@ -50,7 +50,7 @@ class ARSettingsIn(BaseModel):
 
 class ARSettingsOut(ARSettingsIn):
     # An active `ar_reconcile` email rule exists for this bank — read-only here, the
-    # switch is Carmen's.
+    # switch is the rule, on the settings screen (`#/email-settings`).
     enabled: bool = False
     # Whether this bank has a settlement layout at all (`banks.settlement_grouping is
     # not null`) — what the mapping page reads to decide whether its Settlement card

@@ -1,7 +1,7 @@
 import { ExternalLink } from 'lucide-react'
 import { useT } from '@/i18n/LanguageContext'
 import { glFieldLabel, glFieldList } from '@/features/credit-card/lib/glFieldLabels'
-import { FIX, fixLinkProps, stopText } from '@/shared/lib/reviewReasons'
+import { FIX, stopText } from '@/shared/lib/reviewReasons'
 import { getCarmenUrl } from '@/shared/lib/url'
 import type { ReviewDocument } from '@/features/credit-card/api/emailReview'
 import type { TKey } from '@/i18n/dict'
@@ -200,13 +200,11 @@ function RowAction({ row, onOpen }: Props) {
   // row is no longer duplicated onto `review`, and a fixable reason off that chip no longer
   // implies somebody dismissed it. Dismissal is a cause's gesture now, not a row's.
   //
-  // Where it goes is `fixLinkProps`'s call, not this component's: a settings cause opens
-  // Carmen's screen in a tab of its own — the same door the dialog's banner opens.
-  const link = fixLinkProps(fix)
+  // Where it goes is `FIX`'s call, not this component's — the same door the dialog's banner
+  // opens, in this tab: every fix is a screen of this app (decision #34).
   return (
-    <a className="btn btn-outline btn-sm" {...link}>
+    <a className="btn btn-outline btn-sm" href={fix.href}>
       {t(fix.key)}
-      {link.target && <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />}
     </a>
   )
 }

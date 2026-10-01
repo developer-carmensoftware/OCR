@@ -25,6 +25,8 @@ import type { EmailRule } from '@/features/email-settings/api/emailAutomation'
  */
 
 const save = vi.fn(async () => true)
+const removeToken = vi.fn()
+let tokenStatus: unknown = null
 let rules: EmailRule[] = []
 /** The draft the page is editing, owned here so `patch` behaves like the real hook. */
 let draft: Draft
@@ -58,7 +60,7 @@ vi.mock('@/features/email-settings/hooks', async importOriginal => {
         fieldErrors: {},
         host: 'hotel.carmenwork.com',
         bu: 'hq',
-        tokenStatus: null,
+        tokenStatus,
         banks: [
           { code: 'KBANK', name: 'Kasikornbank' },
           { code: 'KTC', name: 'Krungthai Card' },
@@ -73,7 +75,7 @@ vi.mock('@/features/email-settings/hooks', async importOriginal => {
           rerender?.()
         },
         saveToken: vi.fn(),
-        removeToken: vi.fn(),
+        removeToken,
         reload: vi.fn(),
       }
     },
@@ -106,6 +108,7 @@ const ruleCard = (n: number) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  tokenStatus = null
   rules = []
   draft = seedDraft(null)
   rerender = null
@@ -126,8 +129,8 @@ function mountWith(loaded: EmailRule[]) {
 
 describe('bank rules', () => {
   it('can tag a rule as a settlement report', async () => {
-    // Otherwise there is no way to switch AR reconciliation on at all: Carmen's own
-    // settings screen does not know the field either.
+    // Otherwise there is no way to switch AR reconciliation on at all: the rule's document
+    // type is the only switch (decision #31), and this is its only screen (#34).
     mountWith([])
     fireEvent.click(screen.getByRole('button', { name: /ADD RULE/i }))
 
@@ -250,5 +253,40 @@ describe('the dirty form', () => {
     expect(sentRules()).toHaveLength(1)
     expect(screen.getByRole('button', { name: /SAVE SETTINGS/i })).toBeDisabled()
     expect(save).not.toHaveBeenCalled()
+  })
+})
+
+describe('the two exits that lose something', () => {
+  it('asks before Back to queue drops an unsaved edit', () => {
+    // The queue's fix buttons land here in the same tab, so this link is how a reviewer
+    // goes home — and a hash change fires no beforeunload to catch an unsaved form.
+    mountWith([])
+    fireEvent.change(screen.getByLabelText(/Company Tax IDs/i), { target: { value: '999' } })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    const followed = fireEvent.click(screen.getByRole('link', { name: /Back to queue/i }))
+
+    expect(confirm).toHaveBeenCalled()
+    expect(followed).toBe(false) // default prevented: still on this page
+    confirm.mockRestore()
+  })
+
+  it('asks before deleting the stored posting token', () => {
+    // Our copy is what every JV of this BU posts with; deleting it stops them all.
+    tokenStatus = {
+      configured: true,
+      fingerprint: '9c1f3a2b',
+      carmen_uri: 'https://hotel.carmenwork.com',
+      verified_at: '2026-10-01T00:00:00Z',
+    }
+    mountWith([])
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    fireEvent.click(screen.getByText('Set a token manually'))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(confirm).toHaveBeenCalled()
+    expect(removeToken).not.toHaveBeenCalled()
+    confirm.mockRestore()
   })
 })

@@ -70,8 +70,8 @@ class ValidationError(RuntimeError):
 class FieldValidationError(ValidationError):
     """One or more per-field failures → 422 with an `errors` list.
 
-    Distinct from ValidationError (a single 400 message) because Carmen's settings
-    screen renders these inline against the field that caused them.
+    Distinct from ValidationError (a single 400 message) because the settings screen
+    renders these inline against the field that caused them.
     """
 
     def __init__(self, errors: list[dict]):

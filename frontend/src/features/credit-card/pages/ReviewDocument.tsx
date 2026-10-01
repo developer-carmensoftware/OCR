@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, AlertTriangle, CheckCircle2, ExternalLink, Loader2, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
 import CustomModal from '@/shared/components/common/CustomModal'
 import SwapLabel from '@/shared/components/common/SwapLabel'
 import JvHeaderCard from '@/features/credit-card/components/JvHeaderCard'
@@ -10,7 +10,7 @@ import ARReviewPane from '@/features/credit-card/components/ARReviewPane'
 import { useT } from '@/i18n/LanguageContext'
 import { useReviewDocument } from '@/features/credit-card/hooks/useReviewDocument'
 import { useScrollLock } from '@/shared/hooks/useScrollLock'
-import { FIX, fixLinkProps, stopText, warningText } from '@/shared/lib/reviewReasons'
+import { FIX, stopText, warningText } from '@/shared/lib/reviewReasons'
 
 interface Props {
   id: string
@@ -155,7 +155,6 @@ export default function ReviewDocument({ id, onClose, onDone, bankHint }: Props)
   // row reads, resolved here so the banner's button and the row's button cannot point at
   // different screens.
   const fix = doc?.reason_code ? FIX[doc.reason_code] : undefined
-  const fixLink = fix && fixLinkProps(fix)
 
   return createPortal(
     <div
@@ -337,14 +336,12 @@ export default function ReviewDocument({ id, onClose, onDone, bankHint }: Props)
                   </span>
                   {/* Where it gets fixed for good, for the causes that have such a place.
                       The reviewer can still correct and post this one document without
-                      leaving; this is for the next twenty — and a settings cause leaves for
-                      Carmen's screen in a tab of its own, so this document stays open. */}
-                  {fix && fixLink && (
-                    <a className="btn btn-outline btn-sm rd-alert-fix" {...fixLink}>
+                      leaving; this is for the next twenty. Every such place is a screen of
+                      this app since decision #34, so it opens in this tab, as the GL
+                      mapping fix always did. */}
+                  {fix && (
+                    <a className="btn btn-outline btn-sm rd-alert-fix" href={fix.href}>
                       {t(fix.key)}
-                      {fixLink.target && (
-                        <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
-                      )}
                     </a>
                   )}
                 </div>

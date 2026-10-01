@@ -31,7 +31,7 @@ export interface ARSettings {
 }
 
 /** `ARSettings` plus what only the server can answer, neither of them saved from here:
- *  whether the bank's email rule has reconciliation switched on (Carmen's setting), and
+ *  whether the bank's email rule has reconciliation switched on (`#/email-settings`), and
  *  whether the bank has a settlement layout at all (`banks.settlement_grouping is not
  *  null`) — what decides whether the mapping page's Settlement card renders for it. */
 export interface ARSettingsResponse extends ARSettings {

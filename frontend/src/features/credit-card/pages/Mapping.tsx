@@ -312,8 +312,8 @@ export default function Mapping() {
             {showSettlement && (
               <div className="section">
                 <div className="section-title">{t('cc.settlementCardTitle')}</div>
-                {/* Whether this bank reconciles at all is its email rule, switched in Carmen's
-                settings — said here, not set here. */}
+                {/* Whether this bank reconciles at all is its email rule, switched on the AI JV
+                Automation settings screen — said here, not set here. */}
                 {!settlementCtrl.enabled && (
                   <p className="ar-hint ar-hint-warn" style={{ margin: '0 0 1rem' }}>
                     {t('ar.enabledOffHint')}

@@ -915,8 +915,8 @@ def test_the_settings_response_hands_doc_type_back():
 
 # ── The rule as the settlement switch (2026-09-29) ───────────────────────────────
 #
-# An active `ar_reconcile` rule *is* "reconcile this bank" now — Carmen's settings screen is
-# the one writer, so what that switch needs (a bank with a settlement layout) is checked
+# An active `ar_reconcile` rule *is* "reconcile this bank" now — the Settings API is the
+# one writer, so what that switch needs (a bank with a settlement layout) is checked
 # here, where it is set.
 
 

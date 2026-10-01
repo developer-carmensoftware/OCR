@@ -111,8 +111,8 @@ export const en = {
   // review off, the exact thing it stopped doing. None of these names forwarding or
   // approval, so none of them can go stale that way.
   //
-  // The ingest address is deliberately absent — it belongs to Carmen's settings screen,
-  // not to a line in an empty state.
+  // The ingest address is deliberately absent — it belongs to the settings screen
+  // (#/email-settings), not to a line in an empty state.
   'review.emptyReviewTitle': 'Nothing needs review',
   'review.emptyReviewBody': 'Documents that need a decision appear here.',
   'review.emptyTodayTitle': 'No activity today',
@@ -225,7 +225,8 @@ export const en = {
   'review.scannedNotPostedBy': 'Scanned by {name} — not posted',
   'review.scannedNotPosted': 'Scanned by hand — not posted',
   // The landing page for a BU that has never scanned anything. No word about email: most
-  // BUs scan by hand, and the automation is introduced by Carmen's own settings screen.
+  // BUs scan by hand, and the automation is introduced from Carmen's menu, which opens our
+  // settings screen.
   'review.noScansTitle': 'No scans yet',
   'review.noScansBody':
     'Every statement you scan appears here, posted or not, so you can see what each credit went on.',
@@ -236,9 +237,9 @@ export const en = {
   'review.rejectedBy': 'Reviewed and rejected by {name}',
   'review.rejectedByWith': 'Reviewed and rejected by {name}: {reason}',
   // Each phrase that carries a Fix button names the field on the screen that button opens.
-  // "your list" / "connection" were our nouns; the settings screen offers *Your email
-  // addresses* and *Posting credential*, so a reader who followed the button arrived looking
-  // for something that was not there. (There were three. `rcNoRuleMatch` — *Filename
+  // "your list" / "connection" were our nouns; the settings screen (#/email-settings) offers
+  // *Your email addresses* and *Posting credential*, so a reader who followed the button
+  // arrived looking for something that was not there. Rename a field there, rename it here. (There were three. `rcNoRuleMatch` — *Filename
   // patterns* — went with the rows it described: a rule refusing a file it was written to
   // refuse is in no view of this app now, only on #/admin/email, which has its own key.)
   'review.rcSenderNotAllowed': 'Sender is not one of your email addresses',

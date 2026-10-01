@@ -157,8 +157,8 @@ function Router() {
   } else if (route === 'whats-new') {
     Page = <WhatsNew />
   } else if (route === 'email-settings') {
-    // Our copy of the screen Carmen builds — reachable by URL only, deliberately not
-    // linked from Home while it is a test surface.
+    // AI JV Automation settings (decision #34). Opened from Carmen's menu and from the
+    // queue's fix buttons; deliberately not a Home tile — Carmen's menu is the front door.
     Page = <EmailSettings />
   } else if (route === 'pricing/orders') {
     Page = <OrderHistory />

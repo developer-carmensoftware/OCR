@@ -5,7 +5,7 @@
   POST  /api/v1/ar-reconcile/preview              → the JV this configuration would build
 
 Whether a bank reconciles at all is not here (2026-09-29): it is the bank's email rule
-(`doc_type: ar_reconcile`), set through Carmen's settings API. GET reports it read-only.
+(`doc_type: ar_reconcile`), set through the Settings API. GET reports it read-only.
 
 The payment-type mapping is not part of this API (decision #3, 2026-09-22) — it lives in
 `bu_accounting_mapping_entries`, read and written through `/api/v1/config/accounting`

@@ -180,7 +180,7 @@ function QueueEmpty({ filter, onShowAll }: { filter: ActivityFilter; onShowAll: 
  *
  * There used to be a full-page pitch for email forwarding here (`NotSetUp`). Most BUs scan
  * by hand and always will, and an ad on the landing page told them they were using the
- * product wrong. Carmen's own settings screen introduces the automation.
+ * product wrong. Carmen's menu introduces the automation, opening our settings screen.
  */
 function NoScansYet() {
   const { t } = useT()
@@ -358,9 +358,10 @@ export default function ReviewQueue() {
             <Settings size={14} />
           </button>
           {/* No auto-post switch here any more. It is one field of the BU's settings and
-              has one writer, `PUT /api/v1/carmen/settings` — Carmen's own settings screen.
-              Two writers for one boolean is what let an unrelated settings save turn review
-              back on behind the customer's back (2026-09-08).
+              has one writer, `PUT /api/v1/carmen/settings`, behind one screen,
+              `#/email-settings`. Two writers for one boolean is what let an unrelated
+              settings save turn review back on behind the customer's back (2026-09-08).
+              No settings link either: Carmen's menu is the front door (decision #34).
 
               No AR-settings door here either. Every value on that screen is scoped to one
               bank profile, and this bar has no document in scope to take it from — it

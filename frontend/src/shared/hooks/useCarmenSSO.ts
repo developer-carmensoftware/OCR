@@ -30,12 +30,10 @@ export function useCarmenSSO(): CarmenSSOState {
 
     if (!token || !bu) return
 
-    // Carmen's own settings screen holds this exact token, and `/api/v1/carmen/*`
-    // proves it against the customer's Carmen on every call. Keeping a copy lets
-    // #/email-settings walk that real path — 401 "re-login", 502 "cannot reach
-    // Carmen", 429 — instead of the admin-JWT shortcut, which skips the probe and
-    // would therefore test none of it. sessionStorage, same lifetime and blast
-    // radius as `ocr_access_token`.
+    // #/email-settings calls `/api/v1/carmen/*` with this exact token, which proves it
+    // against the customer's Carmen on every call — 401 "re-login", 502 "cannot reach
+    // Carmen", 429. Carmen's menu opens that page through this same link (decision #34).
+    // sessionStorage, same lifetime and blast radius as `ocr_access_token`.
     sessionStorage.setItem(CARMEN_RAW_TOKEN_KEY, token)
 
     const cleanHash = hash.slice(0, qIndex) || '#/'

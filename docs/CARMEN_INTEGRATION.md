@@ -15,8 +15,12 @@
 > already uses for the queue (§2.8). Carmen still decides **who** may open that screen, by
 > who it shows the menu item to; nothing else is checked twice. The API in §2 does
 > not change; what changes is which client calls it. Every section touched is marked
-> *(proposed 2026-10-01)*. Until the Carmen team confirms, the rest of this document still
-> describes what is live.
+> *(proposed 2026-10-01)*.
+>
+> **Our half is built.** `#/email-settings` is the customer's screen, and every settings
+> button in the OCR app opens it in the same tab (*Reconnect* included). What waits on the
+> Carmen team is the menu item (§2.8, §5 A) and an answer on revocation (§5 C). Until the
+> menu ships, a BU reaches the page through a fix button or a link from support.
 >
 > Companion documents: [email-automation/](email-automation/README.md) (our own engineering
 > docs — architecture, data model, operations, decision log), [Security_Trust_Overview.md](Security_Trust_Overview.md).
@@ -117,7 +121,7 @@ Four consequences worth stating plainly:
 
 - **The address is what identifies the BU, and it works for both modes.** On an
   auto-forward the tag survives in the delivery headers; on a manual forward the employee
-  *types* the destination, so it is whatever Carmen's screen told them to send to. Each BU
+  *types* the destination, so it is whatever the settings screen told them to send to. Each BU
   gets its own address — see §2.5.
 - **The tax ID is the second check, not the routing key.** The address says who owns the
   mail; the tax ID printed on the document says who owns the document. If they disagree,
@@ -186,7 +190,8 @@ We follow each side's own convention rather than mixing.
 
 ### 2.1 Authentication — **settled: the user's own Carmen token. No key.**
 
-Carmen's settings screen already holds the logged-in user's Carmen token. Send it:
+Whoever calls already holds the logged-in user's Carmen token: your menu when it mints the
+posting credential (§2.8), and our settings screen, which receives it in the SSO link. Send it:
 
 ```http
 PUT /api/v1/carmen/settings
@@ -398,7 +403,7 @@ Rules for the value itself:
 
 ### 2.5 The forwarding address — **settled: one address per BU**
 
-`GET /settings` returns `ingest_address`. Carmen's screen **displays that string** and tells
+`GET /settings` returns `ingest_address`. The settings screen **displays that string** and tells
 the customer to forward their bank mail to it. That is the entire integration for this
 section — no action needed from Carmen beyond showing the value.
 
@@ -431,7 +436,7 @@ Three consequences, all accepted deliberately:
   `ingest_address` is `null` until a tag exists — so there is no correct way to arrive
   without one. A mail that does is dropped before any cost.
 - **A mistyped tag is silent.** It cannot be attributed to a tenant, so there is nobody to
-  tell. The address is copied from Carmen's screen rather than typed, which is the
+  tell. The address is copied from the settings screen rather than typed, which is the
   mitigation; we watch the volume on our side. If it happens in practice, an auto-reply
   from the ingest mailbox is the obvious next step.
 - **A multi-BU group manages one address per BU.** A 20-BU hotel group gets 20 addresses.
@@ -464,7 +469,7 @@ touching Gmail. `GET /settings` reports the outcome:
 "gmail_confirmed_at": "2026-08-07T09:30:00Z"   // or null — no confirmation completed yet
 ```
 
-Carmen's screen needs only to show that the forward is connected. There is no code to
+The settings screen needs only to show that the forward is connected. There is no code to
 display and no prompt to build.
 
 > **Correction to the previous revision.** It described a `gmail_confirm: {code, at}` field
@@ -514,7 +519,7 @@ read. A token Carmen will not accept is rejected on the spot and **nothing is wr
 the customer finds out on the settings screen rather than on a real document at 3am.
 
 Both failures come back as `422` in the same per-field shape as `PUT /settings` (§2.3), so
-Carmen's screen can render them inline without a second code path:
+the settings screen can render them inline without a second code path:
 
 ```jsonc
 { "errors": [ { "field": "token", "code": "token_rejected",
@@ -573,7 +578,7 @@ The token is stored encrypted (it has to be replayed to Carmen, so it cannot be 
 the way our own API key is), is never returned by any endpoint, and never appears in a
 log line or an error message.
 
-### 2.7 `auto_post` — the review switch (2026-09-08: **Carmen's screen owns it**)
+### 2.7 `auto_post` — the review switch (2026-09-08: one writer; 2026-10-01: one screen, ours)
 
 ```jsonc
 "auto_post": true    // on PUT /api/v1/carmen/settings. Omit = keep. Default false.
@@ -593,22 +598,18 @@ posting silently — that is the bet this switch deliberately does not make (§0
 watching the queue get it right; nothing in our app turns it on for them, and nothing should
 offer it during onboarding.
 
-**One writer, and it is yours.** Until 2026-09-08 the OCR app also carried this switch on a
+**One writer.** Until 2026-09-08 the OCR app also carried this switch on a
 route of its own (a gear on the review queue, `PUT /api/v1/email/settings/auto-post`). That
 route is **deleted**. It is now a field of the BU's settings and nothing else — which is why
 omitting it keeps the stored value rather than resetting it, unlike every other field on that
 payload.
 
-> **Proposed 2026-10-01: the switch moves to our screen, and item 8 of §5 is withdrawn.**
-> Once settings open in the OCR app (§2.8), our `#/email-settings` is the switch's only
-> screen. The endpoint stays its only writer, and omitting the field still keeps the stored
-> value. With one client that costs nothing, and it stops an older script from switching
-> review back on.
->
-> **Live until then:** our `#/email-settings` carries the switch as a second *client* of this
-> endpoint, used by support for a BU whose Carmen lacks the control. Every settings button in
-> the OCR app opens `<your origin>/#/setting` in a new tab. Under the proposal those buttons
-> open our own screen in the same tab, and only *Reconnect* still goes to Carmen (§2.8).
+> **2026-10-01: the switch's one screen is ours, and item 8 of §5 is withdrawn.** Our
+> `#/email-settings` is the switch's only screen (§2.8). The endpoint stays its only writer,
+> and omitting the field still keeps the stored value. With one client that costs nothing,
+> and it stops an older script from switching review back on. Every settings button in the
+> OCR app, *Reconnect* included, now opens that screen in the same tab. None opens
+> `<your origin>/#/setting` any more.
 
 ### 2.8 Opening the settings screen — *(proposed 2026-10-01)*
 
@@ -651,18 +652,21 @@ also lead there, so a reviewer can fix a sender rule or a PDF password where the
 problem. That is the same reach every BU user already has when they approve a document into
 your books, and we accept it as such.
 
-**Two answers we need from you:**
+**One answer we need from you: revocation.** The ON/OFF switch (`enabled`) moves to our
+screen, so you no longer see a customer switch it off. Two options:
 
-- **Revocation.** The ON/OFF switch (`enabled`) moves to our screen, so you no longer see a
-  customer switch it off. Two options:
-  - When your menu opens and `GET /settings` says `enabled: false`, revoke the BU token and
-    `DELETE /settings/token`.
-  - Offer a separate *Disconnect* action.
+- When your menu opens and `GET /settings` says `enabled: false`, revoke the BU token and
+  `DELETE /settings/token`.
+- Offer a separate *Disconnect* action.
 
-  Tell us which, or whether you accept that the token outlives the switch. The ingest loop
-  stops for a disabled BU either way.
-- **Reconnect.** When a posting credential dies (`carmen_unauthorized`, §3.3), our queue's
-  *Reconnect* button has to run step 2 above. Which Carmen route should it open?
+Tell us which, or whether you accept that the token outlives the switch. The ingest loop
+stops for a disabled BU either way.
+
+**A dead posting credential needs nothing extra.** Our queue's *Reconnect* button
+(`carmen_unauthorized`, §3.3) opens our settings screen. Its Posting credential card shows
+the token is no longer accepted and tells the user to reopen the page from your menu. Step 2
+then mints a fresh one, so no separate reconnect route is needed. (An earlier draft of this
+section asked for one.)
 
 **What you no longer build:** the settings form, the save semantics of §2.3, the `auto_post`
 switch (§2.7), the `doc_type` control (§2.9), and a bank dropdown fed by `GET /bank-codes`.
@@ -941,7 +945,6 @@ Two consequences worth stating plainly:
 > | A | A menu item, shown only to users you allow, that runs §2.8 steps 1–3: mint the BU token if needed, then open our `#/email-settings` | every customer's way into the settings |
 > | B | Item 3 below, unchanged: the JV endpoint accepts the BU token | automated posting |
 > | C | An answer on revocation once the OFF switch is on our screen (§2.8) | revocation |
-> | D | The Carmen route our *Reconnect* button should open (§2.8) | recovering a dead posting credential |
 >
 > Items 4–7 below do not change. The settings form, the `auto_post` switch and the
 > `doc_type` control are no longer needed from you.

@@ -168,7 +168,7 @@ limit 50;
 |---|---|---|
 | Every poll shows `FAILED` on `#/admin/jobs` | IMAP folder name has a space and isn't being quoted, or credentials are wrong | Confirm `_quoted_folder()` is in the code path you're running (it should be — check the app version deployed); test `IMAP_USER`/`IMAP_PASSWORD` directly against `IMAP_HOST` |
 | Zero messages, ever | `IMAP_HOST` empty (feature off), wrong `IMAP_FOLDER`, or the server rejected `SEARCH … SMALLER` and there's nothing pending | Check `run_ingest()`'s return isn't `{"status":"disabled"}`; confirm the folder actually holds mail without `$OcrDone` (`UID SEARCH NOT KEYWORD $OcrDone`) inside the hold window |
-| Messages arrive but land as `unrouted` | The tag isn't present in `Delivered-To` / `X-Original-To` / `Envelope-To` / `Received: … for` | Dump the raw headers of one such message; confirm the customer copied the address from Carmen's screen rather than typing it |
+| Messages arrive but land as `unrouted` | The tag isn't present in `Delivered-To` / `X-Original-To` / `Envelope-To` / `Received: … for` | Dump the raw headers of one such message; confirm the customer copied the address from the settings screen rather than typing it |
 | A BU's documents are all `no_rule_match` | `filename_patterns` too narrow for how this bank actually names its files | Point the customer at "start broad, narrow later" — `.pdf` accepts everything from that bank as an escape hatch |
 | A previously-working BU starts failing with `carmen_unauthorized` | Carmen token expired, was rotated, or was revoked on Carmen's side without the OFF/ON cycle | Since 2026-08-28 the pipeline itself clears `verified_at` on the first 401, so `GET /settings/token` already says "unproven" — the fix is a fresh token, then replay the failed documents. `POST /email-ingest/health` re-checks every BU at once |
 | A BU fails with `carmen_rejected` | Carmen read the JV and declined it — the `error_message` carries Carmen's own `Code` and text | Read the row's message first: it is Carmen's verdict verbatim, not our summary of it. Before 2026-08-28 this reason also absorbed every HTTP-level refusal, so older rows saying "Carmen rejected the JV" with no detail are usually dead tokens, not bad JVs |
@@ -247,8 +247,12 @@ by surprise.
   `Bearer <admin JWT>` specifically so operators can fix a customer's settings without a
   Carmen token, but `EmailSettings.tsx` only ever sends the raw Carmen token — there's no
   screen that exercises the admin branch.
-- **No i18n on `#/email-settings`.** English-only by design (it's an internal test surface,
-  not the customer-facing screen — Carmen owns that one).
+- **No i18n on `#/email-settings`.** English-only by design: CLAUDE.md makes English the
+  default for a new surface, and the user kept it that way when the page became the
+  customer's screen (decision-log #34).
+- **No in-app link to `#/email-settings` except the fix buttons.** Carmen's menu is the front
+  door. Until Carmen ships it, send a BU that needs setup the URL
+  `#/email-settings?token=…&bu=…&uri=…`, or set it for them via the admin-JWT path.
 - **Attachments within a message are processed serially**, not in parallel — this is what
   sets the ≥10-minute poll floor above. Parallelizing per-message is the documented next
   step if daily-commission-bank backlogs start showing up in `job_runs`.

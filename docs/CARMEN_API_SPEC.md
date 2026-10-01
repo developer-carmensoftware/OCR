@@ -320,7 +320,7 @@ curl "https://{ocr-host}/api/v1/carmen/notifications?uri=https%3A%2F%2Fhotelgrou
 
 ---
 
-## 7 · เปิดหน้า settings จากเมนู Carmen — ข้อเสนอ v5.0 (ยังไม่ใช้งาน)
+## 7 · เปิดหน้า settings จากเมนู Carmen — ข้อเสนอ v5.0 (ฝั่ง OCR พร้อมแล้ว รอเมนูของ Carmen)
 
 **Carmen ทำ 1 เมนู ไม่มีฟอร์ม** แสดงเฉพาะ user ที่ระบบสิทธิ์ของ Carmen อนุญาต กดแล้วทำ 3 ขั้น:
 
@@ -339,14 +339,15 @@ curl "https://{ocr-host}/api/v1/carmen/notifications?uri=https%3A%2F%2Fhotelgrou
 และไม่มี role ของตัวเอง การเช็คฝั่งเรายังเหมือนวันนี้ทุกอย่าง (§Auth): token ที่ Carmen ของ host นั้นยอมรับ
 อ่านและแก้ settings ของ host นั้นได้
 
-**ขอคำตอบ 2 ข้อ**
+**ขอคำตอบ 1 ข้อ: Revocation** — สวิตช์ปิด (`enabled`) ย้ายมาอยู่หน้าเรา Carmen จึงไม่เห็นตอนที่ลูกค้ากดปิด เลือกได้ว่า
 
-1. **Revocation**: สวิตช์ปิด (`enabled`) ย้ายมาอยู่หน้าเรา Carmen จึงไม่เห็นตอนที่ลูกค้ากดปิด เลือกได้ว่า
-   - (ก) ตอนเปิดเมนูแล้ว `GET /settings` ได้ `enabled: false` → เพิกถอน token แล้ว `DELETE /settings/token`
-   - (ข) มีปุ่ม *Disconnect* แยกในฝั่ง Carmen
-   - (ค) ยอมให้ token อยู่ต่อ (ถ้า BU ปิดอยู่ ระบบจะไม่รับเมลอยู่แล้ว)
-2. **Reconnect**: ถ้า token ที่ใช้ post ตาย (`carmen_unauthorized`) ปุ่ม *Reconnect* ในหน้า queue ของเรา
-   ควรเปิด route ไหนของ Carmen (route ที่ทำขั้น 2 ข้างบน)
+- (ก) ตอนเปิดเมนูแล้ว `GET /settings` ได้ `enabled: false` → เพิกถอน token แล้ว `DELETE /settings/token`
+- (ข) มีปุ่ม *Disconnect* แยกในฝั่ง Carmen
+- (ค) ยอมให้ token อยู่ต่อ (ถ้า BU ปิดอยู่ ระบบจะไม่รับเมลอยู่แล้ว)
+
+**token ที่ใช้ post ตาย ไม่ต้องทำอะไรเพิ่ม** — ปุ่ม *Reconnect* ในหน้า queue ของเราเปิดหน้า settings ของเรา
+ซึ่งจะแสดงว่า token ใช้ไม่ได้แล้ว และบอกให้เปิดหน้านี้ใหม่จากเมนู Carmen ขั้น 2 ข้างบนจะ mint ตัวใหม่ให้เอง
+จึงไม่ต้องมี route reconnect แยก
 
 **ถ้าตกลง Carmen ไม่ต้องทำต่อ:** ฟอร์ม settings, สวิตช์ `auto_post`, ช่อง `doc_type`, dropdown ธนาคาร
 และ save semantics ของ §2 · API ทั้งหมดยังเปิดใช้เหมือนเดิม เช่นจะอ่าน `status.ready` ไปทำ badge ข้างเมนูก็ได้

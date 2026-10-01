@@ -10,7 +10,7 @@ a settlement JV's wording now comes from `bu_accounting_mapping_entries`'s confi
 this module owned after that was only `enabled` / `post_type`, one row per (tenant, bank).
 
 2026-09-29: only `post_type` now. Whether a bank reconciles at all is its email rule
-(`doc_type: ar_reconcile`, active), set by Carmen's settings screen — one switch instead of
+(`doc_type: ar_reconcile`, active), set on the settings screen — one switch instead of
 a rule tag plus a toggle here that both had to be on. `ar_rule` below is that read. How the
 JV groups stays ours, saved from the mapping page beside the accounts each grouping needs.
 `ar_reconcile_settings.enabled` stays in the schema, unread — same precedent as
@@ -187,7 +187,7 @@ async def get_settings(db: AsyncSession, tenant_id: str, bank_code: str) -> ARSe
 
 async def save_settings(db: AsyncSession, tenant_id: str, req: ARSettingsIn) -> None:
     """Upsert this bank's grouping. Nothing else lives here to save: the switch is the email
-    rule (Carmen's), and the accounts go through `PUT /api/v1/config/accounting`."""
+    rule (the Settings API), and the accounts go through `PUT /api/v1/config/accounting`."""
     row = await _get_setting(db, tenant_id, req.bank_code)
     if row:
         row.post_type = req.post_type

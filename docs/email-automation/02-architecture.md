@@ -19,7 +19,8 @@ flowchart LR
     Ingest -->|"vision LLM call"| Vision["Vision LLM\n(OpenRouter)"]
     Ingest -->|"JV + input-tax post"| Carmen["This BU's Carmen ERP"]
 
-    CarmenScreen["Carmen settings screen"] -->|"PUT/GET /api/v1/carmen/settings*"| API
+    CarmenMenu["Carmen menu item"] -->|"PUT /settings/token, then SSO link"| Settings["OCR #/email-settings"]
+    Settings -->|"PUT/GET /api/v1/carmen/settings*"| API
 
     Ingest --> DB[("Postgres")]
     DB -.-> T1["email_ingest_settings"]
@@ -31,24 +32,30 @@ flowchart LR
 
 ## Diagram 2 — onboarding
 
-The entire customer-facing setup, driven from Carmen's own screen — this app has no UI for
-any of it except the internal test surface at `#/email-settings`
-(see [Frontend surface](#frontend-surface)).
+The entire customer-facing setup. Since 2026-10-01 (decision-log #34) Carmen contributes a
+menu item, and the screen is ours: `#/email-settings` (see
+[Frontend surface](#frontend-surface)). The menu item is not yet built on Carmen's side.
+Until it is, the page is reached by a queue fix button or by a URL support sends.
 
 ```mermaid
 sequenceDiagram
-    participant User as Customer (Carmen screen)
-    participant Carmen as Carmen backend
+    participant User as Customer
+    participant Carmen as Carmen (menu item)
+    participant Page as OCR #/email-settings
     participant API as OCR API
 
-    User->>Carmen: Turn on Email Automation
-    Carmen->>API: PUT /api/v1/carmen/settings/token (Carmen posting credential)
-    API->>Carmen: verify_token() — GET /department with it
-    API-->>Carmen: 200 token_status (fingerprint, verified_at)
-    Carmen->>API: PUT /api/v1/carmen/settings (tax_ids, rules, enabled=true)
+    User->>Carmen: Open AI JV Automation settings
+    Carmen->>API: GET /api/v1/carmen/settings/token
+    opt none configured, or verified_at is null
+        Carmen->>API: PUT /api/v1/carmen/settings/token (freshly minted BU token)
+        API->>Carmen: verify_token() — GET /department with it
+    end
+    Carmen->>Page: open #/email-settings?token=&bu=&uri= (same SSO link as the queue)
+    User->>Page: tax IDs, rules, Enable
+    Page->>API: PUT /api/v1/carmen/settings (user's Carmen token)
     Note over API: save_settings() allocates a fresh ingest_tag<br/>only here, only when none exists yet
-    API-->>Carmen: 200 settings body incl. ingest_address
-    Carmen-->>User: Show ingest_address, ask to set a mail-forward rule
+    API-->>Page: 200 settings body incl. ingest_address
+    Page-->>User: Show ingest_address, ask to set a mail-forward rule
     User->>User: Configure auto-forward (or forward mail by hand)
 ```
 
@@ -393,26 +400,28 @@ document number.
 
 ## Frontend surface
 
-`#/email-settings` (`frontend/src/features/email-settings/pages/EmailSettings.tsx`) is an internal test surface, not
-a customer-facing screen — per `../CARMEN_INTEGRATION.md §0`, *"the OCR app has no settings
-UI for this feature"*; Carmen's own screen is where customers configure it. Three things
-about it are deliberate:
+`#/email-settings` (`frontend/src/features/email-settings/pages/EmailSettings.tsx`) is the
+customer's settings screen (decision-log #34, 2026-10-01). Until then it was an internal test
+copy of a screen Carmen was to build. Four things about it are deliberate:
 
-- **Not linked from Home** — reachable by URL only (`frontend/src/main.tsx:232-235`,
-  explicit comment: *"deliberately not linked from Home while it is a test surface"*).
-- **English-only** — `EmailSettings.tsx:14`, *"this is an internal surface"*, unlike the
-  bilingual customer-facing purchase flow and admin dashboard.
+- **Two ways in, no third.** It opens from Carmen's menu (SSO link) and from the queue's fix
+  buttons, in the same tab. There is no Home tile or queue-header link (`main.tsx`'s route
+  comment), and no role gate: Carmen decides who sees its menu item, and we check nothing
+  twice.
+- **English-only**, as CLAUDE.md makes English the default for a new surface.
+- **The posting credential shows status only**, plus paste/delete folded under *Set a token
+  manually* as support's fallback. Carmen mints the token when its menu opens the page.
 - **Bypasses `apiFetch`** (`features/email-settings/api/emailAutomation.ts:108-128`) — it sends the raw Carmen
   token with no `Bearer` scheme, matching exactly what `_caller()` expects and what Carmen
   itself sends. A 401 here means *Carmen* rejected the token, which the page renders
   inline; going through the shared `apiFetch` would instead treat a 401 as "our own session
   died" and wipe the OCR session.
 
-`#/CreditCardOCR` (`frontend/src/features/credit-card/pages/ReviewQueue.tsx`) is the other half, and unlike
-`#/email-settings` it *is* customer-facing: it is the Credit Card module's landing page, so
+`#/CreditCardOCR` (`frontend/src/features/credit-card/pages/ReviewQueue.tsx`) is the other half:
+it is the Credit Card module's landing page, so
 it is what Carmen's SSO deep-link opens. It lists this BU's email documents by status tab,
 and opens a parked one at `#/CreditCardOCR/review?id=…` for approval. It carries no
-`auto_post` switch — that lives on Carmen's own settings screen, written through
+`auto_post` switch — that lives on `#/email-settings`, written through
 `PUT /api/v1/carmen/settings` and nowhere else (2026-09-08, decision #98). The gear that
 used to hold it here was a second writer, and an unrelated settings save could reset it.
 The manual wizard moved to `#/CreditCardOCR/manual`

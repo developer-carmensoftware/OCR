@@ -264,7 +264,8 @@ misread a figure is to find the JV afterwards.
 
 A document now stops at `pending_review` between the gate ladder and `post_gljv`, and a
 human approves it at `#/CreditCardOCR`. The switch back is per BU: `auto_post`, default
-`false`, flipped in the queue's own settings once the queue has been getting it right.
+`false`, flipped once the queue has been getting it right. (It was first a gear on the queue;
+since 2026-09-08 it is a field of the BU's settings, on `#/email-settings` since #34.)
 
 What this is **not** is a return to v1. The differences are the whole reason it could be
 built in a week rather than being cherry-picked:
@@ -450,7 +451,8 @@ for the rows that already carry it.
 
 **What it does not change.** The refund rule (#17), what parks after a charge (#22), the
 chips (#23), the backlog cap's value, approve, reject, and the switch itself — `auto_post`
-is still per BU, still defaults `false`, still written only by its own endpoint.
+is still per BU and still defaults `false`. (It was written by its own endpoint then; since
+2026-09-08 only by `PUT /api/v1/carmen/settings`.)
 
 Full reasoning in [`07-human-in-the-loop.md §15`](07-human-in-the-loop.md).
 
@@ -563,7 +565,8 @@ Full reasoning, and the seven decisions behind it:
 - **`feat/email-flow`** — the v1 design: a human-approval review step before posting, its
   own admin UI, `email_flow_*` migrations. Deliberately never merged; kept only as
   historical reference for UX and endpoint shape. **Not cherry-pickable** — v2 removed the
-  approval step and moved settings ownership to Carmen's own screen, and is a different
+  approval step and moved settings ownership to Carmen's own screen (moved back into this
+  app by #34, on v2's API rather than v1's tables), and is a different
   architecture end to end, not a superset of v1. #18 above brings the *idea* back on v2's
   architecture; it does not bring back this branch's code, and that distinction is why it
   cost days instead of weeks.
@@ -781,6 +784,9 @@ disagreed with their own fee-invoice wording.
 
 ## 31. The rule is the settlement switch; Carmen sets it (2026-09-29)
 
+> *Where it is set moved by #34:* the rule is still the one switch, but its screen is now our
+> `#/email-settings`, not Carmen's.
+
 **Decided:** 2026-09-29. Until today, a bank's settlement report reconciled only if **two**
 switches in two places were both on: its email rule said `doc_type: ar_reconcile` (Carmen's
 settings screen, or our `#/email-settings`), and `ar_reconcile_settings.enabled` was on (our
@@ -888,3 +894,58 @@ idempotent. `queries.sql` item 29 is the dry run.
 - Push the migration after this branch merges ([[supabase_push_branch_migration]]). It is
   safe to push before the code deploys, because the old code's fallback and the copies say
   the same thing.
+
+## 34. The settings screen moves into the OCR app (2026-10-01)
+
+**Decided:** 2026-10-01. This reverses the ownership half of the v2 restart (#20: "moved
+settings ownership to Carmen's own screen") and the link direction of
+[`07-human-in-the-loop.md` #101](07-human-in-the-loop.md). Carmen's settings form was still a
+draft. Our `#/email-settings` already covered every field, including `auto_post` and
+`doc_type`, which Carmen had not shipped (its checklist items 8 and 9). Every contract change
+so far had been a hand-over to another team plus a wait, and meanwhile a BU stayed in review
+mode.
+
+**Decision.** `#/email-settings` is the customer's settings screen.
+
+- **Carmen builds a menu item, not a form.** It mints the BU's posting token if
+  `GET /settings/token` says none is live, then opens our page through the same SSO link
+  as the queue (`CARMEN_INTEGRATION.md §2.8`). Agreeing that with Carmen is still open. Our
+  side does not wait for it.
+- **Who may open it is Carmen's call, made once.** Carmen decides who sees its menu item. We
+  keep no roles and ask Carmen no permission question. A per-BU permission endpoint was
+  drafted the same morning and dropped (the user's call) as exactly the duplicated work this
+  move exists to remove. The trust model is unchanged: any token the host's Carmen accepts
+  may edit (§2.1, QA S-07). A user who reaches the app through the queue link can still open
+  the page, the same reach that approving a JV already gives them.
+- **Every fix button opens it, in this tab.** `sender_not_allowed`, `wrong_pdf_password`,
+  `ingest_paused`, `tax_id_mismatch`, *Reconnect* (`carmen_unauthorized`) and the AR dialog's
+  "no settlement rule" door all go to `#/email-settings`. That leaves no link to Carmen's
+  `/setting`, so `fixLinkProps` (which picked the tab) and `carmenSettingsUrl` are deleted.
+  *Reconnect* lands on the Posting credential card, which shows the token's status. So we no
+  longer need Carmen to name a reconnect route.
+- **No other entry point.** No Home tile and no queue-header link. Carmen's menu is the
+  front door (the user's call).
+- **The page is customer-facing now.** It gets a *Back to queue* link that asks before
+  dropping unsaved edits. The posting-token card shows status, and keeps paste/delete folded
+  under *Set a token manually* (support's fallback until Carmen mints on open), with Delete
+  confirmed first. "Owner emails" is renamed "Your email addresses" to match the queue's
+  phrase for `sender_not_allowed`. It stays English-only.
+- **Nothing on the API moves.** `PUT /api/v1/carmen/settings` stays the one writer of every
+  field. `auto_post` and `doc_type` still merge on omit, which costs nothing with one client
+  and still protects against an old build or a script.
+
+**Why.** One screen means no hand-overs: a new field is ours to build and ship. The feature's
+whole working surface sits in one app: the queue, the GL mapping, Detail/Summary, and now the
+settings. The links finally follow the writer, which is what #101 was about in the first
+place.
+
+**What it costs.**
+
+- Until Carmen ships its menu item, a BU reaches the page only through a fix button or a URL
+  that support sends. That is accepted: no in-app entry, by decision.
+- A fix pressed inside the review dialog leaves the dialog in the same tab, as *Fix mapping*
+  always did.
+- The browser's Back button is not guarded against an unsaved form (`ponytail:` comment in
+  `EmailSettings.tsx`).
+
+**No data migration, no API change.**

@@ -10,7 +10,7 @@ import { fmt } from '@/shared/lib/format'
 import { toExtractedRows } from '@/shared/api/ocr'
 import { normalizeDateStringToCE } from '@/shared/lib/date'
 import { applyJvAmount, type JvRow } from '@/features/credit-card/lib/ccJv'
-import { fixLinkProps, type ExtractionWarning } from '@/shared/lib/reviewReasons'
+import type { ExtractionWarning } from '@/shared/lib/reviewReasons'
 import { patchAccountingConfig } from '@/shared/api/config'
 import {
   approveDocument,
@@ -288,21 +288,20 @@ export function useReviewDocument(
   // stop-reason banner uses, rather than a second kind of link on the same dialog. On the
   // fee-invoice path the picker is right there in the header and a link would be noise.
   const prefixFix =
-    isAR && blockReason === t('review.prefixRequired')
-      ? fixLinkProps({ href: '#/CreditCardOCR/mapping' })
-      : null
+    isAR && blockReason === t('review.prefixRequired') ? { href: '#/CreditCardOCR/mapping' } : null
 
   // Two doors behind one button, picked by what is wrong. No JV at all means this bank has
-  // no active settlement rule — the switch, which Carmen's settings screen owns since
-  // 2026-09-29, so that is where it opens. Otherwise the gap is an account, fixed on the
-  // mapping page, and every value there is per bank, so the door carries this document's.
-  const arSettingsLink = fixLinkProps({
+  // no active settlement rule — the switch is the rule's document type on the AI JV
+  // Automation settings screen (decision #31, moved in-app by #34), so that is where it
+  // opens. Otherwise the gap is an account, fixed on the mapping page, and every value
+  // there is per bank, so the door carries this document's.
+  const arSettingsLink = {
     href: !arJv
-      ? '/setting'
+      ? '#/email-settings'
       : bankCode
         ? `#/CreditCardOCR/mapping?bank=${encodeURIComponent(bankCode)}`
         : '#/CreditCardOCR/mapping',
-  })
+  }
 
   async function approve() {
     if (!doc) return

@@ -30,7 +30,8 @@ _JSON = JSON().with_variant(JSONB(), "postgresql")
 
 
 class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
-    """What a BU configured. Written by Carmen through PUT /api/v1/carmen/settings."""
+    """What a BU configured. Written only through PUT /api/v1/carmen/settings — by our
+    `#/email-settings` screen, which Carmen's menu opens (decision #34)."""
 
     __tablename__ = "email_ingest_settings"
 

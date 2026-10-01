@@ -241,7 +241,8 @@ authenticated frontend.
 | `POST /documents/{id}/reject` | `{ reason?: str }` → `204` |
 
 There is no `auto-post` route here. There was one, and it is gone (§21): the switch is a
-field of `PUT /api/v1/carmen/settings`, which is Carmen's screen, and `GET /status` reads it.
+field of `PUT /api/v1/carmen/settings`, behind the settings screen (`#/email-settings`,
+decision-log #34), and `GET /status` reads it.
 
 Schemas go in the existing `app/models/schemas/email_automation.py`. `paginate()` and the
 `Page[T]` envelope as everywhere else.
@@ -1560,6 +1561,11 @@ true of it.
 ---
 
 ## §21 — One writer for the switch, and it is Carmen's (2026-09-08)
+
+> **Partly superseded 2026-10-01 by [decision-log #34](06-decision-log.md):** the settings
+> screen is now ours. #98 and #99 stand: one writer, `PUT /api/v1/carmen/settings`, and it
+> merges on omit. #100's "second client" and #101's links to Carmen's screen do not.
+> `#/email-settings` is the switch's only screen, and every fix button opens it in this tab.
 
 `auto_post` had two writers. The queue's own gear (`QueueSettings.tsx`, `.rq-settings`,
 `PUT /api/v1/email/settings/auto-post`) wrote only the switch, carefully. The Settings API

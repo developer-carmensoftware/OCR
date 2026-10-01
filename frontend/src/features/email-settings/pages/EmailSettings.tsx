@@ -1,24 +1,19 @@
 /**
- * Email Automation settings — our own screen against the API Carmen calls.
+ * AI JV Automation settings — the customer's one screen for this feature (decision #34,
+ * 2026-10-01; CARMEN_INTEGRATION.md §2.8).
  *
- * Carmen owns the customer-facing version of this screen (CARMEN_INTEGRATION.md §2).
- * This one exists so the contract can be exercised end to end without them: it uses
- * the same endpoints, the same auth (the user's raw Carmen token, proven against
- * their own Carmen on every call) and the same error shapes, so anything that breaks
- * here breaks on their screen too.
+ * **Two ways in, both deliberate.** Carmen's menu opens it through the same SSO link as the
+ * queue (`#/email-settings?token=&bu=&uri=`), after minting the BU's posting token if it
+ * needs one; and the queue's fix buttons open it in this tab. Carmen decides who sees its
+ * menu item and we check nothing twice, so there is no role gate here — the same reach every
+ * BU user already has when they approve a document. Nothing else links here (no Home tile, no
+ * queue header link): the menu is the front door.
  *
- * **Nothing in the UI links here any more** (2026-09-08). Every settings button on the review
- * queue opens Carmen's own screen, because that is the screen that owns these values — the
- * same reason `auto_post` has one writer. This page is reached by typing the hash: by support,
- * and by whoever is exercising the contract. The route in `main.tsx` stays for exactly that.
+ * It talks to `/api/v1/carmen/settings*` with the user's raw Carmen token, proven against
+ * their own Carmen on every call — the endpoints Carmen was to call from a screen of its own,
+ * unchanged. `PUT /settings` is still the one writer of every field, `auto_post` included.
  *
- * **The layout is Carmen's, the parts are ours** (2026-09-10, CARMEN_INTEGRATION.md §2.8).
- * Same sections, same controls, same dirty-form-with-one-Save semantics as the screen they
- * are building, assembled from the `ui-*` kit — so handing this over is "copy this layout",
- * not "design a screen". Three blocks are ours alone and marked as such below: the posting
- * credential, the live status line, and the per-rule document type.
- *
- * English only: this is an internal surface, and CLAUDE.md makes English the default.
+ * English only, as CLAUDE.md makes English the default for a new surface.
  */
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Copy, Plus, RefreshCw, Trash2 } from 'lucide-react'
@@ -87,9 +82,9 @@ export default function EmailSettings() {
   const blockers = status?.blockers || []
   const received = status?.documents_total || 0
 
-  // The page has no in-app nav links, so this is the realistic way to leave it.
-  // ponytail: hash navigation away won't fire beforeunload; add a router guard if the
-  // page ever gains links.
+  // Closing or reloading the tab. Its one in-app link (Back to queue) asks on its own click.
+  // ponytail: the browser's Back button is a hashchange, which nothing guards — add a router
+  // guard if someone loses an edit that way.
   useEffect(() => {
     if (!dirty) return
     const warn = (e: BeforeUnloadEvent) => e.preventDefault()
@@ -120,9 +115,24 @@ export default function EmailSettings() {
         title="AI JV Automation"
         description="Configure email ingestion and bank document matching for this business unit. Forward a bank's fee report to the address below and it is extracted and posted to Carmen without anyone opening the app."
         actions={
-          <Button onClick={() => void ctrl.reload()} disabled={saving} aria-label="Reload">
-            <RefreshCw size={14} />
-          </Button>
+          <>
+            {/* The fix buttons arrive here in the queue's own tab, so the way back is a
+                link rather than the browser's Back — and it is the one exit that can ask. */}
+            <a
+              className="btn btn-outline btn-sm"
+              href="#/CreditCardOCR"
+              onClick={e => {
+                if (dirty && !window.confirm('Leave without saving your changes?')) {
+                  e.preventDefault()
+                }
+              }}
+            >
+              Back to queue
+            </a>
+            <Button onClick={() => void ctrl.reload()} disabled={saving} aria-label="Reload">
+              <RefreshCw size={14} />
+            </Button>
+          </>
         }
       />
 
@@ -231,9 +241,9 @@ export default function EmailSettings() {
             />
           </div>
 
-          {/* Carmen's own screen owns this decision for a customer (§2.7) — it is here so
-              support can set it for a BU whose Carmen has not shipped the control yet, and
-              so the field is exercised end to end like every other one on this page.
+          {/* The switch's one screen (§2.7, decision #34). `PUT /settings` stays its one
+              writer, and the hook sends the field only when this switch moved — the endpoint
+              keeps the stored value when it is omitted.
 
               It is the one control that lets a document reach Carmen unseen, so the hint
               names what still stops rather than reassuring. */}
@@ -262,8 +272,10 @@ export default function EmailSettings() {
         </div>
 
         <div className="email-grid2">
+          {/* Named the way the queue names it ("Sender is not one of your email addresses"),
+              so a reader sent here by that row's fix button finds the field they were told. */}
           <label className="email-field">
-            <span>Owner emails</span>
+            <span>Your email addresses</span>
             <textarea
               className="admin-form-input"
               rows={3}
@@ -412,45 +424,68 @@ export default function EmailSettings() {
         ))}
       </Card>
 
-      {/* Ours. Carmen's app posts as the signed-in user, so their screen has no field for
-          this; without it here, automated posting is off no matter what else is set. */}
+      {/* The credential every JV of this BU posts with — approved or automatic. Carmen issues
+          it (its menu mints one before opening this page, CARMEN_INTEGRATION.md §2.8), so the
+          customer reads its status here and nothing more. Pasting one by hand is support's
+          fallback, folded away so a customer is not handed a box they have nothing to put in. */}
       <Card title="Posting credential">
         <p className="email-note">
-          {ctrl.tokenStatus?.configured
-            ? `${ctrl.tokenStatus.fingerprint} · verified ${
-                ctrl.tokenStatus.verified_at
-                  ? new Date(ctrl.tokenStatus.verified_at).toLocaleString()
-                  : 'never'
-              }`
-            : 'Not set — automated posting is off.'}
+          {!ctrl.tokenStatus?.configured
+            ? 'Not connected — nothing can post until Carmen connects this business unit.'
+            : ctrl.tokenStatus.verified_at
+              ? `Connected · ${ctrl.tokenStatus.fingerprint} · verified ${new Date(
+                  ctrl.tokenStatus.verified_at
+                ).toLocaleString()}`
+              : `${ctrl.tokenStatus.fingerprint} · Carmen no longer accepts it — nothing can post until it is connected again.`}
         </p>
-        <div className="email-copyrow">
-          <input
-            className="admin-form-input"
-            type="password"
-            placeholder="Paste the Carmen token JVs are posted with"
-            value={tokenInput}
-            onChange={e => setTokenInput(e.target.value)}
-            autoComplete="new-password"
-          />
-          <Button
-            variant="primary"
-            disabled={!tokenInput.trim() || saving}
-            onClick={async () => {
-              if (await ctrl.saveToken(tokenInput.trim())) {
-                setTokenInput('')
-                showToast('Token verified and stored', 'success')
-              }
-            }}
-          >
-            Save token
-          </Button>
-          {ctrl.tokenStatus?.configured && (
-            <Button disabled={saving} onClick={() => void ctrl.removeToken()}>
-              Delete
+        <p className="email-hint">
+          Carmen issues this credential when you open this page from Carmen&apos;s menu. If it shows
+          not connected, reopen the page from there or contact support.
+        </p>
+        <details className="email-manual-token">
+          <summary>Set a token manually</summary>
+          <div className="email-copyrow">
+            <input
+              className="admin-form-input"
+              type="password"
+              placeholder="Paste the Carmen token JVs are posted with"
+              aria-label="Carmen posting token"
+              value={tokenInput}
+              onChange={e => setTokenInput(e.target.value)}
+              autoComplete="new-password"
+            />
+            <Button
+              variant="primary"
+              disabled={!tokenInput.trim() || saving}
+              onClick={async () => {
+                if (await ctrl.saveToken(tokenInput.trim())) {
+                  setTokenInput('')
+                  showToast('Token verified and stored', 'success')
+                }
+              }}
+            >
+              Save token
             </Button>
-          )}
-        </div>
+            {ctrl.tokenStatus?.configured && (
+              <Button
+                disabled={saving}
+                onClick={() => {
+                  // Deleting our copy stops every JV of this BU from posting, and it does
+                  // not revoke the token in Carmen — worth one question.
+                  if (
+                    window.confirm(
+                      'Delete the stored token? Documents will stop posting until a new one is set.'
+                    )
+                  ) {
+                    void ctrl.removeToken()
+                  }
+                }}
+              >
+                Delete
+              </Button>
+            )}
+          </div>
+        </details>
       </Card>
 
       <div className="email-actionbar">
