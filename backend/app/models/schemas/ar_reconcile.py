@@ -50,7 +50,7 @@ class ARSettingsIn(BaseModel):
 
 class ARSettingsOut(ARSettingsIn):
     # An active `ar_reconcile` email rule exists for this bank — read-only here, the
-    # switch is the rule, on the settings screen (`#/email-settings`).
+    # switch is the rule, on the settings screen (`#/CreditCardOCR/email-settings`).
     enabled: bool = False
     # Whether this bank has a settlement layout at all (`banks.settlement_grouping is
     # not null`) — what the mapping page reads to decide whether its Settlement card

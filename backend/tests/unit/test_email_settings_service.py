@@ -808,7 +808,7 @@ def test_a_payload_that_says_nothing_about_the_switch_decides_nothing():
 
     It has to be, because this route is the only writer left (the queue's gear and
     `PUT /api/v1/email/settings/auto-post` went on 2026-09-08). Absent used to mean False,
-    so a caller that does not know the field — our own `#/email-settings` page, or a Carmen
+    so a caller that does not know the field — our own `#/CreditCardOCR/email-settings` page, or a Carmen
     build that predates it — turned review back on with every unrelated settings save.
     """
     assert SettingsIn(uri="h", bu="b").auto_post is None
@@ -818,7 +818,7 @@ def test_a_payload_that_says_nothing_about_the_switch_decides_nothing():
 async def test_omitting_the_switch_keeps_it_but_sending_it_writes_it():
     """The whole point of the `None` default, exercised both ways on one stored row.
 
-    `#/email-settings` saves a filename pattern by PUTting the complete settings back with
+    `#/CreditCardOCR/email-settings` saves a filename pattern by PUTting the complete settings back with
     no `auto_post` in it. Before merge-on-omit that silently switched review on for a BU
     that had turned it off — and with the queue's gear gone there is nowhere to notice, let
     alone put it back.

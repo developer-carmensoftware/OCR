@@ -8,7 +8,7 @@
 
 > **📌 ข้อเสนอ v5.0 (2026-10-01) — รอทีม Carmen ยืนยัน: ไม่ต้องสร้างหน้าจอ settings แล้ว**
 >
-> หน้า `#/email-settings` ในแอป OCR มีครบทุกฟิลด์แล้ว รวมถึง `auto_post` กับ `doc_type` ที่ฝั่ง
+> หน้า `#/CreditCardOCR/email-settings` ในแอป OCR มีครบทุกฟิลด์แล้ว รวมถึง `auto_post` กับ `doc_type` ที่ฝั่ง
 > Carmen ยังไม่ได้ทำ ข้อเสนอคือ **Carmen ทำแค่เมนูที่เปิดลิงก์มาหน้าเรา** โดยใช้ SSO แบบเดียวกับลิงก์
 > `#/CreditCardOCR` ที่ใช้อยู่แล้ว ส่วนใครกดเมนูได้ Carmen กำหนดเองตามระบบสิทธิ์ที่มีอยู่
 > รายละเอียดอยู่ที่ §7 ท้ายหน้านี้ และ CARMEN_INTEGRATION.md §2.8
@@ -329,7 +329,7 @@ curl "https://{ocr-host}/api/v1/carmen/notifications?uri=https%3A%2F%2Fhotelgrou
 2) ถ้า configured=false หรือ verified_at=null
      → mint token ของ BU → PUT /settings/token      (= ขั้น ON เดิม ย้ายมาทำตอนเปิดเมนู)
 3) เปิด tab ใหม่ไปที่
-   https://{ocr-app}/#/email-settings?token=<token ของ user>&bu=<bu>&user=<user>&uri=<origin ของ Carmen>
+   https://{ocr-app}/#/CreditCardOCR/email-settings?token=<token ของ user>&bu=<bu>&user=<user>&uri=<origin ของ Carmen>
 ```
 
 ลิงก์ในขั้น 3 เป็นรูปแบบเดียวกับลิงก์ `#/CreditCardOCR` ที่ใช้อยู่แล้ว ต่างกันแค่ route

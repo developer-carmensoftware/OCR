@@ -1445,7 +1445,7 @@ describe('a parked settlement report', () => {
     mount()
 
     const link = await screen.findByRole('link', { name: /AR reconciliation settings/i })
-    expect(link).toHaveAttribute('href', '#/email-settings')
+    expect(link).toHaveAttribute('href', '#/CreditCardOCR/email-settings')
     expect(link).not.toHaveAttribute('target')
   })
 })

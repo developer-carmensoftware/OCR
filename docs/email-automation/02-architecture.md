@@ -19,7 +19,7 @@ flowchart LR
     Ingest -->|"vision LLM call"| Vision["Vision LLM\n(OpenRouter)"]
     Ingest -->|"JV + input-tax post"| Carmen["This BU's Carmen ERP"]
 
-    CarmenMenu["Carmen menu item"] -->|"PUT /settings/token, then SSO link"| Settings["OCR #/email-settings"]
+    CarmenMenu["Carmen menu item"] -->|"PUT /settings/token, then SSO link"| Settings["OCR #/CreditCardOCR/email-settings"]
     Settings -->|"PUT/GET /api/v1/carmen/settings*"| API
 
     Ingest --> DB[("Postgres")]
@@ -33,7 +33,7 @@ flowchart LR
 ## Diagram 2 — onboarding
 
 The entire customer-facing setup. Since 2026-10-01 (decision-log #34) Carmen contributes a
-menu item, and the screen is ours: `#/email-settings` (see
+menu item, and the screen is ours: `#/CreditCardOCR/email-settings` (see
 [Frontend surface](#frontend-surface)). The menu item is not yet built on Carmen's side.
 Until it is, the page is reached by a queue fix button or by a URL support sends.
 
@@ -41,7 +41,7 @@ Until it is, the page is reached by a queue fix button or by a URL support sends
 sequenceDiagram
     participant User as Customer
     participant Carmen as Carmen (menu item)
-    participant Page as OCR #/email-settings
+    participant Page as OCR #/CreditCardOCR/email-settings
     participant API as OCR API
 
     User->>Carmen: Open AI JV Automation settings
@@ -50,7 +50,7 @@ sequenceDiagram
         Carmen->>API: PUT /api/v1/carmen/settings/token (freshly minted BU token)
         API->>Carmen: verify_token() — GET /department with it
     end
-    Carmen->>Page: open #/email-settings?token=&bu=&uri= (same SSO link as the queue)
+    Carmen->>Page: open #/CreditCardOCR/email-settings?token=&bu=&uri= (same SSO link as the queue)
     User->>Page: tax IDs, rules, Enable
     Page->>API: PUT /api/v1/carmen/settings (user's Carmen token)
     Note over API: save_settings() allocates a fresh ingest_tag<br/>only here, only when none exists yet
@@ -400,7 +400,7 @@ document number.
 
 ## Frontend surface
 
-`#/email-settings` (`frontend/src/features/email-settings/pages/EmailSettings.tsx`) is the
+`#/CreditCardOCR/email-settings` (`frontend/src/features/email-settings/pages/EmailSettings.tsx`) is the
 customer's settings screen (decision-log #34, 2026-10-01). Until then it was an internal test
 copy of a screen Carmen was to build. Four things about it are deliberate:
 
@@ -421,7 +421,7 @@ copy of a screen Carmen was to build. Four things about it are deliberate:
 it is the Credit Card module's landing page, so
 it is what Carmen's SSO deep-link opens. It lists this BU's email documents by status tab,
 and opens a parked one at `#/CreditCardOCR/review?id=…` for approval. It carries no
-`auto_post` switch — that lives on `#/email-settings`, written through
+`auto_post` switch — that lives on `#/CreditCardOCR/email-settings`, written through
 `PUT /api/v1/carmen/settings` and nowhere else (2026-09-08, decision #98). The gear that
 used to hold it here was a second writer, and an unrelated settings save could reset it.
 The manual wizard moved to `#/CreditCardOCR/manual`

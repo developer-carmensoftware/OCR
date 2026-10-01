@@ -359,7 +359,7 @@ export default function ReviewQueue() {
           </button>
           {/* No auto-post switch here any more. It is one field of the BU's settings and
               has one writer, `PUT /api/v1/carmen/settings`, behind one screen,
-              `#/email-settings`. Two writers for one boolean is what let an unrelated
+              `#/CreditCardOCR/email-settings`. Two writers for one boolean is what let an unrelated
               settings save turn review back on behind the customer's back (2026-09-08).
               No settings link either: Carmen's menu is the front door (decision #34).
 

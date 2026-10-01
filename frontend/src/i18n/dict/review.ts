@@ -112,7 +112,7 @@ export const en = {
   // approval, so none of them can go stale that way.
   //
   // The ingest address is deliberately absent — it belongs to the settings screen
-  // (#/email-settings), not to a line in an empty state.
+  // (#/CreditCardOCR/email-settings), not to a line in an empty state.
   'review.emptyReviewTitle': 'Nothing needs review',
   'review.emptyReviewBody': 'Documents that need a decision appear here.',
   'review.emptyTodayTitle': 'No activity today',
@@ -237,7 +237,7 @@ export const en = {
   'review.rejectedBy': 'Reviewed and rejected by {name}',
   'review.rejectedByWith': 'Reviewed and rejected by {name}: {reason}',
   // Each phrase that carries a Fix button names the field on the screen that button opens.
-  // "your list" / "connection" were our nouns; the settings screen (#/email-settings) offers
+  // "your list" / "connection" were our nouns; the settings screen (#/CreditCardOCR/email-settings) offers
   // *Your email addresses* and *Posting credential*, so a reader who followed the button
   // arrived looking for something that was not there. Rename a field there, rename it here. (There were three. `rcNoRuleMatch` — *Filename
   // patterns* — went with the rows it described: a rule refusing a file it was written to

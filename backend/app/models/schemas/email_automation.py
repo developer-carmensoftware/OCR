@@ -1,6 +1,6 @@
 """Email Automation — request payloads for the Settings API.
 
-Called by our own settings screen (`#/email-settings`, opened from Carmen's menu — decision
+Called by our own settings screen (`#/CreditCardOCR/email-settings`, opened from Carmen's menu — decision
 #34) with the user's Carmen token, and by Carmen itself for the posting credential.
 
 Contract: docs/CARMEN_INTEGRATION.md §2.3 (settings) and §2.6 (posting credential).
@@ -61,7 +61,7 @@ class SettingsIn(BaseModel):
     # merges — the idiom `_merge_rule` already uses for `pdf_password_enc`. It has to,
     # because this route is now the *only* writer (the queue's own gear and
     # `PUT /api/v1/email/settings/auto-post` were deleted 2026-09-08): a caller that does
-    # not know the field — an old build of our `#/email-settings` page, or any script —
+    # not know the field — an old build of our `#/CreditCardOCR/email-settings` page, or any script —
     # would otherwise turn review back on with every unrelated settings save, silently,
     # for a customer who had deliberately switched it off.
     auto_post: bool | None = None

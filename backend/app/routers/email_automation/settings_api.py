@@ -1,7 +1,7 @@
 """Email Automation — the Settings API, plus the ingest job trigger.
 
 Contract: docs/CARMEN_INTEGRATION.md §2 (settings) and §3 (outcomes). Since 2026-10-01
-(decision #34) the settings screen is ours, `#/email-settings`, opened from Carmen's menu;
+(decision #34) the settings screen is ours, `#/CreditCardOCR/email-settings`, opened from Carmen's menu;
 it calls these routes with the user's Carmen token exactly as Carmen's own screen would
 have, and Carmen itself calls `/settings/token` and `/notifications`.
 

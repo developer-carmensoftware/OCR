@@ -349,7 +349,7 @@ def test_a_resolved_row_reports_its_ledger_columns_not_a_zero_amount(monkeypatch
 
 def test_this_router_cannot_write_the_switch():
     """It is readable here (`GET /status`) and writable in exactly one place —
-    `PUT /api/v1/carmen/settings`, behind the settings screen (`#/email-settings`).
+    `PUT /api/v1/carmen/settings`, behind the settings screen (`#/CreditCardOCR/email-settings`).
 
     Two writers for one boolean is what the route this replaces cost us: `SettingsIn` is
     a full replace that defaulted the field to False, so every unrelated settings save

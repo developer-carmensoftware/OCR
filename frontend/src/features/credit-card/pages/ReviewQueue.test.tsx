@@ -254,7 +254,7 @@ describe('a skipped attachment on Not posted', () => {
     expect(screen.getByText(/password/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open settings' })).toHaveAttribute(
       'href',
-      '#/email-settings'
+      '#/CreditCardOCR/email-settings'
     )
   })
 
@@ -290,7 +290,7 @@ describe('what a stopped row offers', () => {
     // Every field this button is about lives on our settings screen (decision #34): this
     // tab, like Fix mapping, and the page's Back to queue brings the reviewer home.
     const link = screen.getByRole('link', { name: 'Open settings' })
-    expect(link).toHaveAttribute('href', '#/email-settings')
+    expect(link).toHaveAttribute('href', '#/CreditCardOCR/email-settings')
     expect(link).not.toHaveAttribute('target')
   })
 
@@ -724,7 +724,7 @@ describe('the actions column', () => {
       mount([doc({ status: 'skipped', reason_code, total: 0 })])
       expect(await screen.findByRole('link', { name: 'Open settings' })).toHaveAttribute(
         'href',
-        '#/email-settings'
+        '#/CreditCardOCR/email-settings'
       )
     }
   )
@@ -735,7 +735,7 @@ describe('the actions column', () => {
     mount([doc({ status: 'failed', reason_code: 'tax_id_mismatch', total: 0 })])
     expect(await screen.findByRole('link', { name: 'Open settings' })).toHaveAttribute(
       'href',
-      '#/email-settings'
+      '#/CreditCardOCR/email-settings'
     )
   })
 
@@ -750,7 +750,7 @@ describe('the actions column', () => {
     // dead token shows — under the word that says what is wrong.
     expect(screen.getByRole('link', { name: 'Reconnect' })).toHaveAttribute(
       'href',
-      '#/email-settings'
+      '#/CreditCardOCR/email-settings'
     )
     expect(screen.queryByRole('link', { name: 'Open settings' })).not.toBeInTheDocument()
   })
@@ -907,7 +907,7 @@ describe('a row that has already been resolved', () => {
 describe('the auto-post switch', () => {
   it('is not on this page at all, whatever the status says', async () => {
     // One field of the BU's settings, one writer: `PUT /api/v1/carmen/settings`, behind one
-    // screen, `#/email-settings`. The gear that used to live here was a second writer,
+    // screen, `#/CreditCardOCR/email-settings`. The gear that used to live here was a second writer,
     // and two writers is what let an unrelated settings save turn review back on behind
     // the customer's back. The page still *reads* `auto_post` — it just cannot set it.
     mount([doc()])

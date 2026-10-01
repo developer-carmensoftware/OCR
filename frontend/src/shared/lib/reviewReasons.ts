@@ -132,7 +132,10 @@ export function warningText(
 }
 
 /** The AI JV Automation settings screen — ours, in this app, since 2026-10-01 (decision #34). */
-const SETTINGS = { key: 'review.actionOpenSettings' as TKey, href: '#/email-settings' }
+const SETTINGS = {
+  key: 'review.actionOpenSettings' as TKey,
+  href: '#/CreditCardOCR/email-settings',
+}
 
 /**
  * Where a person fixes each cause — and nothing at all for the ones they cannot.
@@ -158,7 +161,7 @@ const SETTINGS = { key: 'review.actionOpenSettings' as TKey, href: '#/email-sett
  *
  * **Every fix is in this app, in this tab** (decision #34, 2026-10-01). The settings these
  * buttons are about — the bank rule, the PDF password, the tax IDs, the switch, the posting
- * token — live on our `#/email-settings`, which Carmen's menu opens; the GL mapping was always
+ * token — live on our `#/CreditCardOCR/email-settings`, which Carmen's menu opens; the GL mapping was always
  * ours. Until that date the settings causes opened Carmen's own screen in a new tab, which is
  * why the row and the dialog used to share a helper that picked the tab: with every href now
  * an in-app hash there is nothing left to pick, and both render `href={fix.href}`.
@@ -168,7 +171,7 @@ export const FIX: Record<string, { key: TKey; href: string }> = {
   // Its own word, not the generic one: this is not "a setting is off", it is "the pipeline
   // is down for this BU until the posting credential is set again". The settings screen is
   // where its status shows.
-  carmen_unauthorized: { key: 'review.actionReconnect', href: '#/email-settings' },
+  carmen_unauthorized: { key: 'review.actionReconnect', href: SETTINGS.href },
   sender_not_allowed: SETTINGS,
   wrong_pdf_password: SETTINGS,
   ingest_paused: SETTINGS,

@@ -27,7 +27,7 @@ import type { FieldMapping } from '@/shared/types/api'
  * injected, and `mappingsToSave` is what the page folds back into its own dict right
  * before the one `PUT /config/accounting` call. Only the post type and the two
  * payment-type sets are this hook's own. `enabled` is read-only (2026-09-29): whether
- * the bank reconciles is its email rule, switched on `#/email-settings`, not here.
+ * the bank reconciles is its email rule, switched on `#/CreditCardOCR/email-settings`, not here.
  *
  * **No `template` state any more (Ticket D, 2026-09-22)** — the JV description is the
  * same field the fee-invoice path always used (`bank_descriptions[bankCode]`), owned by

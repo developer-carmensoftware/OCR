@@ -40,7 +40,7 @@ human-in-the-loop queue reads and writes — see
 
 > `auto_post` is **read** here (`GET /email/status`) and written nowhere in this app. It is
 > one field of the BU's settings, and `PUT /api/v1/carmen/settings` is its only writer —
-> behind the settings screen, `#/email-settings` (decision-log #34). The `PUT /api/v1/email/settings/auto-post` that used to sit
+> behind the settings screen, `#/CreditCardOCR/email-settings` (decision-log #34). The `PUT /api/v1/email/settings/auto-post` that used to sit
 > in this table was deleted on 2026-09-08: two writers for one boolean meant an unrelated
 > settings save could turn review back on behind the customer's back
 > ([CARMEN_INTEGRATION.md §2.7](../CARMEN_INTEGRATION.md)).

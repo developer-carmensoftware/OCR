@@ -149,9 +149,10 @@ the refund boundary (the money went back), and a second copy of something alread
 field on that full-replace payload that **merges on omit** (`SettingsIn.auto_post: bool |
 None`). The queue's gear and `PUT /api/v1/email/settings/auto-post` are deleted: two writers
 meant an unrelated settings save reset the switch. Its one screen is ours: the switch on
-`#/email-settings`, which sends the field only when it moved.
+`#/CreditCardOCR/email-settings`, which sends the field only when it moved.
 
-**The settings screen is `#/email-settings`, in this app** (2026-10-01, decision-log #34).
+**The settings screen is `#/CreditCardOCR/email-settings`, in this app** (2026-10-01, decision-log #34;
+the first path, `#/email-settings`, redirects with its query).
 Carmen builds no settings form. Its menu mints the BU's posting token if needed, then opens
 our page through the same SSO link as the queue. The queue's fix buttons open it in the same
 tab. **Carmen decides who sees the menu item, and we check nothing twice**: no role gate

@@ -247,12 +247,12 @@ by surprise.
   `Bearer <admin JWT>` specifically so operators can fix a customer's settings without a
   Carmen token, but `EmailSettings.tsx` only ever sends the raw Carmen token — there's no
   screen that exercises the admin branch.
-- **No i18n on `#/email-settings`.** English-only by design: CLAUDE.md makes English the
+- **No i18n on `#/CreditCardOCR/email-settings`.** English-only by design: CLAUDE.md makes English the
   default for a new surface, and the user kept it that way when the page became the
   customer's screen (decision-log #34).
-- **No in-app link to `#/email-settings` except the fix buttons.** Carmen's menu is the front
+- **No in-app link to `#/CreditCardOCR/email-settings` except the fix buttons.** Carmen's menu is the front
   door. Until Carmen ships it, send a BU that needs setup the URL
-  `#/email-settings?token=…&bu=…&uri=…`, or set it for them via the admin-JWT path.
+  `#/CreditCardOCR/email-settings?token=…&bu=…&uri=…`, or set it for them via the admin-JWT path.
 - **Attachments within a message are processed serially**, not in parallel — this is what
   sets the ≥10-minute poll floor above. Parallelizing per-message is the documented next
   step if daily-commission-bank backlogs start showing up in `job_runs`.

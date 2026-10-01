@@ -3,7 +3,7 @@
  * 2026-10-01; CARMEN_INTEGRATION.md §2.8).
  *
  * **Two ways in, both deliberate.** Carmen's menu opens it through the same SSO link as the
- * queue (`#/email-settings?token=&bu=&uri=`), after minting the BU's posting token if it
+ * queue (`#/CreditCardOCR/email-settings?token=&bu=&uri=`), after minting the BU's posting token if it
  * needs one; and the queue's fix buttons open it in this tab. Carmen decides who sees its
  * menu item and we check nothing twice, so there is no role gate here — the same reach every
  * BU user already has when they approve a document. Nothing else links here (no Home tile, no

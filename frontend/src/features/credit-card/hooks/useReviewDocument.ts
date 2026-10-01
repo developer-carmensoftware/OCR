@@ -297,7 +297,7 @@ export function useReviewDocument(
   // there is per bank, so the door carries this document's.
   const arSettingsLink = {
     href: !arJv
-      ? '#/email-settings'
+      ? '#/CreditCardOCR/email-settings'
       : bankCode
         ? `#/CreditCardOCR/mapping?bank=${encodeURIComponent(bankCode)}`
         : '#/CreditCardOCR/mapping',

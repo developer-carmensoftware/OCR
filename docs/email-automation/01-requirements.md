@@ -17,7 +17,7 @@ approving an ordinary document and never a doubtful one.
 |---|---|
 | Bank | Sends the commission/fee PDF, by their own schedule (often daily) |
 | Customer accounting staff | Sets up the forward once; may also manually forward individual mails |
-| Settings screen (`#/email-settings`, opened from Carmen's menu) | Where the feature is configured — reads and writes settings through our API. In this app since 2026-10-01 (decision-log #34); Carmen decides who sees the menu item |
+| Settings screen (`#/CreditCardOCR/email-settings`, opened from Carmen's menu) | Where the feature is configured — reads and writes settings through our API. In this app since 2026-10-01 (decision-log #34); Carmen decides who sees the menu item |
 | Reviewer (any Carmen user for that BU) | Approves or rejects each queued document at `#/CreditCardOCR` in the OCR app — every document while `auto_post` is off, and the flagged ones either way |
 | Shared IMAP mailbox | Receives mail for every BU on the platform, disambiguated by `+tag` |
 | pg_cron | Polls the mailbox every 10 minutes (see [05-operations.md](05-operations.md#scheduling)) |

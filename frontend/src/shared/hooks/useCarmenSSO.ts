@@ -30,7 +30,7 @@ export function useCarmenSSO(): CarmenSSOState {
 
     if (!token || !bu) return
 
-    // #/email-settings calls `/api/v1/carmen/*` with this exact token, which proves it
+    // #/CreditCardOCR/email-settings calls `/api/v1/carmen/*` with this exact token, which proves it
     // against the customer's Carmen on every call — 401 "re-login", 502 "cannot reach
     // Carmen", 429. Carmen's menu opens that page through this same link (decision #34).
     // sessionStorage, same lifetime and blast radius as `ocr_access_token`.

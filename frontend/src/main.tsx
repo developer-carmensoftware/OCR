@@ -149,6 +149,9 @@ function Router() {
       window.location.replace(`#/CreditCardOCR/mapping${query ? `?${query}` : ''}`)
       Page = <Mapping />
     } else if (sub === 'manual') Page = <ManualScan />
+    // AI JV Automation settings (decision #34). Opened from Carmen's menu and from the
+    // queue's fix buttons; deliberately not a Home tile — Carmen's menu is the front door.
+    else if (sub === 'email-settings') Page = <EmailSettings />
     // `/review?id=…` is the queue with a document open over it. Same component, so
     // opening and closing a document never refetches the list behind it.
     else Page = <ReviewQueue />
@@ -157,8 +160,10 @@ function Router() {
   } else if (route === 'whats-new') {
     Page = <WhatsNew />
   } else if (route === 'email-settings') {
-    // AI JV Automation settings (decision #34). Opened from Carmen's menu and from the
-    // queue's fix buttons; deliberately not a Home tile — Carmen's menu is the front door.
+    // Moved under the module it configures 2026-10-01. Redirect, keeping the query, so a
+    // Carmen menu link built against the old path still signs in (`?token=` rides along).
+    const query = window.location.hash.split('?')[1]
+    window.location.replace(`#/CreditCardOCR/email-settings${query ? `?${query}` : ''}`)
     Page = <EmailSettings />
   } else if (route === 'pricing/orders') {
     Page = <OrderHistory />

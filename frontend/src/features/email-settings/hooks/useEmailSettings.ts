@@ -1,5 +1,5 @@
 /**
- * State behind #/email-settings.
+ * State behind #/CreditCardOCR/email-settings.
  *
  * A dirty form with one Save: every control edits a local `draft`, and `save()` sends the
  * whole thing in a single `PUT /settings`, which is a full replace and answers with the new

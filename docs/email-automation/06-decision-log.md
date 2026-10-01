@@ -265,7 +265,7 @@ misread a figure is to find the JV afterwards.
 A document now stops at `pending_review` between the gate ladder and `post_gljv`, and a
 human approves it at `#/CreditCardOCR`. The switch back is per BU: `auto_post`, default
 `false`, flipped once the queue has been getting it right. (It was first a gear on the queue;
-since 2026-09-08 it is a field of the BU's settings, on `#/email-settings` since #34.)
+since 2026-09-08 it is a field of the BU's settings, on `#/CreditCardOCR/email-settings` since #34.)
 
 What this is **not** is a return to v1. The differences are the whole reason it could be
 built in a week rather than being cherry-picked:
@@ -785,11 +785,11 @@ disagreed with their own fee-invoice wording.
 ## 31. The rule is the settlement switch; Carmen sets it (2026-09-29)
 
 > *Where it is set moved by #34:* the rule is still the one switch, but its screen is now our
-> `#/email-settings`, not Carmen's.
+> `#/CreditCardOCR/email-settings`, not Carmen's.
 
 **Decided:** 2026-09-29. Until today, a bank's settlement report reconciled only if **two**
 switches in two places were both on: its email rule said `doc_type: ar_reconcile` (Carmen's
-settings screen, or our `#/email-settings`), and `ar_reconcile_settings.enabled` was on (our
+settings screen, or our `#/CreditCardOCR/email-settings`), and `ar_reconcile_settings.enabled` was on (our
 Mapping page's Settlement card).
 
 **Decision.** One switch, on the rule, written only through `PUT /api/v1/carmen/settings`:
@@ -900,12 +900,12 @@ idempotent. `queries.sql` item 29 is the dry run.
 **Decided:** 2026-10-01. This reverses the ownership half of the v2 restart (#20: "moved
 settings ownership to Carmen's own screen") and the link direction of
 [`07-human-in-the-loop.md` #101](07-human-in-the-loop.md). Carmen's settings form was still a
-draft. Our `#/email-settings` already covered every field, including `auto_post` and
+draft. Our `#/CreditCardOCR/email-settings` already covered every field, including `auto_post` and
 `doc_type`, which Carmen had not shipped (its checklist items 8 and 9). Every contract change
 so far had been a hand-over to another team plus a wait, and meanwhile a BU stayed in review
 mode.
 
-**Decision.** `#/email-settings` is the customer's settings screen.
+**Decision.** `#/CreditCardOCR/email-settings` is the customer's settings screen.
 
 - **Carmen builds a menu item, not a form.** It mints the BU's posting token if
   `GET /settings/token` says none is live, then opens our page through the same SSO link
@@ -919,12 +919,16 @@ mode.
   the page, the same reach that approving a JV already gives them.
 - **Every fix button opens it, in this tab.** `sender_not_allowed`, `wrong_pdf_password`,
   `ingest_paused`, `tax_id_mismatch`, *Reconnect* (`carmen_unauthorized`) and the AR dialog's
-  "no settlement rule" door all go to `#/email-settings`. That leaves no link to Carmen's
+  "no settlement rule" door all go to `#/CreditCardOCR/email-settings`. That leaves no link to Carmen's
   `/setting`, so `fixLinkProps` (which picked the tab) and `carmenSettingsUrl` are deleted.
   *Reconnect* lands on the Posting credential card, which shows the token's status. So we no
   longer need Carmen to name a reconnect route.
 - **No other entry point.** No Home tile and no queue-header link. Carmen's menu is the
   front door (the user's call).
+- **It lives under the module it configures**, beside `/mapping` and `/review`, because
+  every rule on it is a bank rule that feeds the Credit Card queue (the user's call, the same
+  day). It was first built at `#/email-settings`. That path now redirects with its query, so a
+  menu link built against it still signs in.
 - **The page is customer-facing now.** It gets a *Back to queue* link that asks before
   dropping unsaved edits. The posting-token card shows status, and keeps paste/delete folded
   under *Set a token manually* (support's fallback until Carmen mints on open), with Delete

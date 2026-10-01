@@ -11,13 +11,13 @@
 >
 > **2026-10-01 — PROPOSED, awaiting the Carmen team's agreement: the settings screen moves
 > into the OCR app.** Carmen stops building a settings form. Its menu instead mints the
-> posting credential if needed and opens our `#/email-settings` through the SSO link it
+> posting credential if needed and opens our `#/CreditCardOCR/email-settings` through the SSO link it
 > already uses for the queue (§2.8). Carmen still decides **who** may open that screen, by
 > who it shows the menu item to; nothing else is checked twice. The API in §2 does
 > not change; what changes is which client calls it. Every section touched is marked
 > *(proposed 2026-10-01)*.
 >
-> **Our half is built.** `#/email-settings` is the customer's screen, and every settings
+> **Our half is built.** `#/CreditCardOCR/email-settings` is the customer's screen, and every settings
 > button in the OCR app opens it in the same tab (*Reconnect* included). What waits on the
 > Carmen team is the menu item (§2.8, §5 A) and an answer on revocation (§5 C). Until the
 > menu ships, a BU reaches the page through a fix button or a link from support.
@@ -60,7 +60,7 @@ The three things that make this different from the pilot:
    number still waits for a person, under either setting. See §0.2.
 2. **Settings live in the OCR app, opened from Carmen** *(proposed 2026-10-01; until then:
    "Settings live in Carmen")*. The customer reaches the settings from Carmen's menu, which
-   opens our `#/email-settings` with the same SSO link that opens the queue. That screen is
+   opens our `#/CreditCardOCR/email-settings` with the same SSO link that opens the queue. That screen is
    the only settings UI for this feature. Carmen keeps two jobs: decide who may open it, and
    mint the posting credential (§2.6, §2.8). The review queue (§0.2), the GL mapping and the
    settings are then all in one app.
@@ -605,7 +605,7 @@ omitting it keeps the stored value rather than resetting it, unlike every other 
 payload.
 
 > **2026-10-01: the switch's one screen is ours, and item 8 of §5 is withdrawn.** Our
-> `#/email-settings` is the switch's only screen (§2.8). The endpoint stays its only writer,
+> `#/CreditCardOCR/email-settings` is the switch's only screen (§2.8). The endpoint stays its only writer,
 > and omitting the field still keeps the stored value. With one client that costs nothing,
 > and it stops an older script from switching review back on. Every settings button in the
 > OCR app, *Reconnect* included, now opens that screen in the same tab. None opens
@@ -614,7 +614,7 @@ payload.
 ### 2.8 Opening the settings screen — *(proposed 2026-10-01)*
 
 > This replaces the previous §2.8, *"Reference screen layout — you do not have to design
-> this"* (2026-09-10). That section asked you to rebuild our `#/email-settings` in Carmen. The
+> this"* (2026-09-10). That section asked you to rebuild our `#/CreditCardOCR/email-settings` in Carmen. The
 > proposal is that you don't build it at all: you open ours. If the proposal is declined, the
 > old section comes back unchanged from git history.
 
@@ -635,7 +635,7 @@ model allows to configure Email Automation. When it is clicked:
    route:
 
    ```text
-   https://<ocr-app>/#/email-settings?token=<user's Carmen token>&bu=<bu>&user=<user>&uri=<your origin>
+   https://<ocr-app>/#/CreditCardOCR/email-settings?token=<user's Carmen token>&bu=<bu>&user=<user>&uri=<your origin>
    ```
 
 Our screen then reads and writes through §2.2–§2.3 with that token, exactly as yours would
@@ -647,7 +647,7 @@ The trust model on our side is exactly today's (§2.1): any token your Carmen ac
 host may read and write that host's settings.
 
 This covers the menu but not every path into the screen. A user who reaches the OCR app
-through the queue link can still type `#/email-settings`. Our queue's repair buttons will
+through the queue link can still type `#/CreditCardOCR/email-settings`. Our queue's repair buttons will
 also lead there, so a reviewer can fix a sender rule or a PDF password where they found the
 problem. That is the same reach every BU user already has when they approve a document into
 your books, and we accept it as such.
@@ -942,7 +942,7 @@ Two consequences worth stating plainly:
 >
 > | # | We need | Blocks |
 > |---|---|---|
-> | A | A menu item, shown only to users you allow, that runs §2.8 steps 1–3: mint the BU token if needed, then open our `#/email-settings` | every customer's way into the settings |
+> | A | A menu item, shown only to users you allow, that runs §2.8 steps 1–3: mint the BU token if needed, then open our `#/CreditCardOCR/email-settings` | every customer's way into the settings |
 > | B | Item 3 below, unchanged: the JV endpoint accepts the BU token | automated posting |
 > | C | An answer on revocation once the OFF switch is on our screen (§2.8) | revocation |
 >
@@ -982,7 +982,7 @@ The rest of the integration:
 > Item 9 is new on 2026-09-29 and is the same kind of hand-over: our Mapping page used to
 > carry a "Reconcile this bank" switch as well as the rule's Document type. The switch is
 > gone — the rule is the only one. (Detail/Summary stays on our Mapping page.) Until yours
-> ships, our `#/email-settings` sets it.
+> ships, our `#/CreditCardOCR/email-settings` sets it.
 >
 > Item 7 of the previous revision — "confirm Email Automation is gated on the monthly
 > package" — is closed: it is gated, and enforced both at the toggle (`422 not_entitled`)
