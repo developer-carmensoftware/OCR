@@ -10,7 +10,7 @@
 >
 > หน้า `#/email-settings` ในแอป OCR มีครบทุกฟิลด์แล้ว รวมถึง `auto_post` กับ `doc_type` ที่ฝั่ง
 > Carmen ยังไม่ได้ทำ ข้อเสนอคือ **Carmen ทำแค่เมนูที่เปิดลิงก์มาหน้าเรา** โดยใช้ SSO แบบเดียวกับลิงก์
-> `#/CreditCardOCR` ที่ใช้อยู่แล้ว และทำ **permission endpoint 1 ตัว** ไว้บอกว่า user คนไหนตั้งค่าได้
+> `#/CreditCardOCR` ที่ใช้อยู่แล้ว ส่วนใครกดเมนูได้ Carmen กำหนดเองตามระบบสิทธิ์ที่มีอยู่
 > รายละเอียดอยู่ที่ §7 ท้ายหน้านี้ และ CARMEN_INTEGRATION.md §2.8
 >
 > ถ้าตกลงตามนี้ Carmen **ไม่ต้องเรียก §1–§2 เอง** (หน้าเราเรียกให้) ที่ต้องใช้มีแค่ §3–§4
@@ -335,31 +335,9 @@ curl "https://{ocr-host}/api/v1/carmen/notifications?uri=https%3A%2F%2Fhotelgrou
 ลิงก์ในขั้น 3 เป็นรูปแบบเดียวกับลิงก์ `#/CreditCardOCR` ที่ใช้อยู่แล้ว ต่างกันแค่ route
 หน้าเราจะเรียก §1–§2 ด้วย token นั้นเอง
 
-**Permission endpoint ที่ขอให้ Carmen ทำ** — เราจะเรียกจาก **server ของเรา** ทุกครั้งที่มีคนเรียก
-`GET/PUT /settings` และ `/settings/token` (ต่อจากการเช็ค token ปกติ)
-
-```http
-GET {origin}/Carmen.API/api/interface/<path ที่ Carmen เลือก>?bu=<bu>
-Authorization: <token ของ user>
-
-200 {"Allow": true}    → ทำต่อ
-200 {"Allow": false}   → เราตอบ 403
-401                    → token ตายแล้ว เราตอบ 401 ("เปิดใหม่จาก Carmen")
-```
-
-| | |
-|---|---|
-| ต้องการแค่ | token ของ user เข้า → ตอบ อนุญาต/ไม่อนุญาต **สำหรับ BU นั้น** → token เสียตอบ `401` · ชื่อ path และ field ให้ Carmen เลือกเอง |
-| ทำไมซ่อนเมนูอย่างเดียวไม่พอ | API ของเรารับทุก token ที่ Carmen ของ host นั้นยอมรับ และ user ทุกคนของ BU เข้าแอปเราได้ผ่านลิงก์ queue อยู่แล้ว |
-| ถ้า Carmen host ไหนยังไม่มี endpoint นี้ | **เราตอบ 403 (fail closed)** · host นั้นยังไม่มีเมนูมาหาเราอยู่แล้ว ลูกค้าจึงไม่เสียอะไร |
-| ของแถม | ตอนนี้ token ที่ใช้ได้กับ host หนึ่งจัดการ settings ได้ทุก BU ของ host นั้น พอเช็คเป็นราย BU ก็จะเป็นไปตามสิทธิ์ของ Carmen เอง |
-| ไม่เช็ค | `GET /notifications` (badge ของ user ทุกคน), `GET /bank-codes`, path admin ของทีมเรา |
-
-**Error ใหม่ที่หน้าเราจะเจอ (Carmen ไม่ต้องจัดการ):**
-
-| Status | detail | เมื่อไหร่ |
-|---|---|---|
-| `403` | `No permission to manage Email Automation for this BU` | Carmen ตอบ `Allow: false` หรือไม่มี endpoint |
+**สิทธิ์ใช้ของ Carmen ที่เดียว** — ใครเห็นเมนูนี้ Carmen กำหนดเองตามระบบสิทธิ์ที่มีอยู่ ฝั่งเราไม่เช็คซ้ำ
+และไม่มี role ของตัวเอง การเช็คฝั่งเรายังเหมือนวันนี้ทุกอย่าง (§Auth): token ที่ Carmen ของ host นั้นยอมรับ
+อ่านและแก้ settings ของ host นั้นได้
 
 **ขอคำตอบ 2 ข้อ**
 

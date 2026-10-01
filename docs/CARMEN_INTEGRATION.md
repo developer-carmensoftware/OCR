@@ -12,8 +12,8 @@
 > **2026-10-01 — PROPOSED, awaiting the Carmen team's agreement: the settings screen moves
 > into the OCR app.** Carmen stops building a settings form. Its menu instead mints the
 > posting credential if needed and opens our `#/email-settings` through the SSO link it
-> already uses for the queue (§2.8). Carmen still decides **who** may open that screen, and
-> enforces it through a permission check we ask it to expose (§2.8, §5). The API in §2 does
+> already uses for the queue (§2.8). Carmen still decides **who** may open that screen, by
+> who it shows the menu item to; nothing else is checked twice. The API in §2 does
 > not change; what changes is which client calls it. Every section touched is marked
 > *(proposed 2026-10-01)*. Until the Carmen team confirms, the rest of this document still
 > describes what is live.
@@ -640,28 +640,16 @@ model allows to configure Email Automation. When it is clicked:
 Our screen then reads and writes through §2.2–§2.3 with that token, exactly as yours would
 have. Your developers never call those two endpoints.
 
-**The permission check we ask you to expose.** Hiding the menu item is not enough. The API
-accepts any token your Carmen validates for the host (§2.1), and every user of a BU can reach
-our app through the queue link. So we check on **our server**, on every request to
-`GET`/`PUT /settings` and `/settings/token`, right after the token check:
+**Who may open it is decided by your menu, and only there.** Your permission model already
+decides who sees the menu item, so we do not ask Carmen again and keep no roles of our own.
+The trust model on our side is exactly today's (§2.1): any token your Carmen accepts for the
+host may read and write that host's settings.
 
-```http
-GET {origin}/Carmen.API/api/interface/<path of your choice>?bu=<bu>
-Authorization: <the user's Carmen token>
-
-200 {"Allow": true}    → proceed
-200 {"Allow": false}   → we answer 403 "no permission"
-401                    → the token is dead; we answer 401 "reopen from Carmen"
-```
-
-- The path and field names are yours to choose. We need three things: the user's token in,
-  a yes or no **for this BU** out, and `401` for a dead token.
-- **We fail closed.** A Carmen without this endpoint (`404`), or any other answer, gives `403`.
-  That host also has no menu item pointing at us yet, so no customer is cut off.
-- **Answering per BU also closes a gap in §2.1.** Today a token valid for host X may manage
-  any BU under X. With this check, settings follow your own per-BU permissions.
-- Not checked: `/notifications` (any user's badge poll), `/bank-codes` (not tenant data), and
-  our own operator path (`Bearer <admin jwt>`).
+This covers the menu but not every path into the screen. A user who reaches the OCR app
+through the queue link can still type `#/email-settings`. Our queue's repair buttons will
+also lead there, so a reviewer can fix a sender rule or a PDF password where they found the
+problem. That is the same reach every BU user already has when they approve a document into
+your books, and we accept it as such.
 
 **Two answers we need from you:**
 
@@ -951,10 +939,9 @@ Two consequences worth stating plainly:
 > | # | We need | Blocks |
 > |---|---|---|
 > | A | A menu item, shown only to users you allow, that runs §2.8 steps 1–3: mint the BU token if needed, then open our `#/email-settings` | every customer's way into the settings |
-> | B | The per-BU permission endpoint (§2.8) | anyone opening the settings (we fail closed without it) |
-> | C | Item 3 below, unchanged: the JV endpoint accepts the BU token | automated posting |
-> | D | An answer on revocation once the OFF switch is on our screen (§2.8) | revocation |
-> | E | The Carmen route our *Reconnect* button should open (§2.8) | recovering a dead posting credential |
+> | B | Item 3 below, unchanged: the JV endpoint accepts the BU token | automated posting |
+> | C | An answer on revocation once the OFF switch is on our screen (§2.8) | revocation |
+> | D | The Carmen route our *Reconnect* button should open (§2.8) | recovering a dead posting credential |
 >
 > Items 4–7 below do not change. The settings form, the `auto_post` switch and the
 > `doc_type` control are no longer needed from you.
