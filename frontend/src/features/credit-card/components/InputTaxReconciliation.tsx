@@ -20,6 +20,8 @@ interface Props {
   details: DetailRow[]
   headerData: Record<string, string>
   bank?: BankCode | ''
+  /** The card the JV was posted for — lets the server stamp the filing and refuse a second. */
+  cardId?: string | null
   onBack: () => void
   onFinish: () => void
 }
@@ -28,6 +30,7 @@ export default function InputTaxReconciliation({
   details,
   headerData,
   bank,
+  cardId = null,
   onBack: _onBack,
   onFinish,
 }: Props) {
@@ -158,7 +161,7 @@ export default function InputTaxReconciliation({
       // says nothing about the record existing. Same check as the JV (useOcrSubmission) and
       // the email job (email_ingest_service._post_input_tax); this step was the only Carmen
       // post that skipped it and toasted success over a rejection.
-      const res = (await submitInputTax(payload)) as { Code?: number; UserMessage?: string }
+      const res = (await submitInputTax(payload, cardId)) as { Code?: number; UserMessage?: string }
       if (res?.Code !== 0) {
         throw new Error(res?.UserMessage || `Carmen error (Code: ${res?.Code})`)
       }

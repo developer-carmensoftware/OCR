@@ -187,6 +187,12 @@ class ActivityRow(ReviewDocument):
     # says so in words rather than printing a raw id.
     posted_by_name: str | None = None
 
+    # A manual scan whose JV posted, which owed VAT, and whose input-tax record this app
+    # never filed — the session died on step 4, or step 4 was skipped. The row says so and
+    # offers to file it (`POST /activity/{id}/input-tax`). Always False for email rows,
+    # whose own failure note is `error_message`.
+    input_tax_owed: bool = False
+
 
 class ActivityPage(Page[ActivityRow]):
     """The activity window plus the counts behind the filter chips.

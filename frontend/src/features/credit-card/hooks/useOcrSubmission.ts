@@ -6,6 +6,7 @@ import { getCarmenUrl } from '@/shared/lib/url'
 import { buildGljvPayload } from '@/features/credit-card/lib/ccJv'
 import { showToast } from '@/shared/lib/toast'
 import { appKey } from '@/shared/lib/storage'
+import { parseNum, round2 } from '@/shared/lib/format'
 import type { ModalConfig } from '@/shared/hooks/useModal'
 
 // JvRow and the JV body itself both live in features/credit-card/lib/ccJv.ts, next to the row builder and
@@ -115,6 +116,10 @@ export function useOcrSubmission({
           company_name: headerData.CompanyName || undefined,
           bank_code: bank || undefined,
           branch_no: headerData.BranchNo || undefined,
+          // The two sums InputTaxReconciliation files. Kept server-side so a JV whose
+          // input tax never followed can be seen, and filed, after the draft is gone.
+          commis_amt: round2(details.reduce((s, d) => s + parseNum(d.CommisAmt), 0)),
+          tax_amt: round2(details.reduce((s, d) => s + parseNum(d.TaxAmt), 0)),
         }
         const carmenRes = (await submitToCarmen(carmenPayload, cardId, metadata)) as Record<
           string,
@@ -176,6 +181,11 @@ export function useOcrSubmission({
           },
         })
       } else {
+        // Step 4 now, not on the modal's button. The JV is in Carmen whether or not anyone
+        // clicks, and the draft records `step` — a session that died with this modal open
+        // used to restore onto step 3, whose submit is refused as a duplicate and from which
+        // step 4 cannot be reached, so the input tax was lost without a word.
+        setStep(4)
         showModal({
           title: 'JV Saved Successfully!',
           message: `Document number ${docNo} has been successfully saved and sent to Carmen Cloud JV.`,
@@ -185,10 +195,7 @@ export function useOcrSubmission({
           cancelStyle: jvId
             ? { background: 'var(--teal)', color: 'white', border: '1px solid var(--teal)' }
             : undefined,
-          onConfirm: () => {
-            closeModal()
-            setStep(4)
-          },
+          onConfirm: closeModal,
           onCancel: jvId
             ? () => window.open(getCarmenUrl(`/glJv/${jvId}/show`), '_blank')
             : undefined,

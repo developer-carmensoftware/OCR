@@ -224,6 +224,18 @@ export const en = {
   // credits went on, and nothing can resume it — so it says what happened, not what to do.
   'review.scannedNotPostedBy': 'Scanned by {name} — not posted',
   'review.scannedNotPosted': 'Scanned by hand — not posted',
+  // A manual scan whose JV posted and whose input-tax record never followed — the session
+  // died on step 4, or it was skipped. Appended to the posted sentence, like an email
+  // document's own input-tax note.
+  'review.inputTaxOwed': 'input tax not recorded',
+  'review.actionRecordInputTax': 'Record input tax',
+  'review.recordInputTaxTitle': 'Record input tax in Carmen?',
+  // The "not already keyed" line is the point of the dialog: the app cannot see a record
+  // someone typed into Carmen by hand, and a second copy double-claims the VAT.
+  'review.recordInputTaxBody':
+    'This files the input-tax (ACTX) record for {doc}, from the amounts posted on its JV.\n\nOnly continue if nobody has already keyed it into Carmen by hand.',
+  'review.inputTaxRecorded': 'Input tax recorded for {doc}',
+  'review.inputTaxRecordFailed': 'Input tax not recorded: {msg}',
   // The landing page for a BU that has never scanned anything. No word about email: most
   // BUs scan by hand, and the automation is introduced from Carmen's menu, which opens our
   // settings screen.
@@ -439,6 +451,13 @@ export const th: Record<keyof typeof en, string> = {
   'review.postedManually': 'สแกนและโพสต์เอง',
   'review.scannedNotPostedBy': 'สแกนโดย {name} — ยังไม่ได้ลงบัญชี',
   'review.scannedNotPosted': 'สแกนเอง — ยังไม่ได้ลงบัญชี',
+  'review.inputTaxOwed': 'ยังไม่ได้บันทึกภาษีซื้อ',
+  'review.actionRecordInputTax': 'บันทึกภาษีซื้อ',
+  'review.recordInputTaxTitle': 'บันทึกภาษีซื้อใน Carmen?',
+  'review.recordInputTaxBody':
+    'ระบบจะบันทึกรายการภาษีซื้อ (ACTX) ของเอกสาร {doc} จากยอดที่ลงไว้ใน JV\n\nกดต่อเฉพาะเมื่อยังไม่มีใครคีย์รายการนี้ใน Carmen เอง',
+  'review.inputTaxRecorded': 'บันทึกภาษีซื้อของ {doc} แล้ว',
+  'review.inputTaxRecordFailed': 'บันทึกภาษีซื้อไม่สำเร็จ: {msg}',
   'review.noScansTitle': 'ยังไม่มีการสแกน',
   'review.noScansBody':
     'ใบแจ้งยอดทุกใบที่สแกนจะมาปรากฏที่นี่ ทั้งที่ลงบัญชีแล้วและยังไม่ได้ลงบัญชี เพื่อให้เห็นว่าเครดิตแต่ละหน่วยใช้ไปกับอะไร',

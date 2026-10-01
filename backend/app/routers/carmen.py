@@ -9,6 +9,7 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -75,6 +76,42 @@ async def proxy_gl_prefix(session: SessionInfo = Depends(get_current_session)):
         return {"Data": [], "Status": f"upstream_{e.status_code}"}
 
 
+async def _lock_card(
+    db: AsyncSession, session: SessionInfo, credit_card_id: str | None
+) -> CreditCard | None:
+    """This session's tenant's card, locked FOR UPDATE until the request's session closes.
+
+    None for an absent, malformed or cross-tenant id — the caller then posts without a
+    guard or bookkeeping, which is the legacy path; the real wizard always sends a valid id.
+    """
+    if not credit_card_id:
+        return None
+    try:
+        card_uuid = uuid.UUID(credit_card_id)
+        tenant_uuid = uuid.UUID(session.tenant_id)
+    except (ValueError, AttributeError):
+        # Deliberately does not echo the caller-supplied value: it is unbounded
+        # request input, this path is a known-benign flow (the wizard sends doc_no
+        # here on a duplicate re-submit — see test_gljv_non_uuid_credit_card_id…),
+        # and interpolating anything named credit_card_* trips CodeQL's
+        # py/clear-text-logging-sensitive-data name heuristic (a false positive —
+        # this is our own credit_cards.id row UUID, never card data; the schema has
+        # no PAN column at all).
+        logger.warning("Skipping duplicate guard / bookkeeping: credit_card_id is not a UUID")
+        return None
+    return (
+        await db.execute(
+            select(CreditCard)
+            .where(
+                CreditCard.id == card_uuid,
+                CreditCard.tenant_id == tenant_uuid,
+                CreditCard.deleted_at.is_(None),
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+
+
 @router.post("/gljv")
 async def proxy_gljv(
     request: Request,
@@ -83,6 +120,8 @@ async def proxy_gljv(
     company_name: str | None = None,
     bank_code: str | None = None,
     branch_no: str | None = None,
+    commis_amt: Decimal | None = None,
+    tax_amt: Decimal | None = None,
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
@@ -92,58 +131,29 @@ async def proxy_gljv(
     # The card row is locked FOR UPDATE and held through the Carmen post + stamp
     # below, so two concurrent submits of the same document serialize: the second
     # blocks until the first commits (stamping submitted_at) and is then rejected.
-    # A malformed / cross-tenant / absent card_id degrades to the legacy no-guard
-    # path (posts, skips bookkeeping) — the real wizard always sends a valid id.
-    card: CreditCard | None = None
-    tenant_uuid: uuid.UUID | None = None
-    if credit_card_id:
-        try:
-            card_uuid = uuid.UUID(credit_card_id)
-            tenant_uuid = uuid.UUID(session.tenant_id)
-        except (ValueError, AttributeError):
-            # Deliberately does not echo the caller-supplied value: it is unbounded
-            # request input, this path is a known-benign flow (the wizard sends doc_no
-            # here on a duplicate re-submit — see test_gljv_non_uuid_credit_card_id…),
-            # and interpolating anything named credit_card_* trips CodeQL's
-            # py/clear-text-logging-sensitive-data name heuristic (a false positive —
-            # this is our own credit_cards.id row UUID, never card data; the schema has
-            # no PAN column at all).
-            logger.warning("Skipping duplicate guard / bookkeeping: credit_card_id is not a UUID")
-            card_uuid = None
-        if card_uuid and tenant_uuid:
-            card = (
-                await db.execute(
-                    select(CreditCard)
-                    .where(
-                        CreditCard.id == card_uuid,
-                        CreditCard.tenant_id == tenant_uuid,
-                        CreditCard.deleted_at.is_(None),
-                    )
-                    .with_for_update()
-                )
-            ).scalar_one_or_none()
-        if card is not None:
-            eff_doc = doc_no or card.doc_no
-            # (a) this exact card already went to Carmen (double-click / retry after success)
-            if card.submitted_at is not None:
-                raise DuplicateDocumentError(
-                    f"Document number {eff_doc or ''} has already been submitted to Carmen."
-                )
-            # (b) a different card with the same (tenant, doc_no, doc_date) already
-            # submitted. bank_code used to be in this key and in this guard's condition,
-            # which meant a card with no detected bank skipped the check entirely and a
-            # document the email job filed under a different bank was never seen as the
-            # same document — see finalize_extraction for the whole story.
-            if eff_doc and await has_submitted_doc(
-                db,
-                CreditCard,
-                tenant_id=tenant_uuid,
-                doc_no=eff_doc,
-                doc_date=card.doc_date,
-            ):
-                raise DuplicateDocumentError(
-                    f"Document number {eff_doc} has already been submitted to Carmen."
-                )
+    card = await _lock_card(db, session, credit_card_id)
+    if card is not None:
+        eff_doc = doc_no or card.doc_no
+        # (a) this exact card already went to Carmen (double-click / retry after success)
+        if card.submitted_at is not None:
+            raise DuplicateDocumentError(
+                f"Document number {eff_doc or ''} has already been submitted to Carmen."
+            )
+        # (b) a different card with the same (tenant, doc_no, doc_date) already
+        # submitted. bank_code used to be in this key and in this guard's condition,
+        # which meant a card with no detected bank skipped the check entirely and a
+        # document the email job filed under a different bank was never seen as the
+        # same document — see finalize_extraction for the whole story.
+        if eff_doc and await has_submitted_doc(
+            db,
+            CreditCard,
+            tenant_id=card.tenant_id,
+            doc_no=eff_doc,
+            doc_date=card.doc_date,
+        ):
+            raise DuplicateDocumentError(
+                f"Document number {eff_doc} has already been submitted to Carmen."
+            )
 
     async with _carmen_errors("Carmen Cloud JV ล้มเหลว"):
         res = await post_gljv(body, session.carmen_token)
@@ -168,6 +178,12 @@ async def proxy_gljv(
                 card.bank_code = bank_code  # type: ignore[assignment]
             if branch_no:
                 card.branch_no = branch_no  # type: ignore[assignment]
+            # What the input-tax record will claim — kept so a JV whose ACTX never followed
+            # (the session died on step 4) can be seen and filed from the activity table.
+            if commis_amt is not None:
+                card.commis_amt = commis_amt  # type: ignore[assignment]
+            if tax_amt is not None:
+                card.tax_amt = tax_amt  # type: ignore[assignment]
             await db.commit()
 
             card_doc_no: str | None = card.doc_no  # type: ignore[assignment]
@@ -214,11 +230,31 @@ async def proxy_period_list(session: SessionInfo = Depends(get_current_session))
 
 @router.post("/input-tax")
 async def proxy_create_input_tax(
-    request: Request, session: SessionInfo = Depends(get_current_session)
+    request: Request,
+    credit_card_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
 ):
     body = await request.json()
+    # Same lock and same degrade-to-no-guard rule as the JV. Without a card this is the
+    # plain proxy it always was; with one, a second filing is refused before it reaches
+    # Carmen — a restored draft and the activity table's button can both reach this record.
+    card = await _lock_card(db, session, credit_card_id)
+    if card is not None and card.input_tax_at is not None:
+        raise DuplicateDocumentError(
+            f"The input tax for document {card.doc_no or ''} has already been recorded in Carmen."
+        )
     async with _carmen_errors("Carmen Input Tax ล้มเหลว"):
-        return await post_input_tax(body, session.carmen_token)
+        res = await post_input_tax(body, session.carmen_token)
+    if res and res.get("Code") == 0 and card is not None:
+        # Carmen has the record now. A failed stamp must not turn that into an error the
+        # user retries — that retry is a second ACTX.
+        try:
+            card.input_tax_at = datetime.now(UTC)  # type: ignore[assignment]
+            await db.commit()
+        except Exception:
+            logger.exception("[carmen_proxy] Input tax posted but input_tax_at not stamped")
+    return res
 
 
 @router.put("/input-tax/{rec_seq}")

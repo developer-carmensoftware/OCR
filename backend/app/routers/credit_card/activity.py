@@ -34,6 +34,7 @@ from app.models.schemas.email_automation import (
     QueueSeenOut,
 )
 from app.services.credit_card import activity as activity_service
+from app.services.credit_card.input_tax import file_input_tax_for_card
 
 router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card Activity"])
 
@@ -98,3 +99,24 @@ async def mark_chip_seen(
     tenant_id = uuid.UUID(str(session.tenant_id))
     total = await activity_service.mark_chip_seen(db, tenant_id, body.filter)
     return QueueSeenOut(filter=body.filter, seen=total)
+
+
+@router.post("/activity/{card_id}/input-tax", status_code=204)
+async def record_input_tax(
+    card_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
+):
+    """File the input tax a manual scan's posted JV still owes — the row's `input_tax_owed`.
+
+    The wizard files it on step 4, and a session that died before then (or a step 4 that was
+    skipped) used to leave the VAT claim with no trace anywhere but a browser draft. This is
+    the same record, built server-side from what was stamped on the card with the JV, and
+    posted with the caller's own Carmen token — as the wizard would have.
+
+    404 for another BU's card, 409 when there is nothing left to file, 400 with the reason
+    when the record cannot be built or Carmen refuses it.
+    """
+    await file_input_tax_for_card(
+        db, uuid.UUID(str(session.tenant_id)), card_id, session.carmen_token
+    )

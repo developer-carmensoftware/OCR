@@ -1,8 +1,12 @@
+import { useState } from 'react'
+import { toast } from 'sonner'
 import { ExternalLink } from 'lucide-react'
 import { useT } from '@/i18n/LanguageContext'
+import CustomModal from '@/shared/components/common/CustomModal'
 import { glFieldLabel, glFieldList } from '@/features/credit-card/lib/glFieldLabels'
 import { FIX, stopText } from '@/shared/lib/reviewReasons'
 import { getCarmenUrl } from '@/shared/lib/url'
+import { recordInputTax } from '@/features/credit-card/api/emailReview'
 import type { ReviewDocument } from '@/features/credit-card/api/emailReview'
 import type { TKey } from '@/i18n/dict'
 
@@ -82,9 +86,11 @@ const STATUS_META: Record<string, { key: TKey; tone: string }> = {
 interface Props {
   row: ReviewDocument
   onOpen: (id: string) => void
+  /** Something on this row changed server-side — refetch the table. */
+  onChanged?: () => void
 }
 
-export default function QueueRow({ row, onOpen }: Props) {
+export default function QueueRow({ row, onOpen, onChanged }: Props) {
   const { t } = useT()
   const pending = row.status === 'pending_review'
   const status = STATUS_META[row.status] ?? { key: 'review.statusSkipped' as TKey, tone: 'calm' }
@@ -138,7 +144,7 @@ export default function QueueRow({ row, onOpen }: Props) {
       </td>
 
       <td className="rq-c-act" data-label={t('review.colActions')}>
-        <RowAction row={row} onOpen={onOpen} />
+        <RowAction row={row} onOpen={onOpen} onChanged={onChanged} />
       </td>
     </tr>
   )
@@ -151,7 +157,7 @@ export default function QueueRow({ row, onOpen }: Props) {
  * transition — so a "View" button on one would open nothing. Its story is already in the
  * Detail column.
  */
-function RowAction({ row, onOpen }: Props) {
+function RowAction({ row, onOpen, onChanged }: Props) {
   const { t } = useT()
 
   // The only row that asks for a decision rather than a repair.
@@ -162,6 +168,10 @@ function RowAction({ row, onOpen }: Props) {
       </button>
     )
   }
+
+  // A posted manual scan whose input tax never followed. Ahead of the JV link because it is
+  // the one thing on this row still owed, and the JV number stays in its own column to copy.
+  if (row.input_tax_owed) return <RecordInputTax row={row} onDone={onChanged} />
 
   // A posted row has somewhere to go: the JV it became, in Carmen. Same destination the
   // `document_posted` notification offers, built from the same helper so the two cannot
@@ -206,6 +216,54 @@ function RowAction({ row, onOpen }: Props) {
     <a className="btn btn-outline btn-sm" href={fix.href}>
       {t(fix.key)}
     </a>
+  )
+}
+
+/**
+ * File the input tax a posted manual scan still owes — the wizard's step 4, after the
+ * session that should have done it is gone. The server builds the record from the sums it
+ * stamped with the JV; this only asks, sends, and says what happened.
+ *
+ * The confirm is not ceremony: someone may already have keyed this record into Carmen by
+ * hand, and the app cannot see that. Two copies of a VAT claim is the one outcome worse
+ * than the missing one.
+ */
+function RecordInputTax({ row, onDone }: { row: ReviewDocument; onDone?: () => void }) {
+  const { t } = useT()
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  async function confirm() {
+    setBusy(true)
+    try {
+      await recordInputTax(row.id)
+      toast.success(t('review.inputTaxRecorded', { doc: row.doc_no || '' }))
+      setOpen(false)
+      onDone?.()
+    } catch (err) {
+      toast.error(t('review.inputTaxRecordFailed', { msg: (err as Error).message }))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <button type="button" className="btn btn-outline btn-sm" onClick={() => setOpen(true)}>
+        {t('review.actionRecordInputTax')}
+      </button>
+      <CustomModal
+        show={open}
+        type="warning"
+        title={t('review.recordInputTaxTitle')}
+        message={t('review.recordInputTaxBody', { doc: row.doc_no || '—' })}
+        confirmText={busy ? t('cc.sending') : t('review.actionRecordInputTax')}
+        cancelText={t('modal.cancel')}
+        busy={busy}
+        onConfirm={confirm}
+        onCancel={() => setOpen(false)}
+      />
+    </>
   )
 }
 
@@ -264,6 +322,8 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
         {/* The JV posted but its VAT record did not — the document is done either way,
             so this is a note, not a failure. */}
         {row.error_message ? ` · ${row.error_message}` : ''}
+        {/* A manual scan's own version of that note, in the reader's language. */}
+        {row.input_tax_owed ? ` · ${t('review.inputTaxOwed')}` : ''}
       </span>
     )
   }

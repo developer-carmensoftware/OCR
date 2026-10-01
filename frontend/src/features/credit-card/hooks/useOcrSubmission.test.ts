@@ -292,6 +292,21 @@ describe('useOcrSubmission', () => {
       expect(props.setCarmenJvId).toHaveBeenCalledWith('JV-777')
     })
 
+    it('F5.1b – advances to step 4 without waiting for the modal to be confirmed', async () => {
+      // The draft records `step`. A session that died with the success modal open used to
+      // restore onto step 3, where submit is a duplicate and step 4 is unreachable.
+      mockHappyPath()
+      const props = makeProps()
+      const { result } = renderHook(() => useOcrSubmission(props))
+      await act(async () => {
+        await result.current.handleSubmitFinal(defaultRows)
+      })
+
+      expect(props.setStep).toHaveBeenCalledWith(4)
+      const modal = props.showModal.mock.calls[0][0] as { onConfirm: () => void }
+      expect(modal.onConfirm).toBe(props.closeModal)
+    })
+
     it('F5.2 – Code !== 0 → warning toast + rejection modal, setCarmenJvId not called', async () => {
       diffCorrections.mockReturnValue([])
       getAccountingConfig.mockResolvedValue(defaultConfig)
@@ -341,7 +356,12 @@ describe('useOcrSubmission', () => {
   describe('F6: Metadata and parameters passed to submitToCarmen', () => {
     it('F6.1 – Metadata parameters are populated correctly', async () => {
       mockHappyPath()
-      const props = makeProps()
+      const props = makeProps({
+        details: [
+          { CommisAmt: '1,000.10', TaxAmt: '70.01' },
+          { CommisAmt: 200, TaxAmt: 14 },
+        ],
+      })
       const { result } = renderHook(() => useOcrSubmission(props))
       await act(async () => {
         await result.current.handleSubmitFinal(defaultRows)
@@ -355,6 +375,9 @@ describe('useOcrSubmission', () => {
         company_name: 'Acme Co',
         bank_code: 'KBANK',
         branch_no: '001',
+        // The input-tax record's two sums, so the server can file it without the draft.
+        commis_amt: 1200.1,
+        tax_amt: 84.01,
       })
     })
   })
