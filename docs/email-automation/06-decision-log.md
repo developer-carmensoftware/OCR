@@ -991,3 +991,12 @@ menu.
 stored the token (about a second), posting stops until the next open. The other way round,
 with Carmen `PUT`ting it before opening the link, had no browser in the middle, but took two
 API calls on Carmen's side. The user chose the link.
+
+**Revocation: the token outlives the OFF switch, accepted** (the user's call, the same day).
+#34 left Carmen one question: the OFF switch moved to our screen, so who revokes the BU token
+when a customer switches the feature off? The answer is nobody, on purpose. Nothing uses the
+token while the BU is off, because the ingest loop skips it. It is stored encrypted and never
+returned, and the next menu open replaces it anyway. Deleting our copy on OFF was the other way
+we could do it on our own, but it strands a customer who switches back on in the same visit:
+they would have to reopen from Carmen's menu. Carmen's checklist loses item C. Nothing is
+waiting on Carmen except the menu item.

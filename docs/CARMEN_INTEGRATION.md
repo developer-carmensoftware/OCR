@@ -19,7 +19,7 @@
 >
 > **Our half is built.** `#/CreditCardOCR/email-settings` is the customer's screen, and every settings
 > button in the OCR app opens it in the same tab (*Reconnect* included). What waits on the
-> Carmen team is the menu item (§2.8, §5 A) and an answer on revocation (§5 C). Until the
+> Carmen team is the menu item (§2.8, §5 A). Until the
 > menu ships, a BU reaches the page through a fix button or a link from support.
 >
 > Companion documents: [email-automation/](email-automation/README.md) (our own engineering
@@ -562,7 +562,8 @@ Four things worth stating plainly:
 - **`DELETE` removes our copy; it does not revoke anything.** Only Carmen can revoke, and
   must — a copy we deleted is still a live credential everywhere else. Please wire
   revocation to the customer switching Email Automation **off**, so the setting and the
-  credential cannot disagree.
+  credential cannot disagree. *(Proposed 2026-10-01, §2.8: the switch is ours, and a token
+  that outlives it is accepted, so this request lapses with the proposal.)*
 - **Rotation is off-then-on.** There is no separate rotate endpoint and Carmen needs no
   new concept: invalidate, mint, `PUT` again. `PUT` overwrites whatever is stored.
   *(Proposed 2026-10-01, §2.8: every open of your menu mints a replacement and our page
@@ -666,15 +667,11 @@ also lead there, so a reviewer can fix a sender rule or a PDF password where the
 problem. That is the same reach every BU user already has when they approve a document into
 your books, and we accept it as such.
 
-**One answer we need from you: revocation.** The ON/OFF switch (`enabled`) moves to our
-screen, so you no longer see a customer switch it off. Two options:
-
-- When your menu opens and `GET /settings` says `enabled: false`, revoke the BU token and
-  `DELETE /settings/token`.
-- Offer a separate *Disconnect* action.
-
-Tell us which, or whether you accept that the token outlives the switch. The ingest loop
-stops for a disabled BU either way.
+**Switching off does not revoke the token, and that is accepted.** The ON/OFF switch
+(`enabled`) is on our screen now, so you do not see a customer switch it off, and the BU's
+token stays live. Nothing uses it: the ingest loop skips a disabled BU, and the token sits
+encrypted on our side, never returned. Any open of your menu replaces it anyway. We decided
+this on our side (2026-10-01), so there is nothing to build for it and no answer we need.
 
 **A dead posting credential needs nothing extra.** Our queue's *Reconnect* button
 (`carmen_unauthorized`, §3.3) opens our settings screen. Its Posting credential card shows
@@ -915,6 +912,8 @@ Two things that still need Carmen's side, and are the reason §5 is not empty:
 
 1. **Revocation must actually happen on the OFF switch.** Deleting our copy is not
    revoking; if the OFF switch only updates a flag, the credential outlives the setting.
+   *(Under the 2026-10-01 proposal the OFF switch is ours, and a token that outlives it is
+   accepted. See §2.8.)*
 2. **Mark automated postings in `JvhSource`.** Accounting needs to tell email-sourced
    postings apart from wizard postings when reviewing later. Still true with review on: an
    approved document was checked on a screen, not keyed by hand, and the approver's name is
@@ -958,7 +957,6 @@ Two consequences worth stating plainly:
 > |---|---|---|
 > | A | A menu item, shown only to users you allow, that runs §2.8 steps 1–2: mint a fresh BU token, then open our `#/CreditCardOCR/email-settings` with it as `posting_token` | every customer's way into the settings |
 > | B | Item 3 below, unchanged: the JV endpoint accepts the BU token | automated posting |
-> | C | An answer on revocation once the OFF switch is on our screen (§2.8) | revocation |
 >
 > Items 4–7 below do not change. The settings form, the `auto_post` switch and the
 > `doc_type` control are no longer needed from you.
