@@ -30,6 +30,8 @@ export const en = {
   'common.refresh': 'Refresh',
   'common.aiSuggested': 'AI Suggested',
   'common.history': 'History',
+  'common.allOptions': 'All options',
+  'common.noResults': 'No results found',
 } as const
 
 export const th: Record<keyof typeof en, string> = {
@@ -64,4 +66,6 @@ export const th: Record<keyof typeof en, string> = {
   'common.refresh': 'รีเฟรช',
   'common.aiSuggested': 'AI แนะนำ',
   'common.history': 'ประวัติ',
+  'common.allOptions': 'ตัวเลือกทั้งหมด',
+  'common.noResults': 'ไม่พบผลลัพธ์',
 }

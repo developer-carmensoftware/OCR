@@ -87,6 +87,9 @@ export default function PaymentMappingDialog({
   // Undo toasts this dialog raised. They go when it closes: an Undo pressed after Cancel
   // or Done would change rows nobody can see any more.
   const undoToasts = useRef<Array<string | number>>([])
+  // What had focus when the dialog opened — the page's "Account Receivable" row — so
+  // closing puts the keyboard back there instead of on <body>.
+  const openerRef = useRef<HTMLElement | null>(null)
 
   const active = sets.find(s => s.id === activeId) ?? sets[0]
 
@@ -100,6 +103,7 @@ export default function PaymentMappingDialog({
     setSearch('')
     setSelected(new Set())
     setAttemptedDone(false)
+    openerRef.current = document.activeElement as HTMLElement | null
     dialogRef.current?.focus()
     // Only on the open edge — re-ordering on every edit is exactly what this avoids.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -109,6 +113,8 @@ export default function PaymentMappingDialog({
     if (open) return
     undoToasts.current.forEach(id => toast.dismiss(id))
     undoToasts.current = []
+    openerRef.current?.focus()
+    openerRef.current = null
   }, [open])
 
   const stats = useMemo(
@@ -262,6 +268,23 @@ export default function PaymentMappingDialog({
         if (e.key === 'Escape') {
           e.preventDefault()
           onCancel()
+          return
+        }
+        if (e.key !== 'Tab') return
+        // `aria-modal` says the page behind is out of reach; this is what makes it so for
+        // Tab. Same rule as CustomModal: every focusable in the box, in DOM order.
+        const stops = [
+          ...(dialogRef.current?.querySelectorAll<HTMLElement>(
+            'a[href], button, input, select, textarea, [tabindex]'
+          ) ?? []),
+        ].filter(el => el.tabIndex >= 0 && !el.hasAttribute('disabled'))
+        if (!stops.length) return
+        const first = stops[0]
+        const last = stops[stops.length - 1]
+        const at = document.activeElement
+        if (e.shiftKey ? at === first || at === dialogRef.current : at === last) {
+          e.preventDefault()
+          ;(e.shiftKey ? last : first).focus()
         }
       }}
     >

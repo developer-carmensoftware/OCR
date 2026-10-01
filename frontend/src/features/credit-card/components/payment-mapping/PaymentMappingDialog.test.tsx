@@ -452,4 +452,66 @@ describe('PaymentMappingDialog', () => {
 
     expect(document.activeElement).toBe(screen.getByLabelText('Select MC'))
   })
+
+  // `aria-modal` says the page behind is out of reach; without a trap, Tab walked straight
+  // out to it, and a closed dialog left focus on <body>.
+  it('keeps Tab inside the dialog, both ways', () => {
+    renderDialog(REMOVABLE)
+    const dialog = screen.getByRole('dialog')
+    const stops = [
+      ...dialog.querySelectorAll<HTMLElement>('a[href], button, input, select, [tabindex]'),
+    ].filter(el => el.tabIndex >= 0 && !el.hasAttribute('disabled'))
+    const first = stops[0]
+    const last = stops[stops.length - 1]
+
+    last.focus()
+    fireEvent.keyDown(last, { key: 'Tab' })
+    expect(document.activeElement).toBe(first)
+
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(last)
+  })
+
+  it('gives focus back to the control that opened it', () => {
+    const set: MappingSet = {
+      id: 'fee_invoice',
+      label: 'Fee invoice',
+      items: [item('VISA')],
+      setField: vi.fn(),
+      applyToMany: vi.fn(),
+      suggest: vi.fn(),
+      suggesting: false,
+      accept: vi.fn(),
+      reject: vi.fn(),
+      acceptAll: vi.fn(),
+    }
+    function Opener() {
+      const [open, setOpen] = useState(false)
+      return (
+        <LanguageProvider>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open mapping
+          </button>
+          <PaymentMappingDialog
+            open={open}
+            sets={[set]}
+            context="KTC"
+            masterAccounts={ACCOUNTS}
+            masterDepartments={DEPARTMENTS}
+            loadingOpts={false}
+            onCancel={() => setOpen(false)}
+            onDone={() => setOpen(false)}
+          />
+        </LanguageProvider>
+      )
+    }
+    render(<Opener />)
+    const opener = screen.getByRole('button', { name: 'Open mapping' })
+    opener.focus()
+    fireEvent.click(opener)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(document.activeElement).toBe(opener)
+  })
 })
