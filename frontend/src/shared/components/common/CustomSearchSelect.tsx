@@ -105,7 +105,20 @@ export default function CustomSearchSelect({
       ) {
         return
       }
-      setDropdownStyle(panelStyle(wrapperRef.current.getBoundingClientRect()))
+      const rect = wrapperRef.current.getBoundingClientRect()
+      // A scrolling box around the field (the payment-type dialog's body) clips it: once the
+      // field has left that box the list would float over whatever is next to it. The
+      // document itself is not such a box — see above.
+      const box = event.target instanceof Element ? event.target : null
+      if (box && box.contains(wrapperRef.current)) {
+        const inner = box.getBoundingClientRect()
+        if (rect.bottom < inner.top || rect.top > inner.bottom) {
+          setIsOpen(false)
+          setSearchTerm(value || '')
+          return
+        }
+      }
+      setDropdownStyle(panelStyle(rect))
     }
 
     document.addEventListener('mousedown', handleClickOutside)

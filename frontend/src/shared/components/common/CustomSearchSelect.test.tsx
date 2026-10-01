@@ -119,6 +119,44 @@ describe('CustomSearchSelect — by keyboard', () => {
     expect(panel.style.top).toBe('-78px')
   })
 
+  // Inside a scrolling box (the payment-type dialog's body) the field can leave the box
+  // while still being on screen, and a list that follows it would float over the header.
+  it('closes when a scrolling container takes its field out of the container', () => {
+    const { container } = render(
+      <div data-testid="box">
+        <Picker />
+      </div>
+    )
+    const box = container.querySelector('[data-testid="box"]') as HTMLElement
+    openPicker()
+    const field = screen.getByLabelText('Department').parentElement as HTMLElement
+    box.getBoundingClientRect = () => ({ top: 100, bottom: 400 }) as DOMRect
+    field.getBoundingClientRect = () =>
+      ({ top: 420, bottom: 458, left: 40, width: 200, height: 38, right: 240 }) as DOMRect
+
+    fireEvent.scroll(box)
+
+    expect(listShown()).toBe(false)
+  })
+
+  it('keeps following its field while it is still inside the scrolling container', () => {
+    const { container } = render(
+      <div data-testid="box">
+        <Picker />
+      </div>
+    )
+    const box = container.querySelector('[data-testid="box"]') as HTMLElement
+    openPicker()
+    const field = screen.getByLabelText('Department').parentElement as HTMLElement
+    box.getBoundingClientRect = () => ({ top: 100, bottom: 400 }) as DOMRect
+    field.getBoundingClientRect = () =>
+      ({ top: 200, bottom: 238, left: 40, width: 200, height: 38, right: 240 }) as DOMRect
+
+    fireEvent.scroll(box)
+
+    expect((document.querySelector('.css-select-panel') as HTMLElement).style.top).toBe('242px')
+  })
+
   it('keeps Tab out of the options, which sit at the end of <body>', () => {
     render(<Picker />)
     openPicker()
