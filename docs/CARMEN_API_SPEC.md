@@ -1,10 +1,20 @@
 # Email Automation API
 
-**v4.2 · 2026-08-13** · Base URL `https://{ocr-host}/api/v1/carmen` · schema: `/openapi.json`
+**v4.3 · 2026-10-01** · Base URL `https://{ocr-host}/api/v1/carmen` · schema: `/openapi.json`
 เหตุผลเบื้องหลัง: [CARMEN_INTEGRATION.md](CARMEN_INTEGRATION.md)
 
 หน้านี้คือสัญญาสำหรับหน้าจอ **Email Automation Settings** ฝั่ง Carmen — Carmen เป็นเจ้าของ UI,
 เราเป็นเจ้าของ storage + validation ทั้งหมด
+
+> **📌 ข้อเสนอ v5.0 (2026-10-01) — รอทีม Carmen ยืนยัน: ไม่ต้องสร้างหน้าจอ settings แล้ว**
+>
+> หน้า `#/email-settings` ในแอป OCR มีครบทุกฟิลด์แล้ว รวมถึง `auto_post` กับ `doc_type` ที่ฝั่ง
+> Carmen ยังไม่ได้ทำ ข้อเสนอคือ **Carmen ทำแค่เมนูที่เปิดลิงก์มาหน้าเรา** โดยใช้ SSO แบบเดียวกับลิงก์
+> `#/CreditCardOCR` ที่ใช้อยู่แล้ว และทำ **permission endpoint 1 ตัว** ไว้บอกว่า user คนไหนตั้งค่าได้
+> รายละเอียดอยู่ที่ §7 ท้ายหน้านี้ และ CARMEN_INTEGRATION.md §2.8
+>
+> ถ้าตกลงตามนี้ Carmen **ไม่ต้องเรียก §1–§2 เอง** (หน้าเราเรียกให้) ที่ต้องใช้มีแค่ §3–§4
+> (mint token ตอนเปิดเมนู) และ §6 (badge) ถ้ายังไม่ตกลง เนื้อหาข้างล่างทั้งหมดยังเป็นสัญญาที่ใช้งานจริง
 
 ---
 
@@ -96,6 +106,7 @@ Authorization: <token>
   "host": "hotelgroup.carmenwork.com",                 // identity ของ tenant (ไม่ใช่ค่าที่ส่งมา)
   "bu": "hq",
   "enabled": true,
+  "auto_post": false,                                  // false = ทุกเอกสารรอคนกด approve (default)
   "entitled": true,                                    // มี package รายเดือนที่ยังไม่หมดอายุ
   "ingest_address": "AIAGENT+a1b2c3d4@carmensoftware.com",  // ต่อ BU · null จนกว่าจะเปิดใช้สำเร็จ
   "owner_emails": ["accounting@hotelgroup.com"],       // ว่าง = รับทุก sender (ดู §2)
@@ -106,7 +117,8 @@ Authorization: <token>
       "bank_sender_email": "no-reply@ktc.co.th",
       "filename_patterns": ["MDR", "Commission"],
       "has_password": true,                            // read-only · ไม่เคยคืนค่า password
-      "is_active": true
+      "is_active": true,
+      "doc_type": "fee_invoice"                        // "fee_invoice" | "ar_reconcile"
     }
   ],
   "gmail_confirmed_at": "2026-08-07T09:31:00Z",        // null = ยังไม่ยืนยัน forwarding
@@ -150,25 +162,26 @@ Authorization: <token>
 | `no_rule` | ไม่มี rule ที่ `is_active` | เพิ่ม rule อย่างน้อย 1 |
 | `disabled` | `enabled` ยังเป็น false | เปิดสวิตช์ |
 
-**`gmail_confirm`** — ถ้าลูกค้าใช้ Gmail ตั้ง auto-forward Google จะส่งโค้ดยืนยันไปที่
-`ingest_address` ซึ่งเป็น mailbox ที่ลูกค้าเปิดเองไม่ได้ ระบบจึงอ่านโค้ดจากเมลนั้นแล้วส่งคืนตรงนี้
-**ให้แสดงบนหน้าจอ** ลูกค้า copy ไป paste ในหน้า Gmail ของตัวเอง — เป็น `null` เมื่อไม่มีโค้ดค้าง
-และถูกทับด้วยโค้ดใหม่เสมอ (ใช้ครั้งเดียว ไม่ใช่ประวัติ) · ปกติ Google กด link ยืนยันพอ จึงเห็นแค่
-`gmail_confirmed_at` โดยไม่เห็น `gmail_confirm`
+**`gmail_confirm`** — **ไม่ต้องสร้างหน้าจอรองรับ** ระบบกด link ยืนยัน forwarding ของ Gmail
+ให้เอง ผลจะอยู่ที่ `gmail_confirmed_at` · จากเมลยืนยันจริงที่ตรวจมา 4 ฉบับ Google ไม่ส่งโค้ดมาแล้ว
+ฟิลด์นี้จึงแทบจะเป็น `null` ตลอด ที่ยังเก็บไว้ก็เผื่อ Google กลับมาส่งโค้ดอีก
+(CARMEN_INTEGRATION.md §2.5)
 
 ---
 
 ## 2 · `PUT /settings` → `200` (body เหมือน `GET /settings`)
 
-> **ทับทั้งก้อน ไม่ใช่ PATCH** — ฟิลด์ที่ไม่ส่ง = ล้างเป็นค่า default
+> **ทับทั้งก้อน ไม่ใช่ PATCH** — ฟิลด์ที่ไม่ส่ง = ล้างเป็นค่า default **ยกเว้น 3 ตัวที่ไม่ส่ง = คงค่าเดิม:**
+> `auto_post`, `rules[].doc_type`, `rules[].pdf_password`
 > ต้องส่ง `tax_ids` + `rules` + `owner_emails` ครบทุกครั้ง วิธีที่ปลอดภัยคือ
-> `GET /settings` → แก้ในมือ → `PUT` กลับ
+> `GET /settings` → แก้ในมือ → `PUT` กลับ · **ส่ง `auto_post` เฉพาะตอนที่ user กดสวิตช์นั้นจริง**
 
 | Field | Type | Description |
 |---|---|---|
 | `uri` **required** | string | origin ของ Carmen เช่น `https://hotelgroup.carmenwork.com` — ค่าเดียวกับที่ส่งให้ `/auth/exchange` · ใช้หา BU เท่านั้น |
 | `bu` **required** | string | รหัส BU (case-insensitive) |
 | `enabled` | bool | default `false` |
+| `auto_post` | bool \| null | **ไม่ส่ง = คงค่าเดิม** · `false` (default) = ทุกเอกสารรอคน approve · `true` = เอกสารที่ไม่มีอะไรน่าสงสัยจะ post เอง ส่วนเอกสารที่มี flag ยังรอคนเสมอ (CARMEN_INTEGRATION.md §2.7) |
 | `owner_emails` | string[] | อีเมลฝั่งลูกค้า · **ว่าง = รับทุก sender (default)** · ถ้าใส่ เมลต้องมีที่อยู่ใดที่อยู่หนึ่งใน `From`/`To`/`Cc` ไม่งั้นไฟล์แนบถูกบันทึก `sender_not_allowed` ไม่ถูกอ่าน ไม่คิดเงิน · `422 invalid_email` ถ้ารูปแบบเพี้ยน |
 | `tax_ids` **required ถ้า enabled** | string[] | เลข 13 หลัก ไม่มีขีด ใส่ได้หลายเลข |
 | `rules` | Rule[] | default `[]` |
@@ -182,6 +195,7 @@ Authorization: <token>
 | `filename_patterns` **required ≥1** | string[] | substring ของชื่อไฟล์ ไม่สนตัวพิมพ์ · เข้าเงื่อนไขข้อใดข้อหนึ่งก็พอ · **ไฟล์ที่ไม่ตรง rule ไหนเลย = ไม่ถูกอ่าน ไม่ถูกคิดเงิน** · ใส่ `".pdf"` = รับ PDF ทุกไฟล์ |
 | `pdf_password` | string \| null | **write-only** · **ไม่ส่ง = คงค่าเดิม** · `""` = ล้างทิ้ง · มีค่า = ตั้งใหม่ |
 | `is_active` | bool | default `true` |
+| `doc_type` | `"fee_invoice"` \| `"ar_reconcile"` \| null | **ไม่ส่ง = คงค่าเดิม** · default `fee_invoice` · `ar_reconcile` = ไฟล์ของ rule นี้เป็น settlement report (ตอนนี้มีแค่ `KBANK`) · `422 no_settlement_layout` / `invalid` (CARMEN_INTEGRATION.md §2.9) |
 
 ⚠ **`pdf_password` ผูกกับ `bank_code`** — ตอน save เรา match rule เก่ากับใหม่ด้วย `bank_code`
 ถ้าลูกค้าแก้ `bank_code` ของ rule เดิม password ที่เก็บไว้จะไม่ตามไป ต้องกรอกใหม่
@@ -303,6 +317,61 @@ curl "https://{ocr-host}/api/v1/carmen/notifications?uri=https%3A%2F%2Fhotelgrou
 อยากรู้ว่า *อะไร* เกิดขึ้น (เอกสารไหน post สำเร็จ/ล้มเพราะอะไร) — นั่นคือ `document.posted` /
 `document.failed` ใน §3.3 ของ integration contract ซึ่งยังรอ Carmen ยืนยันว่าต้องการ แล้วค่อยทำ
 เป็น webhook จริง
+
+---
+
+## 7 · เปิดหน้า settings จากเมนู Carmen — ข้อเสนอ v5.0 (ยังไม่ใช้งาน)
+
+**Carmen ทำ 1 เมนู ไม่มีฟอร์ม** แสดงเฉพาะ user ที่ระบบสิทธิ์ของ Carmen อนุญาต กดแล้วทำ 3 ขั้น:
+
+```text
+1) GET /settings/token?uri=&bu=            (ใช้ token ของ user ที่กดอยู่)
+2) ถ้า configured=false หรือ verified_at=null
+     → mint token ของ BU → PUT /settings/token      (= ขั้น ON เดิม ย้ายมาทำตอนเปิดเมนู)
+3) เปิด tab ใหม่ไปที่
+   https://{ocr-app}/#/email-settings?token=<token ของ user>&bu=<bu>&user=<user>&uri=<origin ของ Carmen>
+```
+
+ลิงก์ในขั้น 3 เป็นรูปแบบเดียวกับลิงก์ `#/CreditCardOCR` ที่ใช้อยู่แล้ว ต่างกันแค่ route
+หน้าเราจะเรียก §1–§2 ด้วย token นั้นเอง
+
+**Permission endpoint ที่ขอให้ Carmen ทำ** — เราจะเรียกจาก **server ของเรา** ทุกครั้งที่มีคนเรียก
+`GET/PUT /settings` และ `/settings/token` (ต่อจากการเช็ค token ปกติ)
+
+```http
+GET {origin}/Carmen.API/api/interface/<path ที่ Carmen เลือก>?bu=<bu>
+Authorization: <token ของ user>
+
+200 {"Allow": true}    → ทำต่อ
+200 {"Allow": false}   → เราตอบ 403
+401                    → token ตายแล้ว เราตอบ 401 ("เปิดใหม่จาก Carmen")
+```
+
+| | |
+|---|---|
+| ต้องการแค่ | token ของ user เข้า → ตอบ อนุญาต/ไม่อนุญาต **สำหรับ BU นั้น** → token เสียตอบ `401` · ชื่อ path และ field ให้ Carmen เลือกเอง |
+| ทำไมซ่อนเมนูอย่างเดียวไม่พอ | API ของเรารับทุก token ที่ Carmen ของ host นั้นยอมรับ และ user ทุกคนของ BU เข้าแอปเราได้ผ่านลิงก์ queue อยู่แล้ว |
+| ถ้า Carmen host ไหนยังไม่มี endpoint นี้ | **เราตอบ 403 (fail closed)** · host นั้นยังไม่มีเมนูมาหาเราอยู่แล้ว ลูกค้าจึงไม่เสียอะไร |
+| ของแถม | ตอนนี้ token ที่ใช้ได้กับ host หนึ่งจัดการ settings ได้ทุก BU ของ host นั้น พอเช็คเป็นราย BU ก็จะเป็นไปตามสิทธิ์ของ Carmen เอง |
+| ไม่เช็ค | `GET /notifications` (badge ของ user ทุกคน), `GET /bank-codes`, path admin ของทีมเรา |
+
+**Error ใหม่ที่หน้าเราจะเจอ (Carmen ไม่ต้องจัดการ):**
+
+| Status | detail | เมื่อไหร่ |
+|---|---|---|
+| `403` | `No permission to manage Email Automation for this BU` | Carmen ตอบ `Allow: false` หรือไม่มี endpoint |
+
+**ขอคำตอบ 2 ข้อ**
+
+1. **Revocation**: สวิตช์ปิด (`enabled`) ย้ายมาอยู่หน้าเรา Carmen จึงไม่เห็นตอนที่ลูกค้ากดปิด เลือกได้ว่า
+   - (ก) ตอนเปิดเมนูแล้ว `GET /settings` ได้ `enabled: false` → เพิกถอน token แล้ว `DELETE /settings/token`
+   - (ข) มีปุ่ม *Disconnect* แยกในฝั่ง Carmen
+   - (ค) ยอมให้ token อยู่ต่อ (ถ้า BU ปิดอยู่ ระบบจะไม่รับเมลอยู่แล้ว)
+2. **Reconnect**: ถ้า token ที่ใช้ post ตาย (`carmen_unauthorized`) ปุ่ม *Reconnect* ในหน้า queue ของเรา
+   ควรเปิด route ไหนของ Carmen (route ที่ทำขั้น 2 ข้างบน)
+
+**ถ้าตกลง Carmen ไม่ต้องทำต่อ:** ฟอร์ม settings, สวิตช์ `auto_post`, ช่อง `doc_type`, dropdown ธนาคาร
+และ save semantics ของ §2 · API ทั้งหมดยังเปิดใช้เหมือนเดิม เช่นจะอ่าน `status.ready` ไปทำ badge ข้างเมนูก็ได้
 
 ---
 
