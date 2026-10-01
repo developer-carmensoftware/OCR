@@ -44,6 +44,20 @@ const COMPANY_FIELDS: CompanyField[] = [
 // record posts it as typed, so `0000` reached Carmen that way.
 const BRANCH_RE = /^\d{5}$/
 
+/** The GL rules a save would write, as one comparable string: key order and a row's
+ *  `source` tag are not edits, and a type with no account yet is still a row. */
+function rulesPrint(
+  main: Record<string, FieldMapping>,
+  payment: Record<string, FieldMapping>,
+  customTypes: string[]
+): string {
+  const rows = (m: Record<string, FieldMapping>) =>
+    Object.keys(m)
+      .sort()
+      .map(k => [k, m[k]?.dept || '', m[k]?.acc || ''])
+  return JSON.stringify([rows(main), rows(payment), [...customTypes].sort()])
+}
+
 export interface ActiveScan {
   paymentTypes: Set<string>
   commission: boolean
@@ -74,6 +88,10 @@ export function useMapping() {
   })
   const [saving, setSaving] = useState(false)
   const [acceptAllModal, setAcceptAllModal] = useState(false)
+  // What the form held when this bank's rows landed, and when the page's own config did —
+  // what `rulesDirty` and `headerDirty` measure edits against.
+  const [rulesBaseline, setRulesBaseline] = useState<string | null>(null)
+  const [headerBaseline, setHeaderBaseline] = useState<string | null>(null)
 
   const masterData = useMappingData()
   const paymentTypes = usePaymentTypes()
@@ -141,6 +159,13 @@ export function useMapping() {
     setMappings(mainMappings)
     resetPaymentTypes()
     initFromData(paymentMappings, customTypes)
+    // What that leaves in the form — `initFromData` seeds a custom type with no mapping as a
+    // blank row — set in the same batch, so the render that shows this bank is clean.
+    const seeded = { ...paymentMappings }
+    customTypes.forEach(code => {
+      if (!seeded[code]) seeded[code] = { dept: '', acc: '' }
+    })
+    setRulesBaseline(rulesPrint(mainMappings, seeded, customTypes))
   }, [
     bankConfig.configLoading,
     bankConfig.mappingsBankCode,
@@ -255,6 +280,25 @@ export function useMapping() {
     suggestions.clearAllSuggestions()
     setAcceptAllModal(false)
   }
+
+  // A bank switch replaces the rules and keeps these (prefix and branch are the BU's, a
+  // description is keyed by bank), so they are measured apart. An emptied description is
+  // the same as none: the server drops empty entries.
+  const headerPrint = JSON.stringify([
+    bankConfig.filePrefix,
+    bankConfig.company.branch,
+    Object.entries(bankConfig.bankDescriptions)
+      .filter(([, text]) => text)
+      .sort(([a], [b]) => a.localeCompare(b)),
+  ])
+  useEffect(() => {
+    if (!bankConfig.configLoading && headerBaseline === null) setHeaderBaseline(headerPrint)
+  }, [bankConfig.configLoading, headerBaseline, headerPrint])
+  const rulesDirty =
+    rulesBaseline !== null &&
+    rulesPrint(mappings, paymentTypes.paymentAmount, paymentTypes.customPaymentTypes) !==
+      rulesBaseline
+  const headerDirty = headerBaseline !== null && headerPrint !== headerBaseline
 
   const missingCompanyFields = COMPANY_FIELDS.filter(
     f => !f.readOnly && !bankConfig.company[f.key]?.trim()
@@ -527,6 +571,10 @@ export function useMapping() {
     saving,
     saveAllSettings,
     missingTopFields,
+    /** The selected bank's GL rules differ from what loaded — lost on a bank switch. */
+    rulesDirty,
+    /** Prefix, branch or a description differs from what loaded — kept across a switch. */
+    headerDirty,
   }
 }
 

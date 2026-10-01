@@ -363,3 +363,79 @@ describe('useMapping — AI suggest says what happened', () => {
     expect(result.current.modalConfig.show).toBe(false)
   })
 })
+
+// Save is per bank and leaves the page, so setting up several banks means switching — and a
+// switch replaced the form with the next bank's rows, dropping every unsaved edit unasked.
+describe('useMapping — unsaved changes', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  async function loaded() {
+    getAccountingConfig.mockResolvedValue({
+      bank_code: 'KTC',
+      file_prefix: 'IC',
+      branch: '00000',
+      mappings: {
+        commission: { dept: '307', acc: '6080008' },
+        VISA: { dept: 'GEN', acc: '1130' },
+      },
+      custom_types: ['VISA'],
+      bank_descriptions: { KTC: 'KTC fee' },
+    } as never)
+    const hook = renderHook(() => useMapping())
+    await waitFor(() => expect(hook.result.current.mappingsBankCode).toBe('KTC'))
+    return hook
+  }
+
+  it('is clean once a bank has loaded', async () => {
+    const { result } = await loaded()
+
+    expect(result.current.rulesDirty).toBe(false)
+    expect(result.current.headerDirty).toBe(false)
+  })
+
+  it('an account edit is a rules change, and putting it back is clean again', async () => {
+    const { result } = await loaded()
+
+    act(() => result.current.handleMappingChange('commission', 'acc', '6080009'))
+    expect(result.current.rulesDirty).toBe(true)
+
+    act(() => result.current.handleMappingChange('commission', 'acc', '6080008'))
+    expect(result.current.rulesDirty).toBe(false)
+  })
+
+  it('counts a payment-type edit too', async () => {
+    const { result } = await loaded()
+
+    act(() => result.current.handlePaymentMappingChange('VISA', 'acc', '1131'))
+
+    expect(result.current.rulesDirty).toBe(true)
+  })
+
+  it('counts a description edit as a header change: it survives a bank switch', async () => {
+    const { result } = await loaded()
+
+    act(() => result.current.setBankDescriptions({ KTC: 'KTC merchant fee' }))
+
+    expect(result.current.headerDirty).toBe(true)
+    expect(result.current.rulesDirty).toBe(false)
+  })
+
+  it("is clean again once the next bank's rows have replaced the form", async () => {
+    const { result } = await loaded()
+    act(() => result.current.handleMappingChange('commission', 'acc', '6080009'))
+
+    getAccountingConfig.mockResolvedValue({
+      bank_code: 'KTC',
+      file_prefix: 'IC',
+      mappings: { tax: { dept: 'GEN', acc: '1154' } },
+      custom_types: [],
+    } as never)
+    act(() => result.current.handleBankChange('Siam Commercial Bank (SCB)'))
+    await waitFor(() => expect(result.current.mappingsBankCode).toBe('SCB'))
+
+    expect(result.current.rulesDirty).toBe(false)
+  })
+})

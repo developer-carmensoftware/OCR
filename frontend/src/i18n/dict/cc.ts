@@ -214,6 +214,10 @@ export const en = {
   'cc.valIllegalPair': '{label}: {acc} is not allowed for department {dept}',
   'cc.valIllegalMsg': "{pairs}\nPlease pick an account from the department's allowed list.",
   'cc.valCheckTitle': 'Check before saving',
+  'cc.switchBankTitle': 'Discard unsaved changes to {bank}?',
+  'cc.switchBankMsg':
+    'Mappings are saved one bank at a time. Switching now drops what you changed for {bank} — save first to keep it.',
+  'cc.switchBankConfirm': 'Discard and switch',
   'cc.valBranchFormat': 'Branch No must be 5 digits — 00000 for the head office',
   'cc.saveDone': "Saved {bank}'s account mapping",
   'cc.saveFailedTitle': 'Account mapping not saved',
@@ -440,6 +444,10 @@ export const th: Record<keyof typeof en, string> = {
   'cc.valIllegalPair': '{label}: {acc} ไม่อนุญาตสำหรับแผนก {dept}',
   'cc.valIllegalMsg': '{pairs}\nกรุณาเลือกบัญชีจากรายการที่แผนกนั้นอนุญาต',
   'cc.valCheckTitle': 'ตรวจสอบก่อนบันทึก',
+  'cc.switchBankTitle': 'ทิ้งการแก้ไขของ {bank} ที่ยังไม่บันทึก?',
+  'cc.switchBankMsg':
+    'ผังบัญชีบันทึกทีละธนาคาร ถ้าสลับตอนนี้ สิ่งที่แก้ไว้ของ {bank} จะหายไป — บันทึกก่อนถ้าต้องการเก็บไว้',
+  'cc.switchBankConfirm': 'ทิ้งแล้วสลับ',
   'cc.valBranchFormat': 'สาขาเลขที่ต้องเป็นตัวเลข 5 หลัก — สำนักงานใหญ่คือ 00000',
   'cc.saveDone': 'บันทึกผังบัญชีของ {bank} แล้ว',
   'cc.saveFailedTitle': 'บันทึกผังบัญชีไม่สำเร็จ',

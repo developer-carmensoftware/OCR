@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react'
 import { LanguageProvider } from '@/i18n/LanguageContext'
 import Mapping from './Mapping'
 
@@ -221,5 +221,48 @@ describe('the mapping page — saving', () => {
     expect(
       screen.getByText('Branch No must be 5 digits — 00000 for the head office')
     ).toBeInTheDocument()
+  })
+})
+
+describe('the mapping page — unsaved changes', () => {
+  it('asks before a bank switch throws them away', async () => {
+    await mounted()
+    fireEvent.change(commissionAcc(), { target: { value: '6080009' } })
+
+    toSCB()
+    const ask = await screen.findByRole('dialog')
+    expect(within(ask).getByText(/Discard unsaved changes to KTC/)).toBeInTheDocument()
+
+    fireEvent.click(within(ask).getByRole('button', { name: 'Cancel' }))
+    expect(bankPicker()).toHaveValue('Krungthai Card (KTC)')
+    expect(commissionAcc().value).toBe('6080009')
+    expect(cfg.getAccountingConfig).not.toHaveBeenCalledWith('SCB')
+
+    toSCB()
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard and switch' }))
+    await waitFor(() => expect(cfg.getAccountingConfig).toHaveBeenCalledWith('SCB'))
+    expect(bankPicker()).toHaveValue('Siam Commercial Bank (SCB)')
+  })
+
+  it('switches straight away when nothing is unsaved', async () => {
+    await mounted()
+
+    toSCB()
+
+    await waitFor(() => expect(cfg.getAccountingConfig).toHaveBeenCalledWith('SCB'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('arms the browser\'s "leave page?" only while something is unsaved', async () => {
+    await mounted()
+    const leave = () => {
+      const e = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(e)
+      return e.defaultPrevented
+    }
+
+    expect(leave()).toBe(false)
+    fireEvent.change(screen.getByLabelText('Branch No'), { target: { value: '00001' } })
+    expect(leave()).toBe(true)
   })
 })

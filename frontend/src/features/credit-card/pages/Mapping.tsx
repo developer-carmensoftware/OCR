@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Network, Loader2, CheckCircle2 } from 'lucide-react'
 import CustomModal from '@/shared/components/common/CustomModal'
 import '@/styles/pages/mapping.css'
@@ -152,6 +153,30 @@ export default function Mapping() {
     mappingCtrl.mappingsBankCode
   )
 
+  // Save is per bank and leaves the page, so setting up several banks means switching — and
+  // a switch replaces the form with the next bank's rows. The rules (and the settlement
+  // card's own) are what a switch would lose; prefix, branch and descriptions stay.
+  const switchLoses = mappingCtrl.rulesDirty || settlementCtrl.dirty
+  const unsaved = switchLoses || mappingCtrl.headerDirty
+  const [pendingBank, setPendingBank] = useState<BankDisplayName | '' | null>(null)
+  const requestBankChange = (next: BankDisplayName | '') => {
+    if (next === mappingCtrl.bank) return
+    if (switchLoses) setPendingBank(next)
+    else mappingCtrl.handleBankChange(next)
+  }
+
+  // The browser's own "leave this page?" for a reload or a closed tab. Not while saving: a
+  // save that worked closes this tab, and must not ask about the changes it just saved.
+  useEffect(() => {
+    if (!unsaved || mappingCtrl.saving) return
+    const ask = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', ask)
+    return () => window.removeEventListener('beforeunload', ask)
+  }, [unsaved, mappingCtrl.saving])
+
   if (mappingCtrl.configLoading) return <MappingSkeleton />
 
   const postTypeLabel = (pt: PostType) =>
@@ -208,6 +233,21 @@ export default function Mapping() {
         onConfirm={mappingCtrl.handleAcceptAll}
         onCancel={() => mappingCtrl.setAcceptAllModal(false)}
       />
+      <CustomModal
+        show={pendingBank !== null}
+        title={t('cc.switchBankTitle', { bank: bankCode })}
+        message={t('cc.switchBankMsg', { bank: bankCode })}
+        type="warning"
+        confirmText={t('cc.switchBankConfirm')}
+        cancelText={t('modal.cancel')}
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (pendingBank !== null) mappingCtrl.handleBankChange(pendingBank)
+          setPendingBank(null)
+        }}
+        onCancel={() => setPendingBank(null)}
+      />
+
       <div className="container">
         <h1>
           <Network size={20} /> {t('cc.mappingTitle')}
@@ -215,7 +255,7 @@ export default function Mapping() {
 
         <TopLevelConfigSection
           bank={mappingCtrl.bank}
-          handleBankChange={mappingCtrl.handleBankChange}
+          handleBankChange={requestBankChange}
           filePrefix={mappingCtrl.filePrefix}
           setFilePrefix={mappingCtrl.setFilePrefix}
           prefixes={mappingCtrl.masterGLPrefixes}
