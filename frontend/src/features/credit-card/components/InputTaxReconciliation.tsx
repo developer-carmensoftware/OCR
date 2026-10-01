@@ -11,6 +11,7 @@ import { useT } from '@/i18n/LanguageContext'
 import { useAccountingConfig } from '@/features/credit-card/hooks'
 import { resolveTaxProfileForRate } from '@/shared/lib/apTax'
 import { descriptionForBank } from '@/features/credit-card/lib/bankTransforms'
+import { renderDescription } from '@/features/credit-card/lib/ccJv'
 import { BANK_INFO, OCR_BANK_MAP } from '@/shared/constants/banks'
 import type { BankCode } from '@/shared/types/api'
 import type { DetailRow } from './DetailTable'
@@ -66,6 +67,14 @@ export default function InputTaxReconciliation({
     taxId: bankInfo?.taxId || company.taxId || '',
     address: bankInfo?.address || company.address || '',
   }
+  // Branch is the one identity field that comes off the document, not the registry: the
+  // document's own, then the BU's saved fallback, then head office. A tax invoice stating no
+  // branch was issued by the head office, whose Revenue Department code is "00000" — the
+  // printed convention, not a stand-in for a fact nobody read, which is why it defaults where
+  // the name and tax ID above refuse. Same order as its server twin: `extracted.branch_no or
+  // config.branch` in email_automation/pipeline.py, then `_HEAD_OFFICE` in
+  // services/credit_card/input_tax.py.
+  const branchNo = headerData.BranchNo || company.branch || '00000'
   const netAmount = details.reduce((s, d) => s + parseNum(d.CommisAmt), 0)
   const taxAmount = details.reduce((s, d) => s + parseNum(d.TaxAmt), 0)
   const total = netAmount + taxAmount
@@ -93,14 +102,13 @@ export default function InputTaxReconciliation({
   // Same resolution the JV uses (useOcrSubmission) and the same the email-ingest job
   // uses server-side — two documents from one statement must not disagree about what
   // they are.
-  const resolvedDescription = descriptionForBank(
-    config?.description,
-    config?.bankDescriptions,
-    bank
+  const resolvedDescription = descriptionForBank(config?.bankDescriptions, bank)
+  const description = renderDescription(
+    resolvedDescription,
+    headerData.DocDate,
+    headerData.DocNo,
+    bank || undefined
   )
-  const description = resolvedDescription
-    ? `${resolvedDescription}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`
-    : ''
 
   const hasData = netAmount > 0 || taxAmount > 0
   // Carmen rejects a record with no vendor identity, and it does so *after* accepting the
@@ -141,12 +149,7 @@ export default function InputTaxReconciliation({
       TaxAmt: round2(taxAmount),
       TotalAmt: round2(total).toFixed(2),
       TaxId: vendor.taxId,
-      // Branch is the one identity field that comes off the document, not the registry.
-      // A tax invoice stating no branch was issued by the head office, whose Revenue
-      // Department code is "00000" — the printed convention, not a stand-in for a fact
-      // nobody read, which is why it defaults where the name and tax ID above refuse.
-      // Kept in step with `_HEAD_OFFICE` in services/cc_input_tax.py, its server twin.
-      BranchNo: company.branch || '00000',
+      BranchNo: branchNo,
       Address: vendor.address,
       UserModified: 'admin',
       TaxProfileDesc: resolvedProfileItem?.desc ?? `VAT ${Math.round(taxRate)}%`,
@@ -237,7 +240,7 @@ export default function InputTaxReconciliation({
                     <td>{headerData.DocDate || '—'}</td>
                     <td className="cc-max-w-160-wrap">{vendor.name || '—'}</td>
                     <td className="cc-mono-text">{vendor.taxId || '—'}</td>
-                    <td>{company.branch || '—'}</td>
+                    <td>{branchNo}</td>
                     <td className="cc-desc-cell">{description || '—'}</td>
                     <td>
                       <span className="cc-badge-primary-nowrap">{taxProfile}</span>

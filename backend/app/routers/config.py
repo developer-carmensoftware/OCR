@@ -40,7 +40,7 @@ async def get_accounting_config(
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    return await svc.get_accounting_config(db, session.tenant_id, bank_code)
+    return await svc.get_accounting_config(db, session.tenant_id, bank_code, with_version=True)
 
 
 @router.put("/accounting")
@@ -49,8 +49,8 @@ async def save_accounting_config(
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    await svc.save_accounting_config(db, session.tenant_id, req)
-    return {"ok": True}
+    version = await svc.save_accounting_config(db, session.tenant_id, req)
+    return {"ok": True, "version": version}
 
 
 @router.patch("/accounting")

@@ -1,15 +1,16 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, AlertTriangle, CheckCircle2, ExternalLink, Loader2, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
 import CustomModal from '@/shared/components/common/CustomModal'
 import SwapLabel from '@/shared/components/common/SwapLabel'
 import JvHeaderCard from '@/features/credit-card/components/JvHeaderCard'
 import InputTaxPanel from '@/features/credit-card/components/InputTaxPanel'
 import JvEditor from '@/features/credit-card/components/JvEditor'
+import ARReviewPane from '@/features/credit-card/components/ARReviewPane'
 import { useT } from '@/i18n/LanguageContext'
 import { useReviewDocument } from '@/features/credit-card/hooks/useReviewDocument'
 import { useScrollLock } from '@/shared/hooks/useScrollLock'
-import { FIX, fixLinkProps, stopText, warningText } from '@/shared/lib/reviewReasons'
+import { FIX, stopText, warningText } from '@/shared/lib/reviewReasons'
 
 interface Props {
   id: string
@@ -17,6 +18,8 @@ interface Props {
   onClose: () => void
   /** Approved, rejected, or found to be gone: the queue behind this is now stale. */
   onDone: () => void
+  /** The queue row's bank, so this bank's GL rules load alongside the document. */
+  bankHint?: string | null
 }
 
 /**
@@ -33,7 +36,7 @@ interface Props {
  * The GL rules are editable here rather than on `#/CreditCardOCR/mapping`. Leaving to fix
  * one meant losing the document you were reading.
  */
-export default function ReviewDocument({ id, onClose, onDone }: Props) {
+export default function ReviewDocument({ id, onClose, onDone, bankHint }: Props) {
   const { t } = useT()
   const {
     doc,
@@ -65,6 +68,11 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     bankCode,
     effectivePrefix,
     blockReason,
+    isAR,
+    arJv,
+    arBlockReason,
+    prefixFix,
+    arSettingsLink,
     requestClose,
     updateHeader,
     updateAmount,
@@ -78,7 +86,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     onItxOverride,
     approve,
     reject,
-  } = useReviewDocument(id, onClose, onDone)
+  } = useReviewDocument(id, onClose, onDone, bankHint)
   const modalRef = useRef<HTMLDivElement>(null)
 
   // Dialog chrome: focus moves in, focus goes back, the page behind stops scrolling, Tab
@@ -147,7 +155,6 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // row reads, resolved here so the banner's button and the row's button cannot point at
   // different screens.
   const fix = doc?.reason_code ? FIX[doc.reason_code] : undefined
-  const fixLink = fix && fixLinkProps(fix)
 
   return createPortal(
     <div
@@ -329,14 +336,12 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   </span>
                   {/* Where it gets fixed for good, for the causes that have such a place.
                       The reviewer can still correct and post this one document without
-                      leaving; this is for the next twenty — and a settings cause leaves for
-                      Carmen's screen in a tab of its own, so this document stays open. */}
-                  {fix && fixLink && (
-                    <a className="btn btn-outline btn-sm rd-alert-fix" {...fixLink}>
+                      leaving; this is for the next twenty. Every such place is a screen of
+                      this app since decision #34, so it opens in this tab, as the GL
+                      mapping fix always did. */}
+                  {fix && (
+                    <a className="btn btn-outline btn-sm rd-alert-fix" href={fix.href}>
                       {t(fix.key)}
-                      {fixLink.target && (
-                        <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
-                      )}
                     </a>
                   )}
                 </div>
@@ -363,43 +368,68 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   description={description}
                   onPrefix={onPrefix}
                   onDescription={onDescription}
+                  /* None of these four reaches Carmen on the AR path: the server rebuilds
+                     that JV from the document, and the config write is skipped. They
+                     were four inputs that discarded what was typed into them. */
+                  readOnly={isAR}
+                  descriptionOverride={isAR ? arJv?.description : undefined}
                 />
               </section>
 
-              <section aria-label={t('review.paneJv')}>
-                <JvEditor
-                  details={details}
-                  config={config as Record<string, unknown> | null}
-                  configLoading={configLoading}
-                  overrides={overrides}
-                  onOverride={onOverride}
-                  onUndo={onUndo}
-                  guessedKeys={aiKeys}
-                  unmappedKeys={doc.unmapped || []}
-                  onAmount={updateAmount}
-                  descs={descs}
-                  onDesc={onDesc}
-                  onState={onJvState}
-                  bankCode={bankCode}
-                />
-              </section>
+              {isAR ? (
+                <section aria-label={t('review.paneJv')}>
+                  <ARReviewPane jv={arJv} details={details} />
+                  {/* Named for its destination, so it needs no sentence in front of it —
+                      see review-queue.css's history on `.rd-ar-hint` for why one isn't
+                      there any more. `.btn.btn-outline.btn-sm` rather than a one-off class:
+                      the same secondary-button weight `.rd-alert-fix` above already wears,
+                      reused instead of re-invented. Right-aligned, on the same edge as
+                      Approve/Reject below it — shorter mouse travel between "check the
+                      settings" and "act on the document" than a flush-left placement. */}
+                  <div className="rd-ar-hint">
+                    <a className="btn btn-outline btn-sm" {...arSettingsLink}>
+                      {t('review.arSettings')}
+                    </a>
+                  </div>
+                </section>
+              ) : (
+                <>
+                  <section aria-label={t('review.paneJv')}>
+                    <JvEditor
+                      details={details}
+                      config={config as Record<string, unknown> | null}
+                      configLoading={configLoading}
+                      overrides={overrides}
+                      onOverride={onOverride}
+                      onUndo={onUndo}
+                      guessedKeys={aiKeys}
+                      unmappedKeys={doc.unmapped || []}
+                      onAmount={updateAmount}
+                      descs={descs}
+                      onDesc={onDesc}
+                      onState={onJvState}
+                      bankCode={bankCode}
+                    />
+                  </section>
 
-              {/* The second document this approval files. Its own fields live with it
+                  {/* The second document this approval files. Its own fields live with it
                   rather than in the JV header, which is the only place they were ever
                   wanted. */}
-              <section aria-label={t('review.secTax')}>
-                <InputTaxPanel
-                  details={details}
-                  headerData={headerData}
-                  bank={bankCode}
-                  enabled={postInputTax}
-                  onEnabledChange={onPostInputTax}
-                  onUpdate={updateHeader}
-                  overrides={itx}
-                  onOverride={onItxOverride}
-                  onBlocked={setItxBlocked}
-                />
-              </section>
+                  <section aria-label={t('review.secTax')}>
+                    <InputTaxPanel
+                      details={details}
+                      headerData={headerData}
+                      bank={bankCode}
+                      enabled={postInputTax}
+                      onEnabledChange={onPostInputTax}
+                      onUpdate={updateHeader}
+                      overrides={itx}
+                      onOverride={onItxOverride}
+                      onBlocked={setItxBlocked}
+                    />
+                  </section>
+                </>
+              )}
             </div>
 
             <footer className="rd-modal-foot">
@@ -416,6 +446,11 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                 <p className="rd-blocked" id="rd-blocked" role="status">
                   <AlertTriangle size={14} aria-hidden="true" />
                   {blockReason}
+                  {prefixFix && (
+                    <a className="rd-blocked-fix" {...prefixFix}>
+                      {t('review.actionSetPrefix')}
+                    </a>
+                  )}
                 </p>
               )}
               <div className="rd-actions">
@@ -431,7 +466,9 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   type="button"
                   className="btn btn-primary"
                   onClick={approve}
-                  disabled={busy || jv.blocked || !effectivePrefix || itxBlocked}
+                  disabled={
+                    busy || (isAR ? !!arBlockReason : jv.blocked || !effectivePrefix || itxBlocked)
+                  }
                   /* The sentence above is the reason the control is unavailable, so a
                      screen reader is given it along with the disabled state. */
                   aria-describedby={blockReason && !postError ? 'rd-blocked' : undefined}

@@ -1,0 +1,322 @@
+/* ─── Detailed Credit Card AR Reconciliation — settings ─────────────────────
+ *
+ * Tokens only, no raw hex: every colour here has a [data-theme='dark'] override in
+ * base.css, and hardcoding one breaks the dark contract silently.
+ *
+ * The page is built from the `ui-*` kit (Card / Button / Switch) and `.admin-form-input`,
+ * which load app-wide from index.css, inside the module's `.app-container` + `AppHeader`.
+ * What is left here is only what the kit does not have: the context bar, the readiness
+ * disclosure, the two-column grid with its sticky preview rail, and the four blocks the
+ * two AR components draw (segmented post type, tag chips, mapping table, JV table).
+ * The mapping table reuses the .pm-* grid from components/payment-modal.css via MappingRow.
+ *
+ * `.ar-*` names stay page-scoped on purpose: `.container` / `.section` / `.skeleton` live
+ * in pages/mapping.css, which only Mapping.tsx imports, and borrowing them here rendered
+ * this page with no width limit and no spacing at all.
+ */
+
+/* ─── Context bar ─────────────────────────────────────────────────────────────
+ *
+ * Which bank the page is about and whether it is on — the scope of every card below,
+ * so it sits above them rather than as the first field of the first one.
+ */
+
+.ar-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.ar-bar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+
+/* The switch sits on the select's line, not on its label's. */
+.ar-bar-controls .ui-switch-label {
+  padding-bottom: 0.55rem;
+}
+
+.ar-intro {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+
+/* ─── Fields ──────────────────────────────────────────────────────────────── */
+
+.ar-mono {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+}
+
+.ar-hint {
+  margin: 0.4rem 0 0;
+  max-width: 68ch;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+
+.ar-hint-warn {
+  color: var(--amber-text);
+}
+
+/* ─── Post type ─────────────────────────────────────────────────────────────
+ *
+ * One compact row in the Mapping page's own `.form-grid`, not a card (2026-09-29): the
+ * segmented control sizes to its two buttons instead of the shared 300px/centred default,
+ * and the selected one gets the surface `.segmented-indicator` gives other toggles — this
+ * one renders no indicator, so without it only the text colour said which was chosen.
+ */
+
+.ar-posttype-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.ar-posttype {
+  margin: 0;
+  width: auto;
+  max-width: none;
+}
+
+.ar-posttype .segmented-btn {
+  flex: 0 0 auto;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.8rem;
+}
+
+.ar-posttype .segmented-btn.active {
+  background: var(--card-bg);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.ar-seg-count {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+/* ─── Description field's settlement extras (2026-09-30) ──────────────────────────
+   Inside the Description input's own value column, under its hint — not a full-width
+   row behind a divider (Ticket E's version), which started the chips under the *label*
+   and read as a separate section. The chips act on this one field and the preview is
+   what it renders to, so they line up with it. */
+
+/* `.form-grid` centres each label on its whole cell; with the extras under it that cell is
+   tall, and the label floated down beside the chips. Pin it to the input's line instead. */
+.form-grid > .ar-desc-label {
+  align-self: start;
+  padding-top: 0.75rem;
+}
+
+.ar-desc-extras {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.ar-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ar-tags-label {
+  margin-right: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-3);
+}
+
+/* Each field can only be attached once — five settlement dates in one sentence is not
+   a real state, so the chip *is* the state, a toggle: + attaches the field after the
+   text, ✓ (aria-pressed) means it is attached and pressing again detaches it. Not
+   `disabled` — a disabled button drops hover and focus, so its tooltip never showed and a
+   keyboard could not reach it. Whether it is attached is read off the saved string
+   (`splitDescription`), not a separate "used" flag. */
+.ar-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--card-bg);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background 0.15s ease-out,
+    color 0.15s ease-out,
+    border-color 0.15s ease-out;
+}
+
+.ar-tag:hover:not(:disabled) {
+  background: var(--primary-light);
+  color: var(--primary);
+  border-color: var(--primary-mid);
+}
+
+/* Only while no bank is selected: a Description belongs to a bank, so there is nothing to
+   attach a field to yet — the hint under the box says to pick one. */
+.ar-tag:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ar-tag[aria-pressed='true'] {
+  color: var(--emerald-text);
+  background: var(--emerald-light);
+  border-color: transparent;
+}
+
+.ar-tag[aria-pressed='true']:hover:not(:disabled) {
+  border-color: var(--emerald-text);
+}
+
+.ar-tag:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* The rendering of the description above — labelled, on a muted surface, so it reads as
+   output rather than as a second field. */
+.ar-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-xs);
+  background: var(--muted);
+}
+
+.ar-preview-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.ar-preview-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+/* Read-only since decision #28 — the three fixed debit legs (commission/tax/net), shown
+   rather than picked. A plain row list, not a table: three rows and two columns is not
+   worth a `<table>`'s own header/scroll machinery. */
+.ar-fixed-debit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 24rem;
+}
+
+.ar-fixed-debit-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--radius-xs);
+  background: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* ─── Mapping table ───────────────────────────────────────────────────────── */
+
+.ar-table {
+  margin-top: 0.75rem;
+}
+
+.ar-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.ar-add-input {
+  width: min(20rem, 100%);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.ar-row-count {
+  margin-left: auto;
+  font-size: 0.74rem;
+  color: var(--text-3);
+}
+
+/* ─── Actions ─────────────────────────────────────────────────────────────────
+ *
+ * `.ui-actionbar` (admin.css) is the sticky bar itself. Which of the two states the Save
+ * button is in goes on the far left of it: a disabled primary with no sentence next to it
+ * reads as a broken control.
+ */
+
+.ui-actionbar .ar-save-state {
+  margin: 0 auto 0 0;
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
+
+/* ─── Narrow screens ──────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .ar-bar-controls {
+    width: 100%;
+  }
+
+  /* Stacked: the label sits above its field, so there is no line to pin it to. */
+  .form-grid > .ar-desc-label {
+    padding-top: 0;
+  }
+
+  .ar-add-row .btn,
+  .ui-actionbar .btn {
+    min-height: 44px;
+  }
+
+  .ar-row-count {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+@media (pointer: coarse) {
+  .ar-tag {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ar-tag {
+    transition: none;
+  }
+}

@@ -38,7 +38,11 @@ PROFILES = {"Data": [{"Code": "VAT07", "Description": "VAT 7%", "TaxRate": 7, "A
 KBANK = SimpleNamespace(
     code="KBANK", legal_name="KASIKORNBANK PCL", tax_id="0107536000315", address="Bangkok"
 )
-CONFIG = SimpleNamespace(branch="00009", description="CC commission", bank_descriptions={})
+# A description belongs to a bank and posts as saved (decision-log #32, #33): no BU-wide
+# fallback, and the date appears only where the BU put the tag.
+CONFIG = SimpleNamespace(
+    branch="00009", bank_descriptions={"KBANK": "CC commission - {Settlement_Date}"}
+)
 SVC = "app.services.credit_card.input_tax"
 
 

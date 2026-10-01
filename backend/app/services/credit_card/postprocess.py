@@ -94,6 +94,19 @@ def _recon_mismatch(lines_total: float, printed_total: float) -> ExtractionWarni
 # rows. Only raised for `_STATEMENT_ANCHOR_CODES`, whose layouts ask for the row.
 _TOTAL_MISSING = ExtractionWarning(code="totalMissing")
 
+# The settlement report's own "TOTAL BY MERCHANT ID" line was not readable, so the rows
+# below it could not be checked against anything. That check is the only thing standing
+# between one merchant summary and a per-terminal block read twice, so its absence is
+# worth saying out loud rather than trusting the rows.
+_SETTLEMENT_TOTAL_MISSING = ExtractionWarning(code="settlementTotalMissing")
+
+
+# The merchant id in the filename and the one read off the page disagree. KBANK names
+# these files `KB1P554V2_SUM_<merchant id>_<date>.pdf`, one merchant per file, so a
+# disagreement means the model read a different block than the one this file is about.
+def _merchant_mismatch(from_file: str, from_doc: str) -> ExtractionWarning:
+    return ExtractionWarning(code="merchantMismatch", params={"file": from_file, "doc": from_doc})
+
 
 # Tolerance (baht) for reconciling printed vs reconstructed figures.
 _RECON_TOL = 0.02
@@ -374,6 +387,87 @@ def _strip_noncard_rows(extracted: ExtractedCreditCardData, bank_code: str | Non
     lines_total = round(sum(_parse_amt(r.pay_amt) or 0.0 for r in rows), 2)
     if abs(lines_total - printed) > _RECON_TOL:
         extracted.warnings.append(_recon_mismatch(lines_total, printed))
+
+
+# `KB1P554V2_SUM_451005282039001_20260721.pdf` → 451005282039001. KBANK writes one
+# settlement report per merchant id and puts it in the name, which makes the filename an
+# independent second opinion on what the model read — free, deterministic, and the only
+# check that catches the model summarising the wrong block on a page that holds several.
+_SETTLEMENT_FILE_MERCHANT = re.compile(r"_SUM_(\d{6,})_", re.IGNORECASE)
+
+
+def _normalize_ar_settlement(
+    extracted: ExtractedCreditCardData, original_filename: str | None
+) -> None:
+    """Consume the settlement report's printed TOTAL row and check the rows against it.
+
+    The document is a stack of subtotals of the same money — a block per TERMINAL ID,
+    then per-terminal summaries, then a service summary, then the merchant summary. The
+    prompt asks for the merchant summary alone plus its `TOTAL BY MERCHANT ID` line, and
+    this is where that answer is verified: Σ THB AMT over the emitted rows must equal the
+    printed total, or the model summed blocks it was told to ignore and the JV would post
+    the day's takings twice. That is the whole reason the TOTAL row is requested at all,
+    so a document that arrives without one is flagged rather than trusted.
+
+    Unlike the fee-invoice normalizer this repairs nothing. Every figure it needs is
+    printed; if they disagree, a human is the right resolution, not arithmetic.
+    """
+    rows = extracted.details
+    # Scanned from the end and through `_is_total_anchor`, like `_strip_noncard_rows` —
+    # see that predicate's docstring for why "first summary-shaped row" is not enough: a
+    # TERMINAL or SERVICE block prints its own total above the real merchant summary, and
+    # that total is just as "TOTAL"-shaped.
+    anchor = next((r for r in reversed(rows) if _is_total_anchor(r)), None)
+    # The prompt asks for this row's label verbatim ("TOTAL BY MERCHANT ID"), not a bare
+    # "TOTAL", for exactly this check: a terminal/service block's own total also satisfies
+    # `_is_total_anchor` above, and reconciling the rows against THAT would make the model
+    # reading the wrong block look complete — Σ rows would equal that block's own total by
+    # construction. Anything not carrying "MERCHANT" is treated as no anchor at all.
+    if anchor is not None and "MERCHANT" not in (anchor.transaction or "").upper():
+        anchor = None
+
+    # `cc_jv.build_jv_rows`'s grouping branch reads its three debit legs (commission /
+    # VAT /    # net) from this row, not from `details` — a settlement report's per-payment-type
+    # rows print those three columns as dashes, so the anchor is the only place they
+    # exist. Kept on the payload itself, not just used locally: `review_payload` is what
+    # `jv_for_document` rebuilds the JV from when a human approves later.
+    extracted.total_row = anchor
+
+    rows[:] = [
+        r
+        for r in rows
+        if _parse_amt(r.pay_amt)
+        and not _is_summary_row(r.transaction)
+        and not _is_wht_row(r.transaction)
+    ]
+
+    printed = _parse_amt(anchor.pay_amt) if anchor is not None else None
+    if anchor is None or printed is None:
+        extracted.warnings.append(_SETTLEMENT_TOTAL_MISSING)
+    else:
+        lines_total = round(sum(_parse_amt(r.pay_amt) or 0.0 for r in rows), 2)
+        if abs(lines_total - printed) > _RECON_TOL:
+            extracted.warnings.append(_recon_mismatch(lines_total, printed))
+        else:
+            # The anchor carries COMM AMT / VAT AMT / NET AMT too, and a real KBANK
+            # settlement report prints all three in full on this one row (detail rows
+            # leave them dashed, which is why this layout has no per-line identity to
+            # check anywhere else). When all three read, THB AMT = COMM + VAT + NET is a
+            # second, independent check on the one row every other check here trusts.
+            # Only reached once the row sum already confirms `printed` itself, so this
+            # is catching a misread commis/tax/total cell, not re-flagging the same gap.
+            comm = _parse_amt(anchor.commis_amt)
+            vat = _parse_amt(anchor.tax_amt)
+            net = _parse_amt(anchor.total)
+            if comm is not None and vat is not None and net is not None:
+                anchor_sum = round(comm + vat + net, 2)
+                if abs(anchor_sum - printed) > _RECON_TOL:
+                    extracted.warnings.append(_recon_mismatch(anchor_sum, printed))
+
+    from_file = _SETTLEMENT_FILE_MERCHANT.search(original_filename or "")
+    from_doc = re.sub(r"\D", "", extracted.merchant_id or "")
+    if from_file and from_doc and from_file.group(1) != from_doc:
+        extracted.warnings.append(_merchant_mismatch(from_file.group(1), from_doc))
 
 
 # A date printed inside a line description. Deliberately narrow — two or three

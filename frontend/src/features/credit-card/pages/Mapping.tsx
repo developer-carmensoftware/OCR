@@ -1,14 +1,37 @@
+import { useEffect, useState } from 'react'
 import { Network, Loader2, CheckCircle2 } from 'lucide-react'
 import CustomModal from '@/shared/components/common/CustomModal'
 import '@/styles/pages/mapping.css'
+import '@/styles/pages/ar-reconcile.css'
+import '@/styles/components/mapping-row.css'
 import { useT } from '@/i18n/LanguageContext'
-import { useMapping } from '@/features/credit-card/hooks/mapping'
+import { useMapping } from '../hooks/mapping'
+import { useSettlementMapping } from '../hooks/mapping/useSettlementMapping'
+import { descriptionForBank } from '../lib/bankTransforms'
+import { BANK_CODE_MAP } from '@/shared/constants/banks'
+import { POST_TYPES, type PostType } from '@/features/credit-card/api/arReconcile'
 import TopLevelConfigSection from '@/features/credit-card/components/TopLevelConfigSection'
 import CompanyInfoSection from '@/features/credit-card/components/CompanyInfoSection'
 import MainMappingTable from '@/features/credit-card/components/MainMappingTable'
-import PaymentTypeModal from '@/features/credit-card/components/PaymentTypeModal'
+import PaymentMappingDialog from '@/features/credit-card/components/payment-mapping/PaymentMappingDialog'
+import { statsOf } from '@/features/credit-card/components/payment-mapping/types'
+import { buildMappingSets } from '../hooks/mapping/mappingSets'
 import SwapLabel from '@/shared/components/common/SwapLabel'
 import type { ModalConfig } from '@/shared/hooks/useModal'
+import type { BankDisplayName } from '@/shared/types/api'
+
+/**
+ * Account Mapping Configuration — and, since 2026-09-22 (decision #3), a bank's
+ * settlement-report posting profile as well. The two used to be separate screens
+ * (`#/CreditCardOCR/ar-settings`) reading and writing separate tables; decision #28
+ * made a settlement JV's debit legs read this page's own commission/tax/net mapping,
+ * and decision #3 finished the collapse by moving the credit-side mapping here too —
+ * so there is exactly one screen and one save for a bank's GL configuration now.
+ *
+ * The Settlement card renders only when the selected bank has a settlement layout
+ * (`hasSettlementLayout`, from `banks.settlement_grouping`) — every other bank sees
+ * exactly the page that existed before this merge.
+ */
 
 function MappingSkeleton() {
   return (
@@ -79,22 +102,117 @@ function MappingSkeleton() {
   )
 }
 
+/**
+ * Step 2 of the page's load — the bank-scoped sections, while the selected bank's own GL
+ * mappings and settlement settings are in flight. Step 1 (`MappingSkeleton`) runs once;
+ * this runs on the first load and on every bank switch, and only here: the bank picker,
+ * prefix, description and company info above stay live, because none of them waits on it.
+ *
+ * It stands in for the Settlement card *and* the mapping table as one block, so both
+ * appear in a single reveal instead of three staggered pops, and the previous bank's
+ * accounts are never on screen under this bank's name. Laid out on the real
+ * `.cc-mapping-grid-container` (a credit row and the three debit rows), so its columns
+ * and its phone-width stacking are the table's own and the reveal does not jump.
+ */
+function BankDataSkeleton() {
+  const bar = (height: number, width: number | string = '100%') => (
+    <div className="skeleton" style={{ height, width, borderRadius: height > 20 ? 8 : 4 }} />
+  )
+  return (
+    <div className="section" aria-hidden="true">
+      <div className="section-title">{bar(12, 180)}</div>
+      <div className="cc-mapping-grid-container">
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} className="cc-mapping-row">
+            {bar(24, 44)}
+            {bar(14, '75%')}
+            {bar(38)}
+            {bar(38)}
+            <div />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function Mapping() {
   const { t } = useT()
   const mappingCtrl = useMapping()
 
+  const bankCode = mappingCtrl.bank ? BANK_CODE_MAP[mappingCtrl.bank as BankDisplayName] : ''
+  // This bank's own description — the same resolution `description_for` applies
+  // server-side at posting time. Ticket D (2026-09-22): a settlement JV's wording too.
+  const resolvedDescription = descriptionForBank(mappingCtrl.bankDescriptions, bankCode)
+  const settlementCtrl = useSettlementMapping(
+    bankCode,
+    mappingCtrl.savedMappings,
+    mappingCtrl.masterAccounts,
+    mappingCtrl.masterDepartments,
+    resolvedDescription,
+    mappingCtrl.mappingsBankCode
+  )
+
+  // Save is per bank and leaves the page, so setting up several banks means switching — and
+  // a switch replaces the form with the next bank's rows. The rules (and the settlement
+  // card's own) are what a switch would lose; prefix, branch and descriptions stay.
+  const switchLoses = mappingCtrl.rulesDirty || settlementCtrl.dirty
+  const unsaved = switchLoses || mappingCtrl.headerDirty
+  const [pendingBank, setPendingBank] = useState<BankDisplayName | '' | null>(null)
+  const requestBankChange = (next: BankDisplayName | '') => {
+    if (next === mappingCtrl.bank) return
+    if (switchLoses) setPendingBank(next)
+    else mappingCtrl.handleBankChange(next)
+  }
+
+  // The browser's own "leave this page?" for a reload or a closed tab. Not while saving: a
+  // save that worked closes this tab, and must not ask about the changes it just saved.
+  useEffect(() => {
+    if (!unsaved || mappingCtrl.saving) return
+    const ask = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', ask)
+    return () => window.removeEventListener('beforeunload', ask)
+  }, [unsaved, mappingCtrl.saving])
+
   if (mappingCtrl.configLoading) return <MappingSkeleton />
 
-  const requiredMissingCount =
-    mappingCtrl.activeScan.paymentTypes.size > 0
-      ? [...mappingCtrl.activeScan.paymentTypes].filter(
-          t => !mappingCtrl.paymentAmount[t]?.dept || !mappingCtrl.paymentAmount[t]?.acc
-        ).length
-      : 0
+  const postTypeLabel = (pt: PostType) =>
+    t(pt === 'Detail' ? 'review.arPostTypeDetail' : 'review.arPostTypeSummary')
 
-  const amountMappedCount = mappingCtrl.allPaymentTypes.filter(
-    t => mappingCtrl.paymentAmount[t]?.dept && mappingCtrl.paymentAmount[t]?.acc
-  ).length
+  const showSettlement = bankCode && !settlementCtrl.loading && settlementCtrl.hasSettlementLayout
+  // Step 2: this bank's mappings have not landed, or its settlement settings have not.
+  // Until both have, what the hooks hold is the previous bank's (or nothing), so the
+  // sections that show it are swapped for `BankDataSkeleton` and Save is off.
+  const bankFailed = Boolean(bankCode) && mappingCtrl.bankError === bankCode
+  const bankLoading =
+    Boolean(bankCode) && (mappingCtrl.mappingsBankCode !== bankCode || settlementCtrl.loading)
+
+  // Every list of payment types this bank has, for the one dialog that maps them all.
+  const mappingSets = buildMappingSets({
+    fee: mappingCtrl,
+    settlement: showSettlement ? settlementCtrl : null,
+    labels: {
+      feeInvoice: t('cc.pmSetFeeInvoice'),
+      settlement: t('cc.pmSetSettlement', { postType: postTypeLabel(settlementCtrl.postType) }),
+    },
+  })
+  const primarySet = mappingSets.sets[0]
+  const primaryStats = statsOf(primarySet, mappingCtrl.masterDepartments)
+
+  const handleSave = () =>
+    void mappingCtrl.saveAllSettings(
+      showSettlement
+        ? {
+            hasSettlementLayout: true,
+            mappingsToSave: settlementCtrl.mappingsToSave,
+            postType: settlementCtrl.postType,
+            bankCode,
+          }
+        : undefined
+    )
 
   return (
     <>
@@ -115,6 +233,30 @@ export default function Mapping() {
         onConfirm={mappingCtrl.handleAcceptAll}
         onCancel={() => mappingCtrl.setAcceptAllModal(false)}
       />
+      <CustomModal
+        show={mappingCtrl.conflictAsk}
+        title={t('cc.conflictTitle', { bank: bankCode })}
+        message={t('cc.conflictMsg', { bank: bankCode })}
+        type="warning"
+        confirmText={t('cc.conflictReload')}
+        cancelText={t('cc.conflictKeep')}
+        onConfirm={mappingCtrl.reloadBank}
+        onCancel={mappingCtrl.keepEditing}
+      />
+      <CustomModal
+        show={pendingBank !== null}
+        title={t('cc.switchBankTitle', { bank: bankCode })}
+        message={t('cc.switchBankMsg', { bank: bankCode })}
+        type="warning"
+        confirmText={t('cc.switchBankConfirm')}
+        cancelText={t('modal.cancel')}
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (pendingBank !== null) mappingCtrl.handleBankChange(pendingBank)
+          setPendingBank(null)
+        }}
+        onCancel={() => setPendingBank(null)}
+      />
 
       <div className="container">
         <h1>
@@ -123,52 +265,141 @@ export default function Mapping() {
 
         <TopLevelConfigSection
           bank={mappingCtrl.bank}
-          handleBankChange={mappingCtrl.handleBankChange}
+          handleBankChange={requestBankChange}
           filePrefix={mappingCtrl.filePrefix}
           setFilePrefix={mappingCtrl.setFilePrefix}
           prefixes={mappingCtrl.masterGLPrefixes}
           fileSource={mappingCtrl.fileSource}
-          description={mappingCtrl.description}
-          setDescription={mappingCtrl.setDescription}
           bankDescriptions={mappingCtrl.bankDescriptions}
           setBankDescriptions={mappingCtrl.setBankDescriptions}
+          hasSettlementLayout={Boolean(showSettlement)}
+          settlementPreview={settlementCtrl.preview?.description}
         />
 
         <CompanyInfoSection
           company={mappingCtrl.company}
           handleCompanyChange={mappingCtrl.handleCompanyChange}
-          companyRequiredFields={mappingCtrl.companyRequiredFields}
+          companyFields={mappingCtrl.companyFields}
           missingCompanyFields={mappingCtrl.missingCompanyFields}
+          companyErrors={mappingCtrl.companyErrors}
         />
 
-        <MainMappingTable
-          masterAccounts={mappingCtrl.masterAccounts}
-          masterDepartments={mappingCtrl.masterDepartments}
-          loadingOpts={mappingCtrl.loadingOpts}
-          mappings={mappingCtrl.mappings}
-          handleMappingChange={mappingCtrl.handleMappingChange}
-          suggestionMeta={mappingCtrl.suggestionMeta}
-          mainSuggestions={mappingCtrl.mainSuggestions}
-          suggestLoading={mappingCtrl.suggestLoading}
-          autoSuggest={mappingCtrl.autoSuggest}
-          confirmMainSuggestion={mappingCtrl.confirmMainSuggestion}
-          rejectMainSuggestion={mappingCtrl.rejectMainSuggestion}
-          setAcceptAllModal={mappingCtrl.setAcceptAllModal}
-          loadInitialData={mappingCtrl.loadInitialData}
-          activeScan={mappingCtrl.activeScan}
-          requiredMissingCount={requiredMissingCount}
-          openAmountModal={mappingCtrl.openAmountModal}
-        />
+        {bankFailed ? (
+          <div className="section" role="alert">
+            <p className="ar-hint ar-hint-warn" style={{ margin: '0 0 0.75rem' }}>
+              {t('cc.mapBankLoadFailed', { bank: bankCode })}
+            </p>
+            <button type="button" className="btn btn-secondary" onClick={mappingCtrl.retryBank}>
+              {t('cc.mapRetry')}
+            </button>
+          </div>
+        ) : bankLoading ? (
+          <div aria-busy="true">
+            <span className="sr-only" role="status">
+              {t('cc.mapLoadingBank', { bank: bankCode })}
+            </span>
+            <BankDataSkeleton />
+          </div>
+        ) : (
+          <>
+            {/* Settlement — a settlement report's Detail/Summary grouping. Only for a bank with
+            a settlement layout (`banks.settlement_grouping`); every other bank's page goes
+            straight to the mapping. Above it, not below: the grouping decides which payment
+            types there are to map, so it is chosen first. The same flat section + form row
+            as the rest of this page: since the "Reconcile this bank" toggle moved to Carmen
+            (2026-09-29) this is one control, and a card around one control was most of the
+            page's height. */}
+            {showSettlement && (
+              <div className="section">
+                <div className="section-title">{t('cc.settlementCardTitle')}</div>
+                {/* Whether this bank reconciles at all is its email rule, switched on the AI JV
+                Automation settings screen — said here, not set here. */}
+                {!settlementCtrl.enabled && (
+                  <p className="ar-hint ar-hint-warn" style={{ margin: '0 0 1rem' }}>
+                    {t('ar.enabledOffHint')}
+                  </p>
+                )}
+                <div className="form-grid">
+                  <label id="ar-posttype-label">
+                    {t('ar.postType')}
+                    <span className="gl-help-tip" title={t('ar.postTypeHintShared')}>
+                      ?
+                    </span>
+                  </label>
+                  <div className="ar-posttype-row">
+                    <div
+                      className="segmented-control ar-posttype"
+                      role="radiogroup"
+                      aria-labelledby="ar-posttype-label"
+                    >
+                      {POST_TYPES.map(pt => (
+                        <button
+                          key={pt}
+                          type="button"
+                          role="radio"
+                          aria-checked={settlementCtrl.postType === pt}
+                          className={`segmented-btn ${settlementCtrl.postType === pt ? 'active' : ''}`}
+                          onClick={() => settlementCtrl.setPostType(pt)}
+                        >
+                          {postTypeLabel(pt)}
+                          <span
+                            className="ar-seg-count"
+                            title={t('ar.postTypeMapped', {
+                              mapped: settlementCtrl.mappedCount(pt),
+                              total: settlementCtrl.rowCount(pt),
+                            })}
+                          >
+                            {settlementCtrl.mappedCount(pt)}/{settlementCtrl.rowCount(pt)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <span className="ar-hint" style={{ margin: 0 }}>
+                      {settlementCtrl.postType === 'Detail'
+                        ? t('ar.postTypeHintDetail')
+                        : t('ar.postTypeHintSummary')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <MainMappingTable
+              masterAccounts={mappingCtrl.masterAccounts}
+              masterDepartments={mappingCtrl.masterDepartments}
+              loadingOpts={mappingCtrl.loadingOpts}
+              mappings={mappingCtrl.mappings}
+              handleMappingChange={mappingCtrl.handleMappingChange}
+              suggestionMeta={mappingCtrl.suggestionMeta}
+              mainSuggestions={mappingCtrl.mainSuggestions}
+              suggestLoading={mappingCtrl.suggestLoading}
+              autoSuggest={mappingCtrl.autoSuggest}
+              confirmMainSuggestion={mappingCtrl.confirmMainSuggestion}
+              rejectMainSuggestion={mappingCtrl.rejectMainSuggestion}
+              setAcceptAllModal={mappingCtrl.setAcceptAllModal}
+              loadInitialData={mappingCtrl.loadInitialData}
+              paymentSummary={{
+                label: primarySet.label,
+                mapped: primaryStats.mapped,
+                total: primaryStats.total,
+              }}
+              openAmountModal={mappingSets.open}
+            />
+          </>
+        )}
 
         <div style={{ marginTop: '2.5rem' }}>
           <button
             type="button"
             className="btn-save-mapping"
-            onClick={() => void mappingCtrl.saveAllSettings(true)}
-            disabled={mappingCtrl.saving}
+            onClick={handleSave}
+            // Off through step 2 as well: until this bank's mappings land, the form holds
+            // the previous bank's, and the PUT would replace this bank's with them.
+            disabled={mappingCtrl.saving || bankLoading || bankFailed}
             style={{
               background: mappingCtrl.saving ? '#5eaca3' : 'var(--teal)',
-              cursor: mappingCtrl.saving ? 'not-allowed' : 'pointer',
+              cursor: mappingCtrl.saving || bankLoading || bankFailed ? 'not-allowed' : 'pointer',
+              opacity: !mappingCtrl.saving && (bankLoading || bankFailed) ? 0.55 : undefined,
             }}
           >
             {mappingCtrl.saving ? (
@@ -181,26 +412,15 @@ export default function Mapping() {
         </div>
       </div>
 
-      <PaymentTypeModal
-        isAmountModalOpen={mappingCtrl.isAmountModalOpen}
-        activeScan={mappingCtrl.activeScan}
-        amountMappedCount={amountMappedCount}
-        allPaymentTypes={mappingCtrl.allPaymentTypes}
-        paymentSuggestions={mappingCtrl.paymentSuggestions}
-        paymentSuggestLoading={mappingCtrl.paymentSuggestLoading}
-        autoSuggestPaymentTypes={mappingCtrl.autoSuggestPaymentTypes}
+      <PaymentMappingDialog
+        open={mappingCtrl.isAmountModalOpen}
+        sets={mappingSets.sets}
+        context={bankCode}
         masterAccounts={mappingCtrl.masterAccounts}
         masterDepartments={mappingCtrl.masterDepartments}
         loadingOpts={mappingCtrl.loadingOpts}
-        paymentAmount={mappingCtrl.paymentAmount}
-        handlePaymentMappingChange={mappingCtrl.handlePaymentMappingChange}
-        confirmPaymentSuggestion={mappingCtrl.confirmPaymentSuggestion}
-        rejectPaymentSuggestion={mappingCtrl.rejectPaymentSuggestion}
-        customPaymentTypes={mappingCtrl.customPaymentTypes}
-        handleRemoveCustomType={mappingCtrl.handleRemoveCustomType}
-        saveAmountSelection={mappingCtrl.saveAmountSelection}
-        cancelAmountSelection={mappingCtrl.cancelAmountSelection}
-        setAcceptAllModal={mappingCtrl.setAcceptAllModal}
+        onCancel={mappingSets.cancel}
+        onDone={mappingSets.done}
       />
     </>
   )

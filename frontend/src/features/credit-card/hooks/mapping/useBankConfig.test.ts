@@ -28,9 +28,22 @@ describe('useBankConfig — branch', () => {
     vi.clearAllMocks()
   })
 
-  it('falls back to the OCR-extracted branch when the saved config carries none', async () => {
-    seedOcrBranch('00000')
+  // A BU-wide fallback, not the last document's branch: that one reaches the input-tax
+  // record from the document itself, and copying it here made it every document's.
+  it('defaults to head office when the saved config carries none, ignoring the OCR one', async () => {
+    seedOcrBranch('00012')
     getAccountingConfig.mockResolvedValue(apiConfig() as never)
+
+    const { result } = renderHook(() => useBankConfig())
+    await waitFor(() => expect(result.current.configLoading).toBe(false))
+
+    expect(result.current.company.branch).toBe('00000')
+  })
+
+  // A brand-new BU: nothing saved server-side, nothing in this browser. The required field
+  // used to open blank here and block the GL mapping save until typed by hand.
+  it('defaults to head office with no config anywhere', async () => {
+    getAccountingConfig.mockRejectedValue(new Error('empty'))
 
     const { result } = renderHook(() => useBankConfig())
     await waitFor(() => expect(result.current.configLoading).toBe(false))
@@ -114,6 +127,50 @@ describe('useBankConfig — savedMappings', () => {
   })
 })
 
+// `ReviewDocument`'s AR-settings link carries `?bank=<code>` so a reviewer lands on the
+// document's own bank rather than whatever the tenant last saved — see the comment at its
+// `arSettingsHref`. `useBankConfig` is the only place that contract is honored.
+describe('useBankConfig — bank from ?bank= in the URL', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+    window.location.hash = '#/CreditCardOCR/mapping'
+  })
+
+  it('overrides the tenant-wide saved bank with the one named in the URL', async () => {
+    window.location.hash = '#/CreditCardOCR/mapping?bank=KBANK'
+    getAccountingConfig.mockResolvedValue(apiConfig({ bank_code: 'GHL' }) as never)
+
+    const { result } = renderHook(() => useBankConfig())
+    await waitFor(() => expect(result.current.configLoading).toBe(false))
+
+    expect(result.current.bank).toBe('Kasikornbank (KBANK)')
+  })
+
+  it("fetches the URL bank's own mappings, not the saved bank's", async () => {
+    window.location.hash = '#/CreditCardOCR/mapping?bank=KBANK'
+    getAccountingConfig.mockResolvedValue(apiConfig({ bank_code: 'GHL' }) as never)
+
+    const { result } = renderHook(() => useBankConfig())
+    await waitFor(() => expect(result.current.configLoading).toBe(false))
+
+    // First call, and only call: fetching the saved bank first put its mappings on screen
+    // under a KBANK dropdown until a second request caught up.
+    expect(getAccountingConfig).toHaveBeenCalledTimes(1)
+    expect(getAccountingConfig).toHaveBeenCalledWith('KBANK')
+    expect(result.current.mappingsBankCode).toBe('KBANK')
+  })
+
+  it('falls back to the saved bank when the URL names none', async () => {
+    getAccountingConfig.mockResolvedValue(apiConfig({ bank_code: 'GHL' }) as never)
+
+    const { result } = renderHook(() => useBankConfig())
+    await waitFor(() => expect(result.current.configLoading).toBe(false))
+
+    expect(result.current.bank).not.toBe('Kasikornbank (KBANK)')
+  })
+})
+
 // GL mappings are per-bank (20260924000000_bank_scoped_mapping_entries): a BU handling
 // more than one bank must never show one bank's dept/acc pairs while another is selected.
 describe('useBankConfig — bank scoping', () => {
@@ -171,5 +228,26 @@ describe('useBankConfig — bank scoping', () => {
 
     await waitFor(() => expect(result.current.savedMappings).toEqual({}))
     expect(getAccountingConfig).not.toHaveBeenCalled()
+  })
+
+  // 2026-09-30: a failed switch used to be swallowed, leaving the previous bank's rows up
+  // under the new bank's name — and a Save then wrote them into the new bank.
+  it('names the bank a failed switch was for, and retries it on request', async () => {
+    getAccountingConfig.mockResolvedValueOnce(apiConfig({ bank_code: 'GHL' }) as never)
+    const { result } = renderHook(() => useBankConfig())
+    await waitFor(() => expect(result.current.configLoading).toBe(false))
+
+    getAccountingConfig.mockRejectedValueOnce(new Error('offline'))
+    act(() => result.current.setBank('Siam Commercial Bank (SCB)'))
+    await waitFor(() => expect(result.current.bankError).toBe('SCB'))
+    expect(result.current.mappingsBankCode).not.toBe('SCB') // nothing pretends it landed
+
+    getAccountingConfig.mockResolvedValueOnce(
+      apiConfig({ bank_code: 'SCB', mappings: { commission: { dept: '1', acc: '2' } } }) as never
+    )
+    act(() => result.current.retryBank())
+    await waitFor(() => expect(result.current.mappingsBankCode).toBe('SCB'))
+    expect(result.current.bankError).toBeNull()
+    expect(result.current.savedMappings.commission.acc).toBe('2')
   })
 })

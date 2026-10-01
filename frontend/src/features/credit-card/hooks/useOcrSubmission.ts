@@ -101,11 +101,11 @@ export function useOcrSubmission({
         // test compare it against the server twin, which reads an ORM row.
         const carmenPayload = buildGljvPayload(rows, {
           docDate: headerData.DocDate,
+          docNo: headerData.DocNo,
           bankCode: bank,
           config: {
             filePrefix: cfg.file_prefix || cfg.filePrefix,
             fileSource: cfg.file_source || cfg.fileSource,
-            description: cfg.description,
             bankDescriptions: ((carmenConfig as Record<string, unknown>).bank_descriptions ??
               (carmenConfig as Record<string, unknown>).bankDescriptions) as
               Record<string, string> | undefined,

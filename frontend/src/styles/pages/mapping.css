@@ -5,6 +5,15 @@
   animation: shimmer 1.6s ease infinite;
 }
 
+/* Now a bank switch shows it too, not only the first page load — a shimmer on every
+   switch is motion someone who asked for less should not get. The shape still says
+   "loading" on its own. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
 .skeleton-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -319,4 +328,61 @@ button.mapping-label.clickable:hover {
   transition:
     background-color 150ms ease,
     cursor 150ms ease;
+}
+
+/* ─── Narrow screens ──────────────────────────────────────────────────────── */
+
+/* One structural breakpoint, matching the width `.rq-table` turns into records at. The
+   mapping grid and the payment-type rows flip at the same number (components.css,
+   components/mapping-row.css) so the page changes shape once rather than three times.
+   Touch targets are not here: they key off `pointer: coarse` beside the controls they
+   apply to, because a touch laptop needs the 44px floor at 1440px too. */
+@media (max-width: 720px) {
+  /* What runs out first is the page's own chrome, not the layout: `body` took 2rem either
+     side and `.container` another 2.5rem, so 144px of a 375px phone was padding before a
+     field began. */
+  body {
+    padding: 1rem 0.75rem;
+  }
+
+  .container {
+    margin: 1rem auto;
+    padding: 1.5rem 1rem;
+  }
+
+  /* The label column is a fixed 200px and `.container` is `overflow: hidden`, so below a
+     certain width the value column was not merely squeezed — what spilled was cut off with
+     nothing to scroll to, which is how a phone rendered ~40px-wide inputs and helper text
+     one word per line. Stack instead: the label goes above its field, which is all the
+     label column was buying. */
+  .form-grid {
+    grid-template-columns: 1fr;
+    /* The row gap is now label-to-its-own-field, so it tightens; the space between one
+       pair and the next comes from the label's own margin above. */
+    gap: 0.4rem;
+    align-items: start;
+  }
+
+  .form-grid > label {
+    margin-top: 0.75rem;
+  }
+
+  .form-grid > label:first-child {
+    margin-top: 0;
+  }
+
+  h1 {
+    font-size: 1.2rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .section {
+    margin-bottom: 1.75rem;
+  }
+}
+
+@media (pointer: coarse) {
+  .btn-save-mapping {
+    min-height: 44px;
+  }
 }

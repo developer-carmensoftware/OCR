@@ -10,10 +10,12 @@ import os
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import DocType
 from app.context import current_tenant_id
 from app.exceptions import ValidationError
 from app.models.orm import OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
+from app.services.credit_card import kbank_settlement_text
 from app.services.credit_card.vision import extract_from_image
 from app.utils.image_processing import resize_if_needed
 from app.utils.pdf_utils import (
@@ -33,6 +35,8 @@ async def extract_stateless(
     hints: dict | None = None,
     task_id: str | None = None,
     pdf_password: str | None = None,
+    doc_type: str = DocType.FEE_INVOICE,
+    page_indexes: list[int] | None = None,
 ) -> ExtractedCreditCardData:
     """
     Stateless OCR extraction: resize → Vision LLM → return structured data.
@@ -40,33 +44,43 @@ async def extract_stateless(
     bank_code: 'BBL' | 'KBANK' | 'SCB' | 'BAY' | 'KTC' | 'GHL' | 'PAYPAL' | 'SIAMPAY' — selects bank-specific prompt.
     hints: correction hints from correction_service (injected into prompt).
     pdf_password: password for an encrypted PDF (None = not encrypted).
+    doc_type: DocType.* — picks the prompt layout and the module charged for the call.
+    page_indexes: 0-based PDF pages to send, negative counting from the end.
+                  Defaults to the first MAX_PAGES_PER_CALL pages; the settlement
+                  report is the one caller that overrides it, to `[-1]`.
     """
     ext = os.path.splitext(original_filename)[1].lower()
     image_mime_type: str | None = None  # PDF branch leaves this None → falls back to
     # get_mime_type(original_filename) inside extract_from_image, i.e. application/pdf.
 
     if ext == ".pdf":
-        # Extract the pages as a native PDF subset (full vector/text fidelity;
-        # rasterising degraded dense tables), decrypting first if encrypted so Gemini
-        # doesn't reject it as "no pages".
+        # Extract the wanted page(s) as a native PDF subset (full vector/text
+        # fidelity; rasterising degraded dense tables), decrypting first if
+        # encrypted so Gemini doesn't reject it as "no pages".
         #
-        # `[]` means "the first MAX_PAGES_PER_CALL pages" (extract_pages_as_pdf's own
-        # fallback, already de-duplicated and bounds-checked), not "no pages". It used to
-        # be `[0]` on the grounds that credit-card documents are single-page: a statement
-        # that ran onto page 2 silently lost those rows, and because the JV sums the rows
-        # it did get into both of its sides, the short version still balanced. Pages are
-        # not charged here (a scan costs one document per file, unlike AP invoice), so
-        # this trades vision tokens for not dropping half a statement.
+        # `page_indexes=None` (every caller except the settlement report, which asks for
+        # the last page via `[-1]`) falls back to `[]`, meaning "the first
+        # MAX_PAGES_PER_CALL pages" (extract_pages_as_pdf's own fallback, already
+        # de-duplicated and bounds-checked) rather than "no pages". It used to be `[0]` on
+        # the grounds that credit-card documents are single-page: a statement that ran
+        # onto page 2 silently lost those rows, and because the JV sums the rows it did
+        # get into both of its sides, the short version still balanced. Pages are not
+        # charged here (a scan costs one document per file, unlike AP invoice), so this
+        # trades vision tokens for not dropping half a statement.
         #
         # Past the cap it still drops pages, so say so — the same log AP invoice writes
         # at its own cap (`ap_invoice_service`). Without it a 7-page statement loses two
         # pages exactly as silently as the `[0]` version did, and the printed-total check
         # downstream is then the only thing standing between that and a short JV.
+        # Only the fallback truncates, which is why the warning is gated on it: a caller
+        # that named its pages gets exactly those, so telling a 9-page settlement report
+        # it was "capped to the first 5" would describe the opposite of what was sent.
+        pages = page_indexes if page_indexes is not None else []
         try:
             page_count = await asyncio.get_running_loop().run_in_executor(
                 None, functools.partial(get_pdf_page_count, file_bytes, pdf_password)
             )
-            if page_count > MAX_PAGES_PER_CALL:
+            if not pages and page_count > MAX_PAGES_PER_CALL:
                 logger.warning(
                     "Credit-card document %s has %d pages; capping to first %d for extraction",
                     original_filename,
@@ -76,7 +90,7 @@ async def extract_stateless(
             processed_bytes = await asyncio.wait_for(
                 asyncio.get_running_loop().run_in_executor(
                     None,
-                    functools.partial(extract_pages_as_pdf, file_bytes, [], pdf_password),
+                    functools.partial(extract_pages_as_pdf, file_bytes, pages, pdf_password),
                 ),
                 timeout=PDF_RENDER_TIMEOUT_SECONDS,
             )
@@ -87,10 +101,27 @@ async def extract_stateless(
             None, functools.partial(resize_if_needed, file_bytes)
         )
 
+    # The one layout proven (decision #28) to carry a complete, machine-generated text
+    # layer — reading it directly costs nothing and cannot misread a digit the way a
+    # vision call occasionally does. `processed_bytes` here is already the settlement
+    # report's own last page, isolated and decrypted by `extract_pages_as_pdf` above.
+    # `None` (a scanned copy, an unexpected shape, a future report version) falls
+    # straight through to the unchanged vision path below.
+    if doc_type == DocType.AR_RECONCILE and bank_code == "KBANK":
+        deterministic = await asyncio.get_running_loop().run_in_executor(
+            None, kbank_settlement_text.parse, processed_bytes
+        )
+        if deterministic is not None:
+            logger.info(
+                "Extracted %s via the deterministic KBANK settlement reader", original_filename
+            )
+            return deterministic
+
     logger.info(
-        "Extracting: %s (bank=%s hints=%d)",
+        "Extracting: %s (bank=%s doc_type=%s hints=%d)",
         original_filename,
         bank_code,
+        doc_type,
         len(hints) if hints else 0,
     )
     _, extracted = await extract_from_image(
@@ -100,6 +131,7 @@ async def extract_stateless(
         hints=hints,
         task_id=task_id,
         image_mime_type=image_mime_type,
+        doc_type=doc_type,
     )
     return extracted
 

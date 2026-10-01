@@ -1,4 +1,7 @@
-"""Email Automation — request payloads for the Settings API Carmen calls.
+"""Email Automation — request payloads for the Settings API.
+
+Called by our own settings screen (`#/CreditCardOCR/email-settings`, opened from Carmen's menu — decision
+#34) with the user's Carmen token, and by Carmen itself for the posting credential.
 
 Contract: docs/CARMEN_INTEGRATION.md §2.3 (settings) and §2.6 (posting credential).
 """
@@ -26,6 +29,19 @@ class RuleIn(BaseModel):
     filename_patterns: list[str] = Field(default_factory=list)
     pdf_password: str | None = None  # write-only: omit = keep, "" = clear
     is_active: bool = True
+    # Which of the two KBANK documents this rule's files are — constants.DocType.
+    # The rule has to say, because the page cannot: a settlement report and the commission
+    # invoice for that same settlement share the bank, the date and the tax invoice number.
+    # Omit = keep the stored value (F-5: a client that does not know the field must not
+    # turn a settlement rule back into a fee-invoice one); a rule that never had one is a
+    # fee invoice, the document type that existed before this field did.
+    #
+    # `ar_reconcile` is also the switch itself (2026-09-29): an active rule of that type is
+    # what "reconcile this bank" means. There is no second toggle on our mapping page any
+    # more — this payload is the one writer, same lesson as `auto_post`. How
+    # the JV groups (Detail/Summary) is still ours: the mapping page, beside the accounts
+    # each grouping needs.
+    doc_type: str | None = None
 
 
 class SettingsIn(BaseModel):
@@ -45,8 +61,8 @@ class SettingsIn(BaseModel):
     # merges — the idiom `_merge_rule` already uses for `pdf_password_enc`. It has to,
     # because this route is now the *only* writer (the queue's own gear and
     # `PUT /api/v1/email/settings/auto-post` were deleted 2026-09-08): a caller that does
-    # not know the field — our own `#/email-settings` page, or a Carmen build that predates
-    # it — would otherwise turn review back on with every unrelated settings save, silently,
+    # not know the field — an old build of our `#/CreditCardOCR/email-settings` page, or any script —
+    # would otherwise turn review back on with every unrelated settings save, silently,
     # for a customer who had deliberately switched it off.
     auto_post: bool | None = None
 
@@ -135,6 +151,17 @@ class ReviewDocumentDetail(ReviewDocument):
     # writing these to the BU's config (they land there when a human approves), so this
     # is where the review screen reads them from.
     suggested: dict[str, dict[str, str]] = Field(default_factory=dict)
+
+    # `fee_invoice` (everything before 2026-09-09) or `ar_reconcile`. The two are
+    # different JVs from different documents, and the screen renders them differently:
+    # only one of them is editable in the browser.
+    doc_type: str = "fee_invoice"
+
+    # For an AR-reconciliation document only: the JV it would post, built server-side
+    # against the BU's current mapping. There is no client-side builder for this feature
+    # — `approve` posts exactly these rows, so what is shown and what posts are the same
+    # object rather than two derivations that have to be kept in step.
+    ar_jv: dict | None = None
 
 
 class ActivityRow(ReviewDocument):

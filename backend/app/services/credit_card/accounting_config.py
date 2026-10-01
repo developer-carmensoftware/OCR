@@ -5,11 +5,13 @@ Encapsulates all ORM queries that were previously inline in routers/config.py.
 """
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.exceptions import ConflictError, ValidationError
 from app.models import (
     APVendorColumnMapping,
     APVendorFieldMappingEntry,
@@ -34,8 +36,10 @@ _UNSCOPED = _Unscoped()
 
 
 async def get_accounting_config(
-    db: AsyncSession, tenant_id: str, bank_code: str | None = None
+    db: AsyncSession, tenant_id: str, bank_code: str | None = None, *, with_version: bool = False
 ) -> AccountingConfigResponse:
+    """`with_version` is for the page that will save it back — the posting paths read the
+    rules and nothing else, and do not pay a query for a token they would not use."""
     row = await _get_config(db, tenant_id)
     if not row:
         return AccountingConfigResponse()
@@ -45,56 +49,83 @@ async def get_accounting_config(
     # 20260924000000_bank_scoped_mapping_entries.sql).
     scope = bank_code or row.bank_code
     entries = await _get_entries(db, row.id, scope)
-    if scope is not None:
-        # Entries saved before bank scoping carry no bank: the migration could only backfill
-        # a bank where the config row named one, so a BU whose row did not (carmencloud: all
-        # 29) lost every mapping to per-bank reads — each document parked `mapping_missing`
-        # and an auto-post BU stopped posting (F-8, 2026-09-25 QA). They were the BU's
-        # choice for every bank, so they still answer for any field this bank has no entry
-        # of its own for; the bank's own entry always wins, and the next save of this bank
-        # writes them as its own.
-        own = {e.field_type for e in entries}
-        entries += [e for e in await _get_entries(db, row.id, None) if e.field_type not in own]
+    # A bank's entries are its own and nothing else. Until 2026-10-01 a bank-scoped read also
+    # took any bank-less entry for a field the bank lacked (F-8: carmencloud's 29 never got a
+    # bank), which the mapping page could not clear; 20261001000000_retire_null_bank_entries
+    # copied those to the banks that used them and retired them.
     mappings, custom_types = _entries_to_response(entries)
 
     return AccountingConfigResponse(
         bank_code=row.bank_code,
         file_prefix=row.file_prefix,
         file_source=row.file_source,
-        description=row.description,
         branch=row.branch,
+        version=await _version(db, row, scope) if with_version else None,
         mappings=mappings,
         custom_types=custom_types,
         bank_descriptions=dict(row.bank_descriptions or {}),
     )
 
 
-def description_for(config: Any, bank_code: str | None) -> str | None:
-    """The description this bank's documents should carry.
+async def _version(db: AsyncSession, row: BUAccountingConfig, bank_code: str | None) -> str | None:
+    """When this bank's rules last changed: the newest of the config row and the bank's own
+    entries. A save that deletes and re-inserts the entries stamps the new ones, so any write
+    by anyone moves this forward. The config row is BU-wide, so another bank's header save
+    can too — a false alarm costs one "save anyway", a missed one costs someone's edit."""
+    newest = (
+        await db.execute(
+            select(func.max(BUAccountingMappingEntry.updated_at)).where(
+                BUAccountingMappingEntry.config_id == row.id,
+                BUAccountingMappingEntry.bank_code == bank_code,
+                BUAccountingMappingEntry.deleted_at.is_(None),
+            )
+        )
+    ).scalar()
+    stamps = [t for t in (getattr(row, "updated_at", None), newest) if isinstance(t, datetime)]
+    return max(stamps).isoformat() if stamps else None
 
-    A BU receiving statements from several banks can give each its own wording;
-    `description` is what everything else still falls back to, so a BU that never
-    sets one behaves exactly as it did before the column existed.
+
+def description_for(config: Any, bank_code: str | None) -> str | None:
+    """The description this bank's documents should carry: its own entry, or nothing.
+
+    There is no BU-wide fallback since 2026-09-30 (decision-log #33). The old
+    `description` column was read everywhere and editable nowhere, so a stray value sat
+    behind every unconfigured bank; 20260930000000_description_per_bank_only copied it
+    into each bank the BU used, and nothing reads the column any more.
     """
     per_bank = getattr(config, "bank_descriptions", None) or {}
-    return (per_bank.get(bank_code or "") or "").strip() or getattr(config, "description", None)
+    return (per_bank.get(bank_code or "") or "").strip() or None
 
 
 async def save_accounting_config(
     db: AsyncSession, tenant_id: str, req: AccountingConfigRequest
-) -> None:
+) -> str | None:
+    """Returns the bank's new `version`, for a page that stays open after saving."""
     row = await _get_config(db, tenant_id)
+
+    if row and req.base_version:
+        try:
+            loaded = datetime.fromisoformat(req.base_version)
+        except ValueError as exc:
+            raise ValidationError("base_version is not a timestamp") from exc
+        current = await _version(db, row, req.bank_code)
+        if current and datetime.fromisoformat(current) > loaded:
+            raise ConflictError(
+                f"{req.bank_code or 'This'} mapping was changed after you opened it — "
+                "reload it, or save again to overwrite"
+            )
 
     if row:
         row.bank_code = req.bank_code
         row.file_prefix = req.file_prefix
         row.file_source = req.file_source
-        row.description = req.description
         row.branch = req.branch
-        # Omitted = keep. The wizard does not send this field yet, and it must not
-        # wipe per-bank wording every time someone saves a GL mapping.
+        # Merged per bank, not replaced: the page edits one bank's wording, and a reviewer
+        # may have corrected another's from the queue since it loaded. An empty string
+        # clears that bank. Omitted = keep.
         if req.bank_descriptions is not None:
-            row.bank_descriptions = {k: v for k, v in req.bank_descriptions.items() if v}
+            merged = {**(row.bank_descriptions or {}), **req.bank_descriptions}
+            row.bank_descriptions = {k: v for k, v in merged.items() if v}
         await db.flush()
     else:
         row = BUAccountingConfig(
@@ -102,7 +133,6 @@ async def save_accounting_config(
             bank_code=req.bank_code,
             file_prefix=req.file_prefix,
             file_source=req.file_source,
-            description=req.description,
             branch=req.branch,
             bank_descriptions={k: v for k, v in (req.bank_descriptions or {}).items() if v},
         )
@@ -128,6 +158,7 @@ async def save_accounting_config(
                 dept_code=mapping.dept or None,
                 acc_code=mapping.acc or None,
                 is_custom=(field_type not in _FIXED_TYPES),
+                source=mapping.source or None,
                 bank_code=req.bank_code,
             )
         )
@@ -146,8 +177,12 @@ async def save_accounting_config(
                 )
             )
 
+    await db.flush()
+    await db.refresh(row)  # `updated_at` is stamped by the database, not by us
+    version = await _version(db, row, req.bank_code)
     await db.commit()
     logger.info("Saved accounting config for tenant=%s", tenant_id)
+    return version
 
 
 async def fill_missing_mappings(
@@ -208,9 +243,8 @@ async def patch_config(
     The third writer of this table, and it exists because neither of the other two fits a
     reviewer correcting one GL rule from the review screen:
 
-    * `save_accounting_config` is a full replace — it assigns `file_prefix`, `file_source`,
-      `description` and `branch` unconditionally and deletes every mapping entry before
-      re-inserting. Sending a partial config through it wipes the rest, and two reviewers
+    * `save_accounting_config` is a full replace — it assigns `file_prefix`, `file_source`
+      and `branch` unconditionally and deletes every mapping entry before re-inserting. Sending a partial config through it wipes the rest, and two reviewers
       with the queue open is the expected case, not the edge case.
     * `fill_missing_mappings` never overwrites what the BU already set, which is exactly
       what a correction has to do.
@@ -220,16 +254,12 @@ async def patch_config(
     `bank_descriptions`.
 
     `description` is written to **the named bank's own entry**, creating it if this BU had
-    none, and only falls back to the BU-wide field when no bank is known. Two reasons, and
-    they are the same ones the wizard's config editor has always had:
-
-    * It is the field that wins at posting time — `description_for` prefers
-      `bank_descriptions[bank_code]` — so writing the BU-wide one while a per-bank entry
-      exists would look like the edit did nothing.
-    * It is the field the caller was editing. The review screen shows this bank's own
-      wording, so a correction made about one bank's documents must not silently rewrite
-      every other bank's.
+    none — the only place a description lives since 2026-09-30 (`description_for`). With no
+    bank known there is nowhere to write it, so it is dropped rather than parked in the
+    retired BU-wide column, where nothing would ever read it back.
     """
+    if not bank_code:
+        description = None
     usable = {k: v for k, v in (mappings or {}).items() if v.get("dept") and v.get("acc")}
     if not usable and file_prefix is None and description is None:
         return
@@ -242,18 +272,10 @@ async def patch_config(
 
     if file_prefix is not None:
         row.file_prefix = file_prefix
-    if description is not None:
-        if bank_code:
-            # The named bank's own entry, whether or not it had one. The review screen edits
-            # that entry directly (as the wizard's config editor always has), so writing the
-            # BU-wide sentence instead would take a correction made about *this* bank and
-            # apply it to every other one — and then read back as a placeholder rather than
-            # the value that was typed. `description_for` prefers this entry, so it is also
-            # the field that wins at posting time.
-            row.bank_descriptions = {**(row.bank_descriptions or {}), bank_code: description}
-        else:
-            # No bank identified — the BU-wide fallback is the only thing this can mean.
-            row.description = description
+    if description is not None and bank_code:
+        # The named bank's own entry, whether or not it had one — the entry the review
+        # screen edits and the only one `description_for` reads.
+        row.bank_descriptions = {**(row.bank_descriptions or {}), bank_code: description}
 
     if not usable:
         await db.commit()
@@ -431,7 +453,11 @@ def _entries_to_response(
     mappings: dict = {}
     custom_types: list = []
     for e in entries:
-        mappings[e.field_type] = {"dept": e.dept_code or "", "acc": e.acc_code or ""}
+        mappings[e.field_type] = {
+            "dept": e.dept_code or "",
+            "acc": e.acc_code or "",
+            "source": e.source,
+        }
         if e.is_custom:
             custom_types.append(e.field_type)
     return mappings, custom_types

@@ -31,6 +31,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.constants import DocType, PostType
 from app.database import Base
 
 from .enums import TaskStatus
@@ -110,7 +111,9 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
     Extracted data from a credit card bank statement.
     bank_code: FK to banks.code (replaces the old hardcoded BankType enum).
     submitted_at: NULL = draft; NOT NULL = submitted to Carmen ERP.
-    Duplicate check: (tenant_id, bank_code, doc_no, submitted_at IS NOT NULL).
+    Duplicate check: (tenant_id, doc_no, doc_date, doc_type, submitted_at IS NOT NULL).
+    bank_code is deliberately NOT in that key and doc_type deliberately is — see the
+    `has_submitted_doc` call in credit_card_service.finalize_extraction for both reasons.
     """
 
     __tablename__ = "credit_cards"
@@ -118,6 +121,11 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     task_id = Column(PGUUID(as_uuid=True), ForeignKey("ocr_tasks.id"), nullable=False, index=True)
     bank_code = Column(String(20), ForeignKey("banks.code"), nullable=True, index=True)
+    # constants.DocType — 'fee_invoice' (everything scanned before 2026-09-09) or
+    # 'ar_reconcile' (the KBANK settlement report). Part of the duplicate key.
+    doc_type = Column(
+        String(20), nullable=False, server_default=DocType.FEE_INVOICE, default=DocType.FEE_INVOICE
+    )
     company_name = Column(String(255), nullable=True)
     bank_company_name = Column(String(255), nullable=True)
     doc_date = Column(Date, nullable=True, index=True)
@@ -226,10 +234,12 @@ class BUAccountingConfig(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
     )
     file_prefix: Mapped[str | None] = mapped_column(String(20), nullable=True)
     file_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Unread since 2026-09-30: copied into bank_descriptions by
+    # 20260930000000_description_per_bank_only, kept only as history.
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     branch: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    # bank_code -> description, for a BU whose banks should not all read alike.
-    # `description` above stays the fallback; see accounting_config_service.description_for.
+    # bank_code -> description — the only JV description there is; a bank with no entry
+    # posts none. See accounting_config.description_for.
     bank_descriptions: Mapped[dict] = mapped_column(_JSON, nullable=False, default=dict)
 
     entries = relationship(
@@ -257,6 +267,15 @@ class BUAccountingMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
     field_type examples: 'commission', 'tax', 'net', 'SALES', 'CASH'
     is_custom=True  → user manually added this payment type
     is_custom=False → fixed type (commission / tax / net)
+
+    Since decision #3 (2026-09-22, docs/email-automation/06-decision-log.md #29) this
+    table also holds a settlement report's credit-side keys — folded in from the
+    now-archived `ar_reconcile_mappings` (Detail keeps a printed label as its
+    `field_type`, e.g. "VS INTER UP PREM"; Summary folds it, e.g. "VS" — the two modes
+    never collide because their key strings differ, so one flat table serves both
+    without `post_type` needing to be part of a uniqueness key here). `source`
+    distinguishes them for display only — `cc_jv.build_jv_rows`/`unmapped_payment_types`
+    resolve a key by plain lookup in the merged dict and never read it.
     """
 
     __tablename__ = "bu_accounting_mapping_entries"
@@ -267,6 +286,11 @@ class BUAccountingMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
     dept_code = Column(String(100), nullable=True, index=True)
     acc_code = Column(String(100), nullable=True, index=True)
     is_custom = Column(Boolean, nullable=False, default=False)
+    # NULL = usable on any layout (the three fixed types, every pre-existing
+    # fee-invoice payment type). 'settlement_detail' / 'settlement_summary' name which
+    # of a settlement report's two credit-side vocabularies wrote this row — see the
+    # class docstring. Informational only.
+    source = Column(String(20), nullable=True)
     # Null = pre-migration row (20260924000000), scoped by config_id alone. New rows always
     # carry the bank they were saved for — see accounting_config_service for the fallback
     # that keeps a single-bank tenant's queries unchanged.
@@ -279,6 +303,59 @@ class BUAccountingMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
             "uq_bu_mapping_entry_active",
             "config_id",
             "field_type",
+            "bank_code",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+
+class ARReconcileSetting(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
+    """Per-(tenant, bank) posting profile for a settlement report's JV.
+
+    Separate from BUAccountingConfig, which is one row per tenant and describes the
+    credit-card wizard's JV in general — a BU can settle with several acquirers on
+    different charts of accounts, so this scopes per bank. What it does NOT hold any
+    more (since decision #3, 2026-09-22) is a mapping table of its own: the credit-side
+    payment-type mapping lives in `bu_accounting_mapping_entries` alongside
+    commission/tax/net, because a settlement report's debit legs already read that
+    table (decision #28) and Detail/Summary's key strings never collide with each
+    other or with a fee-invoice payment type. What is left here is genuinely
+    per-(tenant, bank): whether this bank's settlement report reconciles at all, which
+    grouping it uses, and how its JV is worded.
+    """
+
+    __tablename__ = "ar_reconcile_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    bank_code: Mapped[str] = mapped_column(
+        String(20), ForeignKey("banks.code"), nullable=False, index=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # constants.PostType. Varchar rather than an enum type: adding a value should not
+    # need a migration that rewrites the table, and the API validates the value anyway.
+    post_type: Mapped[str] = mapped_column(
+        String(10), nullable=False, default=PostType.DETAIL, server_default=PostType.DETAIL
+    )
+    # {Settlement_Date} / {Tax_Invoice_No} / {Bank_Name} — cc_jv.render_jv_description.
+    jv_description_template: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        default="Credit Card AR Reconcile {Settlement_Date}",
+        server_default="Credit Card AR Reconcile {Settlement_Date}",
+    )
+    # The v1.1 "clearing account" (FRD §6.1 as originally written) — a control account
+    # this JV cleared, before decision #28 replaced it with three fixed debit legs read
+    # from the BU's own credit-card mapping. Left in place, unread by every builder and
+    # unwritten by the settings screen, so the two-JV shape could be restored for a
+    # customer who needs it without a schema change. Do not read or write these.
+    debit_dept_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    debit_account_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    __table_args__ = (
+        Index(
+            "uq_ar_reconcile_setting_active",
+            "tenant_id",
             "bank_code",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),

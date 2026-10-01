@@ -11,7 +11,8 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   // stripped later, inside a React effect (useCarmenSSO) — so the pageload transaction,
   // navigation breadcrumbs, or any early error can carry it off-site. It cannot be
   // stripped before init (the effect still needs to read it), so redact it on the way out.
-  const redact = (u: string) => u.replace(/([?&]token=)[^&]*/gi, '$1[redacted]')
+  // `posting_token` too: the settings link carries a BU posting token (decision #35).
+  const redact = (u: string) => u.replace(/([?&](?:posting_)?token=)[^&]*/gi, '$1[redacted]')
   const scrub = <T extends Sentry.Event>(event: T): T => {
     if (event.request?.url) event.request.url = redact(event.request.url)
     if (typeof event.transaction === 'string') event.transaction = redact(event.transaction)
@@ -141,7 +142,17 @@ function Router() {
     // Carmen's SSO deep-link lands on the bare route, so whatever renders there is the
     // module's first screen — the queue. The wizard is somewhere you go on purpose.
     if (sub === 'mapping') Page = <Mapping />
-    else if (sub === 'manual') Page = <ManualScan />
+    else if (sub === 'ar-settings') {
+      // Merged into the mapping page 2026-09-22 (decision #3) — redirect rather than
+      // 404 a bookmark or a stale link, preserving `?bank=` so it still lands on the
+      // bank the caller meant. `replace` so Back does not bounce through the old URL.
+      const query = window.location.hash.split('?')[1]
+      window.location.replace(`#/CreditCardOCR/mapping${query ? `?${query}` : ''}`)
+      Page = <Mapping />
+    } else if (sub === 'manual') Page = <ManualScan />
+    // AI JV Automation settings (decision #34). Opened from Carmen's menu and from the
+    // queue's fix buttons; deliberately not a Home tile — Carmen's menu is the front door.
+    else if (sub === 'email-settings') Page = <EmailSettings />
     // `/review?id=…` is the queue with a document open over it. Same component, so
     // opening and closing a document never refetches the list behind it.
     else Page = <ReviewQueue />
@@ -150,8 +161,10 @@ function Router() {
   } else if (route === 'whats-new') {
     Page = <WhatsNew />
   } else if (route === 'email-settings') {
-    // Our copy of the screen Carmen builds — reachable by URL only, deliberately not
-    // linked from Home while it is a test surface.
+    // Moved under the module it configures 2026-10-01. Redirect, keeping the query, so a
+    // Carmen menu link built against the old path still signs in (`?token=` rides along).
+    const query = window.location.hash.split('?')[1]
+    window.location.replace(`#/CreditCardOCR/email-settings${query ? `?${query}` : ''}`)
     Page = <EmailSettings />
   } else if (route === 'pricing/orders') {
     Page = <OrderHistory />

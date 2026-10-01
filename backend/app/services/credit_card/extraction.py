@@ -10,12 +10,14 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
+from app.constants import DocType
 from app.database import async_session
 from app.models.orm import CreditCard, OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
 from app.services.credit_card.postprocess import (
     _BANK_STATEMENT_CODES,
     _clean_transaction_labels,
+    _normalize_ar_settlement,
     _normalize_bay_statement,
     _normalize_fee_invoice,
     _strip_noncard_rows,
@@ -33,6 +35,8 @@ async def finalize_extraction(
     tenant_id: str,
     bank_code: str | None,
     carmen_user_id: str | None,
+    doc_type: str = DocType.FEE_INVOICE,
+    original_filename: str | None = None,
 ) -> ExtractedCreditCardData:
     """Duplicate check, persist CreditCard row, mark task COMPLETED. Returns updated extracted."""
     # Resolve bank_code from the extracted fields when the caller passed none — the same
@@ -56,7 +60,11 @@ async def finalize_extraction(
         doc_name=extracted.doc_name,
     )
 
-    if resolved_bank_code and resolved_bank_code in FEE_INVOICE_CODES:
+    if doc_type == DocType.AR_RECONCILE:
+        # Branches on the document, not the bank: KBANK issues both this and the fee
+        # invoice above, and only the caller's rule knows which one arrived.
+        _normalize_ar_settlement(extracted, original_filename)
+    elif resolved_bank_code and resolved_bank_code in FEE_INVOICE_CODES:
         _normalize_fee_invoice(extracted, resolved_bank_code)
     elif resolved_bank_code in _BANK_STATEMENT_CODES:
         _normalize_bay_statement(extracted)
@@ -79,17 +87,24 @@ async def finalize_extraction(
         if extracted.doc_no:
             # **bank_code is not in this key.** The two entry paths fill it from different
             # authorities — the wizard from the user's dropdown, the email job from the
-            # document itself (`email_ingest_service._run_document`) — so one disagreement
+            # document itself (`email_automation.pipeline._run_document`) — so one disagreement
             # over the same document produced two rows and both posted to Carmen.
             # doc_date keeps the key specific enough that two banks reusing a doc_no do
             # not collide: a false positive here refuses a real document as "already
             # posted", which is worse than the duplicate draft this guard exists to stop.
+            #
+            # **doc_type IS in this key**, for the same reason bank_code is not. KBANK
+            # prints one tax invoice number across two documents — the commission tax
+            # invoice and the settlement report that reclassifies the same day's takings —
+            # and both legitimately post their own JV. Without this the second to arrive is
+            # refused as a copy of the first.
             extracted.is_duplicate = await has_submitted_doc(
                 db,
                 CreditCard,
                 tenant_id=tenant_id,
                 doc_no=extracted.doc_no,
                 doc_date=parsed_date,
+                doc_type=doc_type,
             )
 
         if not extracted.is_duplicate:
@@ -106,6 +121,7 @@ async def finalize_extraction(
                 branch_no=extracted.branch_no,
                 submitted_at=None,
                 carmen_user_id=carmen_user_id or None,
+                doc_type=doc_type,
             )
             db.add(card)
             extracted.id = str(card_id)

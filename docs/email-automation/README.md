@@ -2,7 +2,8 @@
 
 > **Status: built, merged to `main`, live-tested end to end.** `email-ingest` (every 10
 > minutes) and `email-confirm` (every minute) are scheduled by migration
-> `20260817000000_email_ingest_cron.sql`; `email-token-health` is the one still unscheduled.
+> `20260817000000_email_ingest_cron.sql`; `email-token-health` (daily 02:15 UTC) by
+> `20260828000000_email_token_health_cron.sql`.
 > See [05-operations.md](05-operations.md#scheduling) for the exact SQL, and for the
 > launcher-cache trap that leaves `job_run_details` empty after a `db push`.
 
@@ -85,7 +86,7 @@ this folder adds the two cron-only routes neither of the above documents.
 | `backend/app/routers/email_automation/review.py` | The review queue's own API, on our session JWT rather than the customer's Carmen token |
 | `backend/app/models/email_automation.py` | ORM: `EmailIngestSettings`, `EmailDocument` |
 | `backend/app/models/schemas/email_automation.py` | Request payloads: `RuleIn`, `SettingsIn`, `TokenIn` |
-| `frontend/src/features/email-settings/pages/EmailSettings.tsx` + `frontend/src/hooks/email-settings/` + `frontend/src/features/email-settings/api/emailAutomation.ts` | The internal test surface at `#/email-settings` — see [02-architecture.md](02-architecture.md#frontend-surface) |
+| `frontend/src/features/email-settings/pages/EmailSettings.tsx` + `frontend/src/hooks/email-settings/` + `frontend/src/features/email-settings/api/emailAutomation.ts` | The customer's settings screen at `#/CreditCardOCR/email-settings`, opened from Carmen's menu (decision-log #34) — see [02-architecture.md](02-architecture.md#frontend-surface) |
 | `frontend/src/features/credit-card/pages/ReviewQueue.tsx` + `ReviewDocument.tsx` + `features/credit-card/hooks/useReviewQueue.ts` + `features/credit-card/api/emailReview.ts` | The customer-facing queue at `#/CreditCardOCR` and the review page behind it |
 | `scripts/qa/email_ingest_e2e.py` | End-to-end script against the real dev mailbox + database |
 | `supabase/migrations/20260803000000_email_automation.sql` and eight migrations after it | Schema — full lineage in [04-data-model.md](04-data-model.md#migration-lineage) |

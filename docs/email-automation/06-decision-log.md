@@ -1,4 +1,4 @@
-﻿# Decision Log
+# Decision Log
 
 ADR-style record of what was decided, why, what it cost, and — where relevant — what was
 tried first and reverted. Sourced from migration headers, service docstrings, and the
@@ -264,7 +264,8 @@ misread a figure is to find the JV afterwards.
 
 A document now stops at `pending_review` between the gate ladder and `post_gljv`, and a
 human approves it at `#/CreditCardOCR`. The switch back is per BU: `auto_post`, default
-`false`, flipped in the queue's own settings once the queue has been getting it right.
+`false`, flipped once the queue has been getting it right. (It was first a gear on the queue;
+since 2026-09-08 it is a field of the BU's settings, on `#/CreditCardOCR/email-settings` since #34.)
 
 What this is **not** is a return to v1. The differences are the whole reason it could be
 built in a week rather than being cherry-picked:
@@ -450,7 +451,8 @@ for the rows that already carry it.
 
 **What it does not change.** The refund rule (#17), what parks after a charge (#22), the
 chips (#23), the backlog cap's value, approve, reject, and the switch itself — `auto_post`
-is still per BU, still defaults `false`, still written only by its own endpoint.
+is still per BU and still defaults `false`. (It was written by its own endpoint then; since
+2026-09-08 only by `PUT /api/v1/carmen/settings`.)
 
 Full reasoning in [`07-human-in-the-loop.md §15`](07-human-in-the-loop.md).
 
@@ -563,7 +565,8 @@ Full reasoning, and the seven decisions behind it:
 - **`feat/email-flow`** — the v1 design: a human-approval review step before posting, its
   own admin UI, `email_flow_*` migrations. Deliberately never merged; kept only as
   historical reference for UX and endpoint shape. **Not cherry-pickable** — v2 removed the
-  approval step and moved settings ownership to Carmen's own screen, and is a different
+  approval step and moved settings ownership to Carmen's own screen (moved back into this
+  app by #34, on v2's API rather than v1's tables), and is a different
   architecture end to end, not a superset of v1. #18 above brings the *idea* back on v2's
   architecture; it does not bring back this branch's code, and that distinction is why it
   cost days instead of weeks.
@@ -571,3 +574,429 @@ Full reasoning, and the seven decisions behind it:
   grew from.
 
 Neither branch has a remote; both exist locally only, for reference.
+
+## 28. The KBANK settlement report posts one JV, not two (2026-09-18)
+
+**Decided:** 2026-09-18, superseding FRD §6.1 as originally written (v1.1). See the v1.2
+amendment for the customer-facing wording.
+
+**Decision.** A KBANK settlement report (`KB1P554V2_SUM_<merchant id>_<date>.pdf`) now posts
+a single, self-sufficient JV: `Cr.` one line per card scheme (the report's per-payment-type
+rows), `Dr.` commission / input tax / bank account, read from the report's own
+`TOTAL BY MERCHANT ID` row against the BU's *existing* credit-card GL mapping. The BU's
+KBANK filename rule should point at this file instead of the fee invoice
+(`E-TAX_INVOICE_CARD_*`); a guard also skips a fee-invoice attachment whose bank has this
+mode enabled, so a rule left in place does not book the commission twice. No control
+account, no second document, no PDF password.
+
+**Why.** FRD v1.1 read the settlement report as a *reclassification* — `Dr.` a lump control
+account, `Cr.` per scheme — meant to be cleared by a second JV built from the encrypted
+`E-TAX_INVOICE_CARD_*` (`Cr.` that same control account, `Dr.` bank/commission/input tax).
+That shape assumed the settlement report could not carry commission, VAT or net figures of
+its own. Reading the report's actual text layer (PyMuPDF, no vision call needed — it is a
+machine-generated PDF, not a scan) showed the assumption was wrong: the report's own anchor
+row prints `COMM AMT`, `VAT AMT` and `NET AMT` in full, and three checks already run against
+it in `credit_card_service._normalize_ar_settlement` — Σ per-row THB AMT against the printed
+total, THB AMT against COMM+VAT+NET on that row, and the filename's merchant id against the
+page's. The e-tax invoice added nothing the settlement report did not already have, at the
+cost of a second credit, a second review, and a PDF password the BU had to configure and
+store.
+
+**What it costs.** Before: 2 credits and up to 2 reviews per settlement day (settlement
+report + fee invoice), a control account that only reconciled to zero once both documents
+posted, and `ar_reconcile_settings.debit_dept_code`/`debit_account_code` as the JV's only
+debit-side configuration. After: 1 credit, up to 1 review, no control account, and the debit
+side reads the BU's fee-invoice mapping (`bu_accounting_mapping_entries`, keys `commission`/
+`tax`/`net`) instead of a mapping of this feature's own. `debit_dept_code`/
+`debit_account_code` are left in the schema, unread, so the two-JV shape could return
+without a migration if a customer needs it split back apart. `ar_reconcile_jv.is_balanced`
+stops being a tautology once the debit side no longer derives from the credit rows it is
+compared against — it is a real check now, wired into `_review_flags` (`unbalanced`) and
+into `approve_document`'s own gate, where it replaces the old blank-control-account check
+(`control_leg_missing`, deleted).
+
+**Second factor, same redesign, separate tickets.** The settlement report's own page prints
+no tax ID, so `foreign_tax_id` had nothing to check for this document type. The bank's own
+`TAX_SUMMARY_BY_TAX_ID_CSV_*` sidecar (bundled in the same zip, never charged or ledgered
+itself) supplies it by merchant ID; a report with no matching CSV row parks with
+`tin_unverified` rather than auto-posting. Tracked separately
+(`.scratch/kbank-settlement-jv/issues/01`, `04`) since it does not depend on this one.
+
+**Known risk, deliberately not fixed here (2026-09-18).** Bank identity on this path is
+never read from the document — it comes entirely from which filename rule matched
+(`email_ingest_service.py` explicitly skips `_resolve_bank` for `DocType.AR_RECONCILE`).
+The rule a BU sets today matches the substring `KB1P554V2`, which is printed on the report
+as `REPORT NO. KB1P554V2` — **a report/program *version* number, not a permanent bank
+identifier.** If KBank ships a new settlement-report generator (`KB1P554V3` or later), that
+pattern stops matching, the attachment falls through as `no_rule_match` — which is
+deliberately in the noise bucket (`NOTIFIABLE_SKIPS`) so it rings no alert — and, because
+this design has no second document to fall back on, **zero JVs post for that BU rather than
+a degraded one.** v1.1's two-document shape degraded gracefully here: the fee invoice's own
+rule (a different, more stable naming convention tied to the tax-invoice numbering rather
+than a report version) would keep posting the commission JV even if the settlement report's
+pattern broke. v1.2 does not have that fallback — this is a real cost of the collapse to one
+document, not a hypothetical.
+
+It compounds with ticket 02's guard (`covered_by_settlement_jv`): that guard reads a static
+"AR reconciliation enabled" flag, not "was a settlement report actually seen today" — so if
+`KB1P554V2` breaks while AR mode stays enabled, a fee invoice kept as manual backup would
+also be silently skipped, for the same non-alerting reason. Ticket 02 should account for
+this before it ships.
+
+Mitigation floated but deliberately deferred: broadening the rule to a version-agnostic
+substring (`_SUM_`, present in `KB1P554V2_SUM_<merchant id>_<date>.pdf` regardless of the
+report-number prefix) rather than the exact version string. **Not merchant-ID-scoped** —
+embedding the merchant ID (`_SUM_451005282039001_`) was also considered, but a BU with more
+than one property under one tenant would need one rule per merchant ID, trading one
+single-point-of-failure for one-per-property; a new property added without its own rule
+would fail the same silent way. `_SUM_` alone stays bank-and-property-generic. Either way
+the failure mode of a too-loose pattern is safe (a misrouted file fails extraction/warnings
+and parks for review, per the existing validation), so broadening costs nothing but has not
+been done — recorded here so it is a deliberate choice, not an oversight, until a ticket
+picks it up.
+
+## 29. `cc_ar_reconcile` collapses into the credit-card flow (2026-09-22)
+
+**Decided:** 2026-09-22, following #28. See `CONTEXT.md` for the vocabulary this produced
+(**Settlement report**, **Fee invoice**, **Credit breakdown**) and the v1.2 amendment for
+the FRD-facing note.
+
+**Decision.** The second module, second mapping table and second settings screen that a
+settlement report used to need are gone. `cc_jv.build_jv_rows` gained two optional
+arguments (`total_row`, `grouping`) whose defaults reproduce the fee-invoice builder
+byte-for-byte; `ar_reconcile_jv.py` is deleted and its helpers (`group_key`, `is_balanced`,
+`render_jv_description`) moved into `cc_jv`. `ar_reconcile_mappings` folds into
+`bu_accounting_mapping_entries` via a new nullable `source` column
+(`settlement_detail` / `settlement_summary` / `NULL` = usable on either layout); a new
+nullable `banks.settlement_grouping` replaces the hardcoded `SUPPORTED_BANKS` /
+`RECONCILABLE_BANKS` lists — a bank has a settlement layout iff that column is set.
+`assert_module_enabled` now gates a settlement report on `credit_card_ocr`, the same gate
+every other document in this flow uses; `modules.is_active = false` for `cc_ar_reconcile`,
+whose id survives only as `ocr_tasks.module_id` and `log_llm_usage(module_id=...)` for cost
+continuity. `ar_reconcile_settings` survives unmodified as the per-(tenant, bank) posting
+profile — Detail/Summary is now a setting the credit-card mapping page shows for a
+settlement-capable bank, not a reason to leave that page. `pages/ARReconcileSettings.tsx`
+and `components/ar-reconcile/ARMappingTable.tsx` are deleted; `#/CreditCardOCR/ar-settings`
+redirects to `#/CreditCardOCR/mapping?bank=...`. One save now issues
+`PUT /config/accounting` then `PUT /ar-reconcile/settings`, reporting a partial failure
+without rolling back the first call.
+
+**Why.** #28 made a settlement JV's debit side identical to a fee invoice's — both read the
+BU's commission/tax/net mapping, from the same table, keyed the same way. That left the two
+builders differing in exactly two things: where the debit figures are read from (a
+document-layout fact — a settlement report prints one anchor row, a fee invoice does not)
+and how the credit side groups (a user option — Detail vs Summary). Neither is a reason for
+a second module. The premise that had been true through v1.1 — a settlement report needs a
+second JV to clear against the fee invoice's — stopped being true the day #28 shipped;
+`cc_ar_reconcile` as a module, `ar_reconcile_mappings` as a table, and
+`ARReconcileSettings.tsx` as a screen were left standing on a premise that no longer held,
+each one now a second place to look for what the credit-card flow already answered. Folding
+them back is explicitly *not* the "add a module" framing the pre-#28 design used — it
+removes a module and gives a BU an option (a settlement-capable bank shows a Detail/Summary
+toggle) instead.
+
+**What it costs.** Before: a settlement report needed its own module row
+(`tenant_modules`), its own mapping table keyed by `(config_id, payment_type)` with no
+`source` column, and its own settings screen a BU had to discover independently of the
+credit-card mapping page it otherwise never visited. After: one module gate, one mapping
+table (`source` disambiguates a Detail-only, Summary-only, or either-layout code), one
+settings page. `ar_reconcile_mappings` is not dropped — renamed to
+`ar_reconcile_mappings_archived` — because the backfill is `ON CONFLICT DO NOTHING`
+against `(config_id, field_type)` and a payment-type code mapped under both post types
+before this migration can conflict; the archive is the conflict report future hand-resolution
+reads against, not a rollback path. `ARSettingsIn`/`ARSettingsOut` and
+`ar_reconcile_service`/`ar_reconcile.py`'s identifiers keep the old `ar_reconcile` name
+deliberately — renaming call sites across a money path for a naming preference was judged
+not worth the diff risk; `CONTEXT.md` governs what a human calls this out loud, not what the
+code calls it. `/ar-reconcile/preview` stops calling `get_accounting_config` — the frontend
+already holds the complete live mapping state (`ARPreviewIn.mappings: dict[str,
+FieldMapping]`) needed to render a preview, so the endpoint no longer re-reads the DB it
+would otherwise read a second time in the same save flow. Proof of no regression:
+`tests/unit/test_cc_jv.py`'s original fee-invoice tests and
+`frontend/src/lib/ccJv.contract.test.ts` pass unchanged against
+`contracts/cc-jv.contract.json` — the fee-invoice path's behavior did not move, only its
+neighbor's did.
+
+**Not touched.** Decision #28's known risk (`KB1P554V2` as a report-version substring
+standing in for a bank identifier) is unchanged by this collapse — still open, still
+deliberate, tracked where #28 left it.
+
+**Ticket 02 resolution (2026-09-18).** Built the freshness-check option rather than the
+static-flag-plus-alert one: `_settlement_recently_posted()` requires proof — an
+`email_documents` row for this bank, `status == "posted"`, whose task's `module_id` is
+`cc_ar_reconcile`, updated within the last 3 days (`_SETTLEMENT_FRESHNESS`) — before the
+fee-invoice guard fires. No proof, no skip: the fee invoice falls through to its ordinary
+path and posts on its own, which is the old two-JV behaviour, not silence. This sidesteps
+building a new alerting surface (no admin-dashboard chip, no notification type) for a risk
+that a self-correcting check removes outright — if `KB1P554V2` ever breaks, the fee invoice
+resumes carrying the commission by itself within `_SETTLEMENT_FRESHNESS`'s window rather
+than needing anyone to notice an alert first.
+
+## 30. One JV-description mechanism, not two (2026-09-22)
+
+**Decided:** 2026-09-22, reopening decision #7 from #29's own list ("Two JV-description
+mechanisms stay — out of scope") on purpose, the same day, after the merged mapping
+page made the redundancy visible: `TopLevelConfigSection`'s per-bank `Description`
+field (fee invoice) and the Settlement card's `JV description template` field
+(settlement) are both "the JV's wording," one plain, one templated.
+
+**Decision.** `bu_accounting_configs.bank_descriptions[bank_code]` — the field the
+fee-invoice path always read — becomes the single source for both. `cc_jv.py` gained
+`render_description()` (a saved value containing `{Settlement_Date}` /
+`{Tax_Invoice_No}` / `{Bank_Name}` is treated as a full template via the pre-existing
+`render_jv_description()`; one without a tag keeps the fee-invoice path's original
+`base - doc_date` concatenation verbatim) and `resolve_jv_description()` (the same
+decision starting from a config object via `description_for()`). `build_gljv_payload`'s
+description fallback and `ar_reconcile_service.jv_for_document`'s settlement-JV
+description both now call these instead of each maintaining its own copy of "compute
+the wording" — `email_ingest_service._ar_description()`, which used to be that copy for
+the auto-post path, is deleted outright. `ar_reconcile_settings.jv_description_template`
+stops being read or written anywhere; the column stays in the schema, unused, same
+precedent as `debit_dept_code`/`debit_account_code` from decision #28.
+`ARSettingsIn`/`Out` drop the field entirely, matching how `mappings` was already
+dropped from that schema in #29. The frontend gained the same split: `ccJv.ts`'s
+browser twin (`buildGljvPayload`, the wizard's own JV builder) gets tag rendering for
+the first time — it never needed it before, since the wizard has no settlement document
+type (decision #4) — and `TopLevelConfigSection`'s Description field grows the
+tag-insert buttons and a live preview line, but only for a bank with a settlement layout
+(`hasSettlementLayout`); every other bank's box is unchanged.
+
+**Why.** Once the merged mapping page (#29) put both fields on screen at once for a
+settlement-capable bank, "two boxes, one concept" was no longer a design that needed
+explaining — it was the exact redundancy the earlier collapse work had just spent a
+session removing everywhere else. The two mechanisms differed only in whether the saved
+string had template tags in it, which is a property of the *value*, not a reason for a
+second *field*.
+
+**What it costs.** `build_gljv_payload` (email ingest) and `buildGljvPayload` (the
+wizard) both run for every tenant's JVs, fee invoice or settlement — a careless merge
+would have silently changed wording on documents already posting correctly. The
+backward-compatibility rule is the whole answer to that: a saved description with no
+tag in it is byte-identical in behaviour to before this decision, for every BU that
+never touches `{Settlement_Date}`/`{Tax_Invoice_No}`/`{Bank_Name}`. Migration
+`20260922010000_fold_jv_description.sql` backfills a bank's customized settlement
+template into `bank_descriptions[bank_code]` only where that slot was empty (same
+non-clobbering shape #29's own migration used); a bank with both already set and
+disagreeing is left for a human, per `db/queries.sql` item 27's conflict report — empty
+against dev at the time this shipped, since KBANK is still the only live settlement
+bank and neither of its two dev tenants had a customized settlement template that
+disagreed with their own fee-invoice wording.
+
+## 31. The rule is the settlement switch; Carmen sets it (2026-09-29)
+
+> *Where it is set moved by #34:* the rule is still the one switch, but its screen is now our
+> `#/CreditCardOCR/email-settings`, not Carmen's.
+
+**Decided:** 2026-09-29. Until today, a bank's settlement report reconciled only if **two**
+switches in two places were both on: its email rule said `doc_type: ar_reconcile` (Carmen's
+settings screen, or our `#/CreditCardOCR/email-settings`), and `ar_reconcile_settings.enabled` was on (our
+Mapping page's Settlement card).
+
+**Decision.** One switch, on the rule, written only through `PUT /api/v1/carmen/settings`:
+
+- An **active** rule with `doc_type: ar_reconcile` *is* "reconcile this bank". Rules are
+  already one per bank (`save_settings` refuses a duplicate), so the rule is the per-bank
+  record there was always going to be.
+- Validation moves to where the switch is set: `ar_reconcile` needs a `bank_code` whose bank
+  has `settlement_grouping`; an unknown `doc_type` is refused.
+- The Mapping page's Settlement card loses its toggle and says, read-only, when the bank is
+  not switched on. `ar_reconcile_settings.enabled` stays in the schema, unread and unwritten
+  (same precedent as `jv_description_template` in #30).
+- **Detail/Summary stays ours** — the same card, the same `PUT /api/v1/ar-reconcile/settings`,
+  now carrying only `post_type`. It was briefly moved onto the rule too, then put back the
+  same day: it is an accounting choice, and it belongs beside the GL accounts each grouping
+  needs, which are on that page. Carmen never sends or sees it.
+
+**Why.** Same lesson as `auto_post` on 2026-09-08: two writers for one fact means one of them
+silently undoes the other, and a rule tagged for a bank that was "switched off" elsewhere was
+a state nobody could see from either screen. The toggle only existed because the rule lived
+in Carmen and the toggle in our app; the rule already said everything the toggle did.
+
+**What it costs.**
+
+- The "tagged but switched off" skip (`ar_reconcile_disabled` for that reason) is gone;
+  turning reconciliation off is deactivating the rule, which is `no_rule_match` — also free,
+  also before the charge. `ar_reconcile_disabled` survives only for a settlement rule stored
+  with no bank.
+- **The fee-invoice double-book guard (`covered_by_settlement_jv`, #28) is deleted**, with
+  `ledger._settlement_recently_posted`. It caught a KBANK fee invoice matched by a KBANK
+  fee-invoice rule while KBANK reconciled. With one rule per bank, "KBANK reconciles" now
+  *is* that rule being `ar_reconcile`, so the state cannot exist. Not covered, before or
+  after: a KBANK fee invoice caught by the "Other" rule (`bank_code: null`), whose bank is
+  only known after extraction. The primary fix stays what #28 said it was — the BU's
+  filename patterns not matching the fee-invoice file.
+
+**No data migration.** The only writes to `ar_reconcile_settings` came from an unpushed
+branch, and its `post_type` column keeps meaning what it meant.
+
+## 32. A description posts as saved — no automatic date (2026-09-30)
+
+**Decided:** 2026-09-30, reversing the backward-compat half of #30. `render_description()`
+used to append ` - doc_date` to any saved description with no template tag. That was the
+fee-invoice path's original behaviour, and #30 kept it so no BU's wording would change. It
+was also a rule no screen showed: the date moved around depending on whether a tag was
+present, and the Mapping page could only say so after the fact.
+
+**Decision.** The saved Description is the whole sentence. Its `{Settlement_Date}` /
+`{Tax_Invoice_No}` / `{Bank_Name}` tags are filled and nothing is added.
+
+- One function per side: `render_description()` in `credit_card/jv.py` and its twin
+  `renderDescription()` in `ccJv.ts`, pinned by `contracts/cc-jv.contract.json`.
+- The JV (wizard and email), the settlement JV, the input-tax record (`InvhDesc`, wizard and
+  email) and every preview of them go through these. The two input-tax builders used to
+  append the date themselves and post any tag raw.
+- The Mapping page's tag chips are offered for every bank, not only settlement-capable
+  ones, because a tag is now the only way a date reaches the description. The date chip
+  reads "Document date", since on a fee invoice it is not a settlement date. The stored
+  token stays `{Settlement_Date}`.
+- Tokens never appear in a text box: the Mapping page and the review queue edit the free
+  text, and the fields ride after it (`splitDescription`/`joinDescription` in `ccJv.ts`).
+  A typed token broke with one backspace and posted verbatim.
+
+**No data migration, on purpose (the user's call).** Every description saved before this
+date posts without the date from the next document on, until its BU inserts the tag.
+
+## 33. A Description belongs to a bank — the BU-wide fallback is retired (2026-09-30)
+
+**Decided:** 2026-09-30, the same day as #32, reversing the fallback half of #30.
+`bu_accounting_configs.description` was what every bank without its own
+`bank_descriptions` entry posted under (`description_for`, `descriptionForBank`). It was
+**read everywhere and editable nowhere**:
+
+- the Mapping page wrote it only while no bank was selected, which never happens once a BU
+  has saved one;
+- the review queue's `patch_config` wrote it only for a document with no bank;
+- the Mapping save sent it back unchanged every time.
+
+So a stray value sat behind every unconfigured bank, and no screen could change it. On dev
+`carmen`, "TEST ACC" was shown as *Empty — KTC documents use "TEST ACC"* on every bank but
+KBANK.
+
+**Decision.** A bank's Description is `bank_descriptions[bank_code]`, or nothing.
+
+- `description_for` returns `None` for a bank without one. Its twin `descriptionForBank`
+  loses the parameter.
+- `AccountingConfigRequest`/`Response` drop `description`. Pydantic ignores it when a stale
+  tab still sends it.
+- `save_accounting_config` stops writing the column. `patch_config` drops a description when
+  no bank is named.
+- The Mapping page's field is disabled until a bank is selected. An empty bank reads
+  "Empty — {bank} documents post no description".
+- The review queue shows no BU-wide placeholder.
+
+**Migrated (the user's call, unlike #32).** `20260930000000_description_per_bank_only.sql`
+copies the old value into each bank the BU uses (its GL mapping entries' banks, plus the
+config's own `bank_code`), only where that bank's entry is empty. It never overwrites and is
+idempotent. `queries.sql` item 29 is the dry run.
+
+- The column stays in the schema, unread and unwritten: the precedent of #30 and #31.
+- A bank the BU starts using after this date begins with no description.
+- Push the migration after this branch merges ([[supabase_push_branch_migration]]). It is
+  safe to push before the code deploys, because the old code's fallback and the copies say
+  the same thing.
+
+## 34. The settings screen moves into the OCR app (2026-10-01)
+
+**Decided:** 2026-10-01. This reverses the ownership half of the v2 restart (#20: "moved
+settings ownership to Carmen's own screen") and the link direction of
+[`07-human-in-the-loop.md` #101](07-human-in-the-loop.md). Carmen's settings form was still a
+draft. Our `#/CreditCardOCR/email-settings` already covered every field, including `auto_post` and
+`doc_type`, which Carmen had not shipped (its checklist items 8 and 9). Every contract change
+so far had been a hand-over to another team plus a wait, and meanwhile a BU stayed in review
+mode.
+
+**Decision.** `#/CreditCardOCR/email-settings` is the customer's settings screen.
+
+- **Carmen builds a menu item, not a form.** It mints the BU's posting token if
+  `GET /settings/token` says none is live, then opens our page through the same SSO link
+  as the queue (`CARMEN_INTEGRATION.md §2.8`). Agreeing that with Carmen is still open. Our
+  side does not wait for it.
+- **Who may open it is Carmen's call, made once.** Carmen decides who sees its menu item. We
+  keep no roles and ask Carmen no permission question. A per-BU permission endpoint was
+  drafted the same morning and dropped (the user's call) as exactly the duplicated work this
+  move exists to remove. The trust model is unchanged: any token the host's Carmen accepts
+  may edit (§2.1, QA S-07). A user who reaches the app through the queue link can still open
+  the page, the same reach that approving a JV already gives them.
+- **Every fix button opens it, in this tab.** `sender_not_allowed`, `wrong_pdf_password`,
+  `ingest_paused`, `tax_id_mismatch`, *Reconnect* (`carmen_unauthorized`) and the AR dialog's
+  "no settlement rule" door all go to `#/CreditCardOCR/email-settings`. That leaves no link to Carmen's
+  `/setting`, so `fixLinkProps` (which picked the tab) and `carmenSettingsUrl` are deleted.
+  *Reconnect* lands on the Posting credential card, which shows the token's status. So we no
+  longer need Carmen to name a reconnect route.
+- **No other entry point.** No Home tile and no queue-header link. Carmen's menu is the
+  front door (the user's call).
+- **It lives under the module it configures**, beside `/mapping` and `/review`, because
+  every rule on it is a bank rule that feeds the Credit Card queue (the user's call, the same
+  day). It was first built at `#/email-settings`. That path now redirects with its query, so a
+  menu link built against it still signs in.
+- **The page is customer-facing now.** It gets a *Back to queue* link that asks before
+  dropping unsaved edits. The posting-token card shows status, and keeps paste/delete folded
+  under *Set a token manually* (support's fallback until Carmen mints on open), with Delete
+  confirmed first. "Owner emails" is renamed "Your email addresses" to match the queue's
+  phrase for `sender_not_allowed`. It stays English-only.
+- **Nothing on the API moves.** `PUT /api/v1/carmen/settings` stays the one writer of every
+  field. `auto_post` and `doc_type` still merge on omit, which costs nothing with one client
+  and still protects against an old build or a script.
+
+**Why.** One screen means no hand-overs: a new field is ours to build and ship. The feature's
+whole working surface sits in one app: the queue, the GL mapping, Detail/Summary, and now the
+settings. The links finally follow the writer, which is what #101 was about in the first
+place.
+
+**What it costs.**
+
+- Until Carmen ships its menu item, a BU reaches the page only through a fix button or a URL
+  that support sends. That is accepted: no in-app entry, by decision.
+- A fix pressed inside the review dialog leaves the dialog in the same tab, as *Fix mapping*
+  always did.
+- The browser's Back button is not guarded against an unsaved form (`ponytail:` comment in
+  `EmailSettings.tsx`).
+
+**No data migration, no API change.**
+
+## 35. The posting token rides the menu link (2026-10-01)
+
+**Decided:** 2026-10-01, the same day as #34, at the user's call. It replaces #34's "mints
+the BU's posting token if `GET /settings/token` says none is live, then opens our page".
+
+**Decision.** Carmen's menu mints a fresh BU posting token on **every** open and passes it
+in the settings link as `posting_token`, beside the user's `token`. Carmen calls none of our
+endpoints. Our page stores it through `PUT /settings/token` before it reads anything.
+
+- **Nothing piles up.** Carmen confirmed that minting replaces the BU's previous token, which
+  stops working. So minting on every open is a rotation, not a growing set of live
+  credentials that never expire.
+- **Two tokens, kept apart.** `token` is the person at the screen: SSO, and the auth for
+  every settings call. `posting_token` is the BU's, and it is only stored. `useCarmenSSO`
+  stashes it in sessionStorage (`CARMEN_POSTING_TOKEN_KEY`, cleared with the session) and does
+  not send it. A brand-new BU has no tenant row until `/exchange` has run, and a shared hook
+  has no business importing a feature's API. `useEmailSettings.reload()` sends it first.
+- **Storing it must not fail quietly.** The open that delivered the token also killed the one
+  we hold, so a failed store means nothing posts. The page then says so in the top banner and
+  on the credential card ("New token from Carmen not stored"), and keeps the token so
+  *Reload* retries. A token pasted by hand clears it, so a later Reload cannot write the
+  stale one back.
+- **A refused old token no longer marks the new one dead.** `mark_token_unverified` now takes
+  the token Carmen refused and clears `verified_at` only when its fingerprint matches what is
+  stored. Rotation on every open made the race routine: a post that set out before the open
+  is refused after the new token has landed.
+
+**Why a credential in a URL is acceptable.** It sits after `#`, so no server sees it,
+neither ours nor Carmen's, and it is never in a `Referer`. The SSO hook strips the query
+from the address bar on arrival, and Sentry's redaction now covers `posting_token=`. What is
+left is the local browser history, and a token there dies the next time anyone opens the
+menu.
+
+**What it costs.** If the person who opened the menu closes the tab before the page has
+stored the token (about a second), posting stops until the next open. The other way round,
+with Carmen `PUT`ting it before opening the link, had no browser in the middle, but took two
+API calls on Carmen's side. The user chose the link.
+
+**Revocation: the token outlives the OFF switch, accepted** (the user's call, the same day).
+#34 left Carmen one question: the OFF switch moved to our screen, so who revokes the BU token
+when a customer switches the feature off? The answer is nobody, on purpose. Nothing uses the
+token while the BU is off, because the ingest loop skips it. It is stored encrypted and never
+returned, and the next menu open replaces it anyway. Deleting our copy on OFF was the other way
+we could do it on our own, but it strands a customer who switches back on in the same visit:
+they would have to reopen from Carmen's menu. Carmen's checklist loses item C. Nothing is
+waiting on Carmen except the menu item.

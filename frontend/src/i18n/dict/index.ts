@@ -31,6 +31,7 @@ import * as flows from './flows'
 import * as modal from './modal'
 import * as orev from './orev'
 import * as ap from './ap'
+import * as ar from './ar'
 import * as cc from './cc'
 import * as warn from './warn'
 import * as common from './common'
@@ -60,6 +61,7 @@ const en = {
   ...modal.en,
   ...orev.en,
   ...ap.en,
+  ...ar.en,
   ...cc.en,
   ...warn.en,
   ...common.en,
@@ -88,6 +90,7 @@ const th = {
   ...modal.th,
   ...orev.th,
   ...ap.th,
+  ...ar.th,
   ...cc.th,
   ...warn.th,
   ...common.th,

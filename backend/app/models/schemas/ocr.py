@@ -145,6 +145,16 @@ class ExtractedCreditCardData(BaseModel):
         ),
     )
     details: list[ExtractedDetailRow] = Field(default_factory=list)
+    total_row: ExtractedDetailRow | None = Field(
+        None,
+        description=(
+            "The settlement report's own 'TOTAL BY MERCHANT ID' row, consumed out of "
+            "`details` by `_normalize_ar_settlement`. `cc_jv.build_jv_rows`'s grouping "
+            "branch reads its three fixed debit legs (commission/VAT/net) from here, "
+            "since a settlement report's per-payment-type rows print those columns as "
+            "dashes."
+        ),
+    )
     is_duplicate: bool = Field(False)
     raw_text: str | None = Field(None)
     warnings: list[ExtractionWarning] = Field(

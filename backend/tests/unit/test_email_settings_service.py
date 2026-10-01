@@ -557,6 +557,28 @@ def test_token_status_never_contains_the_token_value():
     assert enc not in str(body)
 
 
+@pytest.mark.asyncio
+async def test_a_refused_old_token_does_not_mark_the_new_one_dead():
+    """Carmen's menu mints a fresh token on every open (decision #35). A post that set out
+    with the old one and was refused after the new one landed must leave the new one alone."""
+    from datetime import UTC, datetime
+
+    verified = datetime.now(UTC)
+    row = _fake_row(
+        carmen_token_fp=credential.fingerprint("new"), carmen_token_verified_at=verified
+    )
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=_exec(scalar_one_or_none=row))
+
+    await credential.mark_token_unverified(db, uuid4(), "old")
+    assert row.carmen_token_verified_at == verified
+    db.commit.assert_not_awaited()
+
+    await credential.mark_token_unverified(db, uuid4(), "new")
+    assert row.carmen_token_verified_at is None
+    db.commit.assert_awaited_once()
+
+
 # ── Readiness gates: the two ways `ready: true` used to lie ───────────────────
 
 
@@ -808,7 +830,7 @@ def test_a_payload_that_says_nothing_about_the_switch_decides_nothing():
 
     It has to be, because this route is the only writer left (the queue's gear and
     `PUT /api/v1/email/settings/auto-post` went on 2026-09-08). Absent used to mean False,
-    so a caller that does not know the field — our own `#/email-settings` page, or a Carmen
+    so a caller that does not know the field — our own `#/CreditCardOCR/email-settings` page, or a Carmen
     build that predates it — turned review back on with every unrelated settings save.
     """
     assert SettingsIn(uri="h", bu="b").auto_post is None
@@ -818,7 +840,7 @@ def test_a_payload_that_says_nothing_about_the_switch_decides_nothing():
 async def test_omitting_the_switch_keeps_it_but_sending_it_writes_it():
     """The whole point of the `None` default, exercised both ways on one stored row.
 
-    `#/email-settings` saves a filename pattern by PUTting the complete settings back with
+    `#/CreditCardOCR/email-settings` saves a filename pattern by PUTting the complete settings back with
     no `auto_post` in it. Before merge-on-omit that silently switched review on for a BU
     that had turned it off — and with the queue's gear gone there is nowhere to notice, let
     alone put it back.
@@ -859,3 +881,103 @@ def test_an_unconfigured_bu_reports_review_mode_too():
     """`to_response(None, …)` is a different code path, and a missing key here would
     make the queue screen read `undefined` as "auto-post is on"."""
     assert es.to_response(None, "hotel.carmenwork.com", "hq")["auto_post"] is False
+
+
+# ── doc_type on a rule ────────────────────────────────────────────────────────
+#
+# The field that decides whether an attachment is read as a commission invoice or as a
+# settlement report. It travels as ordinary rule data, which means three places have to
+# agree or the AR-reconciliation path is simply unreachable: the schema has to accept it,
+# `_merge_rule` has to store it, and the GET has to hand it back — PUT is a full replace,
+# so a field the GET omits is a field the customer's next save silently clears.
+
+
+def test_a_rule_defaults_to_the_document_type_that_existed_before_this_field():
+    rule = RuleIn(bank_code="KTC", filename_patterns=[".pdf"])
+    assert rule.doc_type is None  # omitted = keep whatever is stored (F-5)
+
+    stored = es._merge_rule(rule, None)
+    assert stored["doc_type"] == "fee_invoice"
+
+
+def test_a_settlement_report_rule_keeps_its_document_type_through_the_store():
+    rule = RuleIn(bank_code="KBANK", filename_patterns=["KB1P554V2"], doc_type="ar_reconcile")
+    stored = es._merge_rule(rule, None)
+
+    # `_run_document` reads this off the stored rule to pick the prompt, the page and the
+    # JV builder. Dropping it here is what made the whole feature do nothing.
+    assert stored["doc_type"] == "ar_reconcile"
+
+
+def test_the_settings_response_hands_doc_type_back():
+    """PUT is a full replace, so a field the GET omits is one the next save clears."""
+    row = SimpleNamespace(
+        enabled=True,
+        auto_post=False,
+        ingest_tag="abc123",
+        enabled_at=None,
+        owner_emails=[],
+        tax_ids=[],
+        rules=[
+            {"bank_code": "KBANK", "filename_patterns": ["KB1P554V2"], "doc_type": "ar_reconcile"},
+            {"bank_code": "KTC", "filename_patterns": [".pdf"]},
+        ],
+        gmail_confirmed_at=None,
+        gmail_confirm_code=None,
+        gmail_confirm_at=None,
+        carmen_token_fp=None,
+        carmen_token_verified_at=None,
+        carmen_uri=None,
+    )
+    body = es.to_response(row, "hotel.carmenwork.com", "hq")
+
+    # A rule stored before this field existed reads as the type that existed then.
+    assert [r["doc_type"] for r in body["rules"]] == ["ar_reconcile", "fee_invoice"]
+
+
+# ── The rule as the settlement switch (2026-09-29) ───────────────────────────────
+#
+# An active `ar_reconcile` rule *is* "reconcile this bank" now — the Settings API is the
+# one writer, so what that switch needs (a bank with a settlement layout) is checked
+# here, where it is set.
+
+
+def _settings(*rules):
+    return SettingsIn(uri="h", bu="b", enabled=False, tax_ids=[], rules=list(rules))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "rule,field,code",
+    [
+        # SCB has no settlement layout — arming it would charge for a read no prompt exists for.
+        (
+            RuleIn(bank_code="SCB", filename_patterns=["x"], doc_type="ar_reconcile"),
+            "doc_type",
+            "no_settlement_layout",
+        ),
+        # "Other" cannot be a settlement rule: the pipeline needs the bank to pick a layout.
+        (
+            RuleIn(bank_code=None, filename_patterns=["x"], doc_type="ar_reconcile"),
+            "doc_type",
+            "no_settlement_layout",
+        ),
+        (
+            RuleIn(bank_code="KBANK", filename_patterns=["x"], doc_type="statement"),
+            "doc_type",
+            "invalid",
+        ),
+    ],
+)
+async def test_a_settlement_rule_is_validated_where_it_is_set(rule, field, code):
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            _exec(scalars=["KBANK", "SCB"]),
+            _exec(scalars=["KBANK"]),
+        ]  # active, settlement
+    )
+    with pytest.raises(FieldValidationError) as exc:
+        await es.save_settings(db, _tenant(), _settings(rule))
+    assert exc.value.errors[0]["field"] == f"rules[0].{field}"
+    assert exc.value.errors[0]["code"] == code

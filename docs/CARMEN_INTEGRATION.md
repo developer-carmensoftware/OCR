@@ -9,6 +9,19 @@
 > BU with `uri` (the full origin you already send to `/auth/exchange`) instead of `host`.
 > Nothing else moved; see §1.
 >
+> **2026-10-01 — PROPOSED, awaiting the Carmen team's agreement: the settings screen moves
+> into the OCR app.** Carmen stops building a settings form. Its menu instead mints a fresh
+> posting credential on every open and passes it in the SSO link it already uses for the
+> queue, pointed at our `#/CreditCardOCR/email-settings` (§2.8). Carmen still decides **who** may open that screen, by
+> who it shows the menu item to; nothing else is checked twice. The API in §2 does
+> not change; what changes is which client calls it. Every section touched is marked
+> *(proposed 2026-10-01)*.
+>
+> **Our half is built.** `#/CreditCardOCR/email-settings` is the customer's screen, and every settings
+> button in the OCR app opens it in the same tab (*Reconnect* included). What waits on the
+> Carmen team is the menu item (§2.8, §5 A). Until the
+> menu ships, a BU reaches the page through a fix button or a link from support.
+>
 > Companion documents: [email-automation/](email-automation/README.md) (our own engineering
 > docs — architecture, data model, operations, decision log), [Security_Trust_Overview.md](Security_Trust_Overview.md).
 > The v1 pilot design (own admin UI, `email_flow_*` tables) is superseded and lives only on
@@ -45,10 +58,12 @@ The three things that make this different from the pilot:
    then on a document we read with **nothing to flag** posts automatically — one we read
    with a warning, a guessed GL mapping, amounts that do not reconcile or no document
    number still waits for a person, under either setting. See §0.2.
-2. **Settings live in Carmen.** The customer configures everything on Carmen's screens;
-   Carmen calls our API to store it. The OCR app has no settings UI for this feature —
-   with one exception, the review queue in §0.2, which is a work surface rather than a
-   settings screen.
+2. **Settings live in the OCR app, opened from Carmen** *(proposed 2026-10-01; until then:
+   "Settings live in Carmen")*. The customer reaches the settings from Carmen's menu, which
+   opens our `#/CreditCardOCR/email-settings` with the same SSO link that opens the queue. That screen is
+   the only settings UI for this feature. Carmen keeps two jobs: decide who may open it, and
+   mint the posting credential (§2.6, §2.8). The review queue (§0.2), the GL mapping and the
+   settings are then all in one app.
 3. **Carmen is notified by webhook**, so it can react without polling us.
 
 ### 0.2 Where the human sits (2026-08-28, narrowed 2026-09-04)
@@ -78,8 +93,9 @@ forwarded mail → we read it → GL mapping → [ queued for approval ] → pos
 
 ### What the customer does (the whole setup)
 
-1. Turn on Email Automation in Carmen (only available with an active monthly package).
-2. Copy the forwarding address Carmen shows them, and either set an auto-forward rule in
+1. Turn on Email Automation (only available with an active monthly package). Proposed
+   2026-10-01: from Carmen's menu, which opens the settings screen in the OCR app.
+2. Copy the forwarding address the settings screen shows them, and either set an auto-forward rule in
    their mailbox, or simply forward the bank's mail to that address by hand whenever they
    receive one. Both work, and they can mix the two.
 
@@ -105,7 +121,7 @@ Four consequences worth stating plainly:
 
 - **The address is what identifies the BU, and it works for both modes.** On an
   auto-forward the tag survives in the delivery headers; on a manual forward the employee
-  *types* the destination, so it is whatever Carmen's screen told them to send to. Each BU
+  *types* the destination, so it is whatever the settings screen told them to send to. Each BU
   gets its own address — see §2.5.
 - **The tax ID is the second check, not the routing key.** The address says who owns the
   mail; the tax ID printed on the document says who owns the document. If they disagree,
@@ -174,7 +190,8 @@ We follow each side's own convention rather than mixing.
 
 ### 2.1 Authentication — **settled: the user's own Carmen token. No key.**
 
-Carmen's settings screen already holds the logged-in user's Carmen token. Send it:
+Whoever calls already holds the logged-in user's Carmen token: your menu when it mints the
+posting credential (§2.8), and our settings screen, which receives it in the SSO link. Send it:
 
 ```http
 PUT /api/v1/carmen/settings
@@ -246,7 +263,8 @@ GET /api/v1/carmen/settings?uri=https%3A%2F%2Fhotelgroup.carmenwork.com&bu=hq
       "bank_sender_email": "no-reply@ktc.co.th",
       "filename_patterns": ["MDR", "Commission"],  // required, ≥1 — see §2.3
       "has_password": true,               // never the password itself
-      "is_active": true
+      "is_active": true,
+      "doc_type": "fee_invoice"           // "fee_invoice" | "ar_reconcile" — §2.9
     }
   ],
   "status": {                             // read-only, for Carmen to display
@@ -277,7 +295,8 @@ PUT /api/v1/carmen/settings
       "bank_sender_email": "no-reply@ktc.co.th",   // optional hint, see below
       "filename_patterns": ["MDR", "Commission"],  // REQUIRED, at least one
       "pdf_password": "1234",             // write-only: omit = keep, "" = clear
-      "is_active": true
+      "is_active": true,
+      "doc_type": "fee_invoice"           // OMIT = keep — §2.9
     }
   ]
 }
@@ -384,7 +403,7 @@ Rules for the value itself:
 
 ### 2.5 The forwarding address — **settled: one address per BU**
 
-`GET /settings` returns `ingest_address`. Carmen's screen **displays that string** and tells
+`GET /settings` returns `ingest_address`. The settings screen **displays that string** and tells
 the customer to forward their bank mail to it. That is the entire integration for this
 section — no action needed from Carmen beyond showing the value.
 
@@ -417,7 +436,7 @@ Three consequences, all accepted deliberately:
   `ingest_address` is `null` until a tag exists — so there is no correct way to arrive
   without one. A mail that does is dropped before any cost.
 - **A mistyped tag is silent.** It cannot be attributed to a tenant, so there is nobody to
-  tell. The address is copied from Carmen's screen rather than typed, which is the
+  tell. The address is copied from the settings screen rather than typed, which is the
   mitigation; we watch the volume on our side. If it happens in practice, an auto-reply
   from the ingest mailbox is the obvious next step.
 - **A multi-BU group manages one address per BU.** A 20-BU hotel group gets 20 addresses.
@@ -450,7 +469,7 @@ touching Gmail. `GET /settings` reports the outcome:
 "gmail_confirmed_at": "2026-08-07T09:30:00Z"   // or null — no confirmation completed yet
 ```
 
-Carmen's screen needs only to show that the forward is connected. There is no code to
+The settings screen needs only to show that the forward is connected. There is no code to
 display and no prompt to build.
 
 > **Correction to the previous revision.** It described a `gmail_confirm: {code, at}` field
@@ -500,7 +519,7 @@ read. A token Carmen will not accept is rejected on the spot and **nothing is wr
 the customer finds out on the settings screen rather than on a real document at 3am.
 
 Both failures come back as `422` in the same per-field shape as `PUT /settings` (§2.3), so
-Carmen's screen can render them inline without a second code path:
+the settings screen can render them inline without a second code path:
 
 ```jsonc
 { "errors": [ { "field": "token", "code": "token_rejected",
@@ -543,23 +562,26 @@ Four things worth stating plainly:
 - **`DELETE` removes our copy; it does not revoke anything.** Only Carmen can revoke, and
   must — a copy we deleted is still a live credential everywhere else. Please wire
   revocation to the customer switching Email Automation **off**, so the setting and the
-  credential cannot disagree.
+  credential cannot disagree. *(Proposed 2026-10-01, §2.8: the switch is ours, and a token
+  that outlives it is accepted, so this request lapses with the proposal.)*
 - **Rotation is off-then-on.** There is no separate rotate endpoint and Carmen needs no
   new concept: invalidate, mint, `PUT` again. `PUT` overwrites whatever is stored.
+  *(Proposed 2026-10-01, §2.8: every open of your menu mints a replacement and our page
+  `PUT`s it, so rotation happens on every open and nobody has to ask for it.)*
 - **`fingerprint`** lets both sides name a credential in a support conversation without
   either of them revealing it. Quote it in tickets.
 - **We will re-verify daily.** The token has no expiry, so nothing announces a revocation:
   the first symptom would otherwise be a customer's document failing to post. A job
   re-proves every stored credential against Carmen — the same `GET /department` as above —
-  and clears `verified_at` when one stops working. Built and tested; it starts running on
-  a schedule when the ingest mailbox goes live. If you would rather we did not make that
+  and clears `verified_at` when one stops working. It runs daily at 02:15 UTC
+  (`email-token-health`, scheduled since 2026-08-28). If you would rather we did not make that
   daily call, tell us — it is the only substitute we have for an expiry date.
 
 The token is stored encrypted (it has to be replayed to Carmen, so it cannot be hashed
 the way our own API key is), is never returned by any endpoint, and never appears in a
 log line or an error message.
 
-### 2.7 `auto_post` — the review switch (2026-09-08: **Carmen's screen owns it**)
+### 2.7 `auto_post` — the review switch (2026-09-08: one writer; 2026-10-01: one screen, ours)
 
 ```jsonc
 "auto_post": true    // on PUT /api/v1/carmen/settings. Omit = keep. Default false.
@@ -579,25 +601,115 @@ posting silently — that is the bet this switch deliberately does not make (§0
 watching the queue get it right; nothing in our app turns it on for them, and nothing should
 offer it during onboarding.
 
-**One writer, and it is yours.** Until 2026-09-08 the OCR app also carried this switch on a
+**One writer.** Until 2026-09-08 the OCR app also carried this switch on a
 route of its own (a gear on the review queue, `PUT /api/v1/email/settings/auto-post`). That
 route is **deleted**. It is now a field of the BU's settings and nothing else — which is why
 omitting it keeps the stored value rather than resetting it, unlike every other field on that
 payload.
 
-> Our own `#/email-settings` screen — the copy of your screen we keep so the contract can be
-> exercised end to end — has a checkbox for it, writing through this same endpoint. That is a
-> second *client*, not a second writer, exactly as it already is for `enabled` and the rules.
-> Support uses it for a BU whose Carmen does not yet offer the control. Your screen remains
-> the one a customer is meant to use.
->
-> **And it is now the only one they are sent to.** Since 2026-09-08 every settings button in
-> the OCR app — the setup call-to-action on an empty queue, the repair button on a row stopped
-> by a sender rule, a PDF password, a paused ingest or a foreign tax ID, and *Reconnect* on a
-> dead posting credential — opens `<your origin>/#/setting` in a new tab, the same way the
-> queue's *Open JV* opens `/glJv/{id}/show`. Our page is still routed for support but is
-> linked from nowhere. If that route ever moves, tell us: it is one constant
-> (`carmenSettingsUrl` in `frontend/src/shared/lib/url.ts`).
+> **2026-10-01: the switch's one screen is ours, and item 8 of §5 is withdrawn.** Our
+> `#/CreditCardOCR/email-settings` is the switch's only screen (§2.8). The endpoint stays its only writer,
+> and omitting the field still keeps the stored value. With one client that costs nothing,
+> and it stops an older script from switching review back on. Every settings button in the
+> OCR app, *Reconnect* included, now opens that screen in the same tab. None opens
+> `<your origin>/#/setting` any more.
+
+### 2.8 Opening the settings screen — *(proposed 2026-10-01)*
+
+> This replaces the previous §2.8, *"Reference screen layout — you do not have to design
+> this"* (2026-09-10). That section asked you to rebuild our `#/CreditCardOCR/email-settings` in Carmen. The
+> proposal is that you don't build it at all: you open ours. If the proposal is declined, the
+> old section comes back unchanged from git history.
+
+**Why.** Our screen already covers every field in §2.3, including the two still missing on
+yours (`auto_post` §2.7, `doc_type` §2.9). Each contract change so far has meant a hand-over
+and a wait, and a BU stays in review mode until both screens ship. One screen means no
+hand-overs, and settings sit next to the queue and the GL mapping, which already live in the
+OCR app.
+
+**What Carmen builds: one menu item, no form.** Show it only to users your own permission
+model allows to configure Email Automation. When it is clicked:
+
+1. Mint a fresh posting token for the BU (§2.6). Minting replaces the previous one, which
+   stops working; that is what you told us your side does, and it is what we rely on.
+2. Open, in a new tab, the same SSO link you already use for the queue, with a different
+   route and one more parameter, `posting_token`:
+
+   ```text
+   https://<ocr-app>/#/CreditCardOCR/email-settings?token=<user's Carmen token>&posting_token=<the BU token you just minted>&bu=<bu>&user=<user>&uri=<your origin>
+   ```
+
+That is all. You call none of our endpoints. Our screen stores `posting_token` through
+`PUT /settings/token` (§2.6) before it reads anything, so it is checked against your Carmen
+on the way in, and then reads and writes §2.2–§2.3 with `token`, exactly as your screen would
+have. Keep the two apart: `token` is the person at the screen, `posting_token` is the BU.
+
+**Why a credential in a link is acceptable here.** Everything after `#` stays in the
+browser: it is never sent to our server or yours, and never appears in a `Referer`. Our page
+removes the query from the address bar the moment it reads it, and our error reporting
+redacts both tokens. What remains is the browser's own history on that machine, and a token
+there stops working the next time anyone opens the menu, because that open mints its
+replacement.
+
+**What this asks of our page.** Since every open kills the token we hold, storing the new one
+cannot be allowed to fail quietly. If it does (your Carmen refused it, the network dropped),
+the page says so at the top, keeps the token, and stores it on *Reload*. Reopening from your
+menu mints another and works too.
+
+**Who may open it is decided by your menu, and only there.** Your permission model already
+decides who sees the menu item, so we do not ask Carmen again and keep no roles of our own.
+The trust model on our side is exactly today's (§2.1): any token your Carmen accepts for the
+host may read and write that host's settings.
+
+This covers the menu but not every path into the screen. A user who reaches the OCR app
+through the queue link can still type `#/CreditCardOCR/email-settings`. Our queue's repair buttons will
+also lead there, so a reviewer can fix a sender rule or a PDF password where they found the
+problem. That is the same reach every BU user already has when they approve a document into
+your books, and we accept it as such.
+
+**Switching off does not revoke the token, and that is accepted.** The ON/OFF switch
+(`enabled`) is on our screen now, so you do not see a customer switch it off, and the BU's
+token stays live. Nothing uses it: the ingest loop skips a disabled BU, and the token sits
+encrypted on our side, never returned. Any open of your menu replaces it anyway. We decided
+this on our side (2026-10-01), so there is nothing to build for it and no answer we need.
+
+**A dead posting credential needs nothing extra.** Our queue's *Reconnect* button
+(`carmen_unauthorized`, §3.3) opens our settings screen. Its Posting credential card shows
+the token is no longer accepted and tells the user to reopen the page from your menu. Step 1
+then mints a fresh one, so no separate reconnect route is needed. (An earlier draft of this
+section asked for one.)
+
+**What you no longer build:** the settings form, the save semantics of §2.3, the `auto_post`
+switch (§2.7), the `doc_type` control (§2.9), and a bank dropdown fed by `GET /bank-codes`.
+The API stays live and unchanged for anything else you want to read from it, for example
+`status.ready` for a badge beside your menu item.
+
+**How long the screen stays usable.** It works as long as the token in the link, the same
+~30 minutes as the queue. After that it says *"reopen this page from Carmen"*.
+
+### 2.9 Settlement reports — `doc_type` on a rule is the switch (2026-09-29)
+
+KBANK sends two documents for one settlement: the commission tax invoice and the merchant
+settlement report (`KB1P554V2`). They share the bank, the date and the tax invoice number, so
+nothing on the page tells them apart — **the rule says which one its files are**.
+
+```jsonc
+{ "bank_code": "KBANK", "filename_patterns": ["KB1P554V2"], "is_active": true,
+  "doc_type": "ar_reconcile" }
+```
+
+- **`doc_type: "ar_reconcile"` on an active rule *is* "reconcile this bank".** There is no
+  other switch — not in our app, not elsewhere in this payload. To stop, set `is_active:
+  false` (the reports are then `no_rule_match`: recorded, never scanned, never charged) or set
+  `doc_type` back to `fee_invoice`.
+- **How the JV groups is not yours to send.** Detail (one credit line per printed payment
+  type) vs Summary (one per scheme) is an accounting choice that lives beside the GL accounts
+  each grouping needs, on our Mapping page. Never chosen = Detail.
+- **`doc_type` merges on omit**, like `auto_post` (§2.7): a client that does not send it keeps
+  what is stored.
+- **Validated on write** (`errors[]`, §2.3): `rules[i].doc_type` = `no_settlement_layout` when
+  the rule's bank has no settlement-report layout (today only `KBANK` has one) or the rule has
+  no `bank_code`; `invalid` for an unknown value.
 
 ---
 
@@ -794,12 +906,14 @@ What we do on our side to keep a credential without an expiry date manageable:
 | Verified before it is stored | a token Carmen rejects never reaches the database (§2.6) |
 | Re-verified daily | the only substitute for an expiry — a revocation is otherwise silent |
 | Fingerprinted | both sides can name a credential without revealing it |
-| Scoped API key on the settings endpoints | one customer's key cannot touch another's credential |
+| Settings calls proven against the caller's own Carmen (§2.1) | a token one host accepts cannot touch another host's credential |
 
 Two things that still need Carmen's side, and are the reason §5 is not empty:
 
 1. **Revocation must actually happen on the OFF switch.** Deleting our copy is not
    revoking; if the OFF switch only updates a flag, the credential outlives the setting.
+   *(Under the 2026-10-01 proposal the OFF switch is ours, and a token that outlives it is
+   accepted. See §2.8.)*
 2. **Mark automated postings in `JvhSource`.** Accounting needs to tell email-sourced
    postings apart from wizard postings when reviewing later. Still true with review on: an
    approved document was checked on a screen, not keyed by hand, and the approver's name is
@@ -836,8 +950,19 @@ Two consequences worth stating plainly:
 
 ## 5. Checklist for the Carmen team
 
-The posting credential is three items, and all three live inside the ON/OFF switch Carmen
-is already building:
+> **Proposed 2026-10-01 (§2.8): what you build becomes a menu item instead of a screen.**
+> If the proposal is agreed, this short list replaces items 1, 2, 8 and 9 below:
+>
+> | # | We need | Blocks |
+> |---|---|---|
+> | A | A menu item, shown only to users you allow, that runs §2.8 steps 1–2: mint a fresh BU token, then open our `#/CreditCardOCR/email-settings` with it as `posting_token` | every customer's way into the settings |
+> | B | Item 3 below, unchanged: the JV endpoint accepts the BU token | automated posting |
+>
+> Items 4–7 below do not change. The settings form, the `auto_post` switch and the
+> `doc_type` control are no longer needed from you.
+
+**The live checklist, until the proposal is agreed.** The posting credential is three items,
+and all three live inside the ON/OFF switch Carmen is already building:
 
 | # | We need | Blocks |
 |---|---|---|
@@ -858,12 +983,18 @@ The rest of the integration:
 | 5 | Which Carmen field holds the BU tax ID (§2.4) | switching the feature on |
 | 6 | Yes/no on the proposed `document.*` events (§3.3) | outcome reporting |
 | 7 | Confirmation that automated JVs are distinguishable in `JvhSource` (§4) | audit review |
-| 8 | **An `auto_post` switch on the settings screen (§2.7)** — send it on `PUT /settings`, omit it everywhere else | a customer ever turning review off |
+| 8 | **An `auto_post` switch on the settings screen (§2.7)** — send it on `PUT /settings`, omit it everywhere else. *Withdrawn if §2.8 is agreed.* | a customer ever turning review off |
+| 9 | **Document type on the rule card (§2.9)** — `doc_type`; echo it back on every save. *Withdrawn if §2.8 is agreed.* | a BU reconciling its KBANK settlement report |
 
 > Item 8 is new on 2026-09-08 and is a **hand-over, not an addition**: the OCR app used to
 > carry this switch as well, and two writers for one boolean meant an ordinary settings save
 > could turn review back on behind the customer's back. Ours is gone. Until yours ships, a
 > BU stays in review mode — the safe state — and we can flip it for them on request.
+>
+> Item 9 is new on 2026-09-29 and is the same kind of hand-over: our Mapping page used to
+> carry a "Reconcile this bank" switch as well as the rule's Document type. The switch is
+> gone — the rule is the only one. (Detail/Summary stays on our Mapping page.) Until yours
+> ships, our `#/CreditCardOCR/email-settings` sets it.
 >
 > Item 7 of the previous revision — "confirm Email Automation is gated on the monthly
 > package" — is closed: it is gated, and enforced both at the toggle (`422 not_entitled`)

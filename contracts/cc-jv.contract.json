@@ -52,14 +52,13 @@
   "cases": [
     {
       "name": "bank statement — two payment types, VAT, net settlement",
-      "why": "The main path. Credit legs stay one per payment type; the debit side collapses to the three canonical buckets, summed. Total debit must equal total credit (15000.00).",
+      "why": "The main path. Credit legs stay one per payment type; the debit side collapses to the three canonical buckets, summed. Total debit must equal total credit (15000.00). The description has no tag, so it posts exactly as saved: nothing is appended (no auto date since 2026-09-30).",
       "bankCode": "BBL",
       "docDate": "25/08/2026",
       "config": {
         "filePrefix": "IC",
         "fileSource": "ACZZ",
-        "description": "Credit card settlement",
-        "bankDescriptions": {}
+        "bankDescriptions": { "BBL": "Credit card settlement" }
       },
       "mappings": {
         "commission": { "dept": "1000", "acc": "5310" },
@@ -93,7 +92,7 @@
         "JvhNo": "Auto",
         "JvhSource": "ACBB",
         "Status": "Draft",
-        "Description": "Credit card settlement - 25/08/2026",
+        "Description": "Credit card settlement",
         "Detail": [
           { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "1000", "AccCode": "1210", "Description": "VISA", "CurCode": "THB", "CurRate": 1, "CrAmount": 10000, "CrBase": 10000, "DrAmount": 0, "DrBase": 0, "DimList": {} },
           { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "1000", "AccCode": "1211", "Description": "MASTERCARD", "CurCode": "THB", "CurRate": 1, "CrAmount": 5000, "CrBase": 5000, "DrAmount": 0, "DrBase": 0, "DimList": {} },
@@ -107,13 +106,12 @@
 
     {
       "name": "gateway fee invoice — net = 0, per-bank description",
-      "why": "A processor fee invoice settles nothing, so the Bank Account leg is 0.00. Step 3 still SHOWS that row for a uniform layout, but it must never reach Carmen as an empty GL line — Detail has 3 entries, not 4. Also pins the per-bank description override winning over the BU default.",
+      "why": "A processor fee invoice settles nothing, so the Bank Account leg is 0.00. Step 3 still SHOWS that row for a uniform layout, but it must never reach Carmen as an empty GL line — Detail has 3 entries, not 4. Also pins that a bank's own description is what posts.",
       "bankCode": "PAYPAL",
       "docDate": "01/07/2026",
       "config": {
         "filePrefix": "IC",
         "fileSource": "",
-        "description": "Gateway fees",
         "bankDescriptions": { "PAYPAL": "PayPal monthly fees" }
       },
       "mappings": {
@@ -140,7 +138,7 @@
         "JvhNo": "Auto",
         "JvhSource": "ACPP",
         "Status": "Draft",
-        "Description": "PayPal monthly fees - 01/07/2026",
+        "Description": "PayPal monthly fees",
         "Detail": [
           { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "2000", "AccCode": "1220", "Description": "PayPal Fee", "CurCode": "THB", "CurRate": 1, "CrAmount": 1070, "CrBase": 1070, "DrAmount": 0, "DrBase": 0, "DimList": {} },
           { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "2000", "AccCode": "5320", "Description": "Credit card commission", "CurCode": "THB", "CurRate": 1, "CrAmount": 0, "CrBase": 0, "DrAmount": 1000, "DrBase": 1000, "DimList": {} },
@@ -152,13 +150,12 @@
 
     {
       "name": "unknown bank code + no description — both fallbacks",
-      "why": "JvhSource falls back to the saved config only when the bank code is not in the source map, and an empty description must stay empty rather than becoming a bare ' - 31/12/2026'.",
+      "why": "JvhSource falls back to the saved config only when the bank code is not in the source map, and a bank with no description of its own posts none (there is no BU-wide fallback since 2026-09-30).",
       "bankCode": "XXX",
       "docDate": "31/12/2026",
       "config": {
         "filePrefix": "",
         "fileSource": "ACZZ",
-        "description": "",
         "bankDescriptions": {}
       },
       "mappings": {
@@ -198,14 +195,13 @@
 
     {
       "name": "Buddhist-era date",
-      "why": "Both sides convert a year > 2400 by subtracting 543. A drift here dates every JV 543 years out. Note the Description keeps the BE string verbatim — only JvhDate is converted.",
+      "why": "Both sides convert a year > 2400 by subtracting 543. A drift here dates every JV 543 years out. Note the Description keeps the BE string verbatim — {Settlement_Date} fills with the document's own date string; only JvhDate is converted.",
       "bankCode": "KBANK",
       "docDate": "25/08/2569",
       "config": {
         "filePrefix": "IC",
         "fileSource": "",
-        "description": "BE date",
-        "bankDescriptions": {}
+        "bankDescriptions": { "KBANK": "BE date - {Settlement_Date}" }
       },
       "mappings": {
         "commission": { "dept": "1000", "acc": "5310" },

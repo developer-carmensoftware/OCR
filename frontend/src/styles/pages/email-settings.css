@@ -1,420 +1,831 @@
-/* Email Automation settings (#/email-settings).
+/* AI JV Automation settings (#/CreditCardOCR/email-settings) — DESIGN.md "Settings pages".
  *
- * The `.email-setup__*` block is ported from the feat/email-flow branch's
- * settings-hub.css, minus the dialog shell it used to live in — this is a page, so
- * there is no `.settings-hub__*` here. `.email-setup__input` replaces that branch's
- * `admin-form-input`, which belongs to the admin stylesheet a user page never loads.
+ * Settings sections read like an instrument panel: one status line, then sections whose
+ * purpose sits in one sentence in an intro column on the left and whose controls sit in one
+ * card on the right; field-level explanations sit behind an (i). Bank rules are summary rows
+ * that expand in place. Built on the `ui-*` kit
+ * (PageHeader, Switch, Button) and `.admin-form-input`, both global; every colour is a
+ * token, so dark mode needs no block of its own.
  */
 
 .email-settings-page {
-  padding: 20px 16px 48px;
-  max-width: 880px;
+  max-width: 1040px;
   margin: 0 auto;
-}
-.email-settings-page h1 {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin: 0 0 4px;
-  font-size: 1.25rem;
-}
-.email-settings-page__lede {
-  margin: 0 0 20px;
-  font-size: 0.82rem;
-  color: var(--muted-foreground);
-  max-width: 70ch;
+  padding: var(--space-6) var(--space-4) 0;
 }
 
-/* ── Connection card: who we are talking to, and with what ────────────────── */
-
-.email-conn {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px 16px;
-  margin-bottom: 22px;
+/* Which business unit this is. Replaces the old URI/BU strip: one quiet line under the
+   description, mono only for the values. */
+.email-context {
+  margin: calc(-1 * var(--space-3)) 0 var(--space-5);
+  font-size: 0.8125rem;
+  color: var(--text-2);
 }
-.email-conn__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 18px;
-}
-/* The owner-address block is a label over a hint over chips over an input — a column,
-   unlike the label/value pairs the other rows are. */
-.email-conn__row--stack {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-}
-.email-conn__row + .email-conn__row {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-.email-conn__label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted-foreground);
-}
-.email-conn__value {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.8rem;
-}
-.email-conn__spacer {
-  flex: 1;
-}
-.email-conn__toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.82rem;
+.email-context strong {
+  font-family: var(--font-mono);
   font-weight: 600;
+  color: var(--text);
 }
-.email-conn__token-form {
+
+.email-mono {
+  font-family: var(--font-mono);
+}
+
+.email-settings-page .ui-page-description {
+  text-wrap: pretty;
+}
+
+/* ── Whole-page problems ──────────────────────────────────────────────────── */
+
+.email-banner {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: 100%;
-}
-.email-conn__token-form input {
-  flex: 1;
-  min-width: 220px;
-}
-
-.email-settings-banner {
-  display: flex;
-  gap: 9px;
-  padding: 10px 13px;
-  border-radius: 10px;
-  margin-bottom: 16px;
-  font-size: 0.8rem;
-  line-height: 1.45;
-  background: var(--rose-light);
-  color: var(--rose-text, var(--foreground));
-  border: 1px solid var(--rose, transparent);
-}
-.email-settings-banner[data-tone='warn'] {
-  background: var(--amber-light);
-  color: var(--amber-text);
-  border-color: var(--amber-mid);
-}
-
-.email-blockers {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 10px 0 0;
-}
-.email-blockers__chip {
-  padding: 2px 9px;
-  border-radius: var(--radius-pill, 100px);
-  background: var(--amber-light);
-  color: var(--amber-text);
-  font-size: 0.7rem;
-  font-weight: 600;
-  font-family: var(--font-mono, ui-monospace, monospace);
-}
-
-.email-setup__error {
-  margin: 4px 0 0;
-  font-size: 0.73rem;
-  font-weight: 600;
-  color: var(--rose, #b91c1c);
-}
-
-/* ── The three steps ──────────────────────────────────────────────────────── */
-
-.email-setup {
-  list-style: none;
-  margin: 0;
-  padding: 2px 0 0;
-}
-.email-setup__step {
-  position: relative;
-  display: flex;
-  gap: 12px;
-  padding-bottom: 24px;
-}
-.email-setup__step:last-child {
-  padding-bottom: 4px;
-}
-/* connector line between step markers */
-.email-setup__step::before {
-  content: '';
-  position: absolute;
-  left: 12px;
-  top: 30px;
-  bottom: 2px;
-  width: 1px;
-  background: var(--border);
-}
-.email-setup__step:last-child::before {
-  display: none;
-}
-.email-setup__marker {
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  width: 25px;
-  height: 25px;
-  border-radius: 50%;
-  background: var(--secondary);
-  color: var(--muted-foreground);
-  font-size: 0.75rem;
-  font-weight: 700;
-  transition:
-    background 200ms ease,
-    color 200ms ease;
-}
-.email-setup__step[data-done='true'] .email-setup__marker {
-  background: var(--emerald-light);
-  color: var(--success-foreground);
-}
-.email-setup__body {
-  flex: 1;
-  min-width: 0;
-}
-.email-setup__title {
-  font-size: 0.88rem;
-  font-weight: 600;
-  line-height: 25px;
-}
-.email-setup__hint {
-  margin: 2px 0 10px;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  color: var(--muted-foreground);
-  max-width: 62ch;
-}
-
-/* Shared input — the admin stylesheet's `admin-form-input` without the dependency */
-.email-setup__input {
-  padding: 0.5rem 0.75rem;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.84rem;
-  font-family: inherit;
-  color: var(--foreground);
-  background: var(--card-bg, transparent);
-  transition: border-color 150ms ease;
-}
-.email-setup__input:focus {
-  outline: none;
-  border-color: var(--primary);
-}
-
-/* Step 1 — tax ID chips + add row */
-.email-setup__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-.email-setup__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 5px 3px 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill, 100px);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.76rem;
-}
-.email-setup__chip button {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-}
-.email-setup__chip button:hover {
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-5);
+  border: 1px solid var(--rose-mid);
+  border-radius: var(--radius-md);
   background: var(--rose-light);
   color: var(--rose-text);
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
-.email-setup__addrow {
-  display: flex;
-  gap: 8px;
-}
-.email-setup__addrow input {
-  flex: 1;
-  max-width: 360px;
-}
-
-/* Step 2 — bank rows */
-.email-setup__bank {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  margin-bottom: 8px;
-}
-.email-setup__bank[data-inactive='true'] .email-setup__bank-main {
-  opacity: 0.55;
-}
-.email-setup__bank-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.email-setup__bank-name {
-  font-size: 0.84rem;
-  font-weight: 600;
-}
-.email-setup__bank-sender {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.73rem;
-  color: var(--muted-foreground);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.email-setup__bank-meta {
-  display: flex;
-  gap: 5px;
+.email-banner svg {
   flex-shrink: 0;
+  margin-top: 2px;
 }
-.email-setup__badge {
-  padding: 2px 8px;
-  border-radius: var(--radius-pill, 100px);
-  background: var(--secondary);
-  color: var(--muted-foreground);
-  font-size: 0.68rem;
-  font-weight: 600;
-  white-space: nowrap;
+.email-banner[data-tone='warn'] {
+  border-color: var(--amber-mid);
+  background: var(--amber-light);
+  color: var(--amber-text);
 }
-.email-setup__bank-actions {
-  display: flex;
-  gap: 2px;
+
+/* ── Status line ──────────────────────────────────────────────────────────── */
+
+.email-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   flex-shrink: 0;
+  background: var(--text-4);
 }
-.email-setup__bank-actions button {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  transition:
-    background 150ms ease,
-    color 150ms ease;
+[data-tone='ok'] > .email-dot {
+  background: var(--emerald);
+  box-shadow: 0 0 0 3px var(--emerald-light);
 }
-.email-setup__bank-actions button:hover {
-  background: var(--secondary);
-  color: var(--foreground);
+[data-tone='warn'] > .email-dot {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-mid);
+}
+[data-tone='bad'] > .email-dot {
+  background: var(--rose);
+  box-shadow: 0 0 0 3px var(--rose-mid);
 }
 
-/* Step 2 — add/edit form */
-.email-setup__form {
+.email-status {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 12px 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-7);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--muted);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-xs);
 }
-.email-setup__field {
+.email-status[data-tone='warn'] {
+  border-color: var(--amber-mid);
+  background: var(--amber-light);
+}
+/* The dot stays beside the sentence it qualifies, however narrow the strip gets. */
+.email-status__main {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-.email-setup__field small {
-  font-size: 0.72rem;
-  font-weight: 400;
-  color: var(--muted-foreground);
-}
-.email-setup__check {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-.email-setup__form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-/* Step 3 — copyable forward-to address, live status, Gmail's confirmation code */
-.email-setup__copybox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.email-setup__addr {
+  align-items: flex-start;
+  gap: var(--space-3);
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--muted);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.8rem;
 }
-.email-setup__live {
+/* Centred on the first line of text, not on a wrapped block. */
+.email-status__main .email-dot {
+  margin-top: 6px;
+}
+.email-status__text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  font-size: 0.875rem;
+  color: var(--text);
+}
+.email-status__text strong {
+  font-weight: 600;
+}
+.email-status[data-tone='warn'] .email-status__text {
+  color: var(--amber-text);
+}
+.email-status__meta {
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.email-status__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 0 auto;
+  padding: 0;
+  list-style: none;
+}
+/* A next step is a control, so it looks pressable: a pill on the card surface, in the
+   strip's own amber rather than the brand blue, which stays reserved for Save. */
+.email-step {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  font-size: 0.78rem;
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--amber-mid);
+  border-radius: var(--radius-pill);
+  background: var(--card-bg);
+  color: var(--amber-text);
+  font: inherit;
+  font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--success-foreground);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    border-color 150ms var(--ease),
+    background 150ms var(--ease);
 }
-.email-setup__live-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--emerald);
+.email-step:hover {
+  border-color: var(--amber);
 }
-.email-setup__waiting {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--muted-foreground);
-  font-style: italic;
+.email-step:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
 }
 
-.email-setup__confirm {
-  margin-top: 14px;
-  padding: 11px 13px;
-  border: 1px dashed var(--border);
-  border-radius: 10px;
+/* ── Sections ─────────────────────────────────────────────────────────────── */
+
+/* Intro column (title + one sentence) beside one card of controls. The user tried a single
+   column of titled cards on 2026-10-01 and found it cramped; the intro column is the air. */
+.email-section {
+  display: grid;
+  grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+  gap: var(--space-4) var(--space-7);
+  align-items: start;
 }
-.email-setup__confirm[data-has-code='true'] {
-  border-style: solid;
-  border-color: var(--emerald);
-  background: var(--emerald-light);
+.email-sections > .email-section + .email-section {
+  margin-top: var(--space-6);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
 }
-.email-setup__confirm-code {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 1.15rem;
+.email-section__title {
+  font-size: 1rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-wrap: balance;
+}
+/* On the page background, not a card: --text-3 measures under AA there, so this is the
+   second ink. */
+.email-section__desc {
+  margin-top: var(--space-2);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+.email-section__desc code,
+.email-meta code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: var(--muted);
+  color: var(--text);
+}
+.email-section__body {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-sm);
+}
+.email-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5);
+}
+
+/* ── Fields ───────────────────────────────────────────────────────────────── */
+
+.email-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.email-field > label,
+.email-label-row > label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+/* A label (or switch title) and its (i), on one line. The (i) is a sibling, never inside the
+   <label>, so the input's accessible name stays the label alone. */
+.email-label-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* The explanation on demand. 24px hit area (WCAG 2.5.8) around a 14px mark, quiet until
+   pointed at; the brand blue arrives only on hover or focus, as for any other control. */
+.email-info {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-2);
+  cursor: help;
+  transition:
+    color 150ms var(--ease),
+    background 150ms var(--ease);
+}
+.email-info:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+.email-info:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 1px;
+  color: var(--primary);
+}
+.email-tag {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.email-help {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+.email-error {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--rose-text);
+}
+
+/* Form controls on this page meet WCAG 1.4.11 (DESIGN.md "Border Input"); the shared
+   admin class predates that rule and stays as it is elsewhere. */
+.email-settings-page .admin-form-input {
+  width: 100%;
+  border-color: var(--border-input);
+  box-shadow: none;
+}
+.email-settings-page .admin-form-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+.email-settings-page textarea.admin-form-input {
+  min-height: 64px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+/* ── Forwarding address ───────────────────────────────────────────────────── */
+
+.email-address {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.email-address__value {
+  flex: 1 1 18rem;
+  min-width: 0;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.email-meta {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.email-meta svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.email-meta[data-tone='ok'] svg {
+  color: var(--emerald-text);
+}
+.email-meta[data-tone='warn'] {
+  color: var(--amber-text);
+}
+.email-empty {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+/* ── Switch rows (Processing) ─────────────────────────────────────────────── */
+
+/* Title and switch on one line now the help sits behind the (i). */
+.email-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-5);
+  min-height: 56px;
+}
+.email-row + .email-row {
+  border-top: 1px solid var(--border);
+}
+.email-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.email-row__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.email-row__note {
+  margin: var(--space-1) 0 0;
+  font-size: 0.8125rem;
+  color: var(--amber-text);
+}
+.email-row__note a {
+  color: inherit;
+  font-weight: 600;
+  text-underline-offset: 2px;
+}
+
+/* ── Bank rules ───────────────────────────────────────────────────────────── */
+
+/* One column template for the header and every row, so the columns line up. The switch
+   sits outside the toggle button (no control inside a control), in its own column. */
+.email-rules__head,
+.email-rule__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: var(--space-4);
+  padding-right: var(--space-5);
+}
+/* Every track is fixed or fractional, never `auto`: a content-sized track would let one
+   row's lock icon shift its neighbours' columns out of line with the header. */
+.email-rules__cols,
+.email-rule__toggle {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 1fr) minmax(7.5rem, 0.9fr) minmax(0, 1.6fr) 16px 16px;
+  align-items: center;
+  gap: var(--space-3);
+}
+.email-rules__head {
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+  padding-left: var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.email-rules__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.email-rule + .email-rule {
+  border-top: 1px solid var(--border);
+}
+.email-rule__summary {
+  transition: background 150ms var(--ease);
+}
+.email-rule__summary:hover {
+  background: var(--muted);
+}
+.email-rule__toggle {
+  min-height: 56px;
+  padding: var(--space-3) 0 var(--space-3) var(--space-5);
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.email-rule__toggle:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: -2.5px;
+  border-radius: var(--radius-sm);
+}
+.email-rule__bank {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.email-rule__code {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.email-rule__bankname {
+  overflow: hidden;
+  font-size: 0.75rem;
+  color: var(--text-2);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.email-rule__type {
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+.email-rule__patterns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.email-chip {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.email-rule__summary:hover .email-chip {
+  background: var(--card-bg);
+}
+.email-rule__missing {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--rose-text);
+}
+.email-rule__flags {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-2);
+}
+.email-rule__alert {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--rose-light);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--rose-text);
+  white-space: nowrap;
+}
+.email-rule__chevron {
+  color: var(--text-2);
+  transition: transform 200ms var(--ease);
+}
+/* A rule switched off still reads, but steps back from the live ones: by ink, not opacity,
+   which took its text to about 2.3:1. This ink stays above 4.5:1 on the card and on the
+   hover fill. The switch beside it keeps full strength: it is how the rule comes back. */
+.email-rule[data-inactive] .email-rule__code,
+.email-rule[data-inactive] .email-rule__bankname,
+.email-rule[data-inactive] .email-rule__type,
+.email-rule[data-inactive] .email-chip {
+  color: color-mix(in oklch, var(--text-3) 70%, var(--text-2));
+}
+.email-rule[data-inactive] .email-chip {
+  background: transparent;
+}
+
+/* The rule dialog's two-up field grid; one column on a phone. */
+.email-rule__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.email-field--wide {
+  grid-column: 1 / -1;
+}
+
+/* ── Rule dialog ──────────────────────────────────────────────────────────── */
+
+/* Same shell as the Mapping page's PaymentMappingDialog (backdrop, centred card, full screen
+   on a phone), sized for a five-field form. Arrives by fade + rise, leaves at once. */
+.email-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal-backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: email-dialog-fade 180ms var(--ease) both;
+}
+.email-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: color-mix(in oklch, var(--foreground) 38%, transparent);
+  cursor: default;
+}
+.email-dialog {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100% - 2rem));
+  max-height: min(90vh, 720px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-xl);
+  animation: email-dialog-rise 220ms var(--ease) both;
+}
+.email-dialog:focus {
+  outline: none;
+}
+@keyframes email-dialog-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes email-dialog-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+.email-dialog__head {
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.email-dialog__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.email-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+.email-dialog__body > .email-error {
+  margin-top: var(--space-3);
+}
+.email-dialog__error {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--rose-mid);
+  border-radius: var(--radius-md);
+  background: var(--rose-light);
+  font-size: 0.8125rem;
+  color: var(--rose-text);
+}
+.email-dialog__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border);
+}
+.email-dialog__spacer {
+  flex: 1;
+}
+
+.email-rules__empty {
+  margin: 0;
+  padding: var(--space-5);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.email-rules__foot {
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border);
+}
+.email-rules__empty + .email-rules__foot {
+  border-top: 0;
+  padding-top: 0;
+  padding-bottom: var(--space-5);
+}
+
+/* ── Posting credential ───────────────────────────────────────────────────── */
+
+.email-cred {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+.email-cred strong {
+  font-weight: 600;
+}
+.email-cred__fp {
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--muted);
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+.email-cred__meta {
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+/* Support's way to set the posting credential by hand — folded until someone opens it.
+   The native marker is replaced by the same chevron vocabulary the rule rows use. */
+.email-manual-token summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 32px;
+  list-style: none;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.email-manual-token summary::-webkit-details-marker {
+  display: none;
+}
+.email-manual-token__chevron {
+  transition: transform 200ms var(--ease);
+}
+.email-manual-token[open] .email-manual-token__chevron {
+  transform: rotate(90deg);
+}
+.email-manual-token summary:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+.email-copyrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.email-copyrow input {
+  flex: 1 1 16rem;
+  width: auto;
+}
+
+/* ── Save bar ─────────────────────────────────────────────────────────────── */
+
+/* `.email-actionbar` lives in pages/admin.css beside `.ui-actionbar`, sticky by default.
+   Here it pins only while there is something to save: a clean form ends with a quiet bar in
+   the flow, and the first edit lifts it to the bottom edge, where Save stays in reach from
+   anywhere on the page. That arrival is this page's one piece of motion. */
+.email-settings-page .email-actionbar {
+  position: static;
+  flex-wrap: wrap;
+  margin-top: var(--space-7);
+  padding: var(--space-3) 0;
+}
+.email-settings-page .email-actionbar[data-dirty] {
+  position: sticky;
+  border-top-color: var(--border-input);
+  animation: email-bar-in 240ms var(--ease) both;
+}
+@keyframes email-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.email-settings-page .email-actionbar .btn {
+  white-space: nowrap;
+}
+.email-actionbar__state {
+  margin-right: auto;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+.email-actionbar[data-dirty] .email-actionbar__state {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .email-settings-page {
+    padding-top: var(--space-5);
+  }
+  .email-section {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+  .email-status__steps {
+    margin-left: 0;
+  }
 }
 
 @media (max-width: 640px) {
-  .email-setup__bank {
-    flex-wrap: wrap;
+  .email-rules__head {
+    display: none;
   }
-  .email-setup__addrow input {
-    max-width: none;
+  .email-rule__toggle {
+    grid-template-columns: minmax(0, 1fr) auto 16px;
+    grid-template-areas:
+      'bank flags chevron'
+      'type type type'
+      'patterns patterns patterns';
+    row-gap: var(--space-2);
+  }
+  .email-rule__bank {
+    grid-area: bank;
+  }
+  .email-rule__type {
+    grid-area: type;
+  }
+  .email-rule__patterns {
+    grid-area: patterns;
+  }
+  .email-rule__flags {
+    grid-area: flags;
+  }
+  .email-rule__chevron {
+    grid-area: chevron;
+  }
+  .email-rule__grid {
+    grid-template-columns: 1fr;
+  }
+  /* The whole address on one line at phone width, rather than a break mid-domain. */
+  .email-panel {
+    padding: var(--space-4);
+  }
+  .email-address__value {
+    padding-inline: 0.65rem;
+    font-size: 0.75rem;
+  }
+  .email-row {
+    gap: var(--space-4);
+  }
+  .email-actionbar__state {
+    flex-basis: 100%;
+  }
+  /* On a phone the dialog is the screen, as PaymentMappingDialog's is. */
+  .email-dialog-overlay {
+    align-items: stretch;
+  }
+  /* …so its footer is the bottom of the screen, where the app's toasts sit: lift the toaster
+     above it, the way payment-modal.css does (sonner writes these offsets inline, hence
+     !important). 6rem clears this one-row footer. */
+  body:has(.email-dialog) [data-sonner-toaster] {
+    --offset-bottom: 6rem !important;
+    --mobile-offset-bottom: 6rem !important;
+  }
+  .email-dialog {
+    width: 100%;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
   }
 }

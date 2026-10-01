@@ -19,6 +19,7 @@ from typing import Any
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import DocType
 from app.context import current_carmen_uri, current_tenant_id
 from app.database import async_session
 from app.exceptions import CarmenServiceError, ConflictError, NotFoundError, ValidationError
@@ -27,6 +28,7 @@ from app.models.email_automation import EmailDocument, shown_attachment
 from app.models.identity import Tenant
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.email_automation import ReviewDocument
+from app.services.credit_card import ar_reconcile as ar_svc
 from app.services.credit_card.accounting_config import get_accounting_config
 from app.services.credit_card.jv import build_gljv_payload, num, r2
 from app.services.email_automation import credential
@@ -35,6 +37,7 @@ from app.services.email_automation.ledger import _finish, _mark_submitted
 from app.services.email_automation.pipeline import _post_input_tax
 from app.services.shared import carmen
 from app.services.shared.carmen import CarmenAPIError
+from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
 
 logger = logging.getLogger(__name__)
@@ -64,7 +67,7 @@ async def _claim_for_review(db: AsyncSession, document_id: uuid.UUID, tenant_id:
     finish, and one older than POSTING_CLAIM_TTL belongs to a process that died and can be
     retaken.
 
-    Returns the claimed row's (id, bank_code, task_id, doc_no).
+    Returns the claimed row's (id, bank_code, task_id, doc_no, review_payload).
     """
     now = datetime.now(UTC)
     claimed = (
@@ -85,6 +88,7 @@ async def _claim_for_review(db: AsyncSession, document_id: uuid.UUID, tenant_id:
                 EmailDocument.bank_code,
                 EmailDocument.task_id,
                 EmailDocument.doc_no,
+                EmailDocument.review_payload,
             )
         )
     ).first()
@@ -162,6 +166,7 @@ async def approve_document(
     ledger_id: uuid.UUID = claimed.id
     bank_code: str | None = claimed.bank_code
     task_id = str(claimed.task_id) if claimed.task_id else None
+    doc_type = (claimed.review_payload or {}).get("doc_type") or DocType.FEE_INVOICE
 
     # Set the moment Carmen accepts the JV. Before that, every way out of this function
     # gives the claim back so the document is approvable again at once. After it, the claim
@@ -189,14 +194,60 @@ async def approve_document(
         tenant_ctx = current_tenant_id.set(tenant_id)
         uri_ctx = current_carmen_uri.set(carmen_uri)
         async with async_session() as db:
+            # doc_date + doc_type match `finalize_extraction`'s duplicate key (see its
+            # comment): KBANK prints one tax invoice number across both the commission fee
+            # invoice and this settlement report, and without them a fee invoice that had
+            # already posted would refuse the settlement report sharing its number here.
             if doc_no and await has_submitted_doc(
-                db, CreditCard, tenant_id=uuid.UUID(tenant_id), doc_no=doc_no
+                db,
+                CreditCard,
+                tenant_id=uuid.UUID(tenant_id),
+                doc_no=doc_no,
+                doc_date=parse_doc_date(extracted.doc_date),
+                doc_type=doc_type,
             ):
                 raise ConflictError(f"Document {doc_no} has already been posted to Carmen")
             config = await get_accounting_config(db, tenant_id, bank_code)
 
+        description: str | None = None
+        if doc_type == DocType.AR_RECONCILE:
+            # The rows the caller sent are ignored on this path, and that is not a
+            # weakening of "post what the screen displayed" but the same rule reached
+            # differently. This feature has no browser-side JV builder: the screen
+            # *displays* what `jv_for_document` returned, so rebuilding it here from the
+            # same current mapping reproduces exactly that, while a browser free to send
+            # arbitrary rows against a control account is not something to accept on trust.
+            async with async_session() as db:
+                built = await ar_svc.jv_for_document(
+                    db, tenant_id, bank_code, extracted.model_dump(mode="json")
+                )
+            if built is None:
+                raise ValidationError("AR reconciliation is not configured for this bank any more")
+            if built.unmapped:
+                raise ValidationError(
+                    "Map these payment types before posting: " + ", ".join(built.unmapped)
+                )
+            if not built.balanced:
+                # A real check since 2026-09-18: the debit side (commission/VAT/net) comes
+                # from the report's own total row, independent of the credit rows it is
+                # compared against — see `jv.is_balanced`. `_review_flags` already parks a
+                # document in this state; this is the belt to that brace for the
+                # direct-approve path, where a stale `built` could theoretically slip past
+                # if the mapping changed between park and approve.
+                raise ValidationError(
+                    "This report's totals don't reconcile — check the settlement report "
+                    "before posting"
+                )
+            rows = [r.model_dump() for r in built.rows]
+            description = built.description
+
         payload = build_gljv_payload(
-            rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
+            rows,
+            doc_date=extracted.doc_date,
+            doc_no=doc_no,
+            bank_code=bank_code,
+            config=config,
+            description=description,
         )
         try:
             result = await carmen.post_gljv(payload, carmen_token)
@@ -228,6 +279,10 @@ async def approve_document(
         # The ledger row's own task, never `extracted.id` — that is whatever the browser
         # sent, and it once let one BU stamp another's card (DEF-2).
         await _mark_submitted(tenant_id, task_id)
+        # The settlement report files this claim itself (decision #28) — see
+        # `_run_document`'s identical call for why `total_row`, not `extracted.details`,
+        # is what has anything to sum for this document type.
+        ar_input_tax_details = [extracted.total_row] if extracted.total_row else []
         tax_note = (
             await _post_input_tax(
                 extracted,
@@ -235,6 +290,7 @@ async def approve_document(
                 config=config,
                 carmen_token=carmen_token,
                 overrides=input_tax,
+                details=ar_input_tax_details if doc_type == DocType.AR_RECONCILE else None,
             )
             if post_input_tax_record
             else None

@@ -72,6 +72,7 @@ from app.database import async_session
 from app.models.enums import AlertSeverity, JobStatus
 from app.models.identity import Tenant
 from app.models.observability import JobRun
+from app.services.credit_card import kbank_tax_summary
 from app.services.email_automation import credential
 from app.services.email_automation import ingest_settings as es
 from app.services.email_automation.imap import (
@@ -516,6 +517,15 @@ async def _process_message(
     accepted = list(zip(names[: len(blobs)], blobs, strict=True))
     unreadable = names[len(blobs) :]
 
+    # Every sidecar CSV this message carried, merged into one merchant-keyed map — never
+    # a document, never ledgered, never charged (see `imap.SIDECAR_EXTENSIONS`).
+    # Parsed once per message rather than once per attachment because a settlement zip's
+    # documents and its one CSV arrive together; a bad/unreadable CSV degrades to an
+    # empty map rather than failing the message (`kbank_tax_summary.parse`'s own contract).
+    tax_summary: dict[str, dict[str, str]] = {}
+    for _, sidecar_blob in msg.get("sidecars") or []:
+        tax_summary.update(kbank_tax_summary.parse(sidecar_blob))
+
     # **The toggle is not the same kind of pause as the two above it.** A BU that switches
     # the feature off is telling us they are keying these documents themselves — and a
     # document keyed straight into Carmen writes no `credit_cards` row, so the duplicate
@@ -562,6 +572,7 @@ async def _process_message(
                 carmen_token=carmen_token,
                 carmen_uri=carmen_uri,
                 auto_post=auto_post,
+                tax_summary=tax_summary,
             )
             outcomes.append(outcome)
             if outcome == "pending_review" and parked is not None:
@@ -625,6 +636,7 @@ async def _process_attachment(
     carmen_token: str,
     carmen_uri: str,
     auto_post: bool,
+    tax_summary: dict[str, dict[str, str]] | None = None,
 ) -> str:
     """Claim the ledger row, then run the document.
 
@@ -663,6 +675,7 @@ async def _process_attachment(
                 carmen_token=carmen_token,
                 carmen_uri=carmen_uri,
                 auto_post=auto_post,
+                tax_summary=tax_summary,
             )
         except _HOLD:
             # Not a verdict on this document — the BU has nothing left to spend, or the

@@ -39,6 +39,7 @@ from app.routers.carmen import router as carmen_router
 from app.routers.config import router as config_router
 from app.routers.consent import router as consent_router
 from app.routers.credit_card.activity import router as credit_card_activity_router
+from app.routers.credit_card.ar_reconcile import router as ar_reconcile_router
 from app.routers.credit_card.mapping import router as mapping_router
 from app.routers.credit_card.ocr import router as ocr_router
 from app.routers.credits import router as credits_router
@@ -194,5 +195,6 @@ def create_app(lifespan=None) -> FastAPI:
     app.include_router(email_automation_router)
     app.include_router(email_review_router)
     app.include_router(credit_card_activity_router)
+    app.include_router(ar_reconcile_router)
 
     return app

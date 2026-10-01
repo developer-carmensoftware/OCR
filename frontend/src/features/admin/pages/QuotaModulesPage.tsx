@@ -12,10 +12,10 @@ import DataTable, { type Column } from '@/features/admin/components/DataTable'
 import PeriodPicker from '@/features/admin/components/PeriodPicker'
 import MetricChart from '@/features/admin/components/MetricChart'
 import KPICard from '@/features/admin/components/KPICard'
-import PageHeader from '@/features/admin/components/ui/PageHeader'
-import Card from '@/features/admin/components/ui/Card'
+import PageHeader from '@/shared/components/ui/PageHeader'
+import Card from '@/shared/components/ui/Card'
 import Tabs from '@/features/admin/components/ui/Tabs'
-import Switch from '@/features/admin/components/ui/Switch'
+import Switch from '@/shared/components/ui/Switch'
 import EmptyState from '@/features/admin/components/ui/EmptyState'
 import {
   fetchQuotaOverview,

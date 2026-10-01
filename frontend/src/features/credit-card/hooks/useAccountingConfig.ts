@@ -13,7 +13,6 @@ export interface AccountingConfigHook {
   refresh: () => void
   filePrefix: string
   fileSource: string
-  description: string
   bankDescriptions: Record<string, string>
   company: AccountingConfig['company']
   mappings: Record<string, FieldMapping>
@@ -58,9 +57,24 @@ function readFromLocalStorage(): AccountingConfig | null {
   }
 }
 
-export function useAccountingConfig(): AccountingConfigHook {
+/**
+ * @param bankCode The bank whose GL rules to read — the document's own. GL rules are per
+ * bank since 20260924000000, and an unscoped read answers with whichever bank the mapping
+ * page saved last, so a JV built for one bank's statement took another bank's accounts.
+ * Omit only where no mapping is read (header fields and per-bank descriptions).
+ * @param options.wait The bank is not known yet (a document still loading): read nothing and
+ * stay `loading`, rather than send the unscoped read that answers for the wrong bank.
+ */
+export function useAccountingConfig(
+  bankCode?: string,
+  options: { wait?: boolean } = {}
+): AccountingConfigHook {
+  const wait = options.wait === true
   const [config, setConfigState] = useState<AccountingConfig | null>(null)
   const [loading, setLoading] = useState(true)
+  // Which bank `config` was read for. `loading` alone lags a bank change by one render, and
+  // in that render the JV would be built from the previous bank's accounts.
+  const [loadedFor, setLoadedFor] = useState<string | undefined | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
   const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
@@ -77,10 +91,11 @@ export function useAccountingConfig(): AccountingConfigHook {
   }, [refresh])
 
   useEffect(() => {
+    if (wait) return
     let cancelled = false
     setLoading(true)
 
-    getAccountingConfig()
+    getAccountingConfig(bankCode)
       .then(apiData => {
         if (cancelled) return
         const hasData =
@@ -93,7 +108,6 @@ export function useAccountingConfig(): AccountingConfigHook {
           bank: apiData.bank_code || '',
           filePrefix: apiData.file_prefix || '',
           fileSource: apiData.file_source || '',
-          description: apiData.description || '',
           bankDescriptions: apiData.bank_descriptions || {},
           company: { ...lsCompany, ...(apiData.branch ? { branch: apiData.branch } : {}) },
           mappings,
@@ -102,24 +116,27 @@ export function useAccountingConfig(): AccountingConfigHook {
       })
       .catch(() => {
         if (cancelled) return
-        setConfigState(readFromLocalStorage())
+        // The offline copy holds whichever bank the mapping page saved last, and a scan
+        // rewrites its `bank` on every run — it cannot answer for a bank asked for by name.
+        setConfigState(bankCode ? null : readFromLocalStorage())
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (cancelled) return
+        setLoadedFor(bankCode)
+        setLoading(false)
       })
 
     return () => {
       cancelled = true
     }
-  }, [refreshKey])
+  }, [refreshKey, bankCode, wait])
 
   return {
     config,
-    loading,
+    loading: loading || wait || loadedFor !== bankCode,
     refresh,
     filePrefix: config?.filePrefix || '',
     fileSource: config?.fileSource || '',
-    description: config?.description || '',
     bankDescriptions: config?.bankDescriptions || {},
     company: config?.company || {},
     mappings: config?.mappings || {},

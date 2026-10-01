@@ -1,13 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
+import { useT } from '@/i18n/LanguageContext'
+import type { TKey } from '@/i18n/dict'
 import { saveAccountingConfig } from '@/shared/api/config'
+import { saveARSettings, type PostType } from '@/features/credit-card/api/arReconcile'
 import { appKey, writeAccountingConfig } from '@/shared/lib/storage'
+import { showToast } from '@/shared/lib/toast'
 import { isAccountAllowed, mergeSuggestion } from '@/shared/lib/deptAccounts'
+import { glFieldLabel } from '../../lib/glFieldLabels'
 import { parseNum } from '@/shared/lib/format'
 import { BANK_INFO, BANK_CODE_MAP, BANK_SOURCE_MAP } from '@/shared/constants/banks'
 import { useBankConfig } from './useBankConfig'
 import { useMappingData } from './useMappingData'
 import { useMappingSuggestions } from './useMappingSuggestions'
 import { usePaymentTypes } from './usePaymentTypes'
+import { isSettlementSource } from './useSettlementMapping'
+import type { AddError } from '@/features/credit-card/components/payment-mapping/types'
 import type { FieldMapping, BankDisplayName } from '@/shared/types/api'
 import type { ModalConfig } from '@/shared/hooks/useModal'
 import type { CompanyData } from '@/features/credit-card/lib/bankTransforms'
@@ -15,12 +22,41 @@ import type { MainMappingKey } from './useMappingSuggestions'
 
 export type MainMappings = Record<MainMappingKey, FieldMapping>
 
-const COMPANY_REQUIRED_FIELDS: Array<{ key: keyof CompanyData; label: string }> = [
-  { key: 'name', label: 'Company Name' },
-  { key: 'taxId', label: 'Tax ID' },
-  { key: 'branch', label: 'Branch No' },
-  { key: 'address', label: 'Address' },
+export interface CompanyField {
+  key: keyof CompanyData
+  labelKey: TKey
+  /** The bank's registered identity, from `BANK_INFO`: shown, never typed. An edit here
+   *  was overwritten on the next load and reached no reader — every one of them takes the
+   *  document's bank from the registry — so the field only ever blocked Save. */
+  readOnly?: boolean
+}
+
+// `labelKey`, not `label`: the same list names the fields in the form and names them again
+// in the "fill these in" modal, so one translated string has to reach both.
+const COMPANY_FIELDS: CompanyField[] = [
+  { key: 'name', labelKey: 'cc.companyName', readOnly: true },
+  { key: 'taxId', labelKey: 'cc.companyTaxId', readOnly: true },
+  { key: 'branch', labelKey: 'cc.companyBranch' },
+  { key: 'address', labelKey: 'cc.companyAddress', readOnly: true },
 ]
+
+// A Revenue Department branch number: five digits, 00000 for the head office. The input-tax
+// record posts it as typed, so `0000` reached Carmen that way.
+const BRANCH_RE = /^\d{5}$/
+
+/** The GL rules a save would write, as one comparable string: key order and a row's
+ *  `source` tag are not edits, and a type with no account yet is still a row. */
+function rulesPrint(
+  main: Record<string, FieldMapping>,
+  payment: Record<string, FieldMapping>,
+  customTypes: string[]
+): string {
+  const rows = (m: Record<string, FieldMapping>) =>
+    Object.keys(m)
+      .sort()
+      .map(k => [k, m[k]?.dept || '', m[k]?.acc || ''])
+  return JSON.stringify([rows(main), rows(payment), [...customTypes].sort()])
+}
 
 export interface ActiveScan {
   paymentTypes: Set<string>
@@ -30,6 +66,7 @@ export interface ActiveScan {
 }
 
 export function useMapping() {
+  const { t } = useT()
   const bankConfig = useBankConfig()
 
   const [mappings, setMappings] = useState<MainMappings>({
@@ -51,6 +88,15 @@ export function useMapping() {
   })
   const [saving, setSaving] = useState(false)
   const [acceptAllModal, setAcceptAllModal] = useState(false)
+  // What the form held when this bank's rows landed, and when the page's own config did —
+  // what `rulesDirty` and `headerDirty` measure edits against.
+  // Someone else saved this bank after it loaded (the server said 409). `conflict` stays
+  // true until the choice is made — the next Save then overwrites on purpose — while
+  // `conflictAsk` is only whether the question is on screen.
+  const [conflict, setConflict] = useState(false)
+  const [conflictAsk, setConflictAsk] = useState(false)
+  const [rulesBaseline, setRulesBaseline] = useState<string | null>(null)
+  const [headerBaseline, setHeaderBaseline] = useState<string | null>(null)
 
   const masterData = useMappingData()
   const paymentTypes = usePaymentTypes()
@@ -64,7 +110,6 @@ export function useMapping() {
     paymentAmount: paymentTypes.paymentAmount,
     activeScan,
     customPaymentTypes: paymentTypes.customPaymentTypes,
-    setModalConfig,
   })
 
   // Which bank's data was last applied to `mappings`/`paymentAmount` — not a one-shot
@@ -73,13 +118,21 @@ export function useMapping() {
   // ever changes in the same batch as `savedMappings`/`savedCustomTypes` (see
   // useBankConfig), so there is no window where this fires on a bank whose mappings
   // have not actually landed yet.
-  const appliedBankCodeRef = useRef<string | null | undefined>(undefined)
+  // Keyed on the load as well as the bank: reloading the *same* bank after a conflict has
+  // to be applied, and its `mappingsBankCode` does not change.
+  const appliedBankCodeRef = useRef<string | undefined>(undefined)
+  // This bank's settlement-report entries exactly as loaded. `useSettlementMapping` owns
+  // and saves them; this copy is only what a save sends when that hook has nothing to
+  // give (still loading) — the PUT replaces every entry of the bank, so leaving them out
+  // would delete them.
+  const settlementEntriesRef = useRef<Record<string, FieldMapping>>({})
   const { initFromData, resetPaymentTypes } = paymentTypes
 
   useEffect(() => {
     if (bankConfig.configLoading) return
-    if (appliedBankCodeRef.current === bankConfig.mappingsBankCode) return
-    appliedBankCodeRef.current = bankConfig.mappingsBankCode
+    const loadKey = `${bankConfig.mappingsBankCode}#${bankConfig.loadId}`
+    if (appliedBankCodeRef.current === loadKey) return
+    appliedBankCodeRef.current = loadKey
 
     const MAIN_KEYS = new Set<MainMappingKey>(['commission', 'tax', 'net'])
     const mainMappings: MainMappings = {
@@ -88,27 +141,43 @@ export function useMapping() {
       net: { dept: '', acc: '' },
     }
     const paymentMappings: Record<string, FieldMapping> = {}
+    const settlementEntries: Record<string, FieldMapping> = {}
 
     Object.entries(bankConfig.savedMappings).forEach(([field, val]) => {
       const mapping: FieldMapping = { dept: val.dept || '', acc: val.acc || '' }
       if (MAIN_KEYS.has(field as MainMappingKey)) {
         mainMappings[field as MainMappingKey] = mapping
+      } else if (isSettlementSource(val.source)) {
+        // Not a fee-invoice payment type: listing it here too put every settlement key in
+        // the payment-type dialog twice, and a settlement type removed there came back
+        // on save, untagged, from this list.
+        settlementEntries[field] = val
       } else {
         paymentMappings[field] = mapping
       }
     })
+    settlementEntriesRef.current = settlementEntries
 
     // Full replace, not merge: a bank switch must not carry the previous bank's fixed
     // fields or payment types forward. `initFromData` merges on purpose — it preserves
     // edits nobody has saved yet (usePaymentTypes.test.ts pins that) — so the
     // payment-type side is cleared first and initFromData then seeds it from a blank
     // slate. The bootstrap case (nothing to clear yet) behaves exactly as before.
+    const customTypes = bankConfig.savedCustomTypes.filter(code => !(code in settlementEntries))
     setMappings(mainMappings)
     resetPaymentTypes()
-    initFromData(paymentMappings, bankConfig.savedCustomTypes)
+    initFromData(paymentMappings, customTypes)
+    // What that leaves in the form — `initFromData` seeds a custom type with no mapping as a
+    // blank row — set in the same batch, so the render that shows this bank is clean.
+    const seeded = { ...paymentMappings }
+    customTypes.forEach(code => {
+      if (!seeded[code]) seeded[code] = { dept: '', acc: '' }
+    })
+    setRulesBaseline(rulesPrint(mainMappings, seeded, customTypes))
   }, [
     bankConfig.configLoading,
     bankConfig.mappingsBankCode,
+    bankConfig.loadId,
     bankConfig.savedMappings,
     bankConfig.savedCustomTypes,
     initFromData,
@@ -221,24 +290,75 @@ export function useMapping() {
     setAcceptAllModal(false)
   }
 
-  const missingCompanyFields = COMPANY_REQUIRED_FIELDS.filter(
-    f => !bankConfig.company[f.key as keyof typeof bankConfig.company]?.trim()
+  // A bank switch replaces the rules and keeps these (prefix and branch are the BU's, a
+  // description is keyed by bank), so they are measured apart. An emptied description is
+  // the same as none: the server drops empty entries.
+  const headerPrint = JSON.stringify([
+    bankConfig.filePrefix,
+    bankConfig.company.branch,
+    Object.entries(bankConfig.bankDescriptions)
+      .filter(([, text]) => text)
+      .sort(([a], [b]) => a.localeCompare(b)),
+  ])
+  useEffect(() => {
+    if (!bankConfig.configLoading && headerBaseline === null) setHeaderBaseline(headerPrint)
+  }, [bankConfig.configLoading, headerBaseline, headerPrint])
+  const rulesDirty =
+    rulesBaseline !== null &&
+    rulesPrint(mappings, paymentTypes.paymentAmount, paymentTypes.customPaymentTypes) !==
+      rulesBaseline
+  const headerDirty = headerBaseline !== null && headerPrint !== headerBaseline
+
+  const missingCompanyFields = COMPANY_FIELDS.filter(
+    f => !f.readOnly && !bankConfig.company[f.key]?.trim()
   )
-  const topLevelRequired = [
-    { key: 'bank', label: 'Bank', value: bankConfig.bank },
-    { key: 'filePrefix', label: 'File Prefix', value: bankConfig.filePrefix },
-    { key: 'fileSource', label: 'File Source', value: bankConfig.fileSource },
+  const branch = bankConfig.company.branch?.trim() || ''
+  // Only once something is typed: a blank branch is already "missing", said once.
+  const companyErrors: Partial<Record<keyof CompanyData, string>> =
+    branch && !BRANCH_RE.test(branch) ? { branch: t('cc.valBranchFormat') } : {}
+  const topLevelRequired: Array<{ key: string; labelKey: TKey; value: string }> = [
+    { key: 'bank', labelKey: 'cc.cfgBank', value: bankConfig.bank },
+    { key: 'filePrefix', labelKey: 'cc.cfgFilePrefix', value: bankConfig.filePrefix },
+    { key: 'fileSource', labelKey: 'cc.cfgFileSource', value: bankConfig.fileSource },
   ]
   const missingTopFields = topLevelRequired.filter(f => !f.value?.trim())
 
-  const saveAllSettings = async (shouldClose = false) => {
+  /** What the merged page's Settlement card contributes to a save — omitted entirely
+   *  for a bank with no settlement layout, since there is then nothing to add. No
+   *  `template` any more (Ticket D, 2026-09-22) — a settlement JV's wording is
+   *  `bankConfig.bankDescriptions[bank]`, already part of the one
+   *  `saveAccountingConfig` call below. */
+  interface SettlementSave {
+    hasSettlementLayout: boolean
+    mappingsToSave: Record<string, FieldMapping>
+    postType: PostType
+    bankCode: string
+  }
+
+  const saveAllSettings = async (settlement?: SettlementSave) => {
     if (saving) return
+    // Until the selected bank's own mappings have landed, what the form holds is the
+    // previous bank's — and the PUT replaces this bank's entries with them. The page
+    // disables Save meanwhile; this is the same rule where the write actually happens.
+    const selectedCode = bankConfig.bank ? BANK_CODE_MAP[bankConfig.bank as BankDisplayName] : null
+    if (selectedCode && bankConfig.mappingsBankCode !== selectedCode) return
     const allMissing = [...missingTopFields, ...missingCompanyFields]
     if (allMissing.length > 0) {
       setModalConfig({
         show: true,
-        title: 'Please fill in all required fields',
-        message: `Please fill in ${allMissing.map(f => f.label).join(', ')} before saving`,
+        title: t('cc.valRequiredTitle'),
+        message: t('cc.valRequiredMsg', {
+          fields: allMissing.map(f => t(f.labelKey)).join(', '),
+        }),
+        type: 'error',
+      })
+      return
+    }
+    if (companyErrors.branch) {
+      setModalConfig({
+        show: true,
+        title: t('cc.valCheckTitle'),
+        message: companyErrors.branch,
         type: 'error',
       })
       return
@@ -257,10 +377,20 @@ export function useMapping() {
     if (illegalPairs.length > 0) {
       setModalConfig({
         show: true,
-        title: 'Account not allowed for department',
-        message: `${illegalPairs
-          .map(m => `${m.label}: ${m.acc} is not allowed for department ${m.dept}`)
-          .join('\n')}\nPlease pick an account from the department's allowed list.`,
+        title: t('cc.valIllegalTitle'),
+        // `label` is the config key, so the three fixed ones read as storage names
+        // ('commission') unless they go through the shared display map first.
+        message: t('cc.valIllegalMsg', {
+          pairs: illegalPairs
+            .map(m =>
+              t('cc.valIllegalPair', {
+                label: glFieldLabel(m.label, t),
+                acc: m.acc ?? '',
+                dept: m.dept ?? '',
+              })
+            )
+            .join('\n'),
+        }),
         type: 'error',
       })
       return
@@ -268,63 +398,145 @@ export function useMapping() {
 
     setSaving(true)
     try {
-      const config = {
-        bank: bankConfig.bank,
-        filePrefix: bankConfig.filePrefix,
-        fileSource: bankConfig.fileSource,
-        description: bankConfig.description,
-        bankDescriptions: bankConfig.bankDescriptions,
-        company: bankConfig.company,
-        mappings,
-        paymentAmount: paymentTypes.paymentAmount,
-      }
-      writeAccountingConfig(config)
-
       const allMappings: Record<string, FieldMapping> = { ...mappings }
       Object.entries(paymentTypes.paymentAmount).forEach(([type, val]) => {
         if (val.dept || val.acc) allMappings[type] = val
       })
+      // The Settlement card's own rows (both Detail and Summary, source-tagged) — the
+      // same table now (decision #3), so they travel in the one PUT rather than a
+      // mapping payload of their own. Without that hook's rows, what was loaded goes back
+      // unchanged: the PUT replaces the bank's entries, so absent means deleted.
+      Object.assign(
+        allMappings,
+        settlement ? settlement.mappingsToSave : settlementEntriesRef.current
+      )
 
+      let saved: Awaited<ReturnType<typeof saveAccountingConfig>>
       try {
-        await saveAccountingConfig({
-          bank_code: bankConfig.bank
-            ? BANK_CODE_MAP[bankConfig.bank as BankDisplayName] || null
-            : null,
+        saved = await saveAccountingConfig({
+          bank_code: selectedCode || null,
           file_prefix: bankConfig.filePrefix,
           file_source: bankConfig.fileSource,
-          description: bankConfig.description,
-          bank_descriptions: bankConfig.bankDescriptions,
+          // This bank's wording only: the server merges per bank, so another bank's — which
+          // someone may have corrected since this page loaded — is not sent back over it.
+          ...(selectedCode
+            ? {
+                bank_descriptions: {
+                  [selectedCode]: bankConfig.bankDescriptions[selectedCode] ?? '',
+                },
+              }
+            : {}),
           branch: bankConfig.company.branch || null,
           mappings: allMappings,
           custom_types: paymentTypes.customPaymentTypes,
+          // Left out after a 409 the reader chose to overwrite.
+          ...(conflict || !bankConfig.version ? {} : { base_version: bankConfig.version }),
         })
-        localStorage.setItem(appKey('accounting_config_updated'), Date.now().toString())
-      } catch {
-        /* ignore — localStorage already saved */
+      } catch (err) {
+        if ((err as { status?: number }).status === 409) {
+          setConflict(true)
+          setConflictAsk(true)
+          return
+        }
+        // Said, and the page stays: this used to be swallowed ("localStorage already
+        // saved"), and the page went on to save the settlement grouping and close the tab
+        // exactly as if the mapping had been saved.
+        setModalConfig({
+          show: true,
+          title: t('cc.saveFailedTitle'),
+          message: t('cc.saveFailedMsg', { detail: err instanceof Error ? err.message : '' }),
+          type: 'error',
+        })
+        return
       }
+      setConflict(false)
+      // The page may stay open (the settlement grouping below can still fail): it holds what
+      // the server now has, so the next save is checked against *that*, and nothing here
+      // counts as unsaved any more.
+      bankConfig.setVersion(saved?.version ?? null)
+      setRulesBaseline(
+        rulesPrint(mappings, paymentTypes.paymentAmount, paymentTypes.customPaymentTypes)
+      )
+      setHeaderBaseline(headerPrint)
+      // Only what the server now holds: the wizard's tab re-reads on this key, and the
+      // offline copy stands in for the server when it cannot be reached.
+      writeAccountingConfig({
+        bank: bankConfig.bank,
+        filePrefix: bankConfig.filePrefix,
+        fileSource: bankConfig.fileSource,
+        bankDescriptions: bankConfig.bankDescriptions,
+        company: bankConfig.company,
+        mappings,
+        paymentAmount: paymentTypes.paymentAmount,
+      })
+      localStorage.setItem(appKey('accounting_config_updated'), Date.now().toString())
 
-      if (shouldClose && window.opener) {
-        window.close()
-      } else {
-        window.location.hash = '/CreditCardOCR'
-        if (!shouldClose) {
+      // Rules first, JV posting profile second — same order and the same reasoning
+      // ReviewDocument.approve() uses for rules-then-JV: a correction is right on its
+      // own regardless of what happens next, so it is not worth losing behind a
+      // partial-save rollback. A bank with no settlement layout has nothing here to
+      // send at all.
+      if (settlement?.hasSettlementLayout) {
+        try {
+          await saveARSettings({
+            bank_code: settlement.bankCode,
+            post_type: settlement.postType,
+          })
+        } catch (err) {
+          setSaving(false)
           setModalConfig({
             show: true,
-            title: 'Save Successful',
-            message: 'Account Mapping settings have been saved successfully.',
-            type: 'success',
+            title: t('cc.saveSettlementFailedTitle'),
+            message: t('cc.saveSettlementFailedMsg', {
+              detail: err instanceof Error ? err.message : '',
+            }),
+            type: 'error',
           })
+          return
         }
       }
+
+      showToast(t('cc.saveDone', { bank: selectedCode ?? '' }), 'success')
+      // Opened from the wizard or the queue in a tab of its own: that tab re-reads on the
+      // key above, so this one closes. Otherwise back to the module's first screen.
+      if (window.opener) window.close()
+      else window.location.hash = '/CreditCardOCR'
     } finally {
       setSaving(false)
     }
   }
 
-  const allPaymentTypes = [
-    ...activeScan.paymentTypes,
-    ...paymentTypes.customPaymentTypes.filter(t => !activeScan.paymentTypes.has(t)),
-  ]
+  /** Bulk apply for fee-invoice payment types — one write, the same dept→account rule as a
+   *  single edit, and each row's open suggestion answered by the edit. */
+  const applyPaymentMappings = (codes: string[], patch: { dept?: string; acc?: string }) => {
+    paymentTypes.setPaymentAmount(prev => {
+      const next = { ...prev }
+      for (const code of codes) {
+        const m: FieldMapping = {
+          ...next[code],
+          dept: patch.dept ?? next[code]?.dept ?? '',
+          acc: patch.acc ?? next[code]?.acc ?? '',
+        }
+        if (patch.dept !== undefined && patch.acc === undefined) {
+          if (!isAccountAllowed(m.dept, m.acc, masterData.masterDepartments)) m.acc = ''
+        }
+        next[code] = m
+      }
+      return next
+    })
+    codes.forEach(code => suggestions.rejectPaymentSuggestion(code))
+  }
+
+  /** Adds a fee-invoice payment type and asks the AI for it straight away, like a scanned
+   *  one. `taken` holds other sets' codes, so a key is never listed in two places. */
+  const addPaymentType = (raw: string, taken: Set<string>): AddError => {
+    const all = new Set([...taken, ...activeScan.paymentTypes])
+    const err = paymentTypes.addCustomType(raw, all)
+    if (!err && masterData.masterAccounts.length && masterData.masterDepartments.length) {
+      void suggestions.autoSuggestPaymentTypes([raw.trim().toUpperCase()])
+    }
+    return err
+  }
 
   return {
     bank: bankConfig.bank,
@@ -334,16 +546,21 @@ export function useMapping() {
     setFilePrefix: bankConfig.setFilePrefix,
     fileSource: bankConfig.fileSource,
     setFileSource: bankConfig.setFileSource,
-    description: bankConfig.description,
-    setDescription: bankConfig.setDescription,
     bankDescriptions: bankConfig.bankDescriptions,
     setBankDescriptions: bankConfig.setBankDescriptions,
     configLoading: bankConfig.configLoading,
+    // The full merged dict as last loaded from the server (source-tagged), for the
+    // Settlement card to seed its own Detail/Summary rows from without a second fetch.
+    savedMappings: bankConfig.savedMappings,
+    mappingsBankCode: bankConfig.mappingsBankCode,
+    bankError: bankConfig.bankError,
+    retryBank: bankConfig.retryBank,
     company: bankConfig.company,
     setCompany: bankConfig.setCompany,
     handleCompanyChange,
-    companyRequiredFields: COMPANY_REQUIRED_FIELDS,
+    companyFields: COMPANY_FIELDS,
     missingCompanyFields,
+    companyErrors,
     mappings,
     handleMappingChange,
     masterAccounts: masterData.masterAccounts,
@@ -353,26 +570,18 @@ export function useMapping() {
     loadInitialData: masterData.loadInitialData,
     paymentAmount: paymentTypes.paymentAmount,
     customPaymentTypes: paymentTypes.customPaymentTypes,
-    newCustomType: paymentTypes.newCustomType,
-    setNewCustomType: paymentTypes.setNewCustomType,
     handlePaymentMappingChange,
-    handleAddCustomType: (activeScanPT?: Set<string>) =>
-      paymentTypes.handleAddCustomType(activeScanPT || activeScan.paymentTypes, types =>
-        masterData.masterAccounts.length && masterData.masterDepartments.length
-          ? suggestions.autoSuggestPaymentTypes(types)
-          : null
-      ),
+    applyPaymentMappings,
+    addPaymentType,
     handleRemoveCustomType: paymentTypes.handleRemoveCustomType,
     isAmountModalOpen: paymentTypes.isAmountModalOpen,
     openAmountModal: paymentTypes.openAmountModal,
     cancelAmountSelection: () =>
       paymentTypes.cancelAmountSelection(suggestions.clearAllSuggestions),
-    // Legality gate lives in PaymentTypeModal's OK handler (inline banner +
-    // auto-expand of additional mappings — an error modal naming a collapsed
-    // row confused users).
+    // Legality gate lives in PaymentMappingDialog's Done handler (it switches to the
+    // failing row) — an error modal naming a row the reader cannot see confused users.
     saveAmountSelection: paymentTypes.saveAmountSelection,
     activeScan,
-    allPaymentTypes,
     suggestionMeta: suggestions.suggestionMeta,
     mainSuggestions: suggestions.mainSuggestions,
     suggestLoading: suggestions.suggestLoading,
@@ -394,6 +603,20 @@ export function useMapping() {
     saving,
     saveAllSettings,
     missingTopFields,
+    /** Someone else saved this bank first — see `conflict` above. */
+    conflict,
+    conflictAsk,
+    keepEditing: () => setConflictAsk(false),
+    /** Take what the server has and drop this page's edits. */
+    reloadBank: () => {
+      setConflict(false)
+      setConflictAsk(false)
+      bankConfig.reloadBank()
+    },
+    /** The selected bank's GL rules differ from what loaded — lost on a bank switch. */
+    rulesDirty,
+    /** Prefix, branch or a description differs from what loaded — kept across a switch. */
+    headerDirty,
   }
 }
 

@@ -1782,6 +1782,27 @@ body:has(.admin-login-page) {
   flex-shrink: 0;
 }
 
+/* ─── UI KIT: ACTION BAR ───────────────────────────────────────────────────
+ *
+ * The save row of a long dirty form, pinned to the bottom of the viewport so Save is
+ * reachable from anywhere in the form rather than only from the end of it. One block for
+ * both callers — `.email-actionbar` is the name #/CreditCardOCR/email-settings was shipped with and is
+ * kept so that page's markup does not have to change. */
+
+.ui-actionbar,
+.email-actionbar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+  background: var(--background);
+}
+
 /* ─── UI KIT: TABS ─────────────────────────────────────────────────────── */
 
 .ui-tabs {

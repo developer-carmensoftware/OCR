@@ -1,4 +1,3 @@
-import React from 'react'
 import {
   Loader2,
   AlertTriangle,
@@ -10,16 +9,20 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
+// The row shape and its stacked form live here. Imported by the component that renders it
+// rather than left to whichever sibling happens to be mounted — that assumption is the bug
+// this file's own header records.
+import '@/styles/components/mapping-row.css'
+import { useT } from '@/i18n/LanguageContext'
 import { glFieldLabel } from '@/features/credit-card/lib/glFieldLabels'
 import { allowedAccountsForDept, isAccountAllowed } from '@/shared/lib/deptAccounts'
 import AISuggestBar from '@/shared/components/common/AISuggestBar'
-import Badge from '@/shared/components/common/Badge'
 import type { FieldMapping } from '@/shared/types/api'
 import type {
   MasterAccount,
   MasterDepartment,
 } from '@/features/credit-card/hooks/mapping/useMappingData'
-import type { MainMappings, ActiveScan } from '@/features/credit-card/hooks/mapping/useMapping'
+import type { MainMappings } from '@/features/credit-card/hooks/mapping/useMapping'
 import type {
   MainMappingKey,
   Suggestion,
@@ -40,14 +43,11 @@ interface Props {
   rejectMainSuggestion: (key: string) => void
   setAcceptAllModal: (v: boolean) => void
   loadInitialData: () => void
-  activeScan: ActiveScan
-  requiredMissingCount: number
+  /** The payment-type dialog's first list, as the credit row summarises it: its name
+   *  (e.g. "Settlement report · Summary"), and how many of its types have an account. */
+  paymentSummary: { label: string; mapped: number; total: number }
   openAmountModal: () => void
 }
-
-// Shared with the queue's reason line — two copies of this list is how the two screens
-// end up calling the same rule different things.
-const LABEL_MAP = glFieldLabel
 
 export default function MainMappingTable({
   masterAccounts,
@@ -63,19 +63,21 @@ export default function MainMappingTable({
   rejectMainSuggestion,
   setAcceptAllModal,
   loadInitialData,
-  activeScan,
-  requiredMissingCount,
+  paymentSummary,
   openAmountModal,
 }: Props) {
+  const { t } = useT()
+  const total = paymentSummary.total
+  const missing = total - paymentSummary.mapped
   return (
     <div className="section">
       <div className="section-title cc-section-title-container">
         <div className="cc-flex-center-gap">
           <span>
-            ACCOUNT CODE MAPPING{' '}
+            {t('cc.mapTitle')}{' '}
             {loadingOpts && (
               <span className="cc-loading-text-primary">
-                <Loader2 size={13} className="animate-spin" /> Loading account codes...
+                <Loader2 size={13} className="animate-spin" /> {t('cc.mapLoadingCodes')}
               </span>
             )}
           </span>
@@ -93,83 +95,77 @@ export default function MainMappingTable({
 
       <div className="table-wrapper cc-pb-0">
         <div className="cc-mapping-grid-container">
-          <div />
-          <div />
-          <div className="mapping-header">
-            Department Code
-            <span
-              className="gl-help-tip"
-              title="Department code from Carmen Cloud — e.g. ACC, SALE, MKT"
-            >
-              ?
-            </span>
+          {/* Each block below is `display: contents` on a wide screen, so the five tracks
+              above stay exactly as they were. Below the stacking breakpoint they become the
+              thing that groups a row's cells into one readable record. */}
+          <div className="cc-mapping-head">
+            <div />
+            <div />
+            <div className="mapping-header">
+              {t('cc.mapDeptCode')}
+              <span className="gl-help-tip" title={t('cc.mapDeptCodeHelp')}>
+                ?
+              </span>
+            </div>
+            <div className="mapping-header">
+              {t('cc.mapAccCode')}
+              <span className="gl-help-tip" title={t('cc.mapAccCodeHelp')}>
+                ?
+              </span>
+            </div>
+            <div />
           </div>
-          <div className="mapping-header">
-            Account Code
-            <span
-              className="gl-help-tip"
-              title="Account code from Carmen Cloud — e.g. 1101-01, 5100-00"
-            >
-              ?
-            </span>
-          </div>
-          <div />
 
           {/* Credit row — Account Receivable */}
-          <div className="mapping-type type-credit cc-mapping-type-credit">Credit</div>
-          <button type="button" className="cc-map-ar-btn" onClick={openAmountModal}>
-            <span className="cc-map-ar-title">Account Receivable / Bank</span>
-            {activeScan.paymentTypes.size > 0 && (
-              <span
-                className={`cc-map-ar-count ${requiredMissingCount > 0 ? 'missing' : 'ready'}`}
-                title={`${activeScan.paymentTypes.size - requiredMissingCount} of ${activeScan.paymentTypes.size} payment types mapped`}
-              >
-                {activeScan.paymentTypes.size - requiredMissingCount}/{activeScan.paymentTypes.size}
-              </span>
-            )}
-            <ChevronRight size={14} className="cc-map-ar-chevron" />
-          </button>
-          <div className="cc-grid-span-3">
-            <div
-              id="amountMappingStatus"
-              role="status"
-              className={`cc-mapping-status ${requiredMissingCount > 0 ? 'missing' : 'ready'}`}
-            >
-              {activeScan.paymentTypes.size === 0 ? (
-                <>
-                  <Info size={14} className="cc-flex-shrink-0" />
-                  <span>Payment types appear here after a document scan</span>
-                </>
-              ) : requiredMissingCount > 0 ? (
-                <>
-                  <AlertTriangle size={14} color="var(--rose)" className="cc-flex-shrink-0" />
-                  <span>
-                    Found <strong>{activeScan.paymentTypes.size}</strong> items in document
-                  </span>
-                  <span className="cc-bullet-divider-missing">·</span>
-                  <span>
-                    <strong>{requiredMissingCount}</strong> pending mapping
-                  </span>
-                  <Badge variant="error" className="cc-required-badge">
-                    Required for this scan
-                  </Badge>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 size={14} className="cc-flex-shrink-0" />
-                  <span>
-                    All <strong>{activeScan.paymentTypes.size}</strong> items mapped
-                  </span>
-                  <span className="cc-ready-subtext">Ready for JV</span>
-                </>
+          <div className="cc-mapping-row cc-mapping-row--credit">
+            <div className="mapping-type type-credit cc-mapping-type-credit">
+              {t('cc.mapCredit')}
+            </div>
+            <button type="button" className="cc-map-ar-btn" onClick={openAmountModal}>
+              <span className="cc-map-ar-title">{t('cc.mapArBank')}</span>
+              {total > 0 && (
+                <span
+                  className={`cc-map-ar-count ${missing > 0 ? 'missing' : 'ready'}`}
+                  title={t('cc.mapPtCount', { mapped: paymentSummary.mapped, total })}
+                >
+                  {paymentSummary.mapped}/{total}
+                </span>
               )}
+              <ChevronRight size={14} className="cc-map-ar-chevron" />
+            </button>
+            <div className="cc-grid-span-3">
+              <div
+                id="amountMappingStatus"
+                role="status"
+                className={`cc-mapping-status ${missing > 0 ? 'missing' : 'ready'}`}
+              >
+                {total === 0 ? (
+                  <>
+                    <Info size={14} className="cc-flex-shrink-0" />
+                    <span>{t('cc.mapPtEmpty')}</span>
+                  </>
+                ) : missing > 0 ? (
+                  <>
+                    <AlertTriangle size={14} className="cc-flex-shrink-0" />
+                    <span>{t('cc.pmSummaryMissing', { missing, total })}</span>
+                    <span className="cc-bullet-divider-missing">·</span>
+                    <span>{paymentSummary.label}</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={14} className="cc-flex-shrink-0" />
+                    <span>{t('cc.mapPtAllMapped', { n: total })}</span>
+                    <span className="cc-ready-subtext">{paymentSummary.label}</span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Debit rows — commission, tax, net */}
           {(['commission', 'tax', 'net'] as MainMappingKey[]).map(key => {
             const meta = suggestionMeta[key]
-            const badge = meta === 'history' ? { label: 'History' } : null
+            const badge = meta === 'history' ? { label: t('cc.mapHistory') } : null
             const hasSuggestionButtons = meta === 'ai' || meta === 'history'
             const suggestion = mainSuggestions[key] ?? null
 
@@ -179,7 +175,7 @@ export default function MainMappingTable({
             const deptTopChoice = suggestion?.dept
               ? {
                   code: suggestion.dept,
-                  name: deptFromMaster?.name || '(AI/History code)',
+                  name: deptFromMaster?.name || t('cc.mapAiCode'),
                   name2: deptFromMaster?.name2,
                   source: suggestion.source,
                 }
@@ -192,7 +188,7 @@ export default function MainMappingTable({
             )
             const acctNotice =
               acctOptions.length < masterAccounts.length
-                ? `${acctOptions.length} accounts allowed for ${mappings[key].dept}`
+                ? t('cc.mapAllowedAcc', { n: acctOptions.length, dept: mappings[key].dept ?? '' })
                 : undefined
 
             const accFromMaster = suggestion?.acc
@@ -201,41 +197,46 @@ export default function MainMappingTable({
             const accTopChoice = suggestion?.acc
               ? {
                   code: suggestion.acc,
-                  name: accFromMaster?.name || '(AI/History code)',
+                  name: accFromMaster?.name || t('cc.mapAiCode'),
                   name2: accFromMaster?.name2,
                   source: suggestion.source,
                 }
               : null
 
             return (
-              <React.Fragment key={key}>
-                <div className="mapping-type type-debit cc-mapping-type-debit">Debit</div>
+              <div className="cc-mapping-row" key={key}>
+                <div className="mapping-type type-debit cc-mapping-type-debit">
+                  {t('cc.mapDebit')}
+                </div>
                 <div className="mapping-label cc-label-flex-container">
-                  <span>{LABEL_MAP(key)}</span>
+                  <span>{glFieldLabel(key, t)}</span>
                   {badge && (
                     <span className="cc-history-badge">
                       <History size={11} /> {badge.label}
                     </span>
                   )}
                 </div>
-                <div>
+                <div className="pm-cell" data-label={t('cc.mapDeptCode')}>
                   <CustomSearchSelect
                     value={mappings[key].dept}
                     onChange={(val: string) => handleMappingChange(key, 'dept', val)}
                     options={masterDepartments}
-                    placeholder="Type Dept. Code..."
+                    placeholder={t('cc.mapDeptPh')}
+                    // Named per row: three pickers sharing one placeholder read the same.
+                    aria-label={`${t('cc.mapDeptCode')} — ${glFieldLabel(key, t)}`}
                     topChoice={deptTopChoice?.code ? deptTopChoice : null}
                     suggestedValue={suggestion?.dept ?? null}
                     hasError={!mappings[key].dept}
                   />
                 </div>
-                <div>
+                <div className="pm-cell" data-label={t('cc.mapAccCode')}>
                   <CustomSearchSelect
                     value={mappings[key].acc}
                     onChange={(val: string) => handleMappingChange(key, 'acc', val)}
                     options={acctOptions}
                     notice={acctNotice}
-                    placeholder="Type Account Code..."
+                    placeholder={t('cc.mapAccPh')}
+                    aria-label={`${t('cc.mapAccCode')} — ${glFieldLabel(key, t)}`}
                     topChoice={accTopChoice?.code ? accTopChoice : null}
                     suggestedValue={suggestion?.acc ?? null}
                     hasError={
@@ -250,7 +251,7 @@ export default function MainMappingTable({
                       <button
                         type="button"
                         onClick={() => confirmMainSuggestion(key)}
-                        title="Accept suggestion"
+                        title={t('cc.mapAccept')}
                         className="cc-btn-accept"
                       >
                         <Check size={13} />
@@ -258,7 +259,7 @@ export default function MainMappingTable({
                       <button
                         type="button"
                         onClick={() => rejectMainSuggestion(key)}
-                        title="Reject and clear"
+                        title={t('cc.mapReject')}
                         className="cc-btn-reject"
                       >
                         <X size={13} />
@@ -266,7 +267,7 @@ export default function MainMappingTable({
                     </>
                   )}
                 </div>
-              </React.Fragment>
+              </div>
             )
           })}
         </div>

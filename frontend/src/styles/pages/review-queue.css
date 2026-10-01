@@ -783,6 +783,14 @@
   flex: 1 1 14rem;
 }
 
+/* The fields posted after the description's text (Document date, …) — named, not typed:
+   they are picked on the Mapping page. Inset to the field's own text like the label. */
+.rd-f-suffix {
+  padding-left: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
 /* The input-tax panel's fields carry no width modifier: they are grid cells, sized by the
    tracks on `.itx-grid`. Sizing them here as well is what made the two rows there stop at
    different places. */
@@ -867,6 +875,30 @@
 .rd-modal .rd-f--missing .rd-f-input {
   border-color: var(--amber);
   background: oklch(from var(--amber) l c h / 0.08);
+}
+
+/* The same field with nothing to type into it — the AR path, where none of these four
+   reaches Carmen (see JvHeaderCard's `readOnly`). It keeps the row's metrics exactly, so
+   the header does not change height or alignment between the two document kinds, and
+   drops the wash: the wash is what marks a field as somewhere the caret can go.
+   `--text-2`, not the value colour of an input, because it is being read and not
+   corrected. */
+.rd-modal .rd-f-value {
+  min-width: 0;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid transparent;
+  font-size: 0.875rem;
+  color: var(--text-2, var(--text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A value that is not there says so in the same amber the empty input does, minus the
+   border — there is no control here to draw a hard edge around. */
+.rd-modal .rd-f--missing .rd-f-value {
+  color: var(--amber-text);
+  font-style: italic;
 }
 
 .rd-f .date-input,
@@ -1201,6 +1233,209 @@
   background: var(--rose-light);
 }
 
+/* ── The settlement report's reconciliation ─────────────────────────────────── */
+
+/* `ARReviewPane`. Deliberately on `.jv-table` rather than a table of its own: the two
+   review panes show the same kind of claim about the same kind of money, and a second
+   table vocabulary two sections apart is how a screen starts looking assembled rather
+   than designed. What is AR-specific is the extra pair of columns on the left — what the
+   document printed — and the three row species below. */
+.arv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* This bank has no AR configuration, so there is no JV to show. A sentence, not an empty
+   table: a table with no rows in it invites the reader to look for the rows. */
+.arv-empty {
+  padding: var(--space-4);
+  border: 1px dashed var(--border-raised, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  font-size: 0.83rem;
+  color: var(--text-3);
+  text-align: center;
+}
+
+/* The disclosure column leads the row, same edge every table-row expand in this app uses
+   (`ExtractionsPage`'s admin table) rather than living inside the Payment type cell: Dept
+   and Account are wide pickers here, so a control buried after them read as stuck in the
+   middle of the row instead of at an edge a reviewer would look for it on. Narrow — most
+   rows leave it empty — and unlabelled in the header, since its one glyph says what it does. */
+.arv-c-toggle {
+  width: 1.9rem;
+}
+
+/* Beats `.jv-table td` (0,1,1) on specificity rather than `!important` — the column is
+   narrow enough that the table's usual cell padding would nearly double its width. */
+.jv-table td.arv-c-toggle {
+  padding-left: 0.5rem;
+  padding-right: 0;
+}
+
+/* Nothing merged, so nothing can ever open: every Detail-mode document, and any Summary
+   day that settled a single scheme. Without this the table carries an empty 1.9rem gutter
+   down its whole left edge and reads as indented from the caption above it.
+
+   Zeroed rather than removed: the column is one `<td>` in five row species plus the
+   header. `.jv-num--empty`/`.arv-c-toggle` scope it to that specific `<td>` rather than a
+   bare `td:first-child` — `tfoot`'s `colSpan={4}` cell is *also* `:first-child` of its row
+   (there is no separate toggle cell in the total row), and a bare selector zeroed its
+   padding along with the real toggle column's, pulling "Balanced" flush against the
+   modal edge in every Detail-mode document instead of sitting flush with Dept above it. */
+.jv-table.arv-flat th:first-child,
+.jv-table.arv-flat td.arv-c-toggle:first-child,
+.jv-table.arv-flat td.jv-num--empty:first-child {
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Compact icon-only button for a row-scoped control, matching `.admin-icon-btn`'s bordered
+   affordance (same visual language, different sheet — this table is not in the admin
+   bundle). Icon swaps Right/Down rather than rotating, again to match that precedent. */
+.arv-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--border-hi, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast, 120ms) var(--ease, ease-out),
+    color var(--dur-fast, 120ms) var(--ease, ease-out),
+    border-color var(--dur-fast, 120ms) var(--ease, ease-out);
+}
+
+.arv-toggle-btn:hover {
+  border-color: var(--primary-mid, var(--primary));
+  color: var(--primary);
+  background: var(--primary-light);
+}
+
+.arv-toggle-btn:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Dept/Account lead, same as `.jv-table`'s own JV — one column rhythm for both review
+   panes. */
+.arv-c-dept {
+  width: 7rem;
+}
+
+.arv-c-acc {
+  width: 9.5rem;
+}
+
+/* The group the leg posts under — the row's subject, so it carries the weight the
+   constituent labels below it do not. */
+.arv-key {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* How many lines a merged leg folded in, read beside its own label — the toggle that
+   reveals them lives in its own column to the left now, so this is a count, not a control. */
+.arv-toggle-count {
+  font-weight: 500;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
+/* A label the key was folded from, in Summary. Its own row so its figure lands in the THB
+   column with the others; indented so it reads as belonging to the row above rather than
+   as another group. */
+.arv-row-src td {
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
+  color: var(--text-3);
+}
+
+/* Beats `.jv-table tbody tr + tr td` (0,2,2) on class count, so a constituent line does
+   not draw a rule between itself and the group it belongs to. */
+.jv-table tbody tr + tr.arv-row-src td {
+  border-top: 0;
+}
+
+.arv-src {
+  padding-left: 1.5rem;
+  font-size: 0.78rem;
+}
+
+/* Printed at zero, or a label the grouping did not claim: on the report, absent from the
+   journal. Quiet, because nothing is wrong — but present, because a table that silently
+   holds fewer lines than the paper is the one thing this pane exists to prevent. */
+.arv-row-zero td {
+  color: var(--text-3);
+}
+
+.arv-note {
+  margin-left: 0.5rem;
+  font-size: 0.7rem;
+  color: var(--text-3);
+}
+
+/* The three debit legs, now last. Ruled off with the raised border above the first of them
+   rather than the subtle one `tbody tr + tr td` already draws: they are a different kind of
+   row, not more of the report's own lines. */
+tr:not(.arv-row-control) + .arv-row-control td {
+  border-top: 1px solid var(--border-raised, var(--border));
+}
+
+.arv-row-control td {
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+
+/* Where these accounts are actually maintained. The dialog wore the settings page's own
+   `.ar-hint` for a while, which resolved only because `ARJvPreview` was mounted here and
+   imported that page's sheet — style-coverage catches exactly this. Same look, in the
+   sheet this dialog can reach.
+
+   A control, not a sentence with a link run on into it: the door to `ar-settings` used to
+   be a bare `<a>` falling back to the browser's unstyled default blue — low-contrast
+   enough on the dark theme's near-black card to read as no color at all, and the one link
+   in this dialog that skipped the app's own "never leave a link unstyled" rule.
+
+   Its first fix made it a `btn btn-outline btn-sm` pinned right, which overcorrected: that
+   put a bordered button directly above `.rd-actions`' Approve at the same edge, so the
+   last thing under the reviewer's eye before the button that posts was a button that
+   leaves (an in-app hash navigates in this tab — see `fixLinkProps` — so pressing it loses
+   the open document). It also borrowed `.rd-alert-fix`'s grammar, where "outline btn-sm
+   pinned right in a text row" means *this row is an alert and here is the fix*. Flush left
+   is still the rule below for the same reason — not a right-pinned decoy above Approve.
+
+   A bordered-aside-with-a-sentence version followed, one pass later: it fixed "orphaned,"
+   but the sentence it framed ("Detail/Summary, description, and clearing account are set
+   on that screen") was answering a question the button's own label already answers. It
+   dated from when payment-type mapping was briefly editable inline here and the sentence's
+   job was to say which *other* fields were not; `ARReviewPane` reverted to fully read-only
+   the same day, so by the time the sentence was merely tightened, nothing on this screen
+   was editable any more and it had nothing left to distinguish. Removed rather than
+   shortened again — the aside frame, the `Info` icon and the pill's own trailing arrow all
+   existed to hold or decorate that sentence, so all three went with it.
+
+   What is left is a link, named for its destination, needing no sentence and no icon in
+   front of it — `.btn.btn-outline.btn-sm`, the same class `.rd-alert-fix` above already
+   wears rather than a one-off pill, and right-aligned rather than flush left: shorter mouse
+   travel down to Approve/Reject than a left-aligned link would cost. This is the exact
+   position the very first fix (above) pinned right and then reverted for reading as a decoy
+   over Approve — reintroduced deliberately this time, now that there is no paragraph or icon
+   left to make the row read as an alert-with-a-fix. */
+.rd-ar-hint {
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--space-3) 0 0;
+}
+
 /* ── Footer ─────────────────────────────────────────────────────────────────── */
 
 /* Gap, not margins: the three things that can appear above the buttons (a Carmen
@@ -1247,6 +1482,21 @@
 
 .rd-blocked svg {
   flex: none;
+}
+
+/* Where the named setting is changed, for the one block reason that has such a place.
+   A link and not the banner's outline button: this sits inside a sentence, and a button
+   in the footer would compete with the two the footer already has. */
+.rd-blocked-fix {
+  flex: none;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rd-blocked-fix:hover {
+  color: var(--primary);
 }
 
 /* Two buttons, pushed apart: the destructive one on the left, the one that posts on the
@@ -1376,6 +1626,23 @@
 
   .jv-total td:first-child {
     display: block;
+  }
+
+  /* A constituent line becomes its own stacked card like every other row, so the indent
+     that tied it to the group above is now a hanging left edge with nothing to hang from.
+     The rule between them goes for the same reason it went on the wide layout. */
+  .arv-src {
+    padding-left: 0.65rem;
+  }
+
+  .jv-table tbody tr + tr.arv-row-src {
+    border-top: 0;
+  }
+
+  /* The row separator moves from the cell to the row at this width; the debit legs keep
+     their heavier edge by recolouring the first of them rather than adding a second. */
+  tr:not(.arv-row-control) + .arv-row-control {
+    border-top-color: var(--border-raised, var(--border));
   }
 
   .rd-actions {

@@ -30,7 +30,14 @@ import type { BankCode } from '@/shared/types/api'
  * Not in the `hooks/` barrel, the way `useReviewQueue` is not: the page imports it by
  * path, so a test that mocks the barrel for `useAccountingConfig` still gets this one.
  */
-export function useReviewDocument(id: string, onClose: () => void, onDone: () => void) {
+export function useReviewDocument(
+  id: string,
+  onClose: () => void,
+  onDone: () => void,
+  /** The queue row's `bank_code`, when the queue has the row — lets the GL rules load
+   *  alongside the document instead of after it. */
+  bankHint?: string | null
+) {
   const { t } = useT()
   const [doc, setDoc] = useState<ReviewDocumentDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -75,7 +82,23 @@ export function useReviewDocument(id: string, onClose: () => void, onDone: () =>
     totalDr: 0,
     totalCr: 0,
   })
-  const { config, loading: configLoading } = useAccountingConfig()
+  // Which bank this posts against: what ingest stored on the row, which since 2026-09-03
+  // is the document's own answer and not a filename rule's guess. Re-detecting in the
+  // browser first put a weaker reading of the same payload ahead of it —
+  // `detectBankFromExtracted` misses whenever the header carries only the short code. The
+  // detection stays as the fallback for rows written before that change. Until the
+  // document arrives, the queue row's copy of that same column stands in for it.
+  //
+  // Resolved once here: the JV pane and the config write already fell back this way, and
+  // the input-tax panel took the bare detection and so lost the vendor's registered
+  // identity — name, tax ID and address — for a bank sitting right there in the registry.
+  const bankCode = (doc?.bank_code || bank || bankHint || '') as BankCode | ''
+  // This bank's own GL rules: the JV is built from them and approve posts that JV.
+  // Until the document (or the queue's hint) names the bank there is nothing to ask for: wait,
+  // rather than read whichever bank the mapping page saved last.
+  const { config, loading: configLoading } = useAccountingConfig(bankCode || undefined, {
+    wait: loading && !bankCode,
+  })
 
   const [busy, setBusy] = useState(false)
   const [postError, setPostError] = useState<string | null>(null)
@@ -191,17 +214,6 @@ export function useReviewDocument(id: string, onClose: () => void, onDone: () =>
   }, [])
   const onJvState = useCallback((s: JvState) => setJv(s), [])
 
-  // Which bank this posts against: what ingest stored on the row, which since 2026-09-03
-  // is the document's own answer and not a filename rule's guess. Re-detecting in the
-  // browser first put a weaker reading of the same payload ahead of it —
-  // `detectBankFromExtracted` misses whenever the header carries only the short code. The
-  // detection stays as the fallback for rows written before that change.
-  //
-  // Resolved once here: the JV pane and the config write already fell back this way, and
-  // the input-tax panel took the bare detection and so lost the vendor's registered
-  // identity — name, tax ID and address — for a bank sitting right there in the registry.
-  const bankCode = (doc?.bank_code || bank || '') as BankCode | ''
-
   // The header and input-tax edits, named here rather than inlined in the page, so every
   // way the reviewer changes something marks the document dirty in one place.
   // Header corrections are the reviewer's work as much as an amount is — BU config, lost on
@@ -237,17 +249,59 @@ export function useReviewDocument(id: string, onClose: () => void, onDone: () =>
   // Read the same way JvHeaderCard displays it, so the field and the block agree.
   const effectivePrefix = prefix ?? ((config?.filePrefix as string) || '')
 
-  const blockReason = jv.reason
-    ? jv.reason === 'account'
-      ? t('review.jvBlankAccount')
-      : jv.reason === 'unbalanced'
-        ? t('review.jvOffBy', { diff: fmt(Math.abs(jv.totalDr - jv.totalCr)) })
-        : t('review.jvNothing')
-    : !effectivePrefix
-      ? t('review.prefixRequired')
-      : itxBlocked
-        ? t('review.itxBlocked')
-        : null
+  // AR reconciliation is a different document with a different JV, and the browser has no
+  // arithmetic builder for it: the server sent the rows, the server rebuilds the same rows
+  // on approve, and this screen only shows them — read-only, since 2026-09-16. Every GL
+  // account for this feature — the three fixed debit legs (decision #28) and the credit
+  // mappings — is a bank-level setting fixed on the mapping page, not a per-document
+  // correction. That is why the whole JvEditor / InputTaxPanel half of the modal is
+  // replaced rather than disabled, but `ARReviewPane` itself is not.
+  const arJv = doc?.doc_type === 'ar_reconcile' ? (doc.ar_jv ?? null) : null
+  const isAR = doc?.doc_type === 'ar_reconcile'
+
+  const arBlockReason = !arJv
+    ? t('review.arNotConfigured')
+    : arJv.unmapped.length > 0
+      ? t('review.arUnmapped', { types: arJv.unmapped.join(', ') })
+      : !arJv.balanced
+        ? t('review.jvOffBy', { diff: fmt(Math.abs(arJv.total_debit - arJv.total_credit)) })
+        : !effectivePrefix
+          ? t('review.prefixRequired')
+          : null
+
+  const blockReason = isAR
+    ? arBlockReason
+    : jv.reason
+      ? jv.reason === 'account'
+        ? t('review.jvBlankAccount')
+        : jv.reason === 'unbalanced'
+          ? t('review.jvOffBy', { diff: fmt(Math.abs(jv.totalDr - jv.totalCr)) })
+          : t('review.jvNothing')
+      : !effectivePrefix
+        ? t('review.prefixRequired')
+        : itxBlocked
+          ? t('review.itxBlocked')
+          : null
+
+  // The journal book is BU config, and on the AR path the field that used to hold it is
+  // read-only — so the sentence naming it has to come with the door. Same `<a>` shape the
+  // stop-reason banner uses, rather than a second kind of link on the same dialog. On the
+  // fee-invoice path the picker is right there in the header and a link would be noise.
+  const prefixFix =
+    isAR && blockReason === t('review.prefixRequired') ? { href: '#/CreditCardOCR/mapping' } : null
+
+  // Two doors behind one button, picked by what is wrong. No JV at all means this bank has
+  // no active settlement rule — the switch is the rule's document type on the AI JV
+  // Automation settings screen (decision #31, moved in-app by #34), so that is where it
+  // opens. Otherwise the gap is an account, fixed on the mapping page, and every value
+  // there is per bank, so the door carries this document's.
+  const arSettingsLink = {
+    href: !arJv
+      ? '#/CreditCardOCR/email-settings'
+      : bankCode
+        ? `#/CreditCardOCR/mapping?bank=${encodeURIComponent(bankCode)}`
+        : '#/CreditCardOCR/mapping',
+  }
 
   async function approve() {
     if (!doc) return
@@ -264,7 +318,9 @@ export function useReviewDocument(id: string, onClose: () => void, onDone: () =>
     // there, carried no flag, and auto-posted on something no human had read. `overrides`
     // arrives seeded with what the AI proposed, so pressing Approve is what turns it into
     // the BU's rule — once per payment type, by a person, which is the whole point.
-    if (ruleCount) {
+    // Not on the AR path: its accounts are the bank's settlement mapping, fixed on the
+    // mapping page, and nothing on this screen edits them.
+    if (ruleCount && !isAR) {
       try {
         await patchAccountingConfig({
           mappings: Object.fromEntries(
@@ -299,8 +355,16 @@ export function useReviewDocument(id: string, onClose: () => void, onDone: () =>
             total: d.Total || '',
           })),
         },
-        rows: jv.rows,
-        post_input_tax: postInputTax,
+        // AR: the server rebuilds these from the BU's current mapping and ignores what is
+        // sent, so sending the rows it just handed us keeps the request honest rather
+        // than pretending the browser composed them.
+        rows: isAR ? (arJv?.rows ?? []) : jv.rows,
+        // AR always attempts it (decision #28): since the fee invoice that used to file
+        // this claim is no longer processed once AR reconciliation covers a bank, the
+        // settlement report claims the commission's VAT itself. No panel offers a
+        // reviewer a choice here the way `postInputTax` does for a fee invoice, so this
+        // is unconditional — matching the unattended path's own default.
+        post_input_tax: isAR ? true : postInputTax,
         // Omitted entirely when nothing was touched, so the server derives the record the
         // same way the unattended path does.
         input_tax: Object.keys(itx).length ? itx : undefined,
@@ -372,6 +436,11 @@ export function useReviewDocument(id: string, onClose: () => void, onDone: () =>
     bankCode,
     effectivePrefix,
     blockReason,
+    isAR,
+    arJv,
+    arBlockReason,
+    prefixFix,
+    arSettingsLink,
     requestClose,
     updateHeader,
     updateAmount,

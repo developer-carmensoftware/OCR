@@ -33,6 +33,12 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_EXTENSIONS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".heic")
 
+# A sidecar rides beside the documents in a message or zip but is never one itself: no
+# ledger row, no credit, never reaches `match_rules` or an LLM. Today this is exactly the
+# KBANK settlement zip's `TAX_SUMMARY_BY_TAX_ID_CSV_*` — see
+# `services/kbank_tax_summary.py`, the only reader of what this collects.
+SIDECAR_EXTENSIONS = (".csv",)
+
 # Socket timeout for every IMAP call — see `_connect`. Generous enough for a slow FETCH
 # of a 5 MB attachment, short enough that a dead mailbox frees the thread this minute
 # rather than never.
@@ -97,31 +103,42 @@ def _decode(value: str | None) -> str:
         return value
 
 
-def _unzip(archive_name: str, blob: bytes, room: int) -> list[tuple[str, bytes]]:
-    """The documents inside a bank's zip, as if each had been attached on its own.
+def _unzip(
+    archive_name: str, blob: bytes, room: int, sidecar_room: int
+) -> tuple[list[tuple[str, bytes]], list[tuple[str, bytes]]]:
+    """`(documents, sidecars)` — the files inside a bank's zip, as if each had been
+    attached on its own.
 
     Banks deliver this way — the measured example is one `.zip` holding the e-tax
     invoice PDF, a summary PDF and a CSV. Opening it here rather than deeper in the
     pipeline is what keeps the rest of the feature unchanged: the BU's
-    `filename_patterns` then match the *inner* names, so the customer decides which of
-    them is a document worth a credit, exactly as they do for a direct attachment.
+    `filename_patterns` then match the *inner* document names, so the customer decides
+    which of them is worth a credit, exactly as for a direct attachment. A sidecar
+    (`SIDECAR_EXTENSIONS`) never reaches that matching at all — it has its own room
+    budget, capped separately so it can never count against, or be crowded out by, the
+    documents sharing the same archive.
 
     Only the archive is opened; a zip inside the zip is left alone (ponytail: no bank
     has been seen doing that, and recursion is where zip bombs live).
     """
     max_bytes = settings.max_file_size_mb * 1024 * 1024
     out: list[tuple[str, bytes]] = []
+    sidecars: list[tuple[str, bytes]] = []
     try:
         with zipfile.ZipFile(io.BytesIO(blob)) as archive:
             for info in archive.infolist():
-                if len(out) >= room:
-                    break
+                if info.is_dir():
+                    continue
                 # Zip entries carry paths; the rules match on a filename.
                 name = info.filename.replace("\\", "/").rsplit("/", 1)[-1]
-                if info.is_dir() or not name.lower().endswith(ALLOWED_EXTENSIONS):
+                is_sidecar = name.lower().endswith(SIDECAR_EXTENSIONS)
+                if is_sidecar:
+                    if len(sidecars) >= sidecar_room:
+                        continue
+                elif len(out) >= room or not name.lower().endswith(ALLOWED_EXTENSIONS):
                     continue
                 # Declared size, checked before reading: this is the zip-bomb guard, and
-                # it is the same ceiling the mail itself is held to.
+                # it is the same ceiling the mail itself is held to — sidecars included.
                 if info.file_size > max_bytes:
                     logger.warning("[email] %s in %s exceeds the size cap", name, archive_name)
                     continue
@@ -133,19 +150,24 @@ def _unzip(archive_name: str, blob: bytes, room: int) -> list[tuple[str, bytes]]
                     logger.warning("[email] Could not read %s in %s: %s", name, archive_name, exc)
                     continue
                 if data:
-                    out.append((name, data))
+                    (sidecars if is_sidecar else out).append((name, data))
     except (zipfile.BadZipFile, OSError) as exc:
         logger.warning("[email] %s is not a readable zip: %s", archive_name, exc)
-    return out
+    return out, sidecars
 
 
-def _attachments(msg: Message) -> tuple[list[tuple[str, bytes]], list[str]]:
-    """`(accepted, rejected)` — the parts we can read, and the names of those we cannot.
+def _attachments(
+    msg: Message,
+) -> tuple[list[tuple[str, bytes]], list[str], list[tuple[str, bytes]]]:
+    """`(accepted, rejected, sidecars)` — the documents, the names we could not read, and
+    the non-document files (`SIDECAR_EXTENSIONS`) that rode along with them.
 
     Every allowed-extension part, capped. `walk()` recurses into a message/rfc822 part,
     so a forward-as-attachment still yields the inner PDF under its own name. A `.zip` is
     expanded in place — see `_unzip`. It is not itself a document, so it never reaches the
-    cap as one; its contents do.
+    cap as one; its contents do. Neither does a sidecar: it has its own cap, entirely
+    separate from `accepted`'s, so a CSV can never crowd out — or be crowded out by — a
+    document sharing the same message.
 
     **`rejected` is why a customer who forwards an `.xlsx` gets an answer.** Returning
     only the accepted list made a mail whose every attachment is unsupported indis-
@@ -154,11 +176,12 @@ def _attachments(msg: Message) -> tuple[list[tuple[str, bytes]], list[str]]:
     when they asked where their document went. A part with no filename at all is still a
     free silent skip: a bank's "your statement is ready" notice must not fill the ledger.
 
-    A zip that yielded nothing usable is reported under its own name — one answer for
-    both "an archive of CSVs" and "an archive we could not open".
+    A zip that yielded nothing usable at all — no document, no sidecar — is reported
+    under its own name.
     """
     out: list[tuple[str, bytes]] = []
     rejected: list[str] = []
+    sidecars: list[tuple[str, bytes]] = []
     for part in msg.walk():
         if part.get_content_maintype() == "multipart":
             continue
@@ -166,7 +189,8 @@ def _attachments(msg: Message) -> tuple[list[tuple[str, bytes]], list[str]]:
         if not filename:
             continue
         is_zip = filename.lower().endswith(".zip")
-        if not is_zip and not filename.lower().endswith(ALLOWED_EXTENSIONS):
+        is_sidecar = filename.lower().endswith(SIDECAR_EXTENSIONS)
+        if not is_zip and not is_sidecar and not filename.lower().endswith(ALLOWED_EXTENSIONS):
             rejected.append(filename)
             continue
         payload = part.get_payload(decode=True)
@@ -174,16 +198,29 @@ def _attachments(msg: Message) -> tuple[list[tuple[str, bytes]], list[str]]:
             rejected.append(filename)
             continue
         if is_zip:
-            inner = _unzip(filename, payload, MAX_ATTACHMENTS_PER_MESSAGE - len(out))
-            out.extend(inner)
-            if not inner:
+            inner_docs, inner_sidecars = _unzip(
+                filename,
+                payload,
+                MAX_ATTACHMENTS_PER_MESSAGE - len(out),
+                MAX_ATTACHMENTS_PER_MESSAGE - len(sidecars),
+            )
+            out.extend(inner_docs)
+            sidecars.extend(inner_sidecars)
+            if not inner_docs and not inner_sidecars:
                 rejected.append(filename)
+        elif is_sidecar:
+            if len(sidecars) < MAX_ATTACHMENTS_PER_MESSAGE:
+                sidecars.append((filename, payload))
         else:
             out.append((filename, payload))
         if len(out) >= MAX_ATTACHMENTS_PER_MESSAGE:
             logger.warning("[email] More than %d attachments — rest ignored", len(out))
             break
-    return out[:MAX_ATTACHMENTS_PER_MESSAGE], rejected[:MAX_ATTACHMENTS_PER_MESSAGE]
+    return (
+        out[:MAX_ATTACHMENTS_PER_MESSAGE],
+        rejected[:MAX_ATTACHMENTS_PER_MESSAGE],
+        sidecars[:MAX_ATTACHMENTS_PER_MESSAGE],
+    )
 
 
 def unique_names(names: list[str]) -> list[str]:
@@ -465,7 +502,7 @@ def fetch_pending(limit: int) -> tuple[list[dict[str, Any]], int]:
                 continue
             try:
                 msg = email.message_from_bytes(fetched[0][1])
-                accepted, rejected = _attachments(msg)
+                accepted, rejected, sidecars = _attachments(msg)
             except Exception as exc:  # noqa: BLE001 — one unparseable mail is not an outage
                 # Nothing downstream can do anything with it, and leaving it pending would
                 # put it at the head of every future poll. This is the only place the flag
@@ -501,6 +538,11 @@ def fetch_pending(limit: int) -> tuple[list[dict[str, Any]], int]:
                     # The names we refused. Carried so a mail whose every attachment is
                     # unsupported still leaves a ledger row — see `_process_message`.
                     "rejected": rejected,
+                    # Non-document files — today only the KBANK settlement zip's CSV.
+                    # Never a ledger row, never charged: `_process_message` parses these
+                    # once per message via `kbank_tax_summary.parse` and hands the result
+                    # to whichever attachment can use it.
+                    "sidecars": sidecars,
                     # Empty for everything that is not a Gmail confirmation — the only
                     # message whose body we have any use for.
                     "body": _confirmation_body(msg),

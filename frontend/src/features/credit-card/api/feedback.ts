@@ -10,15 +10,13 @@ const FIELD_NAME_MAP: Record<string, string> = {
   DocNo: 'doc_no',
   MerchantName: 'merchant_name',
   MerchantId: 'merchant_id',
+  BankCompanyName: 'bank_company_name',
+  BranchNo: 'branch_no',
   Transaction: 'transaction',
   PayAmt: 'pay_amt',
   CommisAmt: 'commis_amt',
   TaxAmt: 'tax_amt',
   Total: 'total',
-}
-
-function mapFieldName(key: string): string {
-  return FIELD_NAME_MAP[key] || key
 }
 
 export interface Correction {
@@ -32,24 +30,33 @@ export async function logCorrections(
   bankCode: string,
   corrections: Correction[]
 ): Promise<void> {
-  if (!cardId || !bankCode || !corrections.length) return
+  // Only fields the server's `FieldName` enum knows. It validates the batch as a whole, so
+  // one unmapped key (BranchNo, until 2026-09-30) 422'd every correction sent beside it.
+  const known = corrections.filter(c =>
+    Object.prototype.hasOwnProperty.call(FIELD_NAME_MAP, c.fieldName)
+  )
+  if (!cardId || !bankCode || !known.length) return
 
   const res = await apiFetch(API.feedback.corrections, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      corrections: corrections.map(({ fieldName, originalValue, correctedValue }) => ({
+      corrections: known.map(({ fieldName, originalValue, correctedValue }) => ({
         doc_no: cardId,
         bank_code: bankCode,
-        field_name: mapFieldName(fieldName),
+        field_name: FIELD_NAME_MAP[fieldName],
         original_value: String(originalValue ?? ''),
         corrected_value: String(correctedValue ?? ''),
       })),
     }),
   })
+  if (!res.ok) {
+    console.error(`[feedback] Corrections rejected (${res.status})`)
+    return
+  }
 
   const data = (await res.json().catch(() => ({}))) as { saved?: number }
-  console.warn(`[feedback] ✓ Logged ${data.saved ?? '?'}/${corrections.length} corrections`)
+  console.warn(`[feedback] ✓ Logged ${data.saved ?? '?'}/${known.length} corrections`)
 }
 
 export function diffCorrections(

@@ -1,12 +1,12 @@
 import { parseNum, round2 } from '@/shared/lib/format'
 import { codeToSource, descriptionForBank } from './bankTransforms'
 import { normalizeYearToCE } from '@/shared/lib/date'
+import type { TKey } from '@/i18n/dict'
 
-/** The four accounting-config fields a JV header needs, already normalised. */
+/** The three accounting-config fields a JV header needs, already normalised. */
 export interface GljvConfig {
   filePrefix?: string
   fileSource?: string
-  description?: string
   bankDescriptions?: Record<string, string>
 }
 
@@ -213,6 +213,55 @@ export function applyJvAmount<T extends Detail>(details: T[], row: JvRow, next: 
   return out
 }
 
+/** The saved description with its three tags filled — and nothing added: the date is
+ *  there only where the BU put `{Settlement_Date}` (no auto ` - docDate` since
+ *  2026-09-30). Twin of `render_description` in credit_card/jv.py; the JV, the
+ *  input-tax record and every preview of them go through this one function. */
+export function renderDescription(
+  base: string,
+  docDate: string | undefined,
+  docNo: string | undefined,
+  bankName: string | undefined
+): string {
+  return (base || '')
+    .split('{Settlement_Date}')
+    .join(docDate || '')
+    .split('{Tax_Invoice_No}')
+    .join(docNo || '')
+    .split('{Bank_Name}')
+    .join(bankName || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(' ')
+}
+
+/** The three fields a description can carry, in the order the chips show them. */
+export const DESCRIPTION_TAGS: ReadonlyArray<{ tag: string; labelKey: TKey }> = [
+  { tag: '{Settlement_Date}', labelKey: 'ar.tagSettlementDate' },
+  { tag: '{Tax_Invoice_No}', labelKey: 'ar.tagTaxInvoiceNo' },
+  { tag: '{Bank_Name}', labelKey: 'ar.tagBankName' },
+]
+
+const TAG_RE = /\{(?:Settlement_Date|Tax_Invoice_No|Bank_Name)\}/g
+const TAG_WITH_SPACE_RE = /\s?\{(?:Settlement_Date|Tax_Invoice_No|Bank_Name)\}/g
+
+/** A saved description as the screens edit it: the free text, and the fields attached
+ *  after it. The tokens never sit in a text box — one stray backspace (`{Settlement_Dat`)
+ *  would post the broken token to Carmen verbatim. `text` is deliberately untrimmed:
+ *  the box is controlled from the stored string, so trimming would eat a space as it is
+ *  typed. A token found mid-text (saved before 2026-09-30) is lifted out the same way and
+ *  lands after the text on the next edit. */
+export function splitDescription(saved: string): { text: string; tags: string[] } {
+  const s = saved || ''
+  return { text: s.replace(TAG_WITH_SPACE_RE, ''), tags: [...new Set(s.match(TAG_RE) ?? [])] }
+}
+
+/** Inverse of `splitDescription`: `join(split(s))` round-trips any value it produced.
+ *  A doubled space ('test ' + tag) is harmless — rendering collapses whitespace. */
+export function joinDescription(text: string, tags: string[]): string {
+  return text ? text + tags.map(t => ` ${t}`).join('') : tags.join(' ')
+}
+
 /**
  * JV rows + accounting config → the exact Carmen `gljv` body the wizard posts.
  *
@@ -227,13 +276,13 @@ export function applyJvAmount<T extends Detail>(details: T[], row: JvRow, next: 
  */
 export function buildGljvPayload(
   rows: JvRow[],
-  opts: { docDate?: string; bankCode?: string; config: GljvConfig }
+  opts: { docDate?: string; docNo?: string; bankCode?: string; config: GljvConfig }
 ): Record<string, unknown> {
-  const { docDate, bankCode, config } = opts
-  // Per-bank wording when the BU set one, else the BU's single description — the
-  // input-tax record built from the same statement resolves it the same way, so the
-  // two documents never disagree about what they are.
-  const base = descriptionForBank(config.description, config.bankDescriptions, bankCode)
+  const { docDate, docNo, bankCode, config } = opts
+  // This bank's own wording, or none — the input-tax record built from the same
+  // statement resolves it the same way, so the two documents never disagree about what
+  // they are.
+  const base = descriptionForBank(config.bankDescriptions, bankCode)
 
   return {
     JvhSeq: -1,
@@ -244,7 +293,7 @@ export function buildGljvPayload(
     // fall back to stored config only when the bank is unknown.
     JvhSource: (bankCode && codeToSource(bankCode)) || config.fileSource || '',
     Status: 'Draft',
-    Description: base ? `${base}${docDate ? ` - ${docDate}` : ''}` : '',
+    Description: renderDescription(base, docDate, docNo, bankCode),
     // Drop display-only zero legs (e.g. gateway net=0.00 shown in Step 3 for a
     // standard layout) — never post empty GL lines to Carmen.
     Detail: rows

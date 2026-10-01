@@ -3,7 +3,8 @@ import { suggestMapping, suggestPaymentTypes } from '@/features/credit-card/api/
 import { accountName, mergeSuggestion } from '@/shared/lib/deptAccounts'
 import type { FieldMapping } from '@/shared/types/api'
 import type { MasterAccount, MasterDepartment } from './useMappingData'
-import type { ModalConfig } from '@/shared/hooks/useModal'
+import { useT } from '@/i18n/LanguageContext'
+import { showToast } from '@/shared/lib/toast'
 
 export type SuggestionSource = 'ai' | 'history' | null | undefined
 
@@ -22,7 +23,6 @@ export interface MappingSuggestionsProps {
   paymentAmount: Record<string, FieldMapping>
   activeScan: { paymentTypes: Set<string> }
   customPaymentTypes: string[]
-  setModalConfig: (config: ModalConfig) => void
 }
 
 export interface MappingSuggestionsHook {
@@ -58,8 +58,8 @@ export function useMappingSuggestions({
   paymentAmount,
   activeScan,
   customPaymentTypes,
-  setModalConfig,
 }: MappingSuggestionsProps): MappingSuggestionsHook {
+  const { t } = useT()
   const [suggestionMeta, setSuggestionMeta] = useState<Record<MainMappingKey, SuggestionSource>>({
     commission: null,
     tax: null,
@@ -87,13 +87,9 @@ export function useMappingSuggestions({
         !(mainSuggestions[f] && mainSuggestions[f]?.source === 'history')
     )
 
+    // Toasts, like the settlement list's: a modal here stacked over the payment-type dialog.
     if (fieldsToFetch.length === 0) {
-      setModalConfig({
-        show: true,
-        title: '✓ All Mappings Completed',
-        message: 'All values have been successfully mapped. You can proceed to the next step.',
-        type: 'success',
-      })
+      showToast(t('cc.aiMainAllMapped'), 'info')
       return
     }
 
@@ -124,7 +120,8 @@ export function useMappingSuggestions({
         if (sm.dept || sm.acc) fromAI[f] = { dept: sm.dept || '', acc: sm.acc || '' }
       })
 
-      if (Object.keys(fromAI).length > 0) {
+      if (Object.keys(fromAI).length === 0) showToast(t('ar.toastNoSuggestion'), 'info')
+      else {
         setMainSuggestions(prev => {
           const next = { ...prev }
           ;(Object.entries(fromAI) as [MainMappingKey, Suggestion][]).forEach(([k, v]) => {
@@ -146,6 +143,7 @@ export function useMappingSuggestions({
       }
     } catch (err) {
       console.error('[Mapping] AI suggest failed:', err)
+      showToast(t('cc.aiSuggestFailed'), 'error')
     } finally {
       setSuggestLoading(false)
     }
@@ -187,12 +185,7 @@ export function useMappingSuggestions({
 
     if (needsAI.length === 0) {
       setPaymentSuggestLoading(false)
-      setModalConfig({
-        show: true,
-        title: '✓ All Mappings Completed',
-        message: 'All Payment Types have been successfully mapped.',
-        type: 'success',
-      })
+      showToast(t('ar.toastAllMapped'), 'info')
       return
     }
 
@@ -214,8 +207,10 @@ export function useMappingSuggestions({
           newSuggestions[t] = { dept: val.dept || null, acc: val.acc || null, source: 'ai' }
       })
       setPaymentSuggestions(prev => ({ ...prev, ...newSuggestions }))
+      if (Object.keys(newSuggestions).length === 0) showToast(t('ar.toastNoSuggestion'), 'info')
     } catch (err) {
       console.error('AI payment type suggest failed:', err)
+      showToast(t('cc.aiSuggestFailed'), 'error')
     } finally {
       setPaymentSuggestLoading(false)
     }

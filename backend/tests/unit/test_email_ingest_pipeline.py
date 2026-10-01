@@ -48,7 +48,7 @@ class _FakeDB:
     """In-memory stand-in for AsyncSession: real object identity through
     add()/get(), configurable commit() failure for the dedupe path."""
 
-    def __init__(self, fail_commit_on_call: int | None = None, scalar=None):
+    def __init__(self, fail_commit_on_call: int | None = None, scalar=None, pending_payloads=None):
         self.added: list = []
         self._fail_commit_on_call = fail_commit_on_call
         self._commit_calls = 0
@@ -61,6 +61,11 @@ class _FakeDB:
         # tenant, in call order); a single value repeats for every call, unchanged from
         # before this had callers that needed more than one answer.
         self._scalar = scalar
+        # `_already_pending`'s own query: the `review_payload` dicts of every row already
+        # matching (tenant, status, bank_code, doc_no) — everything it then filters by
+        # `doc_type` in Python. Default empty, matching the old `scalar=None` default it
+        # replaced: "nothing else in the queue for this key".
+        self._pending_payloads = pending_payloads or []
 
     def add(self, obj):
         self.added.append(obj)
@@ -69,6 +74,18 @@ class _FakeDB:
         if isinstance(self._scalar, list):
             return self._scalar.pop(0) if self._scalar else None
         return self._scalar
+
+    async def execute(self, *_a, **_kw):
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = self._pending_payloads
+        # Same "None is the only safe default" rule as `_scalar` above, extended to the
+        # other two access patterns this fake now has to support: a plain MagicMock's
+        # `.scalars().first()`/`.scalar_one_or_none()` are themselves truthy Mocks, which
+        # would tell an unrelated caller (e.g. `_ar_setting`, `_settlement_recently_posted`
+        # on the ordinary fee-invoice path) that a row exists when none was ever queued.
+        result.scalars.return_value.first.return_value = None
+        result.scalar_one_or_none.return_value = None
+        return result
 
     async def commit(self):
         self._commit_calls += 1
@@ -159,6 +176,8 @@ class _Patches:
         conflict: str | None = None,
         tax_note: str | None = None,
         extract_side_effect=None,
+        open_password: str | None = None,
+        open_side_effect=None,
         possibly_posted: str | None = None,
     ):
         self.extracted = extracted
@@ -170,7 +189,9 @@ class _Patches:
         self.mark_submitted = AsyncMock()
         self.suggest = AsyncMock(return_value=suggested or {}, side_effect=suggest_side_effect)
         self.extract = AsyncMock(return_value=extracted, side_effect=extract_side_effect)
-        self.open_or_fail = AsyncMock(return_value=None)
+        # The password that unlocked the file, or a _Skip for one nothing opened. Both
+        # sit above `consume_document`, so neither costs the customer anything.
+        self.open_or_fail = AsyncMock(return_value=open_password, side_effect=open_side_effect)
         self.foreign_tax_id = AsyncMock(return_value=conflict)
         self.possibly_posted = AsyncMock(return_value=possibly_posted)
         self.mark_token_unverified = AsyncMock()
@@ -227,6 +248,8 @@ async def _run(
     carmen_token="dev-tok",
     carmen_uri="https://hotel.carmenwork.com",
     auto_post=True,
+    passwords=None,
+    tax_summary=None,
     **patch_kwargs,
 ):
     """Runs `_process_attachment` — the whole per-attachment pipeline for a tenant the
@@ -253,10 +276,11 @@ async def _run(
             filename=filename,
             blob=blob,
             rules=RULES if rules is None else rules,
-            passwords=[],
+            passwords=passwords or [],
             carmen_token=carmen_token,
             carmen_uri=carmen_uri,
             auto_post=auto_post,
+            tax_summary=tax_summary,
         )
     return outcome, p
 
@@ -1806,8 +1830,9 @@ def _mime(parts):
 
 
 def _accepted(msg) -> list[str]:
-    """The filenames `_attachments` kept. It returns `(accepted, rejected)` — see the
-    unsupported-attachment tests below for the other half."""
+    """The filenames `_attachments` kept as documents. It returns
+    `(accepted, rejected, sidecars)` — see the unsupported-attachment and sidecar tests
+    below for the other two."""
     return [f for f, _ in imap._attachments(msg)[0]]
 
 
@@ -1833,7 +1858,7 @@ def test_a_forward_as_attachment_still_yields_the_inner_pdf():
     outer = _mime([])
     outer.attach(MIMEMessage(inner))
 
-    found, _ = imap._attachments(outer)
+    found, _, _ = imap._attachments(outer)
     assert [f for f, _ in found] == ["MDR-aug.pdf"]
     assert found[0][1] == b"%PDF-1.4 inner"
 
@@ -1855,10 +1880,11 @@ def _zip(entries, **kwargs):
 
 def test_a_bank_zip_is_expanded_into_the_documents_inside_it():
     """Measured against a real delivery: one `.zip` holding the e-tax invoice PDF, a
-    summary PDF and a CSV. The inner names are what the BU's `filename_patterns` see,
-    so the customer decides which of them is worth a credit — same as a direct
+    summary PDF and a CSV. The inner document names are what the BU's `filename_patterns`
+    see, so the customer decides which of them is worth a credit — same as a direct
     attachment. Before this, the whole mail counted as "no attachment" and vanished
-    with no ledger row at all."""
+    with no ledger row at all. The CSV is neither of the two documents — see the sidecar
+    test below for where it actually goes."""
     blob = _zip(
         [
             ("E-TAX_INVOICE_CARD_451005282039001.PDF", b"%PDF-1.4 invoice"),
@@ -1866,12 +1892,49 @@ def test_a_bank_zip_is_expanded_into_the_documents_inside_it():
             ("KB1P554V2_SUM_451005282039001.pdf", b"%PDF-1.4 summary"),
         ]
     )
-    found, _ = imap._attachments(_mime([("451005282039001_Card_20260721.zip", blob)]))
+    found, _, _ = imap._attachments(_mime([("451005282039001_Card_20260721.zip", blob)]))
     assert [f for f, _ in found] == [
         "E-TAX_INVOICE_CARD_451005282039001.PDF",
         "KB1P554V2_SUM_451005282039001.pdf",
     ]
     assert found[0][1] == b"%PDF-1.4 invoice"
+
+
+def test_a_csv_inside_the_zip_is_a_sidecar_not_a_document():
+    """The CSV from the real delivery above: never a document, never ledgered, never
+    counted against the attachment cap — `email_ingest_service.py` is the only reader,
+    via `kbank_tax_summary.parse`."""
+    blob = _zip(
+        [
+            ("E-TAX_INVOICE_CARD_451005282039001.PDF", b"%PDF-1.4 invoice"),
+            ("TAX_SUMMARY_BY_TAX_ID_CSV_0835553001610.csv", b"\xef\xbb\xbfM,1"),
+            ("KB1P554V2_SUM_451005282039001.pdf", b"%PDF-1.4 summary"),
+        ]
+    )
+    found, rejected, sidecars = imap._attachments(
+        _mime([("451005282039001_Card_20260721.zip", blob)])
+    )
+    assert [f for f, _ in sidecars] == ["TAX_SUMMARY_BY_TAX_ID_CSV_0835553001610.csv"]
+    assert sidecars[0][1] == b"\xef\xbb\xbfM,1"
+    assert "TAX_SUMMARY_BY_TAX_ID_CSV_0835553001610.csv" not in [f for f, _ in found]
+    assert rejected == []  # a sidecar is not an unsupported file either
+
+
+def test_a_bare_csv_attachment_is_also_a_sidecar():
+    found, rejected, sidecars = imap._attachments(_mime([("summary.csv", b"a,b\n1,2")]))
+    assert found == [] and rejected == []
+    assert [f for f, _ in sidecars] == ["summary.csv"]
+
+
+def test_sidecars_never_count_against_the_document_cap():
+    """A zip with more documents than room, plus a CSV — the CSV must still come
+    through: it has its own room budget, entirely separate from `room`."""
+    entries = [(f"doc{i}.pdf", b"%PDF-1.4") for i in range(imap.MAX_ATTACHMENTS_PER_MESSAGE + 5)]
+    entries.append(("data.csv", b"a,b\n1,2"))
+    blob = _zip(entries)
+    found, _, sidecars = imap._attachments(_mime([("mail.zip", blob)]))
+    assert len(found) == imap.MAX_ATTACHMENTS_PER_MESSAGE
+    assert [f for f, _ in sidecars] == ["data.csv"]
 
 
 def test_zip_entries_keep_only_their_filename():
@@ -1898,7 +1961,7 @@ def test_a_zip_we_cannot_open_is_logged_not_raised():
     """A poll carrying real invoices must not die on one corrupt archive — but it is
     reported under the archive's own name, or the customer who forwarded it gets no
     answer at all."""
-    accepted, rejected = imap._attachments(_mime([("broken.zip", b"PK\x03\x04 not really")]))
+    accepted, rejected, _ = imap._attachments(_mime([("broken.zip", b"PK\x03\x04 not really")]))
     assert accepted == []
     assert rejected == ["broken.zip"]
 
@@ -2842,7 +2905,7 @@ async def test_an_unnumbered_document_is_never_called_a_duplicate():
     """Two statements the model could not read a document number off are not evidence of
     anything. Matching them would park the second one for a reason its reviewer cannot
     check."""
-    assert await ledger._already_pending(TENANT_ID, "KTC", None) is False
+    assert await ledger._already_pending(TENANT_ID, "KTC", None, "fee_invoice") is False
 
 
 # ── Approve and reject: the human's two verbs ─────────────────────────────────

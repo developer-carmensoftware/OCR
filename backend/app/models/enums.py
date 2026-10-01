@@ -49,6 +49,8 @@ class FieldName(str, Enum):
     doc_no = "doc_no"
     merchant_name = "merchant_name"
     merchant_id = "merchant_id"
+    bank_company_name = "bank_company_name"
+    branch_no = "branch_no"
     transaction = "transaction"
     pay_amt = "pay_amt"
     commis_amt = "commis_amt"

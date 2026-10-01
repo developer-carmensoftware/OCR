@@ -80,12 +80,17 @@ def extract_pages_as_pdf(
     document — instead of a rasterised PNG that degrades dense tables. Pages are
     kept in the requested order, de-duplicated, bounds-checked, and capped at
     MAX_PAGES_PER_CALL. Encrypted PDFs are unlocked then saved decrypted.
+
+    Indices count from the end when negative, as Python's do: -1 is the last page.
+    The KBANK settlement report puts its totals there and the caller (email ingest)
+    has no page count to subtract from.
     """
     src = open_pdf(pdf_bytes, password)
     try:
         seen: set[int] = set()
         keep: list[int] = []
-        for idx in page_indices:
+        for raw_idx in page_indices:
+            idx = raw_idx + src.page_count if raw_idx < 0 else raw_idx
             if 0 <= idx < src.page_count and idx not in seen:
                 seen.add(idx)
                 keep.append(idx)

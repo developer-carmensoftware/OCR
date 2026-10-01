@@ -2,6 +2,11 @@ import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
 import DateInput from '@/shared/components/common/DateInput'
 import { useT } from '@/i18n/LanguageContext'
 import { useGlMasters } from '@/features/credit-card/hooks/mapping/useGlMasters'
+import {
+  DESCRIPTION_TAGS,
+  joinDescription,
+  splitDescription,
+} from '@/features/credit-card/lib/ccJv'
 import type { BankCode } from '@/shared/types/api'
 
 /**
@@ -21,15 +26,15 @@ import type { BankCode } from '@/shared/types/api'
  * rule and the parent persists it on approve — the same contract the GL pickers have. Two
  * consequences worth knowing:
  *
- * - The input edits the description's **base**. What posts is `base - docDate`, and the
- *   date is machine-appended per document and is not rendered here — it is the document
- *   date already on screen two fields along, and what this system appends on post is not
- *   news to the person approving.
- * - **The description is per bank**, as it is in the wizard's config editor. The box holds
- *   this bank's own entry and the BU-wide sentence is only the placeholder, so a correction
- *   made about one bank's statements cannot rewrite the wording for every other bank the BU
- *   receives. The parent names the bank on save, and `patch_config` writes that entry —
- *   which is also the one `description_for` prefers when the JV is built.
+ * - The input edits the description's **text** only. The fields attached after it
+ *   (`{Settlement_Date}` and friends, picked on the Mapping page) are kept as they are and
+ *   named beside the box, never typed in it — a stray backspace would post a broken token.
+ *   What posts is that text with the fields filled from this document (`renderDescription`);
+ *   nothing else is appended, so no date field means no date (2026-09-30).
+ * - **The description is per bank**, as it is in the wizard's config editor — and since
+ *   2026-09-30 there is nothing else: no BU-wide sentence behind it (decision-log #33). The
+ *   parent names the bank on save, and `patch_config` writes that entry, the only one
+ *   `description_for` reads when the JV is built.
  */
 interface Props {
   headerData: Record<string, string>
@@ -41,6 +46,42 @@ interface Props {
   description: string | null
   onPrefix: (value: string) => void
   onDescription: (value: string) => void
+  /**
+   * Show the four fields as values rather than controls.
+   *
+   * For the AR settlement path, where none of them is editable in any sense that reaches
+   * Carmen: the server rebuilds that JV from the document on approve, so a corrected
+   * document number changed nothing that posted; and the
+   * parent skips the config write entirely on that path, so a retyped prefix or
+   * description was dropped on submit. Four inputs that quietly discard what is typed into
+   * them are worse than four values.
+   */
+  readOnly?: boolean
+  /**
+   * The description that will actually post, when the caller knows it and this component
+   * cannot derive it. The AR JV's is rendered server-side from the BU's
+   * `jv_description_template`; the per-bank wording resolved below belongs to the
+   * credit-card JV and is a different sentence about a different document.
+   */
+  descriptionOverride?: string
+}
+
+/** A field the reviewer reads rather than fills. Same label, same column, no control. */
+function ReadOnlyField({
+  label,
+  value,
+  mono = true,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+}) {
+  return (
+    <>
+      <span className="rd-f-label">{label}</span>
+      <span className={`rd-f-value${mono ? ' text-mono' : ''}`}>{value}</span>
+    </>
+  )
 }
 
 export default function JvHeaderCard({
@@ -52,6 +93,8 @@ export default function JvHeaderCard({
   description,
   onPrefix,
   onDescription,
+  readOnly = false,
+  descriptionOverride,
 }: Props) {
   const { t } = useT()
   const { prefixes } = useGlMasters()
@@ -59,52 +102,63 @@ export default function JvHeaderCard({
   const storedPrefix = (config?.filePrefix as string) || ''
   const effectivePrefix = prefix ?? storedPrefix
 
-  // **This bank's own wording, raw — not the resolved value.** Same shape as the wizard's
-  // config editor (`TopLevelConfigSection`), and for the same two reasons. Feeding the
-  // fallback into the box makes the field impossible to clear: delete the last character,
-  // the fallback resolves in its place, and the old text reappears under the cursor. And
-  // the box is what gets saved, so showing the BU-wide sentence here meant a reviewer
-  // correcting the wording for *this* bank silently rewrote it for every other one.
-  //
-  // The fallback belongs in the placeholder, where it says what will post without
-  // pretending to be what you typed — the muted "already answered" treatment, since it is
-  // a preview rather than a gap.
+  // **This bank's own wording** — the uncommitted correction if there is one, else what is
+  // saved. It is all that posts: there is no BU-wide sentence behind it since 2026-09-30.
   const storedOwn =
     ((config?.bankDescriptions as Record<string, string> | undefined) || {})[bank || ''] || ''
   const effectiveOwn = description ?? storedOwn
-  // What posts when this bank has no wording of its own — which is all `descriptionForBank`
-  // falls back to, so naming the field directly says the same thing with less ceremony.
-  const fallback = ((config?.description as string) || '').trim()
+  const { text, tags } = splitDescription(effectiveOwn)
+  // The box edits the text; the bank's fields ride along untouched (picked on the Mapping
+  // page), so clearing the text leaves e.g. just the date, and clearing both leaves ''.
+  const editText = (v: string) => onDescription(joinDescription(v, tags))
 
   return (
     <div className="rd-doc">
       <div className={`rd-f rd-f--docno${headerData.DocNo ? '' : ' rd-f--missing'}`}>
-        <label className="rd-f-label" htmlFor="rd-DocNo">
-          {t('review.fDocNo')}
-        </label>
-        <input
-          id="rd-DocNo"
-          type="text"
-          aria-label={t('review.fDocNo')}
-          className="rd-f-input text-mono"
-          value={headerData.DocNo || ''}
-          /* An empty field says what is wrong with it rather than sitting blank. */
-          placeholder={t('review.fMissing')}
-          onChange={e => onUpdate('DocNo', e.target.value)}
-        />
+        {readOnly ? (
+          <ReadOnlyField
+            label={t('review.fDocNo')}
+            value={headerData.DocNo || t('review.fMissing')}
+          />
+        ) : (
+          <>
+            <label className="rd-f-label" htmlFor="rd-DocNo">
+              {t('review.fDocNo')}
+            </label>
+            <input
+              id="rd-DocNo"
+              type="text"
+              aria-label={t('review.fDocNo')}
+              className="rd-f-input text-mono"
+              value={headerData.DocNo || ''}
+              /* An empty field says what is wrong with it rather than sitting blank. */
+              placeholder={t('review.fMissing')}
+              onChange={e => onUpdate('DocNo', e.target.value)}
+            />
+          </>
+        )}
       </div>
 
       <div className={`rd-f rd-f--date${headerData.DocDate ? '' : ' rd-f--missing'}`}>
-        <label className="rd-f-label" htmlFor="rd-DocDate">
-          {t('review.fDocDate')}
-        </label>
-        <DateInput
-          id="rd-DocDate"
-          aria-label={t('review.fDocDate')}
-          value={headerData.DocDate || ''}
-          className="rd-f-input text-mono"
-          onChange={v => onUpdate('DocDate', v)}
-        />
+        {readOnly ? (
+          <ReadOnlyField
+            label={t('review.fDocDate')}
+            value={headerData.DocDate || t('review.fMissing')}
+          />
+        ) : (
+          <>
+            <label className="rd-f-label" htmlFor="rd-DocDate">
+              {t('review.fDocDate')}
+            </label>
+            <DateInput
+              id="rd-DocDate"
+              aria-label={t('review.fDocDate')}
+              value={headerData.DocDate || ''}
+              className="rd-f-input text-mono"
+              onChange={v => onUpdate('DocDate', v)}
+            />
+          </>
+        )}
       </div>
 
       {/* Marked missing like DocNo and DocDate above, because it is: the JV cannot post
@@ -113,40 +167,68 @@ export default function JvHeaderCard({
           of the field read the same in this control, so an unset prefix looked set. Same
           dash the wizard's own config badges use for it (`AccountingReview`). */}
       <div className={`rd-f rd-f--prefix${effectivePrefix ? '' : ' rd-f--missing'}`}>
-        <span className="rd-f-label">{t('review.fPrefix')}</span>
-        {/* Carmen's own list of journal books, through the picker the JV rows use — one
-            control vocabulary across the screen. */}
-        <CustomSearchSelect
-          value={effectivePrefix || null}
-          onChange={onPrefix}
-          options={prefixes}
-          placeholder={t('review.fPrefixPlaceholder')}
-          aria-label={t('review.fPrefix')}
-        />
+        {readOnly ? (
+          <ReadOnlyField
+            label={t('review.fPrefix')}
+            value={effectivePrefix || t('review.fPrefixPlaceholder')}
+          />
+        ) : (
+          <>
+            <span className="rd-f-label">{t('review.fPrefix')}</span>
+            {/* Carmen's own list of journal books, through the picker the JV rows use — one
+                control vocabulary across the screen. */}
+            <CustomSearchSelect
+              value={effectivePrefix || null}
+              onChange={onPrefix}
+              options={prefixes}
+              placeholder={t('review.fPrefixPlaceholder')}
+              aria-label={t('review.fPrefix')}
+            />
+          </>
+        )}
       </div>
 
-      {/* Takes whatever the three fixed-width fields leave. The JV builder appends
-          " - <doc date>" to whatever is typed here; that tail used to render beside the
-          field and has been dropped — it is the same date already on screen two fields
-          along, and what this system appends on post is not news to the person approving. */}
+      {/* Takes whatever the three fixed-width fields leave. The fields this bank attaches
+          after the text are named under the box, read-only — they are picked on the
+          Mapping page, and filled from this document's own number and date on post. */}
       <div className="rd-f rd-f--grow">
-        <label className="rd-f-label" htmlFor="rd-Description">
-          {t('review.fDescription')}
-        </label>
-        <input
-          id="rd-Description"
-          type="text"
-          aria-label={t('review.fDescription')}
-          className="rd-f-input rd-f-input--optional"
-          value={effectiveOwn}
-          /* The BU-wide wording when this bank has none, so the field says what will post.
-             Not `fMissing` ("Not on the document"), which the two fields above earn by
+        {readOnly ? (
+          <ReadOnlyField
+            label={t('review.fDescription')}
+            /* What posts, not what this bank's credit-card wording says: on the AR path
+               the sentence is rendered server-side from a different template entirely. */
+            value={descriptionOverride ?? effectiveOwn}
+            mono={false}
+          />
+        ) : (
+          <>
+            <label className="rd-f-label" htmlFor="rd-Description">
+              {t('review.fDescription')}
+            </label>
+            <input
+              id="rd-Description"
+              type="text"
+              aria-label={t('review.fDescription')}
+              className="rd-f-input rd-f-input--optional"
+              value={text}
+              /* Not `fMissing` ("Not on the document"), which the two fields above earn by
              being document fields the extractor could not fill: this one is BU config and
              was never on the document, so that placeholder accused the statement of an
              omission it could not have. */
-          placeholder={fallback || t('review.fDescriptionPlaceholder')}
-          onChange={e => onDescription(e.target.value)}
-        />
+              placeholder={t('review.fDescriptionPlaceholder')}
+              onChange={e => editText(e.target.value)}
+            />
+            {tags.length > 0 && (
+              <span className="rd-f-suffix">
+                +{' '}
+                {tags
+                  .map(tag => DESCRIPTION_TAGS.find(d => d.tag === tag))
+                  .map(d => (d ? t(d.labelKey) : ''))
+                  .join(' · ')}
+              </span>
+            )}
+          </>
+        )}
       </div>
     </div>
   )

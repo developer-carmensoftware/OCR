@@ -89,6 +89,18 @@ export const API = {
       `${V1}/config/ap-mapping/${encodeURIComponent(vendorTaxId)}`,
   },
 
+  // Detailed Credit Card AR Reconciliation. No `suggest` of its own: AI Auto-Map on that
+  // screen calls creditCard.mapping.suggestPaymentTypes, which takes the payment types and
+  // Carmen's code lists in the body and does not care which feature asked.
+  arReconcile: {
+    settings: (bankCode: string) =>
+      `${V1}/ar-reconcile/settings?bank_code=${encodeURIComponent(bankCode)}`,
+    save: `${V1}/ar-reconcile/settings`,
+    preview: `${V1}/ar-reconcile/preview`,
+    samplePaymentTypes: (bankCode: string) =>
+      `${V1}/ar-reconcile/sample-payment-types?bank_code=${encodeURIComponent(bankCode)}`,
+  },
+
   credits: {
     packs: `${V1}/credits/packs`,
     companyProfile: `${V1}/credits/company-profile`,

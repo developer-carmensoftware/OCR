@@ -7,15 +7,22 @@ implementations stay provably in sync.
 
 import json
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
+from app.constants import PostType
 from app.models.schemas.ocr import ExtractedDetailRow
 from app.services.credit_card.jv import (
     BANK_SOURCE_MAP,
     build_gljv_payload,
     build_jv_rows,
     canonical_payment_type,
+    group_key,
+    is_balanced,
+    render_description,
+    render_jv_description,
+    resolve_jv_description,
     unmapped_payment_types,
 )
 
@@ -235,7 +242,6 @@ def _config(case: dict) -> SimpleNamespace:
     return SimpleNamespace(
         file_prefix=cfg["filePrefix"],
         file_source=cfg["fileSource"],
-        description=cfg["description"],
         bank_descriptions=cfg["bankDescriptions"],
     )
 
@@ -276,3 +282,459 @@ def test_contract_fixture():
         assert body.pop("UserModified") == "OCR-EMAIL", f"{case['name']}: UserModified"
 
         assert body == case["expected"], f"{case['name']}"
+
+
+# ── Settlement report -- the `grouping=`/`total_row=` branch ---------------------
+#
+# Ported from tests/unit/test_ar_reconcile_jv.py (deleted 2026-09-22) when
+# app/services/ar_reconcile_jv.py folded into this module -- decision #28's collapse
+# made the two builders' shapes identical enough that they became one function with
+# two optional keyword arguments rather than two functions. Figures are the real ones
+# from KB1P554V2_SUM_451005282039001_20260721.pdf (settlement 21/07/2026, tax invoice
+# 210726E00035291) rather than invented round numbers, because the thing most likely
+# to break here is grouping a scheme label wrongly, and only real labels have the
+# shape that catches it.
+#
+# Covers FRD QA matrix TC-REC-001 (Detail), TC-REC-002 (Summary) and TC-REC-005
+# (template tag replacement).
+
+AR_DOC_NO = "210726E00035291"
+
+# SUMMARY MERCHANT ID block, page 3. Sum THB AMT = 25,091.00.
+AR_SAMPLE = [
+    ("VS INTER NON-PREM", "2,200.00"),
+    ("VS INTER PREM", "3,251.00"),
+    ("VS INTER UP PREM", "10,020.00"),
+    ("MC INTER NON-PREM", "1,000.00"),
+    ("MC INTER PREM", "5,945.00"),
+    ("MC INTER UP PREM", "2,375.00"),
+    ("JCB PREM", "300.00"),
+]
+AR_TOTAL = 25091.00
+
+# The same block's own TOTAL BY MERCHANT ID row. COMM + VAT + NET == THB AMT above --
+# the same self-consistency the real document has to pass before this module sees it.
+AR_TOTAL_ROW = ExtractedDetailRow(
+    transaction="TOTAL BY MERCHANT ID",
+    pay_amt="25,091.00",
+    commis_amt="582.99",
+    tax_amt="40.81",
+    total="24,467.20",
+)
+
+
+def _ar_rows(pairs=AR_SAMPLE):
+    return [ExtractedDetailRow(transaction=t, pay_amt=a) for t, a in pairs]
+
+
+def _ar_mapping(keys, dept="GEN", acc="1021001"):
+    return {k: {"dept": dept, "acc": acc} for k in keys}
+
+
+def _ar_detail_mappings():
+    return {
+        "VS INTER NON-PREM": {"dept": "GEN", "acc": "1021001"},
+        "VS INTER PREM": {"dept": "GEN", "acc": "1021001"},
+        "VS INTER UP PREM": {"dept": "GEN", "acc": "1021001"},
+        "MC INTER NON-PREM": {"dept": "GEN", "acc": "1021002"},
+        "MC INTER PREM": {"dept": "GEN", "acc": "1021002"},
+        "MC INTER UP PREM": {"dept": "GEN", "acc": "1021002"},
+        "JCB PREM": {"dept": "GEN", "acc": "1021003"},
+    }
+
+
+def _ar_summary_mappings():
+    return {
+        "VS": {"dept": "GEN", "acc": "1021001"},
+        "MC": {"dept": "GEN", "acc": "1021002"},
+        "JCB": {"dept": "GEN", "acc": "1021003"},
+    }
+
+
+def _ar_cc_mappings(commission="5001", tax="5002", net="1010"):
+    """The BU's existing credit-card commission/tax/net mapping -- the same dict the
+    fee-invoice branch above reads, merged into the one `mappings` dict every real
+    caller now passes (decision #3: no separate table for these three)."""
+    return {
+        "commission": {"dept": "GEN", "acc": commission},
+        "tax": {"dept": "GEN", "acc": tax},
+        "net": {"dept": "GEN", "acc": net},
+    }
+
+
+def _ar_build(post_type, credit_mappings, detail=None, total_row=AR_TOTAL_ROW, cc_maps=None):
+    """`build_jv_rows` exercised with the merged single dict every real caller uses:
+    commission/tax/net plus this post type's credit-side keys, looked up by one
+    `mappings.get(key)` -- there is no separate `cc_mappings` parameter any more."""
+    merged = {**(cc_maps if cc_maps is not None else _ar_cc_mappings()), **credit_mappings}
+    return build_jv_rows(
+        detail if detail is not None else _ar_rows(),
+        merged,
+        total_row=total_row,
+        grouping=partial(group_key, post_type=post_type),
+    )
+
+
+# -- TC-REC-001: Detail ---------------------------------------------------------
+
+
+def test_settlement_detail_posts_one_credit_per_printed_payment_type():
+    out = _ar_build(PostType.DETAIL, _ar_detail_mappings())
+
+    assert len(out) == 10, "3 fixed debit legs + 7 credits"
+    debits, credits = out[-3:], out[:-3]
+    assert [d["desc"] for d in debits] == ["Credit card commission", "Input Tax", "Bank Account"]
+    assert [d["debit"] for d in debits] == [582.99, 40.81, 24467.20]
+    assert all(d["credit"] == 0 for d in debits)
+    assert [d["acc"] for d in debits] == ["5001", "5002", "1010"]
+    # The payment type alone -- no `Tax Inv.# <doc_no> - ` prefix since 2026-09-29.
+    assert [c["desc"] for c in credits] == [t for t, _ in AR_SAMPLE]
+    assert is_balanced(out)
+    assert sum(c["credit"] for c in credits) == AR_TOTAL
+    assert sum(d["debit"] for d in debits) == AR_TOTAL
+
+
+# -- TC-REC-002: Summary ---------------------------------------------------------
+
+
+def test_settlement_summary_folds_schemes_onto_their_first_token():
+    out = _ar_build(PostType.SUMMARY, _ar_summary_mappings())
+
+    assert len(out) == 6, "3 fixed debit legs + VS + MC + JCB"
+    by_key = {r["desc"]: r for r in out[:-3]}
+    assert by_key["VS"]["credit"] == 15471.00  # 2,200 + 3,251 + 10,020
+    assert by_key["MC"]["credit"] == 9320.00  # 1,000 + 5,945 + 2,375
+    assert by_key["JCB"]["credit"] == 300.00
+    assert sum(d["debit"] for d in out[-3:]) == AR_TOTAL
+    assert is_balanced(out)
+
+
+def test_settlement_leg_carries_the_group_it_posts_under():
+    """The review pane joins printed lines to legs on `key`, not by parsing `desc`.
+
+    `desc` is the posted wording, which is free to change without breaking the join
+    (it carried a `Tax Inv.# ... - ` prefix until 2026-09-29). None of the three fixed debit legs belongs to a group and
+    all three say so with an empty key -- same as the fee-invoice legs above.
+    """
+    detail = _ar_build(PostType.DETAIL, _ar_detail_mappings())
+    assert [r["key"] for r in detail[-3:]] == ["", "", ""]
+    assert [r["key"] for r in detail[:-3]] == [t for t, _ in AR_SAMPLE]
+
+    summary = _ar_build(PostType.SUMMARY, _ar_summary_mappings())
+    assert [r["key"] for r in summary[-3:]] == ["", "", ""]
+    assert [r["key"] for r in summary[:-3]] == ["VS", "MC", "JCB"]
+
+    # The join the browser performs, spelled out: a printed label is either the key
+    # itself or the key plus a space and the rest of it. Nothing else has to be true.
+    keys = {r["key"] for r in summary[:-3]}
+    for label, _ in AR_SAMPLE:
+        assert any(label == k or label.startswith(f"{k} ") for k in keys), label
+
+
+def test_settlement_both_post_types_balance_to_the_same_total():
+    detail = _ar_build(PostType.DETAIL, _ar_detail_mappings())
+    summary = _ar_build(PostType.SUMMARY, _ar_summary_mappings())
+
+    assert sum(r["credit"] for r in detail) == sum(r["credit"] for r in summary) == AR_TOTAL
+    assert is_balanced(detail) and is_balanced(summary)
+
+
+def test_group_key_leaves_detail_labels_alone():
+    assert group_key("VS INTER UP PREM", PostType.DETAIL) == "VS INTER UP PREM"
+    assert group_key("VS INTER UP PREM", PostType.SUMMARY) == "VS"
+    assert group_key("JCB", PostType.SUMMARY) == "JCB"
+
+
+# -- TC-REC-004: an unseen scheme parks instead of joining a group -------------
+
+
+def test_settlement_new_scheme_becomes_its_own_unmapped_key():
+    detail = _ar_rows([*AR_SAMPLE, ("AMEX PREM", "500.00")])
+
+    summary_grouping = partial(group_key, post_type=PostType.SUMMARY)
+    detail_grouping = partial(group_key, post_type=PostType.DETAIL)
+    assert unmapped_payment_types(
+        detail, {**_ar_cc_mappings(), **_ar_summary_mappings()}, grouping=summary_grouping
+    ) == ["AMEX"]
+    assert unmapped_payment_types(
+        detail, {**_ar_cc_mappings(), **_ar_detail_mappings()}, grouping=detail_grouping
+    ) == ["AMEX PREM"]
+    assert (
+        unmapped_payment_types(
+            _ar_rows(), {**_ar_cc_mappings(), **_ar_detail_mappings()}, grouping=detail_grouping
+        )
+        == []
+    )
+
+
+def test_settlement_zero_amount_row_is_not_something_to_map():
+    """It contributes nothing to the JV, so demanding an account for it would park a
+    document over a line that was never going to post."""
+    detail = _ar_rows([*AR_SAMPLE, ("AMEX PREM", "0.00")])
+    grouping = partial(group_key, post_type=PostType.DETAIL)
+    merged = {**_ar_cc_mappings(), **_ar_detail_mappings()}
+
+    assert unmapped_payment_types(detail, merged, grouping=grouping) == []
+    built = _ar_build(PostType.DETAIL, _ar_detail_mappings(), detail)
+    assert "AMEX PREM" not in [r["desc"] for r in built]
+
+
+def test_settlement_inactive_and_missing_accounts_both_read_as_unmapped():
+    partial_map = dict(_ar_detail_mappings())
+    partial_map["JCB PREM"] = {"dept": "GEN", "acc": ""}
+    grouping = partial(group_key, post_type=PostType.DETAIL)
+
+    assert unmapped_payment_types(
+        _ar_rows(), {**_ar_cc_mappings(), **partial_map}, grouping=grouping
+    ) == ["JCB PREM"]
+
+
+def test_settlement_missing_fixed_debit_key_is_unmapped_regardless_of_amount():
+    """Structural, not per-row, unlike the credit-side keys above: the three fixed
+    legs are required even though nothing about `details` would suggest one needs a
+    mapping -- the same unconditional check the fee-invoice tests above rely on,
+    since this is now the same function."""
+    incomplete = {
+        "commission": {"dept": "GEN", "acc": "5001"},
+        "tax": {},
+        "net": {"dept": "GEN", "acc": "1010"},
+    }
+    grouping = partial(group_key, post_type=PostType.DETAIL)
+    assert unmapped_payment_types(
+        _ar_rows(), {**incomplete, **_ar_detail_mappings()}, grouping=grouping
+    ) == ["tax"]
+    assert unmapped_payment_types(_ar_rows(), _ar_detail_mappings(), grouping=grouping) == [
+        "commission",
+        "tax",
+        "net",
+    ]
+
+
+# -- FRD Sec.8 case 5: refunds and chargebacks ------------------------------------
+#
+# The debit side does not derive from the credit rows (decision #28), so these
+# fixtures supply a `total_row` whose three figures sum to whatever the synthetic
+# detail rows below credit -- the same self-consistency a real document's own anchor
+# row has to satisfy, just asserted by the test instead of by a printed page.
+
+
+def test_settlement_negative_group_swaps_sides_and_still_balances():
+    out = _ar_build(
+        PostType.SUMMARY,
+        _ar_summary_mappings(),
+        detail=_ar_rows([("VS INTER PREM", "3,251.00"), ("MC INTER PREM", "-1,000.00")]),
+        total_row=ExtractedDetailRow(total="2,251.00", commis_amt="0.00", tax_amt="0.00"),
+    )
+
+    by_key = {r["desc"]: r for r in out[:-3]}
+    assert by_key["VS"]["credit"] == 3251.00 and by_key["VS"]["debit"] == 0
+    assert by_key["MC"]["debit"] == 1000.00 and by_key["MC"]["credit"] == 0
+    assert sum(d["debit"] for d in out[-3:]) == 2251.00  # net of the two groups
+    assert is_balanced(out)
+
+
+def test_settlement_lone_negative_group_still_posts_as_a_debit_leg():
+    """The fixed debit legs never derive from the credit rows (decision #28), so a
+    lone negative group debits on its own sign and nothing on the debit side answers
+    it unless the report's own total row says the same thing -- `is_balanced` is the
+    check that would catch a report whose total row disagrees with a refunded
+    scheme."""
+    out = _ar_build(
+        PostType.SUMMARY,
+        _ar_summary_mappings(),
+        detail=_ar_rows([("VS INTER PREM", "-3,251.00")]),
+        total_row=None,
+    )
+
+    assert out[0]["debit"] == 3251.00 and out[0]["credit"] == 0
+    assert not is_balanced(out), "nothing on the debit side answers the refund"
+
+
+# -- Degenerate input --------------------------------------------------------------
+
+
+def test_settlement_document_with_no_amounts_produces_no_jv():
+    assert _ar_build(PostType.DETAIL, _ar_detail_mappings(), detail=[]) == []
+    zero_row = _ar_rows([("VS INTER PREM", "0.00")])
+    assert _ar_build(PostType.DETAIL, _ar_detail_mappings(), detail=zero_row) == []
+
+
+def test_settlement_unmapped_key_still_appears_in_the_rows_so_the_reviewer_can_see_it():
+    out = _ar_build(PostType.SUMMARY, _ar_mapping(["VS"]))
+    by_key = {r["desc"]: r for r in out[:-3]}
+
+    assert by_key["MC"]["acc"] == "", "blank, not dropped -- the row is what gets mapped"
+    assert is_balanced(out)
+
+
+# -- TC-REC-005: description template ----------------------------------------------
+
+
+def test_settlement_template_tags_are_replaced():
+    out = render_jv_description(
+        "Credit Card AR Reconcile {Settlement_Date}",
+        settlement_date="21/07/2026",
+        tax_invoice_no=AR_DOC_NO,
+        bank_name="KBANK",
+    )
+    assert out == "Credit Card AR Reconcile 21/07/2026"
+
+
+def test_settlement_every_tag_is_supported_and_unset_ones_collapse():
+    assert (
+        render_jv_description(
+            "{Bank_Name} {Tax_Invoice_No} {Settlement_Date}",
+            settlement_date="21/07/2026",
+            tax_invoice_no=AR_DOC_NO,
+            bank_name="KBANK",
+        )
+        == f"KBANK {AR_DOC_NO} 21/07/2026"
+    )
+    # An unset tag must not reach Carmen as literal "{Tax_Invoice_No}".
+    assert (
+        render_jv_description(
+            "AR Reconcile {Tax_Invoice_No}",
+            settlement_date=None,
+            tax_invoice_no=None,
+            bank_name=None,
+        )
+        == "AR Reconcile"
+    )
+
+
+# -- Ticket D (2026-09-22): one description mechanism, not two ---------------------
+#
+# `render_jv_description` used to be settlement-only; the fee-invoice path did its own
+# plain `base - doc_date` concatenation inside `build_gljv_payload`. Both now go
+# through `render_description`. Until 2026-09-30 a value with no tag had ` - doc_date`
+# appended; now the saved text is the whole sentence and the date appears only where a
+# `{Settlement_Date}` tag puts it.
+
+
+def test_render_description_with_no_tag_posts_exactly_as_saved():
+    assert (
+        render_description("AR Recon", doc_date="21/07/2026", doc_no=AR_DOC_NO, bank_name="KBANK")
+        == "AR Recon"
+    )
+
+
+def test_render_description_with_no_tag_and_no_date_is_just_the_base():
+    assert render_description("AR Recon", doc_date=None, doc_no=None, bank_name=None) == "AR Recon"
+
+
+def test_render_description_with_a_tag_is_treated_as_a_full_template():
+    """The tag is the only way the date reaches the description, and it lands exactly
+    where the BU put it."""
+    out = render_description(
+        "Credit Card AR Reconcile {Settlement_Date}",
+        doc_date="21/07/2026",
+        doc_no=AR_DOC_NO,
+        bank_name="KBANK",
+    )
+    assert out == "Credit Card AR Reconcile 21/07/2026"
+
+
+def test_render_description_empty_base_is_empty():
+    assert (
+        render_description(None, doc_date="21/07/2026", doc_no=AR_DOC_NO, bank_name="KBANK") == ""
+    )
+    assert render_description("", doc_date="21/07/2026", doc_no=AR_DOC_NO, bank_name="KBANK") == ""
+
+
+def test_resolve_jv_description_reads_the_bank_scoped_config_entry():
+    config = SimpleNamespace(description=None, bank_descriptions={"KBANK": "AR Recon"})
+    assert (
+        resolve_jv_description(config, "KBANK", doc_date="21/07/2026", doc_no=AR_DOC_NO)
+        == "AR Recon"
+    )
+
+
+def test_build_gljv_payload_default_description_is_tag_aware():
+    """The exact fallback `_ar_description` used to compute by hand before it was
+    deleted (Ticket D) -- proof the merge did not change what a settlement JV posts,
+    only where the wording comes from."""
+    config = SimpleNamespace(
+        file_prefix="IC",
+        file_source="ACKB",
+        description=None,
+        bank_descriptions={"KBANK": "Credit Card AR Reconcile {Settlement_Date}"},
+    )
+    payload = build_gljv_payload(
+        [
+            {
+                "dept": "GEN",
+                "acc": "1021001",
+                "desc": "VS",
+                "debit": 0.0,
+                "credit": 100.0,
+                "key": "VS",
+            }
+        ],
+        doc_date="21/07/2026",
+        doc_no=AR_DOC_NO,
+        bank_code="KBANK",
+        config=config,
+    )
+    assert payload["Description"] == "Credit Card AR Reconcile 21/07/2026"
+
+
+def test_build_gljv_payload_default_description_without_a_tag_has_no_date():
+    """No auto date since 2026-09-30, deliberately not migrated: a description saved
+    before then posts as saved until its BU inserts `{Settlement_Date}`."""
+    config = SimpleNamespace(
+        file_prefix="IC",
+        file_source="ACBY",
+        bank_descriptions={"BAY": "Credit Card Commission"},
+    )
+    payload = build_gljv_payload(
+        [{"dept": "GEN", "acc": "1130V", "desc": "Visa", "debit": 0.0, "credit": 100.0, "key": ""}],
+        doc_date="15/06/2026",
+        doc_no="DOC-1",
+        bank_code="BAY",
+        config=config,
+    )
+    assert payload["Description"] == "Credit Card Commission"
+
+
+def test_build_gljv_payload_an_explicit_description_overrides_the_default():
+    config = SimpleNamespace(
+        file_prefix="IC", file_source="ACKB", description=None, bank_descriptions={}
+    )
+    payload = build_gljv_payload(
+        [],
+        doc_date="21/07/2026",
+        doc_no=AR_DOC_NO,
+        bank_code="KBANK",
+        config=config,
+        description="Already rendered",
+    )
+    assert payload["Description"] == "Already rendered"
+
+
+# -- total_row missing --------------------------------------------------------------
+#
+# `_normalize_ar_settlement` already warns when the anchor row cannot be found on the
+# real document -- this is the arithmetic's own behaviour in that case, not a
+# substitute for it.
+
+
+def test_settlement_missing_total_row_posts_zero_on_every_debit_leg():
+    out = _ar_build(PostType.DETAIL, _ar_detail_mappings(), total_row=None)
+
+    assert [d["debit"] for d in out[-3:]] == [0.0, 0.0, 0.0]
+    assert not is_balanced(out), "credits still post; debits do not -- a real imbalance"
+
+
+# -- is_balanced is a real check now -----------------------------------------------
+#
+# Before 2026-09-18 the debit leg was derived from the sum of the very rows it was
+# compared against, so this could never return False for the builder's own output
+# (decision #28). The two sides are now independent readings of the same page and
+# can disagree.
+
+
+def test_settlement_is_balanced_catches_a_total_row_that_disagrees_with_the_grouped_rows():
+    wrong_total = ExtractedDetailRow(commis_amt="1.00", tax_amt="1.00", total="1.00")
+    out = _ar_build(PostType.DETAIL, _ar_detail_mappings(), total_row=wrong_total)
+
+    assert not is_balanced(out)

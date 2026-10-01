@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import logging
 import uuid
+from functools import partial
 from typing import Any
 
-from app.constants import Module
+from app.constants import DocType, Module, PostType
 from app.database import async_session
 from app.exceptions import (
     ExtractionError,
@@ -29,13 +30,21 @@ from app.exceptions import (
 )
 from app.models.catalog import Bank
 from app.models.schemas import ExtractedCreditCardData
-from app.models.schemas.ocr import ExtractionWarning
+from app.models.schemas.ocr import ExtractedDetailRow, ExtractionWarning
+from app.services.credit_card import ar_reconcile as ar_svc
 from app.services.credit_card import gl_suggestion as gl
+from app.services.credit_card import kbank_tax_summary
 from app.services.credit_card import ocr as ocr_service
 from app.services.credit_card.accounting_config import description_for, get_accounting_config
 from app.services.credit_card.extraction import finalize_extraction, mark_task_failed
 from app.services.credit_card.input_tax import build_input_tax_payload
-from app.services.credit_card.jv import build_gljv_payload, build_jv_rows, unmapped_payment_types
+from app.services.credit_card.jv import (
+    build_gljv_payload,
+    build_jv_rows,
+    group_key,
+    is_balanced,
+    unmapped_payment_types,
+)
 from app.services.email_automation import credential
 from app.services.email_automation import ingest_settings as es
 from app.services.email_automation.imap import match_rules, people_addresses, sender_allowed
@@ -152,6 +161,7 @@ async def _run_document(
     carmen_token: str,
     carmen_uri: str,
     auto_post: bool,
+    tax_summary: dict[str, dict[str, str]] | None = None,
 ) -> str:
     """Gate, charge, extract, verify, post — every exit lands on the ledger.
 
@@ -197,6 +207,16 @@ async def _run_document(
     # only early warning that a bank changed its form, and it cannot be computed if a
     # failed row forgets which bank the document came from.
     doc_no: str | None = None
+    # Which of the two KBANK documents this is — decided by the rule below, before the
+    # charge. Initialised here so `_park_or_finish` can read it on any path.
+    doc_type: str = DocType.FEE_INVOICE
+    # AR only: how the credit side groups — saved from the mapping page.
+    ar_post_type: str = PostType.DETAIL
+    # AR only: the settlement report's own page prints no tax ID, so its second factor
+    # comes from the CSV sidecar instead — set below, read by `_review_flags`. True when
+    # there was no matching sidecar row, not when one was checked and found fine.
+    tin_unverified = False
+    tax_summary = tax_summary or {}
 
     async def _park_or_finish(reason_code: str, error: str, *, reviewable: bool = True) -> str:
         """Where a refusal lands: the queue if we have a paid-for reading of the document,
@@ -222,11 +242,14 @@ async def _run_document(
                     extracted,
                     mapping_guessed=mapping_guessed,
                     mapping_missing=mapping_missing,
+                    doc_type=doc_type,
+                    tin_unverified=tin_unverified,
                 ),
                 mapping_suggested=mapping_suggested,
                 mapping_missing=mapping_missing,
                 reason_code=reason_code,
                 error=error,
+                doc_type=doc_type,
             )
             logger.warning("[email] %s: %s (%s) — parked for review", reason_code, error, filename)
             return "pending_review"
@@ -283,9 +306,57 @@ async def _run_document(
         # own answer the moment there is one.
         bank_code = rule_bank
 
+        # ── Which document is this? ───────────────────────────────────────────
+        #
+        # The only place the pipeline branches on document type, and it is here — before
+        # the charge — because the two types need different prompts, different pages and
+        # different JV builders, and reading one with the other's layout produces
+        # plausible rows off the wrong table rather than an error.
+        #
+        # The *rule* answers it, not the document: a settlement report and the commission
+        # invoice for the same settlement both say KASIKORNBANK at the top and carry the
+        # same tax invoice number, so nothing on the page distinguishes them reliably. The
+        # BU says which of their mail is which by tagging the rule; the filename pattern
+        # (`KB1P554V2`) is what makes that tagging easy.
+        ar_rule = next(
+            (r for r in matched if r.get("doc_type") == DocType.AR_RECONCILE),
+            None,
+        )
+        doc_type = DocType.AR_RECONCILE if ar_rule else DocType.FEE_INVOICE
+        if ar_rule:
+            bank_code = (ar_rule.get("bank_code") or "").upper() or None
+            if not bank_code:
+                raise _Skip(
+                    "ar_reconcile_disabled",
+                    "The settlement-report rule does not say which bank it is for",
+                )
+            # The rule is the switch (2026-09-29): an active `ar_reconcile` rule means
+            # reconcile this bank, and there is no second toggle to consult. Switching it
+            # off is Carmen deactivating the rule, which `match_rules` already skips —
+            # `no_rule_match`, free, before the charge, same as the old toggle was.
+            # How it groups is the BU's own choice on the mapping page, not the rule's.
+            ar_post_type = await _ar_post_type(tenant_id, bank_code)
+        # No fee-invoice double-book guard any more (2026-09-29). It caught a KBANK fee
+        # invoice matched by a KBANK fee-invoice rule while KBANK reconciled — and rules
+        # are one per bank, so "KBANK reconciles" now *is* that rule being `ar_reconcile`.
+        # The state it guarded against cannot exist.
+
         # Before any charge: a disguised, locked or corrupt file must not cost anything.
         password = await _open_or_fail(blob, filename, passwords)
 
+        # `module_id` still splits by document type — `daily_usage_summary` reports a
+        # settlement report's cost apart from a fee invoice's, and `ocr_tasks.module_id`
+        # is the only place that answers "how many settlement reports has this tenant
+        # processed" (CLAUDE.md: count with SUM(charged_docs), never COUNT(ocr_tasks),
+        # but the grouping column is this one). The *gate* does not split any more
+        # (decision #1, 2026-09-22): a settlement report is part of the credit-card
+        # module now, not a switchable add-on, so a BU with credit_card_ocr enabled can
+        # process one regardless of whether cc_ar_reconcile's row was ever turned on.
+        # `modules.is_active = false` for cc_ar_reconcile keeps it off
+        # #/admin/quota-modules' switch list while the id keeps meaning something.
+        module_id = (
+            Module.CC_AR_RECONCILE if doc_type == DocType.AR_RECONCILE else Module.CREDIT_CARD_OCR
+        )
         await assert_module_enabled(Module.CREDIT_CARD_OCR)
         charged = await consume_document()
 
@@ -307,7 +378,7 @@ async def _run_document(
                 task = await create_task(
                     db,
                     tenant_id=tenant_id,
-                    module_id=Module.CREDIT_CARD_OCR,
+                    module_id=module_id,
                     original_filename=filename,
                     carmen_user_id=None,
                     charged_docs=1 if charged else 0,
@@ -321,16 +392,36 @@ async def _run_document(
             # layout — reading a GHL invoice with the KBANK layout mismaps its columns AND
             # makes it answer "ธนาคารกสิกรไทย", which then confirms the wrong bank to
             # every later reader.
+            #
+            # The settlement report is the exception to both halves of that. Its layout is
+            # *selected* (the rule already named the bank, and there is only one prompt per
+            # bank for it), and its figures are on the LAST page — the earlier pages repeat
+            # the same money per terminal and per batch. Still one page, so still one
+            # document charged.
             extracted = await ocr_service.extract_stateless(
                 file_bytes=blob,
                 original_filename=filename,
                 task_id=task_id,
                 pdf_password=password,
+                bank_code=bank_code if doc_type == DocType.AR_RECONCILE else None,
+                doc_type=doc_type,
+                page_indexes=[-1] if doc_type == DocType.AR_RECONCILE else None,
             )
             # Resolved once, before finalize_extraction, so `credit_cards.bank_code` and
-            # `email_documents.bank_code` are the same decision rather than two.
-            bank_code = _resolve_bank(extracted, rule_bank)
-            extracted = await finalize_extraction(extracted, task_id, tenant_id, bank_code, None)
+            # `email_documents.bank_code` are the same decision rather than two. The AR
+            # path keeps the rule's answer: its prompt was chosen from it, so re-deriving
+            # it from the page could only disagree with the layout already applied.
+            if doc_type != DocType.AR_RECONCILE:
+                bank_code = _resolve_bank(extracted, rule_bank)
+            extracted = await finalize_extraction(
+                extracted,
+                task_id,
+                tenant_id,
+                bank_code,
+                None,
+                doc_type=doc_type,
+                original_filename=filename,
+            )
         except Exception as exc:
             if charged:
                 await refund_document(charged)
@@ -362,7 +453,7 @@ async def _run_document(
         # Checked ahead of the GL-mapping call below, deliberately: this is the one
         # post-extraction skip that does NOT park, so nobody will ever see a suggestion for
         # it — it stays ahead of that call's LLM spend rather than paying for one.
-        if await _already_pending(tenant_id, bank_code, doc_no):
+        if await _already_pending(tenant_id, bank_code, doc_no, doc_type):
             # The one post-extraction skip that does NOT park. Its twin is already in the
             # queue, editable and postable; a second identical row is the thing this check
             # exists to prevent, not a second chance at anything.
@@ -372,12 +463,35 @@ async def _run_document(
                 reviewable=False,
             )
 
+        # The settlement report's own page prints no tax ID at all (decision #28), so for
+        # AR it has nothing of its own to check below — the CSV sidecar supplies one by
+        # merchant ID instead. A sidecar with no matching row is not a conflict (the same
+        # "positive evidence only" rule `foreign_tax_id` already follows for a fee invoice
+        # that never prints the buyer's TIN) — it sets `tin_unverified` instead, which
+        # blocks auto-post without refusing a document that is probably fine.
+        tax_ids_to_check = list(extracted.tax_ids or [])
+        if doc_type == DocType.AR_RECONCILE:
+            merchant = kbank_tax_summary.digits_only(extracted.merchant_id)
+            csv_row = tax_summary.get(merchant) if merchant else None
+            if csv_row and csv_row.get("tax_id"):
+                tax_ids_to_check.append(csv_row["tax_id"])
+            else:
+                tin_unverified = True
+            if csv_row:
+                # Same sidecar row, a second independent check: the CSV's own fee/VAT/net
+                # and tax invoice number against what the report printed. A disagreement
+                # parks the document via the existing `warnings` flag — see
+                # `kbank_tax_summary.cross_check`.
+                extracted.warnings.extend(
+                    kbank_tax_summary.cross_check(csv_row, extracted.doc_no, extracted.total_row)
+                )
+
         async with async_session() as db:
             config = await get_accounting_config(db, tenant_id, bank_code)
             # The second factor. The envelope said who owns this mail; if the document
             # carries a number registered to someone else, the two disagree and that stops
             # the post rather than picking a winner.
-            conflict = await es.foreign_tax_id(db, list(extracted.tax_ids or []), tenant_id)
+            conflict = await es.foreign_tax_id(db, tax_ids_to_check, tenant_id)
 
         # The document's own verdict, decided here and raised after the GL suggestion
         # below. Decided first so that nothing about *this BU's credential* can outrank
@@ -406,7 +520,20 @@ async def _run_document(
         else:
             verdict = None
 
-        missing = unmapped_payment_types(extracted.details, config.mappings or {})
+        if doc_type == DocType.AR_RECONCILE:
+            # No AI suggestion on this path: a suggestion nobody has read must not become a
+            # saved rule, and only the review screen's approve step writes this bank's
+            # settlement keys (decision #3, 2026-09-22). Extending the fee invoice's
+            # guess-then-approve dance to a second document type is a separate decision
+            # from collapsing the storage, not a consequence of it.
+            mapping_missing = unmapped_payment_types(
+                extracted.details,
+                config.mappings or {},
+                grouping=partial(group_key, post_type=ar_post_type),
+            )
+            missing: list[str] = []
+        else:
+            missing = unmapped_payment_types(extracted.details, config.mappings or {})
         if missing:
             # Parking every document of a BU that never opened the mapping page, with
             # empty pickers and no starting point, is the worse failure. So the AI fills
@@ -426,7 +553,7 @@ async def _run_document(
                 # is still flagged for the BU but the document keeps its own reason.
                 if verdict is None:
                     raise
-                await _flag_dead_token(tenant_id)
+                await _flag_dead_token(tenant_id, carmen_token)
                 suggested = {}
             if suggested:
                 # In memory only. Saving it here made the guess the BU's own rule before
@@ -453,7 +580,21 @@ async def _run_document(
         if verdict:
             raise verdict
 
-        rows = build_jv_rows(extracted.details, config.mappings or {})
+        if doc_type == DocType.AR_RECONCILE:
+            # One dict now (decision #3): commission/tax/net and this bank's credit-side
+            # keys both live in `config.mappings`. The debit legs still read it off the
+            # report's own total row, not derived from the credit rows — `is_balanced`
+            # below is therefore a real check: it compares that row's own COMM+VAT+NET
+            # against Σ THB AMT over the grouped rows, two independent readings of the
+            # same page. See `jv.build_jv_rows`'s docstring.
+            rows = build_jv_rows(
+                extracted.details,
+                config.mappings or {},
+                total_row=extracted.total_row,
+                grouping=partial(group_key, post_type=ar_post_type),
+            )
+        else:
+            rows = build_jv_rows(extracted.details, config.mappings or {})
         if not rows or not any(r["credit"] for r in rows):
             # Zero-total document: posting an empty JV is worse than stopping here.
             # The read itself succeeded, so the charge stands.
@@ -494,7 +635,12 @@ async def _run_document(
         # ledger exactly like a clean one, and the flags were computed and then only looked
         # at if review happened to be on.
         flags = _review_flags(
-            extracted, mapping_guessed=mapping_guessed, mapping_missing=mapping_missing
+            extracted,
+            mapping_guessed=mapping_guessed,
+            mapping_missing=mapping_missing,
+            doc_type=doc_type,
+            ar_unbalanced=(not is_balanced(rows) if doc_type == DocType.AR_RECONCILE else False),
+            tin_unverified=tin_unverified,
         )
         if not auto_post or flags:
             await _park_for_review(
@@ -506,6 +652,7 @@ async def _run_document(
                 flags=flags,
                 mapping_suggested=mapping_suggested,
                 mapping_missing=mapping_missing,
+                doc_type=doc_type,
             )
             logger.info(
                 "[email] Parked %s (%s) for review, tenant %s%s",
@@ -517,7 +664,11 @@ async def _run_document(
             return "pending_review"
 
         payload = build_gljv_payload(
-            rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
+            rows,
+            doc_date=extracted.doc_date,
+            doc_no=extracted.doc_no,
+            bank_code=bank_code,
+            config=config,
         )
         result = await carmen.post_gljv(payload, carmen_token)
         if not result or result.get("Code", -1) != 0:
@@ -530,8 +681,19 @@ async def _run_document(
         # books and there is no rollback, so a missing input-tax record is recorded
         # for a human to add rather than turned into a failure on a document that
         # posted successfully.
+        #
+        # The settlement report files this claim itself now (decision #28): the fee
+        # invoice that used to is no longer processed once AR reconciliation covers a
+        # bank, so its VAT would otherwise disappear rather than double up. Its own
+        # per-scheme rows print no commission/VAT (dashes on the page) — only
+        # `total_row` does — so that is what `_post_input_tax` sums instead.
+        ar_input_tax_details = [extracted.total_row] if extracted.total_row else []
         tax_error = await _post_input_tax(
-            extracted, bank_code=bank_code, config=config, carmen_token=carmen_token
+            extracted,
+            bank_code=bank_code,
+            config=config,
+            carmen_token=carmen_token,
+            details=ar_input_tax_details if doc_type == DocType.AR_RECONCILE else None,
         )
 
         await _finish(
@@ -585,7 +747,7 @@ async def _run_document(
         # postable the moment it is replaced, instead of a day of scanning burnt.
         unauthorized = exc.status_code in (401, 403)
         if unauthorized:
-            await _flag_dead_token(tenant_id)
+            await _flag_dead_token(tenant_id, carmen_token)
         note = (
             str(exc)
             if unauthorized
@@ -634,6 +796,7 @@ async def _post_input_tax(
     config: Any,
     carmen_token: str,
     overrides: Any = None,
+    details: list[ExtractedDetailRow] | None = None,
 ) -> str | None:
     """File the VAT the bank charged. Returns a note to keep on the ledger, or None.
 
@@ -647,13 +810,18 @@ async def _post_input_tax(
     answers here are "done" and "someone needs to add this by hand" — turning a
     failure into an exception would mark a document Carmen has already accepted as
     failed, which is the one outcome that is plainly wrong.
+
+    **`details` overrides `extracted.details`** for the settlement report: its per-scheme
+    rows print no commission/VAT of their own (dashes on the page), only the report's own
+    `total_row` does — see decision #28. Every other caller leaves this `None` and gets
+    `extracted.details`, unchanged from before this parameter existed.
     """
     async with async_session() as db:
         bank = await db.get(Bank, bank_code) if bank_code else None
 
     try:
         payload, skipped = build_input_tax_payload(
-            extracted.details,
+            details if details is not None else extracted.details,
             doc_no=extracted.doc_no,
             doc_date=extracted.doc_date,
             bank=bank,
@@ -692,6 +860,15 @@ async def _post_input_tax(
     return None
 
 
+# ── AR reconciliation grouping ────────────────────────────────────────────────
+
+
+async def _ar_post_type(tenant_id: str, bank_code: str) -> str:
+    """Detail or Summary for this bank, as the mapping page saved it (Detail if never)."""
+    async with async_session() as db:
+        return await ar_svc.post_type_for(db, tenant_id, bank_code)
+
+
 # ── GL mapping the BU never set ───────────────────────────────────────────────
 
 # `unmapped_payment_types` speaks the config's keys; the suggester speaks the
@@ -703,11 +880,11 @@ _FIXED_LABEL = {
 }
 
 
-async def _flag_dead_token(tenant_id: str) -> None:
+async def _flag_dead_token(tenant_id: str, carmen_token: str) -> None:
     """Mark this BU's posting credential unproven after Carmen refused it (401/403)."""
     try:
         async with async_session() as db:
-            await credential.mark_token_unverified(db, tenant_id)
+            await credential.mark_token_unverified(db, tenant_id, carmen_token)
     except Exception:  # never let the flag cost us the ledger row
         logger.exception("[email] Could not flag the credential for tenant %s", tenant_id)
 

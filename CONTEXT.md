@@ -75,6 +75,50 @@ else once a subscription order reached that code path. Fixed by branching on
 vs `pack.creditsUnit` per pack kind. Same bug species as the order-status badge,
 in the purchase flow's line-item copy instead of a status badge.
 
+**Fee invoice**:
+A processor's own invoice for its transaction fees (KTC, GHL, PayPal, SiamPay) — one
+printed line per fee, each carrying its own pre-VAT amount. The credit-card JV
+builder's default branch (`grouping=None` in `credit_card.jv.build_jv_rows`): each line resolves
+to a payment type via fold-tolerant matching against free-text transaction
+descriptions, and the three fixed debit legs (commission/tax/net) sum the detail rows
+themselves, because a fee invoice prints no anchor total.
+_Avoid_: nothing to avoid — this was always the wizard's own document kind, not a
+renamed concept.
+
+**Settlement report**:
+A bank's own report of a batch of card settlements (today: KBANK) — a BU-curated,
+small vocabulary of payment-type codes rather than free text, and it prints its own
+anchor row (`TOTAL BY MERCHANT ID`) carrying the commission/tax/net figures the fee
+invoice has to sum by hand. Structurally the same JV as a fee invoice since 2026-09-18
+(decision #28) and posted through the same builder (`total_row` + `grouping` set) —
+it was ingested as a second module (`cc_ar_reconcile`) only because that was true
+before decision #28, and stopped being true once the debit side collapsed. As of
+2026-09-22 (decision #29) it is a document kind the credit-card flow recognizes, not a
+module: `email_automation.pipeline` still tags its `ocr_tasks.module_id` as
+`cc_ar_reconcile` for cost-reporting continuity, but `assert_module_enabled` gates on
+`credit_card_ocr` like everything else, and its posting profile
+(`ar_reconcile_settings`) lives beside the credit-card mapping, not behind a separate
+settings screen.
+_Avoid_: AR reconcile / AR reconciliation — the pre-2026-09-22 name for this whole
+area, back when it was believed to need its own module, its own mapping table, and a
+second offsetting JV to clear against the fee invoice's. None of those premises
+survived decision #28 and #29; the words describing them shouldn't either. Code
+identifiers (`services/credit_card/ar_reconcile.py`, `ARSettingsIn`, `/api/v1/ar-reconcile/*`) keep
+the old name deliberately (decision #29, #11) — this entry governs user-facing copy
+and conversation, not identifiers.
+
+**Credit breakdown**:
+The one thing a settlement report's posting profile actually chooses: whether the
+credit side of its JV prints one line per payment type as read off the report
+(`Detail`, e.g. `VS INTER UP PREM`) or one line per card scheme, folding sub-types
+together (`Summary`, e.g. `VS`). A fee invoice has no such choice — it always posts
+one line per printed fee. Surfaced as `ar.postType`'s visible label in the merged
+mapping page; the identifier and the API field (`ARSettingsIn.post_type`) keep their
+old name for the same reason **Settlement report** does.
+_Avoid_: Post type / post_type as user-facing copy — accurate as a database column
+name, meaningless to a BU reading the settings page (what is being "posted" isn't
+what the choice is about; how the credit side is broken down is).
+
 ### Email automation
 
 **Skipped** _(email document status)_:

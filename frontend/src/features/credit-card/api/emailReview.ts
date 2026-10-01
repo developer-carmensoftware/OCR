@@ -8,12 +8,23 @@
 
 import { apiFetch } from '@/shared/api/client'
 import { API } from '@/shared/api/endpoints'
+import type { ARPreview } from './arReconcile'
 import type { Page } from '@/shared/api/page'
 
 /** Why a parked document might be worth opening. Computed once at park time and stored,
  *  because neither survives a list query: see `_review_flags` in email_ingest_service.py. */
 export type ReviewFlag =
-  'unbalanced' | 'mapping_guessed' | 'mapping_missing' | 'doc_no_missing' | 'warnings'
+  | 'unbalanced'
+  | 'mapping_guessed'
+  | 'mapping_missing'
+  | 'doc_no_missing'
+  | 'warnings'
+  // AR reconciliation only: the settlement report's own page prints no tax ID, so
+  // `foreign_tax_id` has nothing to check unless the CSV sidecar (ticket 04) supplied
+  // one by merchant ID. Not a conflict — that is `tax_id_mismatch`, a terminal reason
+  // code raised earlier and never reaching a flag — just an unattended post this
+  // document has not earned yet. See `_review_flags` in email_ingest_service.py.
+  | 'tin_unverified'
 
 /** Which filter chip a row lives under — see `_chip_expr` in routers/credit_card_activity.py,
  *  which is the only definition there is.
@@ -97,6 +108,13 @@ export interface ReviewDocumentDetail extends ReviewDocument {
    *  BU's accounting config — a human approving is what does that — so the live config
    *  this screen derives its JV rows from will not have them, and this is the only copy. */
   suggested: Record<string, { dept?: string; acc?: string }>
+  /** `fee_invoice` or `ar_reconcile`. Two different documents producing two different
+   *  JVs; only the first is editable in the browser. */
+  doc_type?: string
+  /** AR reconciliation only: the JV this document would post, built server-side against
+   *  the BU's current mapping. Approving posts exactly these rows — this feature has no
+   *  client-side JV builder, so what is shown and what posts are one object. */
+  ar_jv?: ARPreview | null
 }
 
 /** The activity window plus the counts behind the filter chips. Counts span every row, not

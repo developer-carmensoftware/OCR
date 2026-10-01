@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildJvRows } from './ccJv'
+import { buildJvRows, buildGljvPayload, joinDescription, splitDescription } from './ccJv'
 
 // Shared debit accounts + per-payment-type credit accounts, mirroring accountingConfig.
 const config = {
@@ -105,5 +105,106 @@ describe('buildJvRows', () => {
     expect(rows).toHaveLength(8)
     expect(rows.filter(r => r.desc === 'Credit card commission')).toHaveLength(2)
     expect(sum(rows, 'debit')).toBeCloseTo(sum(rows, 'credit'), 2)
+  })
+})
+
+// Ticket D (2026-09-22): one description mechanism, not two. The fee-invoice path's
+// plain `base - docDate` concatenation and a settlement JV's template both go through
+// the same decision now — twin of cc_jv.py's render_description/build_gljv_payload
+// tests, so a change to one side without the other shows up here.
+describe('buildGljvPayload — Description', () => {
+  // 2026-09-30: no auto ` - docDate` any more — the date is there only where a tag puts it.
+  it('posts a value with no template tag exactly as saved — no date appended', () => {
+    const payload = buildGljvPayload([], {
+      docDate: '15/06/2026',
+      docNo: 'DOC-1',
+      bankCode: 'BAY',
+      config: {
+        filePrefix: 'IC',
+        fileSource: 'ACBY',
+        bankDescriptions: { BAY: 'Credit Card Commission' },
+      },
+    })
+    expect(payload.Description).toBe('Credit Card Commission')
+  })
+
+  // 2026-09-30: no BU-wide fallback either — a bank with no entry posts no description.
+  it('posts no description for a bank with no wording of its own, even if another bank has one', () => {
+    const payload = buildGljvPayload([], {
+      docDate: '15/06/2026',
+      bankCode: 'BAY',
+      config: { filePrefix: 'IC', fileSource: 'ACBY', bankDescriptions: { KBANK: 'KBank fee' } },
+    })
+    expect(payload.Description).toBe('')
+  })
+
+  it('treats a value with a tag as a full template, and does not also append the date', () => {
+    const payload = buildGljvPayload([], {
+      docDate: '21/07/2026',
+      docNo: '210726E00035291',
+      bankCode: 'KBANK',
+      config: {
+        filePrefix: 'IC',
+        fileSource: 'ACKB',
+        bankDescriptions: { KBANK: 'Credit Card AR Reconcile {Settlement_Date}' },
+      },
+    })
+    expect(payload.Description).toBe('Credit Card AR Reconcile 21/07/2026')
+  })
+
+  it('renders every tag, and collapses an unset one rather than printing it literally', () => {
+    const payload = buildGljvPayload([], {
+      docDate: '21/07/2026',
+      docNo: '210726E00035291',
+      bankCode: 'KBANK',
+      config: {
+        filePrefix: 'IC',
+        fileSource: 'ACKB',
+        bankDescriptions: { KBANK: '{Bank_Name} {Tax_Invoice_No} {Settlement_Date}' },
+      },
+    })
+    expect(payload.Description).toBe('KBANK 210726E00035291 21/07/2026')
+  })
+
+  it('is empty when nothing is saved for this bank', () => {
+    const payload = buildGljvPayload([], {
+      docDate: '21/07/2026',
+      bankCode: 'KBANK',
+      config: { filePrefix: 'IC', fileSource: 'ACKB' },
+    })
+    expect(payload.Description).toBe('')
+  })
+})
+
+// 2026-09-30: the screens edit a description as text + the fields attached after it, so a
+// token is never in a text box where one backspace could break it.
+describe('splitDescription / joinDescription', () => {
+  const SD = '{Settlement_Date}'
+  const BN = '{Bank_Name}'
+
+  it('lifts the fields out of the text, in the order they appear', () => {
+    expect(splitDescription(`KBANK fee ${BN} ${SD}`)).toEqual({ text: 'KBANK fee', tags: [BN, SD] })
+  })
+
+  it('round-trips a text still being typed, trailing space included', () => {
+    const saved = joinDescription('KBANK ', [SD])
+    expect(splitDescription(saved)).toEqual({ text: 'KBANK ', tags: [SD] })
+  })
+
+  it('handles fields with no text at all', () => {
+    expect(joinDescription('', [SD, BN])).toBe(`${SD} ${BN}`)
+    expect(splitDescription(`${SD} ${BN}`)).toEqual({ text: '', tags: [SD, BN] })
+  })
+
+  it('lifts a mid-text field saved before the change, which then lands after the text', () => {
+    const { text, tags } = splitDescription(`AR ${SD} Recon`)
+    expect({ text, tags }).toEqual({ text: 'AR Recon', tags: [SD] })
+    expect(joinDescription(text, tags)).toBe(`AR Recon ${SD}`)
+  })
+
+  it('keeps one of each field, and leaves a value with none alone', () => {
+    expect(splitDescription(`${SD} x ${SD}`).tags).toEqual([SD])
+    expect(splitDescription('Plain {not a tag}')).toEqual({ text: 'Plain {not a tag}', tags: [] })
+    expect(joinDescription('Plain', [])).toBe('Plain')
   })
 })

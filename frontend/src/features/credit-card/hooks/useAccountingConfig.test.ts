@@ -87,6 +87,94 @@ describe('useAccountingConfig', () => {
     expect(result.current.config).toBeNull()
   })
 
+  // A BU with more than one bank keeps a GL mapping per bank (20260924000000). Unscoped, the
+  // server answers with whichever bank the mapping page saved last — so a KBANK statement
+  // was built, and posted, against another bank's accounts.
+  it("asks for the named bank's own mappings", async () => {
+    getAccountingConfig.mockResolvedValue({
+      bank_code: 'SCB',
+      file_prefix: 'IC',
+      mappings: { net: { dept: 'GEN', acc: '1011001' } },
+    } as never)
+
+    const { result } = renderHook(() => useAccountingConfig('KBANK'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(getAccountingConfig).toHaveBeenCalledWith('KBANK')
+  })
+
+  it('refetches when the bank changes, and is loading until that bank has landed', async () => {
+    getAccountingConfig.mockResolvedValueOnce({
+      bank_code: 'KBANK',
+      file_prefix: 'IC',
+      mappings: { net: { dept: 'GEN', acc: 'KBANK-ACC' } },
+    } as never)
+    const { result, rerender } = renderHook(({ bank }) => useAccountingConfig(bank), {
+      initialProps: { bank: 'KBANK' },
+    })
+    await waitFor(() => expect(result.current.mappings.net?.acc).toBe('KBANK-ACC'))
+
+    let land: (v: unknown) => void = () => {}
+    getAccountingConfig.mockReturnValueOnce(new Promise(r => (land = r)) as never)
+    rerender({ bank: 'SCB' })
+
+    // In the very render that changed the bank, KBANK's accounts must not pass for SCB's.
+    expect(result.current.loading).toBe(true)
+    expect(getAccountingConfig).toHaveBeenLastCalledWith('SCB')
+
+    await act(async () =>
+      land({
+        bank_code: 'KBANK',
+        file_prefix: 'IC',
+        mappings: { net: { dept: 'GEN', acc: 'SCB-ACC' } },
+      })
+    )
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.mappings.net.acc).toBe('SCB-ACC')
+  })
+
+  it('does not stand in the offline copy for a bank asked for by name', async () => {
+    // The copy holds whichever bank the mapping page saved last, and a scan overwrites its
+    // `bank` on every run — its accounts cannot be vouched for as this bank's.
+    getAccountingConfig.mockRejectedValue(new Error('offline'))
+    localStorage.setItem(
+      appKey('accountingConfig'),
+      JSON.stringify({
+        bank: 'Siam Commercial Bank (SCB)',
+        filePrefix: 'IC',
+        mappings: { net: { dept: 'GEN', acc: 'SCB-ACC' } },
+      })
+    )
+
+    const { result } = renderHook(() => useAccountingConfig('KBANK'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.config).toBeNull()
+  })
+
+  // A review opened by its link knows no bank until the document arrives; the read that
+  // used to go out meanwhile answered for whichever bank the mapping page saved last.
+  it('reads nothing while it is told to wait, and then reads once', async () => {
+    getAccountingConfig.mockResolvedValue({
+      bank_code: 'KTC',
+      file_prefix: 'IC',
+      mappings: { net: { dept: 'GEN', acc: 'KTC-ACC' } },
+    } as never)
+    const { result, rerender } = renderHook(
+      ({ bank, wait }) => useAccountingConfig(bank, { wait }),
+      { initialProps: { bank: undefined as string | undefined, wait: true } }
+    )
+
+    await act(async () => {})
+    expect(getAccountingConfig).not.toHaveBeenCalled()
+    expect(result.current.loading).toBe(true)
+
+    rerender({ bank: 'KTC', wait: false })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(getAccountingConfig).toHaveBeenCalledTimes(1)
+    expect(getAccountingConfig).toHaveBeenCalledWith('KTC')
+  })
+
   it('refresh re-reads the config', async () => {
     getAccountingConfig.mockResolvedValue({
       bank_code: 'GHL',

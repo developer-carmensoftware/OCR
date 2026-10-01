@@ -145,14 +145,20 @@ the refund boundary (the money went back), and a second copy of something alread
 `_park_or_finish` in `_run_document` (`email_automation/pipeline.py`) is the whole rule.
 
 **`auto_post` is per BU and defaults to `false`** (`email_ingest_settings.auto_post`). Since
-2026-09-08 it has exactly **one writer, `PUT /api/v1/carmen/settings`** — Carmen's own
-settings screen — and it is the one field on that full-replace payload that **merges on
-omit** (`SettingsIn.auto_post: bool | None`). The queue's gear and
-`PUT /api/v1/email/settings/auto-post` are deleted: two writers meant an unrelated settings
-save reset the switch. `#/email-settings` has a checkbox for it (`setAutoPost`) — a second
-*client* of that one endpoint, not a second writer, and the service path for a BU whose
-Carmen has not shipped the control; every other save on that page omits the field, which is
-what the merge is for. A BU switching
+2026-09-08 it has exactly **one writer, `PUT /api/v1/carmen/settings`**, and it is the one
+field on that full-replace payload that **merges on omit** (`SettingsIn.auto_post: bool |
+None`). The queue's gear and `PUT /api/v1/email/settings/auto-post` are deleted: two writers
+meant an unrelated settings save reset the switch. Its one screen is ours: the switch on
+`#/CreditCardOCR/email-settings`, which sends the field only when it moved.
+
+**The settings screen is `#/CreditCardOCR/email-settings`, in this app** (2026-10-01, decision-log #34;
+the first path, `#/email-settings`, redirects with its query).
+Carmen builds no settings form. Its menu mints a fresh BU posting token on **every** open
+(retiring the last one) and passes it in the same SSO link as the queue, as `posting_token`;
+the page stores it before reading anything (decision-log #35). The queue's fix buttons open it in the same
+tab. **Carmen decides who sees the menu item, and we check nothing twice**: no role gate
+and no permission endpoint, so any token the host's Carmen accepts may edit (QA S-07). Don't
+add a Home tile or a queue-header link either; the menu is the front door. English-only. A BU switching
 the feature on gets review; they turn it off once the queue
 has earned it. Backpressure, not refunds, protects a BU that stops reading its queue: past
 50 pending, mail is handed back unread and costs nothing.

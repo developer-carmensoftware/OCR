@@ -99,4 +99,28 @@ describe('usePaymentTypes — modal save/cancel', () => {
     expect(result.current.customPaymentTypes).toEqual([])
     expect(result.current.paymentAmount.VISA).toBeUndefined()
   })
+
+  it('the undo a remove returns puts the type back in its place, with its mapping', () => {
+    const { result } = renderHook(() => usePaymentTypes())
+    act(() => {
+      result.current.initFromData({ VISA: { dept: 'GEN', acc: '1021009' } }, [
+        'AMEX',
+        'VISA',
+        'JCB',
+      ])
+    })
+
+    let undo = () => {}
+    act(() => {
+      undo = result.current.handleRemoveCustomType('VISA')
+    })
+    act(() => undo())
+
+    expect(result.current.customPaymentTypes).toEqual(['AMEX', 'VISA', 'JCB'])
+    expect(result.current.paymentAmount.VISA).toEqual({ dept: 'GEN', acc: '1021009' })
+
+    // Pressed again (or after Cancel already restored it): nothing doubles up.
+    act(() => undo())
+    expect(result.current.customPaymentTypes).toEqual(['AMEX', 'VISA', 'JCB'])
+  })
 })

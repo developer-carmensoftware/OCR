@@ -8,6 +8,10 @@ interface Props {
   text?: string
   children: ReactNode
   position?: TooltipPosition
+  /** Wrap at 18rem instead of one line — for a sentence or two of help text. */
+  multiline?: boolean
+  /** On the tooltip element, so the trigger can point `aria-describedby` at it. */
+  id?: string
 }
 
 interface Coords {
@@ -65,7 +69,7 @@ function getCoords(rect: DOMRect, position: TooltipPosition): Coords {
   }
 }
 
-export default function Tooltip({ text, children, position = 'top' }: Props) {
+export default function Tooltip({ text, children, position = 'top', multiline, id }: Props) {
   const [state, setState] = useState({ visible: false, top: 0, left: 0, transform: 'none' })
   const triggerRef = useRef<HTMLDivElement>(null)
 
@@ -91,8 +95,10 @@ export default function Tooltip({ text, children, position = 'top' }: Props) {
     borderRadius: '8px',
     fontSize: '0.75rem',
     fontWeight: 500,
-    lineHeight: 1.4,
-    whiteSpace: 'nowrap',
+    lineHeight: multiline ? 1.5 : 1.4,
+    whiteSpace: multiline ? 'normal' : 'nowrap',
+    maxWidth: multiline ? '18rem' : undefined,
+    textAlign: multiline ? 'left' : undefined,
     zIndex: 99999,
     pointerEvents: 'none',
     border: '1px solid rgba(255,255,255,0.10)',
@@ -110,12 +116,16 @@ export default function Tooltip({ text, children, position = 'top' }: Props) {
         onMouseLeave={hide}
         onFocus={show}
         onBlur={hide}
+        // Dismissable without moving focus (WCAG 1.4.13).
+        onKeyDown={e => {
+          if (e.key === 'Escape') hide()
+        }}
         style={{ display: 'inline-flex', alignItems: 'center' }}
       >
         {children}
       </div>
       {createPortal(
-        <div role="tooltip" style={tooltipStyle}>
+        <div role="tooltip" id={id} style={tooltipStyle}>
           {text}
         </div>,
         document.body

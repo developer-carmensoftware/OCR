@@ -90,6 +90,10 @@ export interface ExtractedAPInvoiceData {
 export interface FieldMapping {
   dept: string | null
   acc: string | null
+  /** Which layout this key came from — `null` (usable on any layout: the three fixed
+   *  types and every pre-existing fee-invoice payment type), 'settlement_detail' or
+   *  'settlement_summary'. Display-only; the JV builder never reads it. */
+  source?: string | null
 }
 
 export interface CodeOption {
@@ -134,23 +138,27 @@ export interface AccountingConfigRequest {
   bank_code: string | null
   file_prefix: string | null
   file_source: string | null
-  description: string | null
   branch: string | null
   mappings: Record<string, FieldMapping> | null
   custom_types: string[] | null
-  /** bank_code -> description. Omit entirely to keep what the server has stored. */
+  /** bank_code -> description, the only description there is (no BU-wide one since
+   *  2026-09-30). Omit entirely to keep what the server has stored. */
   bank_descriptions?: Record<string, string>
+  /** The `version` this bank's rules had when they were loaded. The server refuses the
+   *  save (409) if it holds something newer; omit it to overwrite on purpose. */
+  base_version?: string
 }
 
 export interface AccountingConfigResponse {
   bank_code: string | null
   file_prefix: string | null
   file_source: string | null
-  description: string | null
   branch: string | null
   mappings: Record<string, FieldMapping>
   custom_types: string[]
   bank_descriptions?: Record<string, string>
+  /** When this bank's rules last changed — send it back as `base_version`. */
+  version?: string | null
 }
 
 // ── Shared / Utility ──────────────────────────────────────────────

@@ -18,6 +18,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import DocType
 from app.database import async_session
 from app.models.business import CreditCard
 from app.models.email_automation import EmailDocument
@@ -155,29 +156,47 @@ async def _possibly_posted(tenant_id: str, doc_no: str | None, doc_date: Any) ->
     return _overlapping_doc_no(doc_no, list(posted))
 
 
-async def _already_pending(tenant_id: str, bank_code: str | None, doc_no: str | None) -> bool:
+async def _already_pending(
+    tenant_id: str, bank_code: str | None, doc_no: str | None, doc_type: str
+) -> bool:
     """Is an identical document already sitting in this BU's review queue?
 
     A document with no `doc_no` is not comparable — two unnumbered statements are not
     evidence of anything — so it never matches. That blindness is itself why
     `doc_no_missing` is a flag: it keeps an unnumbered document out of auto-post, where
     nothing else could catch a second copy.
+
+    **`doc_type` is checked too, in Python.** KBANK prints one tax invoice number across
+    both the commission fee invoice and the settlement report that reclassifies the same
+    day's takings — `finalize_extraction`'s duplicate key already carries `doc_type` for
+    exactly this reason (see its comment), and without it here a fee invoice parked for
+    review would sink the settlement report sharing its number as a false "copy already
+    waiting". `email_documents` has no `doc_type` column, but `_park_for_review` already
+    stores it in `review_payload` — the only place downstream that has to tell the two
+    documents apart from this row anyway — so this reads it back rather than adding a
+    migration for one more comparison.
     """
     if not doc_no:
         return False
     try:
         async with async_session() as db:
-            hit = await db.scalar(
-                select(EmailDocument.id)
-                .where(
-                    EmailDocument.tenant_id == uuid.UUID(tenant_id),
-                    EmailDocument.status == "pending_review",
-                    EmailDocument.bank_code == bank_code,
-                    EmailDocument.doc_no == doc_no,
+            rows = (
+                (
+                    await db.execute(
+                        select(EmailDocument.review_payload).where(
+                            EmailDocument.tenant_id == uuid.UUID(tenant_id),
+                            EmailDocument.status == "pending_review",
+                            EmailDocument.bank_code == bank_code,
+                            EmailDocument.doc_no == doc_no,
+                        )
+                    )
                 )
-                .limit(1)
+                .scalars()
+                .all()
             )
-        return hit is not None
+        return any(
+            (payload or {}).get("doc_type", DocType.FEE_INVOICE) == doc_type for payload in rows
+        )
     except Exception as exc:  # noqa: BLE001
         # Fail open, like every other infra guard on this path. A missed duplicate costs
         # the reviewer one extra row to reject; a raised exception here would file a
@@ -268,6 +287,9 @@ def _review_flags(
     *,
     mapping_guessed: bool,
     mapping_missing: list[str] | None = None,
+    doc_type: str = DocType.FEE_INVOICE,
+    ar_unbalanced: bool = False,
+    tin_unverified: bool = False,
 ) -> list[str]:
     """Why this document might be worth opening. Computed once, here, and stored.
 
@@ -280,10 +302,23 @@ def _review_flags(
     (`imbalancedLines`): every layout satisfies gross = commission + tax + net per line, so
     a line that breaks it was misread and its JV would post unbalanced.
 
+    **The settlement report's lines are not that shape** — it prints THB AMT per payment
+    type and leaves VAT AMT and NET AMT as dashes on those rows, so the per-line identity
+    above is false for every one of them and cannot be reused here. `ar_unbalanced` is the
+    caller's own `not jv.is_balanced(rows)`: since 2026-09-18 the debit side of
+    that JV comes from the report's own total row (independent of the credit rows it is
+    compared against), so this is a real check, not the tautology `is_balanced` used to be
+    when the debit leg was derived from the very rows it was checked against.
+
     **This is also the auto-post gate.** An empty list is what `auto_post` posts on — the
     queue's own "nothing to say about this one", which the row already prints as *Ready to
     post*. One predicate on purpose: a document a reviewer would have been given a reason
     for must not be the one that posts unattended.
+
+    `tin_unverified` (AR only): the settlement report's own page prints no tax ID, so it
+    has nothing for `foreign_tax_id` to check unless the CSV sidecar supplied one by
+    merchant ID. Not a conflict — that is `tax_id_mismatch`, a `_Skip` raised earlier and
+    never reaching here — just an unattended post this document has not earned yet.
     """
     flags: list[str] = []
     # Above `mapping_guessed` in the row's reason ladder: a guess posts and may post to the
@@ -292,7 +327,12 @@ def _review_flags(
         flags.append("mapping_missing")
     if mapping_guessed:
         flags.append("mapping_guessed")
-    if any(
+    if doc_type == DocType.AR_RECONCILE:
+        if ar_unbalanced:
+            flags.append("unbalanced")
+        if tin_unverified:
+            flags.append("tin_unverified")
+    elif any(
         abs(r2(num(d.pay_amt) - (num(d.commis_amt) + num(d.tax_amt) + num(d.total)))) > 0.01
         for d in extracted.details
     ):
@@ -321,6 +361,7 @@ async def _park_for_review(
     mapping_missing: list[str] | None = None,
     reason_code: str | None = None,
     error: str | None = None,
+    doc_type: str = DocType.FEE_INVOICE,
 ) -> None:
     """Stop short of Carmen and wait for a human.
 
@@ -377,6 +418,12 @@ async def _park_for_review(
             "unmapped": list(mapping_missing or []),
             "guessed": sorted(mapping_suggested or {}),
             "suggested": dict(mapping_suggested or {}),
+            # Which of the two documents this is. Everything downstream that has to build
+            # a JV from this row — the review screen's read, and `approve_document`'s post
+            # — branches on it, and nothing on the extraction itself says which layout
+            # produced it: a settlement report and its commission invoice share the bank,
+            # the date and the tax invoice number.
+            "doc_type": doc_type,
         }
         await db.commit()
 

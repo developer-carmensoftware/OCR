@@ -2247,6 +2247,10 @@ input[type='text'].detail-input:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* AI Suggest + Refresh sit opposite the title. With no wrap they leave it about 50px on
+     a phone and the heading breaks mid-word; the AR card header takes the same measure. */
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .cc-flex-center-gap {
@@ -2275,6 +2279,80 @@ input[type='text'].detail-input:focus {
   gap: 0.5rem;
   align-items: center;
   width: 100%;
+}
+
+/* The header block and each row are wrappers that do not exist as boxes at this width, so
+   their cells sit on the five tracks above exactly as they did before the wrappers were
+   added. They are here to give the stacked layout something to group. */
+.cc-mapping-head,
+.cc-mapping-row {
+  display: contents;
+}
+
+/* ─── Stacked rows ─────────────────────────────────────────────────────────────
+ *
+ * Same call `.rq-table` makes at this width and the opposite of `.jv-table`'s: a JV is a
+ * ledger whose columns must line up to be checked, but this is a form. Nobody reads a dept
+ * code down a column here, they fill one row at a time — and making someone swipe sideways
+ * to reach the field they are filling in is the failure, not the scrollbar.
+ *
+ * Rows separate with a rule rather than becoming boxes: `.container` is already a card and
+ * a card inside a card is always wrong.
+ */
+@media (max-width: 720px) {
+  .cc-mapping-grid-container {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  /* Headings for columns that no longer exist; every cell names itself now. */
+  .cc-mapping-head {
+    display: none;
+  }
+
+  .cc-mapping-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 0.85rem 0;
+  }
+
+  .cc-mapping-row + .cc-mapping-row {
+    border-top: 1px solid var(--border);
+  }
+
+  /* Cr/Dr is a two-letter chip that was sized by a 70px track. Left-align it and let it
+     take only the width of its own word. */
+  .cc-mapping-type-credit,
+  .cc-mapping-type-debit {
+    justify-self: start;
+    padding: 0.2rem 0.6rem;
+  }
+
+  /* Spanned three of five tracks; there is one track now. */
+  .cc-grid-span-3 {
+    grid-column: auto;
+  }
+
+  /* `margin-left: auto` strands the badge alone on its own line once the status wraps. */
+  .cc-required-badge {
+    margin-left: 0;
+  }
+
+  .cc-suggestion-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.3rem;
+  }
+}
+
+/* A mapping row is filled in by thumb as often as by mouse, and a touch laptop needs the
+   floor at any width — so this keys off the pointer, not the viewport. */
+@media (pointer: coarse) {
+  .cc-btn-accept,
+  .cc-btn-reject {
+    min-height: 44px;
+  }
 }
 
 .cc-mapping-grid-container .mapping-header {
@@ -2337,9 +2415,11 @@ input[type='text'].detail-input:focus {
   flex-shrink: 0;
 }
 
+/* Amber, not red: an unmapped payment type waits for review, it is not an error — the
+   same colour the payment-type dialog gives it (PaymentMappingDialog). */
 .cc-map-ar-count.missing {
-  color: var(--rose-text);
-  background: var(--btn-err-bg, var(--rose-light));
+  color: var(--amber-text);
+  background: var(--amber-light);
 }
 
 .cc-map-ar-count.ready {
@@ -2373,9 +2453,9 @@ input[type='text'].detail-input:focus {
 }
 
 .cc-mapping-status.missing {
-  color: var(--rose-text);
-  background: var(--btn-err-bg, var(--rose-light));
-  border-color: var(--rose-mid);
+  color: var(--amber-text);
+  background: var(--amber-light);
+  border-color: var(--amber-mid);
 }
 
 .cc-mapping-status.ready {

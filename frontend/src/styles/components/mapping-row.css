@@ -1,0 +1,351 @@
+/* ─── MappingRow — "this payment type posts to this dept and account" ───────
+ *
+ * Imported by the component, not by a page or a modal, so the row is styled wherever it
+ * is rendered. The `pm-` prefix is the one it was born with in the payment-type modal.
+ *
+ * A row reads as a line of a table, not a coloured card: state is a thin edge on the left
+ * and a dot by the code, in the same four colours the dialog's message bar uses —
+ * amber needs mapping, red is a pair Carmen will refuse, primary is an AI suggestion to
+ * review, and a mapped row carries nothing at all. That is the A2X convention (unmapped
+ * rows tinted until done), not the old solid red/green badges, which made a list of
+ * fifteen unmapped types look like fifteen errors.
+ */
+
+/* One template for the header and every row, so they cannot drift apart. The last track
+   is fixed, not `auto`: it holds the actions, which render only on some rows, and as
+   `auto` it was 0 on the others — the Dept/Account columns landed at different widths and
+   acting on a suggestion resized the row under the cursor. It is wide only while the
+   table has a suggestion somewhere (`.pm-table--suggesting`, set by MappingTable), so the
+   whole table changes once when AI Suggest returns, never one row at a time. */
+.pm-table {
+  --pm-actions: 2.25rem;
+}
+
+.pm-table--suggesting {
+  --pm-actions: 12.5rem;
+}
+
+.pm-grid-header,
+.pm-row {
+  --pm-cols: minmax(130px, 1.1fr) 1fr 1fr var(--pm-actions, 2.25rem);
+
+  display: grid;
+  grid-template-columns: var(--pm-cols);
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.pm-grid-header.pm-row--selectable,
+.pm-row.pm-row--selectable {
+  --pm-cols: 1.5rem minmax(130px, 1.1fr) 1fr 1fr var(--pm-actions, 2.25rem);
+}
+
+.pm-grid-header {
+  padding: 0 0.6rem 0.45rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.pm-row {
+  position: relative;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.15s ease;
+}
+
+.pm-row::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: transparent;
+}
+
+.pm-row--needs {
+  background: color-mix(in srgb, var(--amber-light) 55%, transparent);
+}
+
+.pm-row--needs::before {
+  background: var(--amber);
+}
+
+.pm-row--invalid {
+  background: color-mix(in srgb, var(--rose-light) 55%, transparent);
+}
+
+.pm-row--invalid::before {
+  background: var(--rose);
+}
+
+.pm-row--suggested::before {
+  background: var(--primary);
+}
+
+.pm-row.is-selected {
+  background: var(--primary-light);
+}
+
+.pm-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.pm-select input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.pm-type-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.pm-status-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--emerald);
+}
+
+.pm-row--needs .pm-status-dot {
+  background: var(--amber);
+}
+
+.pm-row--invalid .pm-status-dot {
+  background: var(--rose);
+}
+
+.pm-row--suggested .pm-status-dot {
+  background: var(--primary);
+}
+
+.pm-type-code {
+  min-width: 0;
+  overflow: hidden;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-type-tag {
+  flex-shrink: 0;
+  padding: 0 0.4rem;
+  border-radius: var(--radius-pill);
+  background: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.pm-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* ─── The suggestion's own pair: labelled, tinted like the suggestion it answers ── */
+
+.pm-suggest {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pm-accept-btn,
+.pm-dismiss-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 28px;
+  padding: 0 0.6rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pm-accept-btn {
+  border: 1px solid var(--primary-mid);
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.pm-accept-btn:hover {
+  background: color-mix(in srgb, var(--primary-light) 60%, var(--primary-mid));
+}
+
+.pm-dismiss-btn {
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-2);
+}
+
+.pm-dismiss-btn:hover {
+  background: var(--muted);
+  color: var(--text);
+}
+
+/* ─── Remove: its own slot at the far edge, past a divider, a trash and not an X ─ */
+
+.pm-row-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.pm-row-remove:hover,
+.pm-row-remove:focus-visible {
+  background: var(--rose-light);
+  color: var(--rose-text);
+}
+
+/* 24px of air and a rule between "answer the suggestion" and "take the row out". */
+.pm-suggest + .pm-row-remove {
+  position: relative;
+  margin-left: 1.5rem;
+}
+
+.pm-suggest + .pm-row-remove::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: -0.75rem;
+  width: 1px;
+  background: var(--border);
+}
+
+/* Where there is a hover, Remove waits for it (or for keyboard focus in the row): a rare,
+   work-losing action does not need to sit in every row's eyeline while suggestions are
+   being answered. A touch screen has no hover, so there it is always shown. */
+@media (hover: hover) {
+  .pm-row .pm-row-remove {
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+
+  .pm-row:hover .pm-row-remove,
+  .pm-row:focus-within .pm-row-remove {
+    opacity: 1;
+  }
+}
+
+/* Above the stacking breakpoint the label wrappers are not in the layout at all: the two
+   pickers stay direct grid children, on the tracks `--pm-cols` describes. */
+.pm-cell {
+  display: contents;
+}
+
+/* ─── Stacked rows ─────────────────────────────────────────────────────────────
+ *
+ * This row is a form, not a ledger: nobody reads a dept code down a column, they fill one
+ * row at a time. So at this width it becomes a record rather than a sideways scroll.
+ * Redefining `--pm-cols` is the whole flip, because the header and every row share it.
+ */
+@media (max-width: 720px) {
+  /* checkbox · code · actions on the first line, the two pickers under it. */
+  .pm-grid-header.pm-row--selectable,
+  .pm-row.pm-row--selectable,
+  .pm-grid-header,
+  .pm-row {
+    --pm-cols: 1.5rem 1fr auto;
+  }
+
+  .pm-row:not(.pm-row--selectable) {
+    --pm-cols: 1fr auto;
+  }
+
+  .pm-row {
+    gap: 0.45rem 0.5rem;
+    padding: 0.7rem 0.6rem;
+  }
+
+  /* The header keeps only its select-all box; the columns it named are gone. */
+  .pm-grid-header > div {
+    display: none;
+  }
+
+  .pm-cell {
+    grid-column: 1 / -1;
+  }
+
+  /* Its children join the row's grid: Remove on the first line beside the code, the
+     suggestion's pair on a line of its own under the pickers — never side by side. */
+  .pm-actions {
+    display: contents;
+  }
+
+  .pm-row-remove {
+    grid-row: 1;
+    grid-column: -2 / -1;
+    justify-self: end;
+  }
+
+  .pm-suggest {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .pm-suggest + .pm-row-remove {
+    margin-left: 0;
+  }
+
+  .pm-suggest + .pm-row-remove::before {
+    display: none;
+  }
+
+  .pm-cell {
+    display: grid;
+    grid-template-columns: 6.5rem 1fr;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* Declared only inside the query: a `display: contents` element still generates its
+     pseudo-elements, so this rule outside would print stray labels on the desktop grid. */
+  .pm-cell::before {
+    content: attr(data-label);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+}
+
+/* A row is filled in by thumb as often as by mouse, and a touch laptop needs the floor at
+   any width — so this keys off the pointer rather than the viewport. */
+@media (pointer: coarse) {
+  .pm-accept-btn,
+  .pm-dismiss-btn,
+  .pm-row-remove,
+  .pm-select {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

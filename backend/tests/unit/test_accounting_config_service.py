@@ -42,7 +42,7 @@ def _db(config_row, entries):
 
 
 def _entry(field_type, dept=None, acc=None):
-    return SimpleNamespace(field_type=field_type, dept_code=dept, acc_code=acc)
+    return SimpleNamespace(field_type=field_type, dept_code=dept, acc_code=acc, source=None)
 
 
 @pytest.mark.asyncio
@@ -100,7 +100,7 @@ async def test_a_half_filled_suggestion_is_dropped_not_written():
     db.commit.assert_not_awaited()
 
 
-# ── description_for: per-bank wording, with the BU's single one as fallback ────
+# ── description_for: a bank's own wording, or nothing (no fallback since 2026-09-30) ──
 
 
 class _Cfg(SimpleNamespace):
@@ -117,18 +117,19 @@ def test_a_bank_with_its_own_wording_gets_it():
     assert description_for(cfg, "KTC") == "KTC fee invoice"
 
 
-def test_a_bank_without_one_falls_back_to_the_bus_single_description():
-    """The whole point of the fallback: nothing changes for a BU that never sets one."""
+def test_a_bank_without_one_gets_none_whatever_the_retired_column_holds():
+    """The BU-wide `description` was read everywhere and editable nowhere (dev `carmen`
+    sat behind "TEST ACC" on every bank). It is history now: the migration copied it into
+    each bank the BU used, and a bank with no entry posts no description."""
     cfg = _cfg("Generic settlement", {"SCB": "SCB settlement"})
-    assert description_for(cfg, "BBL") == "Generic settlement"
-    assert description_for(cfg, None) == "Generic settlement"
-    assert description_for(_cfg("Generic settlement"), "SCB") == "Generic settlement"
+    assert description_for(cfg, "BBL") is None
+    assert description_for(cfg, None) is None
+    assert description_for(_cfg("Generic settlement"), "SCB") is None
 
 
-def test_a_blank_per_bank_entry_is_not_treated_as_wording():
-    """An empty string on the JV reads as a missing description, not an override."""
-    assert description_for(_cfg("Generic", {"SCB": "   "}), "SCB") == "Generic"
-    assert description_for(_cfg("Generic", {"SCB": ""}), "SCB") == "Generic"
+def test_a_blank_per_bank_entry_is_no_description():
+    assert description_for(_cfg("Generic", {"SCB": "   "}), "SCB") is None
+    assert description_for(_cfg("Generic", {"SCB": ""}), "SCB") is None
 
 
 def test_no_description_anywhere_is_none_not_a_crash():
@@ -266,15 +267,17 @@ async def test_a_description_starts_this_banks_own_entry_when_it_had_none():
 
 
 @pytest.mark.asyncio
-async def test_a_description_with_no_bank_still_writes_the_bu_wide_one():
-    """The fallback is the only thing an edit can mean when nothing named a bank."""
+async def test_a_description_with_no_bank_is_dropped_not_parked_in_the_retired_column():
+    """There is no BU-wide description to write since 2026-09-30, and nothing would read
+    it back — so with no bank named, a description alone is a no-op."""
     row = SimpleNamespace(id=1, file_prefix=None, description="Generic", bank_descriptions={})
     db = _db(row, [])
 
     await patch_config(db, TENANT_ID, description="Card settlement")
 
-    assert row.description == "Card settlement"
+    assert row.description == "Generic"
     assert row.bank_descriptions == {}
+    db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -287,7 +290,7 @@ async def test_naming_nothing_writes_nothing():
     db.commit.assert_not_awaited()
 
 
-# ── get_accounting_config: pre-bank-scoping entries still answer (F-8) ─────────
+# ── get_accounting_config: a bank reads its own entries ─────────────────────────
 
 
 def _config_row(bank_code=None):
@@ -303,7 +306,9 @@ def _config_row(bank_code=None):
 
 
 def _typed(field_type, dept, acc, *, custom=False):
-    return SimpleNamespace(field_type=field_type, dept_code=dept, acc_code=acc, is_custom=custom)
+    return SimpleNamespace(
+        field_type=field_type, dept_code=dept, acc_code=acc, is_custom=custom, source=None
+    )
 
 
 def _reads(config_row, *entry_batches):
@@ -316,36 +321,31 @@ def _reads(config_row, *entry_batches):
 
 
 @pytest.mark.asyncio
-async def test_a_bank_read_falls_back_to_the_bus_pre_scoping_entries():
-    """F-8 (2026-09-25 QA): #248's backfill could only give an entry a bank where the config
-    row named one, so carmencloud's 29 entries stayed bank-less and a KBANK read saw none of
-    them — every document parked `mapping_missing` and an auto-post BU stopped posting. A
-    bank-less entry was the BU's answer for every bank; the bank's own entry still wins."""
+async def test_a_bank_read_is_that_banks_own_entries_and_borrows_nothing():
+    """A bank-less entry used to answer for every bank that lacked the field (F-8,
+    2026-09-25), which the mapping page could not clear: a payment type deleted there came
+    back. 20261001000000 copied them to the banks that used them, so a bank's entries are
+    its own — and one read, no second query for the bank-less."""
     from app.services.credit_card.accounting_config import get_accounting_config
 
     kbank_own = [_typed("commission", "OPS", "5199")]
-    bankless = [
-        _typed("commission", "GEN", "6080008"),
-        _typed("บัตรเครดิต/เดบิต", "GEN", "1021009", custom=True),
-    ]
-    db = _reads(_config_row(), kbank_own, bankless)
+    db = _reads(_config_row(), kbank_own)
 
     cfg = await get_accounting_config(db, TENANT_ID, "KBANK")
 
-    assert cfg.mappings["commission"] == {"dept": "OPS", "acc": "5199"}  # the bank wins
-    assert cfg.mappings["บัตรเครดิต/เดบิต"] == {"dept": "GEN", "acc": "1021009"}  # restored
-    assert cfg.custom_types == ["บัตรเครดิต/เดบิต"]
+    assert cfg.mappings == {"commission": {"dept": "OPS", "acc": "5199", "source": None}}
+    assert cfg.custom_types == []
+    assert db.execute.await_count == 2  # config row + this bank's entries
 
 
 @pytest.mark.asyncio
 async def test_an_unscoped_read_asks_for_the_bankless_entries_once():
-    """No bank named and none on the row: the bank-less entries are the whole answer, read
-    once — the fallback is only for a read scoped to a bank."""
+    """No bank named and none on the row: the one read is for entries with no bank."""
     from app.services.credit_card.accounting_config import get_accounting_config
 
     db = _reads(_config_row(), [_typed("tax", "GEN", "1022005")])
 
     cfg = await get_accounting_config(db, TENANT_ID)
 
-    assert cfg.mappings == {"tax": {"dept": "GEN", "acc": "1022005"}}
+    assert cfg.mappings == {"tax": {"dept": "GEN", "acc": "1022005", "source": None}}
     assert db.execute.await_count == 2  # config row + one entries read

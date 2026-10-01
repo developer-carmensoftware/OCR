@@ -6,6 +6,14 @@ from app.models.schemas.admin_users import (
     RoleAssignmentRequest,
 )
 from app.models.schemas.ap_invoice import SuggestGLItem, SuggestGLRequest
+from app.models.schemas.ar_reconcile import (
+    ARMappingItem,
+    ARPreviewIn,
+    ARPreviewOut,
+    ARPreviewRow,
+    ARSettingsIn,
+    ARSettingsOut,
+)
 from app.models.schemas.auth import ExchangeRequest, ExchangeResponse
 from app.models.schemas.common import FieldMapping, Page
 from app.models.schemas.config import (
@@ -79,6 +87,13 @@ from app.models.schemas.ocr import (
 from app.models.schemas.quotas import ModuleToggleRequest
 
 __all__ = [
+    # ar reconcile
+    "ARMappingItem",
+    "ARPreviewIn",
+    "ARPreviewOut",
+    "ARPreviewRow",
+    "ARSettingsIn",
+    "ARSettingsOut",
     # common
     "FieldMapping",
     "Page",

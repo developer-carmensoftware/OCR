@@ -49,7 +49,7 @@ export const en = {
   'review.jvNoConfig': 'This business unit has no accounting configuration yet.',
   'review.jvDept': 'Dept',
   'review.jvAccount': 'Account',
-  'review.jvDesc': 'Description',
+  'review.jvDesc': 'Comment',
   'review.jvLineOf': '{field} line {line}',
   'review.jvDebitFor': 'Debit for {field}',
   'review.jvCreditFor': 'Credit for {field}',
@@ -61,7 +61,7 @@ export const en = {
   'review.jvAccountPlaceholder': 'Account',
   'review.jvDeptFor': 'Department for {field}',
   'review.jvAccountFor': 'Account for {field}',
-  'review.jvDescFor': 'Description for {field}',
+  'review.jvDescFor': 'Comment for {field}',
   'review.jvDeptFilter': '{count} accounts allowed for {dept}',
   'review.jvGuessed': 'AI',
   'review.jvGuessedHint': 'The AI chose this account when the document arrived. Check it.',
@@ -82,6 +82,8 @@ export const en = {
     'Fill in the vendor name and tax ID under Show details, or untick the input tax record',
   'review.loadingDocument': 'Loading the document',
   'review.ruleSaveFailed': 'The GL rule could not be saved, so nothing was posted: {reason}',
+  'review.arMappingSaveFailed': 'The mapping could not be saved, so nothing was posted: {reason}',
+  'review.arStillBlocked': 'Still blocked after saving the mapping: {reason}',
   // Sentence case on every phrase this column can print, including the ones that arrive
   // from the backend. Five lowercase fragments, one capitalised phrase and two first-person
   // sentences was four grammars in one scan, and the eye re-orients at each change.
@@ -92,6 +94,9 @@ export const en = {
   // shown is a proposal to check — the fields are named after the colon — and not a gap.
   'review.reasonGuessed': 'AI suggested mapping',
   'review.reasonDocNoMissing': 'No document number',
+  // AR reconciliation only: no CSV sidecar confirmed this settlement report's tax ID, so
+  // it is not a conflict (that is `tax_id_mismatch`, above this ladder) — just unverified.
+  'review.reasonTinUnverified': 'Tax ID not verified',
   'review.reasonWarnings': 'Extraction warnings',
   // The reviewer's next move, not the absence of a problem. "nothing flagged" named an
   // internal concept (the ReviewFlag values) and left a clerk to work out that the row was
@@ -106,8 +111,8 @@ export const en = {
   // review off, the exact thing it stopped doing. None of these names forwarding or
   // approval, so none of them can go stale that way.
   //
-  // The ingest address is deliberately absent — it belongs to Carmen's settings screen,
-  // not to a line in an empty state.
+  // The ingest address is deliberately absent — it belongs to the settings screen
+  // (#/CreditCardOCR/email-settings), not to a line in an empty state.
   'review.emptyReviewTitle': 'Nothing needs review',
   'review.emptyReviewBody': 'Documents that need a decision appear here.',
   'review.emptyTodayTitle': 'No activity today',
@@ -178,6 +183,30 @@ export const en = {
   'review.actionReconnect': 'Reconnect',
   'review.actionOpenJv': 'Open JV',
   'review.uploadDocuments': 'Upload documents',
+  'review.arSettings': 'AR reconciliation settings',
+  'review.arNotConfigured':
+    'AR reconciliation is no longer configured for this bank, so no JV can be built.',
+  'review.arUnmapped': 'Map these payment types before posting: {types}',
+  // The settlement report's reconciliation pane. The first two columns are the document's
+  // own, so they are named the way KBANK prints them; the rest reuse the JV's column names
+  // (review.jvDept / jvAccount / jvDesc / jvDebit / jvCredit) because they are the same
+  // columns — including the Comment column, which both this pane and the settings screen's
+  // preview render from the same `desc` field since 2026-09-17. arColPaymentType survives
+  // only for ARMappingTable's own column, which maps a bare payment type to a GL account
+  // and never shows the posted comment.
+  'review.arColPaymentType': 'Payment type',
+  'review.arPostTypeDetail': 'Detail',
+  'review.arPostTypeSummary': 'Summary',
+  'review.arNotMapped': 'Not mapped',
+  'review.arNotPosted': 'no journal line',
+  'review.arNewType': 'not mapped — pick Dept/Account to post it',
+  'review.arFoldedCount': '{count} folded in',
+  'review.arExpandCol': 'Expand',
+  'review.arExpandFolded': 'Show {count} lines folded into {field}',
+  'review.arCollapseFolded': 'Hide the lines folded into {field}',
+  // The journal book lives in the credit-card mapping screen, which is where this sends
+  // the reviewer — the field on the dialog cannot be typed into on this path.
+  'review.actionSetPrefix': 'Set the journal book',
   // "reviewed and", because that is what the name is evidence of: this document stopped at
   // the queue and a person read it before it went. Its sibling below says "scanned and" for
   // the same reason — each names the work the person actually did, not just the posting.
@@ -208,7 +237,8 @@ export const en = {
   'review.inputTaxRecorded': 'Input tax recorded for {doc}',
   'review.inputTaxRecordFailed': 'Input tax not recorded: {msg}',
   // The landing page for a BU that has never scanned anything. No word about email: most
-  // BUs scan by hand, and the automation is introduced by Carmen's own settings screen.
+  // BUs scan by hand, and the automation is introduced from Carmen's menu, which opens our
+  // settings screen.
   'review.noScansTitle': 'No scans yet',
   'review.noScansBody':
     'Every statement you scan appears here, posted or not, so you can see what each credit went on.',
@@ -219,9 +249,9 @@ export const en = {
   'review.rejectedBy': 'Reviewed and rejected by {name}',
   'review.rejectedByWith': 'Reviewed and rejected by {name}: {reason}',
   // Each phrase that carries a Fix button names the field on the screen that button opens.
-  // "your list" / "connection" were our nouns; the settings screen offers *Your email
-  // addresses* and *Posting credential*, so a reader who followed the button arrived looking
-  // for something that was not there. (There were three. `rcNoRuleMatch` — *Filename
+  // "your list" / "connection" were our nouns; the settings screen (#/CreditCardOCR/email-settings) offers
+  // *Your email addresses* and *Posting credential*, so a reader who followed the button
+  // arrived looking for something that was not there. Rename a field there, rename it here. (There were three. `rcNoRuleMatch` — *Filename
   // patterns* — went with the rows it described: a rule refusing a file it was written to
   // refuse is in no view of this app now, only on #/admin/email, which has its own key.)
   'review.rcSenderNotAllowed': 'Sender is not one of your email addresses',
@@ -244,6 +274,9 @@ export const en = {
   // lapsed one write the same row, and only one of them expired.
   'review.rcCarmenUnauthorized': 'The Carmen posting credential is no longer accepted',
   'review.rcIngestPaused': 'Arrived while AI JV Automation was off',
+  'review.rcArDisabled': 'Arrived while AR reconciliation was off for this bank',
+  'review.rcUnbalanced': 'Debit and credit do not agree — a figure was misread',
+  'review.rcCoveredBySettlement': "This bank's settlement report already covers this commission",
   'review.rcRejectedByReviewer': 'Rejected',
   'review.rcUnknown': 'No reason recorded',
   'review.rcStuck': 'We started reading this and stopped',
@@ -323,7 +356,7 @@ export const th: Record<keyof typeof en, string> = {
   'review.jvNoConfig': 'หน่วยธุรกิจนี้ยังไม่ได้ตั้งค่าผังบัญชี',
   'review.jvDept': 'Dept',
   'review.jvAccount': 'Account',
-  'review.jvDesc': 'Description',
+  'review.jvDesc': 'Comment',
   'review.jvLineOf': '{field} line {line}',
   'review.jvDebitFor': 'Debit for {field}',
   'review.jvCreditFor': 'Credit for {field}',
@@ -334,7 +367,7 @@ export const th: Record<keyof typeof en, string> = {
   'review.jvAccountPlaceholder': 'Account',
   'review.jvDeptFor': 'Department for {field}',
   'review.jvAccountFor': 'Account for {field}',
-  'review.jvDescFor': 'Description for {field}',
+  'review.jvDescFor': 'Comment for {field}',
   'review.jvDeptFilter': '{dept} ใช้ได้ {count} บัญชี',
   'review.jvGuessed': 'AI',
   'review.jvGuessedHint': 'AI เลือกบัญชีนี้ตอนเอกสารเข้ามา ช่วยตรวจด้วย',
@@ -351,10 +384,13 @@ export const th: Record<keyof typeof en, string> = {
   'review.jvNothing': 'ไม่มีรายการให้โพสต์',
   'review.loadingDocument': 'กำลังโหลดเอกสาร',
   'review.ruleSaveFailed': 'บันทึกกฎบัญชีไม่สำเร็จ จึงยังไม่ได้โพสต์: {reason}',
+  'review.arMappingSaveFailed': 'บันทึกผังบัญชีไม่สำเร็จ จึงยังไม่ได้โพสต์: {reason}',
+  'review.arStillBlocked': 'หลังบันทึกผังบัญชีแล้วยังโพสต์ไม่ได้: {reason}',
   'review.reasonMissingMapping': 'ยังไม่มีผังบัญชี',
   'review.reasonUnbalanced': 'ยอดไม่สมดุล',
   'review.reasonGuessed': 'AI แนะนำผังบัญชี',
   'review.reasonDocNoMissing': 'ไม่มีเลขที่เอกสาร',
+  'review.reasonTinUnverified': 'ยังไม่ยืนยันเลขผู้เสียภาษี',
   'review.reasonWarnings': 'มีคำเตือนจากการอ่าน',
   'review.reasonClean': 'พร้อมโพสต์',
   'review.emptyReviewTitle': 'ไม่มีรายการรอตรวจสอบ',
@@ -395,6 +431,20 @@ export const th: Record<keyof typeof en, string> = {
   'review.actionFixMapping': 'แก้ผังบัญชี',
   'review.actionOpenJv': 'เปิด JV',
   'review.uploadDocuments': 'อัปโหลดเอกสาร',
+  'review.arSettings': 'ตั้งค่ากระทบยอดลูกหนี้บัตรเครดิต',
+  'review.arNotConfigured': 'ธนาคารนี้ไม่ได้ตั้งค่ากระทบยอดไว้แล้ว จึงสร้าง JV ไม่ได้',
+  'review.arUnmapped': 'ผูกผังบัญชีให้ประเภทบัตรเหล่านี้ก่อนจึงจะโพสต์ได้: {types}',
+  'review.arColPaymentType': 'ประเภทบัตร',
+  'review.arPostTypeDetail': 'Detail',
+  'review.arPostTypeSummary': 'Summary',
+  'review.arNotMapped': 'ยังไม่ผูกบัญชี',
+  'review.arNotPosted': 'ไม่มีบรรทัดใน JV',
+  'review.arNewType': 'ยังไม่ผูกบัญชี — เลือกฝ่าย/บัญชีเพื่อโพสต์',
+  'review.arFoldedCount': 'รวม {count} รายการ',
+  'review.arExpandCol': 'ขยาย',
+  'review.arExpandFolded': 'แสดง {count} รายการที่รวมอยู่ใน {field}',
+  'review.arCollapseFolded': 'ซ่อนรายการที่รวมอยู่ใน {field}',
+  'review.actionSetPrefix': 'ตั้งสมุดรายวัน',
   'review.postedBy': 'ตรวจสอบและโพสต์โดย {name}',
   'review.postedAutomatically': 'โพสต์อัตโนมัติ',
   'review.postedManuallyBy': 'สแกนและลงบัญชีโดย {name}',
@@ -424,6 +474,9 @@ export const th: Record<keyof typeof en, string> = {
   'review.rcCarmenRejected': 'Carmen ปฏิเสธ',
   'review.rcCarmenUnauthorized': 'Carmen ไม่รับ token สำหรับส่งเอกสารแล้ว',
   'review.rcIngestPaused': 'เข้ามาตอนที่ปิด AI JV Automation อยู่',
+  'review.rcArDisabled': 'เข้ามาตอนที่ปิดการกระทบยอดลูกหนี้บัตรของธนาคารนี้อยู่',
+  'review.rcUnbalanced': 'ยอดเดบิตกับเครดิตไม่ตรงกัน — น่าจะอ่านตัวเลขผิด',
+  'review.rcCoveredBySettlement': 'รายงาน settlement ของธนาคารนี้ครอบคลุมค่าธรรมเนียมนี้ไว้แล้ว',
   'review.rcRejectedByReviewer': 'ถูกปฏิเสธ',
   'review.rcUnknown': 'ไม่มีการบันทึกเหตุผล',
   'review.rcStuck': 'เริ่มอ่านแล้วแต่หยุดกลางทาง',

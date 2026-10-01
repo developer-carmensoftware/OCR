@@ -674,3 +674,120 @@ FROM email_documents
 WHERE created_at >= NOW() - INTERVAL '14 days'
 GROUP BY 1, 2
 ORDER BY 1, 2;
+
+-- 27. Settlement-report rows the 2026-09-22 ar_reconcile_mappings backfill skipped.
+--
+-- The migration folds this feature's own credit-side mapping into
+-- bu_accounting_mapping_entries and archives the original table rather than dropping it
+-- (ar_reconcile_mappings_archived), so nothing is lost -- but a row whose (config_id,
+-- field_type) already existed there before the backfill ran was skipped on purpose
+-- (decision #5, one config per tenant is a hard uniqueness constraint the backfill must
+-- not violate). Run this once after `supabase db push` applies
+-- 20260922000000_collapse_ar_reconcile.sql; an empty result is the expected case -- the
+-- feature is two weeks old and KBANK is its only live bank.
+SELECT
+    arm.payment_type_code,
+    arm.post_type,
+    arm.credit_dept_code  AS archived_dept,
+    arm.credit_account_code AS archived_acc,
+    existing.dept_code     AS kept_dept,
+    existing.acc_code      AS kept_acc,
+    existing.source        AS kept_source
+FROM ar_reconcile_mappings_archived arm
+JOIN ar_reconcile_settings ars ON ars.id = arm.setting_id AND ars.deleted_at IS NULL
+JOIN bu_accounting_configs bac ON bac.tenant_id = ars.tenant_id AND bac.deleted_at IS NULL
+JOIN bu_accounting_mapping_entries existing
+     ON existing.config_id = bac.id
+    AND existing.field_type = arm.payment_type_code
+    AND existing.deleted_at IS NULL
+WHERE arm.deleted_at IS NULL
+ORDER BY arm.payment_type_code;
+
+-- 28. JV-description conflicts the 2026-09-22 (Ticket D) fold-in skipped.
+--
+-- ar_reconcile_settings.jv_description_template folds into
+-- bu_accounting_configs.bank_descriptions[bank_code] -- the field the fee-invoice path
+-- already reads -- only when that slot is empty (20260922010000_fold_jv_description.sql).
+-- A bank whose BU had already typed a fee-invoice description AND customized the
+-- settlement template gets neither overwritten; this lists those pairs so someone can
+-- decide by hand which wording a bank's JVs should actually carry. Run before applying
+-- the migration; an empty result (expected today -- KBANK is the only live settlement
+-- bank and has not set a separate fee-invoice description) means nothing needs a
+-- decision.
+SELECT
+    s.tenant_id,
+    s.bank_code,
+    s.jv_description_template AS settlement_template,
+    c.bank_descriptions ->> s.bank_code AS existing_fee_invoice_description
+FROM ar_reconcile_settings s
+JOIN bu_accounting_configs c ON c.tenant_id = s.tenant_id AND c.deleted_at IS NULL
+WHERE s.deleted_at IS NULL
+  AND COALESCE(TRIM(s.jv_description_template), '') <> ''
+  AND TRIM(s.jv_description_template) <> 'Credit Card AR Reconcile {Settlement_Date}'
+  AND COALESCE(TRIM(c.bank_descriptions ->> s.bank_code), '') <> ''
+  AND TRIM(c.bank_descriptions ->> s.bank_code) <> TRIM(s.jv_description_template)
+ORDER BY s.tenant_id, s.bank_code;
+
+-- 29. What the 2026-09-30 per-bank-only Description migration copies (dry run).
+--
+-- 20260930000000_description_per_bank_only.sql stops the BU-wide
+-- bu_accounting_configs.description from being a fallback, and first copies it into
+-- every bank the BU uses (GL mapping entries, or the config's own bank_code) whose own
+-- bank_descriptions entry is empty. Same selection as the migration's UPDATE, as rows:
+-- run before `supabase db push` to see what each BU gets, and again after -- an empty
+-- result then means every bank that used the default now carries it as its own.
+SELECT
+    c.tenant_id,
+    b.code         AS bank_code,
+    c.description  AS copied_description
+FROM bu_accounting_configs c
+CROSS JOIN LATERAL (
+    SELECT DISTINCT e.bank_code AS code
+    FROM bu_accounting_mapping_entries e
+    WHERE e.config_id = c.id AND e.deleted_at IS NULL AND e.bank_code IS NOT NULL
+    UNION
+    SELECT c.bank_code WHERE c.bank_code IS NOT NULL
+) b
+WHERE c.deleted_at IS NULL
+  AND COALESCE(TRIM(c.description), '') <> ''
+  AND COALESCE(TRIM(c.bank_descriptions ->> b.code), '') = ''
+ORDER BY c.tenant_id, b.code;
+
+-- 30. What the 2026-10-01 retire-bank-less-entries migration copies (dry run).
+--
+-- 20261001000000_retire_null_bank_entries.sql copies every bank-less GL mapping entry to
+-- each bank its BU has documents for (or the config's own bank_code) that has no entry of
+-- its own for that field, then retires the bank-less rows. Same selection as the
+-- migration's INSERT, as counts: run before `supabase db push` to see what each BU gets,
+-- and again after -- an empty result then means nothing bank-less is left to copy.
+-- The second query is what stays: bank-less entries of a BU that names no bank anywhere
+-- (the migration leaves them alone, and the code would no longer read them).
+SELECT t.bu_code, b.code AS bank_code, COUNT(*) AS entries_copied
+FROM bu_accounting_mapping_entries e
+JOIN bu_accounting_configs c ON c.id = e.config_id AND c.deleted_at IS NULL
+JOIN tenants t ON t.id = c.tenant_id
+CROSS JOIN LATERAL (
+    SELECT cc.bank_code AS code
+    FROM credit_cards cc
+    WHERE cc.tenant_id = c.tenant_id AND cc.deleted_at IS NULL AND cc.bank_code IS NOT NULL
+    UNION
+    SELECT c.bank_code WHERE c.bank_code IS NOT NULL
+) b
+WHERE e.deleted_at IS NULL AND e.bank_code IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM bu_accounting_mapping_entries o
+      WHERE o.config_id = e.config_id AND o.field_type = e.field_type
+        AND o.bank_code = b.code AND o.deleted_at IS NULL)
+GROUP BY t.bu_code, b.code
+ORDER BY t.bu_code, b.code;
+
+SELECT t.bu_code, COUNT(*) AS bankless_entries_left_alone
+FROM bu_accounting_mapping_entries e
+JOIN bu_accounting_configs c ON c.id = e.config_id AND c.deleted_at IS NULL
+JOIN tenants t ON t.id = c.tenant_id
+WHERE e.deleted_at IS NULL AND e.bank_code IS NULL
+  AND c.bank_code IS NULL
+  AND NOT EXISTS (SELECT 1 FROM credit_cards cc
+                  WHERE cc.tenant_id = c.tenant_id AND cc.deleted_at IS NULL
+                    AND cc.bank_code IS NOT NULL)
+GROUP BY t.bu_code;

@@ -1,4 +1,8 @@
-/* ─── Payment Type Modal ───────────────────────────────────── */
+/* ─── Payment-type mapping dialog (PaymentMappingDialog) ──────────────────────────
+ *
+ * Tokens only (base.css defines each for both themes). The row itself — its grid, its
+ * state edge, its stacked form — is mapping-row.css, imported by MappingRow.
+ */
 
 @keyframes pm-fade-in {
   from {
@@ -12,7 +16,7 @@
 @keyframes pm-slide-up {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
@@ -27,270 +31,455 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: pm-fade-in 0.18s ease-out both;
+  animation: pm-fade-in 0.18s var(--ease-out) both;
 }
 
 .pm-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-}
-
-button.pm-backdrop {
-  border: none;
-  padding: 0;
   width: 100%;
   height: 100%;
+  padding: 0;
+  border: none;
+  background: rgba(15, 23, 42, 0.5);
   cursor: default;
 }
 
 .pm-dialog {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(880px, calc(100% - 2rem));
+  max-height: min(90vh, 900px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   background: var(--data-card-bg);
-  width: 90%;
-  max-width: 800px;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  max-height: 90vh;
-  will-change: transform, opacity;
-  animation: pm-slide-up 0.22s ease-out both;
+  box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.28);
+  animation: pm-slide-up 0.22s var(--ease-out) both;
 }
 
-.pm-header {
-  padding: 1rem;
-  border-bottom: 1px solid var(--border);
-  font-weight: bold;
+.pm-dialog:focus {
+  outline: none;
+}
+
+/* ─── Header: title, whose list it is, how far along ───────────────────────────── */
+
+.pm-head {
+  padding: 1rem 1.25rem 0;
+}
+
+.pm-head-row {
   display: flex;
-  flex-direction: column;
+  align-items: flex-start;
   gap: 0.75rem;
-  background: var(--gray-50);
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
 }
 
-.pm-header-top {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  justify-content: space-between;
+.pm-head-titles {
+  flex: 1;
+  min-width: 0;
 }
 
-.pm-required-badge {
-  font-size: 0.8rem;
-  color: var(--btn-err-text);
-  background: var(--btn-err-bg);
-  padding: 4px 12px;
-  border-radius: 20px;
-  border: 1px solid var(--btn-err-border);
+.pm-title {
+  margin: 0;
+  font-size: 1.05rem;
   font-weight: 700;
+  color: var(--text);
+}
+
+.pm-context {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.pm-progress-count {
+  padding-top: 0.2rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.pm-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: -0.25rem -0.4rem 0 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.pm-close:hover {
+  background: var(--muted);
+  color: var(--text);
+}
+
+.pm-progress {
+  height: 3px;
+  margin-top: 0.85rem;
+  border-radius: var(--radius-pill);
+  background: var(--muted);
+  overflow: hidden;
+}
+
+.pm-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--emerald);
+  transition: width 0.25s var(--ease-out);
+}
+
+/* ─── Sets (only when a bank has more than one list) ───────────────────────────── */
+
+.pm-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.75rem 1.25rem 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.pm-tab {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-}
-
-.pm-header-bottom {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  justify-content: space-between;
-}
-
-.pm-map-count {
-  font-size: 0.85rem;
+  margin-bottom: -1px;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-size: 0.82rem;
+  font-weight: 600;
   color: var(--text-3);
-  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
 }
+
+.pm-tab:hover {
+  color: var(--text);
+}
+
+.pm-tab.is-active {
+  border-bottom-color: var(--primary);
+  color: var(--text);
+}
+
+.pm-tab-count {
+  padding: 0 0.4rem;
+  border-radius: var(--radius-pill);
+  background: var(--amber-light);
+  color: var(--amber-text);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+/* ─── Toolbar: search, filter, the one AI button ───────────────────────────────── */
+
+.pm-toolbar,
+.pm-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.85rem 1.25rem 0;
+}
+
+.pm-search {
+  display: inline-flex;
+  flex: 1 1 12rem;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 16rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border-input, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-3);
+}
+
+.pm-search:focus-within {
+  border-color: var(--primary);
+}
+
+.pm-search input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 0.82rem;
+  color: var(--text);
+  outline: none;
+}
+
+.pm-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.pm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 30px;
+  padding: 0 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--card-bg);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.pm-chip:hover {
+  background: var(--muted);
+}
+
+.pm-chip.is-active {
+  border-color: var(--primary-mid);
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.pm-chip-count {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+.pm-toolbar-end {
+  margin-left: auto;
+}
+
+/* ─── Bulk bar: takes the toolbar's place while rows are selected ──────────────── */
+
+.pm-bulk {
+  margin: 0.85rem 1.25rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--primary-mid);
+  border-radius: var(--radius-md);
+  background: var(--primary-light);
+}
+
+.pm-bulk-count {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+.pm-bulk-field {
+  flex: 1 1 11rem;
+  min-width: 0;
+  max-width: 15rem;
+}
+
+.pm-link-btn {
+  padding: 0.25rem;
+  border: none;
+  background: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* ─── The one message ──────────────────────────────────────────────────────────── */
+
+.pm-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.85rem 1.25rem 0;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.pm-message > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.pm-message--warn {
+  border-color: var(--amber-mid);
+  background: var(--amber-light);
+  color: var(--amber-text);
+}
+
+.pm-message--error {
+  border-color: var(--rose-mid);
+  background: var(--rose-light);
+  color: var(--rose-text);
+}
+
+.pm-message--ok {
+  border-color: var(--emerald-mid);
+  background: var(--emerald-light);
+  color: var(--emerald-text);
+}
+
+.pm-message--neutral {
+  border-color: var(--border);
+  background: var(--muted);
+  color: var(--text-2);
+}
+
+/* ─── Body: the table scrolls, the frame does not ──────────────────────────────── */
 
 .pm-body {
-  padding: 1rem;
+  flex: 1;
+  min-height: 0;
+  padding: 0.75rem 1.25rem 1rem;
   overflow-y: auto;
 }
 
-.pm-inner {
-  min-width: 700px;
-
-  /* One template for the header and every row, so they cannot drift apart.
-     The last track is fixed, not `auto`: it holds the accept/reject pair, which renders
-     only on rows that have a suggestion. As `auto` it was 0 on the header and on rows
-     without one, so the Dept/Account columns landed at three different widths — and
-     acting on a suggestion resized that row under the cursor.
-     4.75rem = two 35px icon buttons (13px glyph + 10px padding + 1px border) + 0.3rem gap. */
-  --pm-cols: minmax(120px, 1fr) 1fr 1fr 4.75rem;
+.pm-no-match {
+  margin: 0.5rem 0;
+  font-size: 0.82rem;
+  color: var(--text-3);
 }
 
-.pm-grid-header {
-  display: grid;
-  grid-template-columns: var(--pm-cols);
-  gap: 1rem;
-  font-weight: bold;
-  margin-bottom: 1rem;
-  /* matches .pm-row's padding + state border so labels sit over their own column */
-  padding: 0.4rem;
-  border: 1px solid transparent;
-}
-
-.pm-section-label {
-  padding: 0.5rem;
-  background: var(--btn-err-bg);
-  color: var(--btn-err-text);
-  font-size: 0.75rem;
-  font-weight: 700;
-  border-radius: 4px;
-  margin-bottom: 0.75rem;
-  border: 1px solid var(--btn-err-border);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.pm-additional-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  width: 100%;
-  margin: 1rem 0 0.25rem;
-  padding: 0.45rem 0.75rem;
-  background: var(--muted);
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
-
-.pm-additional-toggle:hover {
-  background: var(--secondary);
-  color: var(--foreground);
-}
-
-.pm-additional-count {
-  margin-left: auto;
-  background: var(--border);
-  color: var(--muted-foreground);
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 1px 7px;
-  border-radius: 10px;
-}
-
-.pm-row {
-  display: grid;
-  grid-template-columns: var(--pm-cols);
-  gap: 1rem;
-  margin-bottom: 0.5rem;
-  align-items: center;
-  padding: 0.4rem;
-  border-radius: 8px;
-}
-
-.pm-row--required-pending {
-  background: var(--btn-err-bg);
-  border: 1px solid var(--btn-err-border);
-}
-
-.pm-row--required-ok {
-  background: var(--btn-ok-bg);
-  border: 1px solid var(--btn-ok-border);
-}
-
-.pm-row--custom {
-  background: transparent;
-  border: 1px solid transparent;
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.pm-type-cell {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.pm-type-badge {
-  padding: 0.4rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-align: center;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.pm-type-badge--pending {
-  background: var(--rose-fill);
-  color: white;
-}
-
-.pm-type-badge--ok {
-  background: var(--emerald-fill);
-  color: white;
-}
-
-.pm-type-badge--custom {
-  background: var(--btn-ok-bg);
-  color: var(--btn-ok-text);
-  border: 1px solid var(--btn-ok-border);
-}
-
-.pm-remove-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--rose-text);
-  font-size: 0.9rem;
-  padding: 0.2rem;
-  line-height: 1;
+.pm-add-trigger {
   display: inline-flex;
   align-items: center;
-}
-
-.pm-suggest-actions {
-  display: flex;
-  gap: 0.3rem;
-}
-
-.pm-accept-btn {
-  padding: 4px 10px;
-  background: var(--btn-ok-bg);
-  color: var(--btn-ok-text);
-  border: 1px solid var(--btn-ok-border);
-  border-radius: 6px;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--primary);
   cursor: pointer;
-  font-size: 0.75rem;
+}
+
+.pm-add-trigger:hover {
+  background: var(--primary-light);
+}
+
+.pm-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.pm-add-input {
+  flex: 0 1 20rem;
+  min-width: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.pm-add-error {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--rose-text);
+}
+
+/* ─── Footer ───────────────────────────────────────────────────────────────────── */
+
+.pm-foot {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  font-weight: 600;
-}
-
-.pm-reject-btn {
-  padding: 4px 10px;
-  background: var(--btn-err-bg);
-  color: var(--btn-err-text);
-  border: 1px solid var(--btn-err-border);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.75rem;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-weight: 600;
-}
-
-.pm-footer {
-  padding: 1rem;
+  gap: 0.75rem;
+  padding: 0.85rem 1.25rem;
   border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
+}
+
+.pm-foot-note {
+  flex: 1;
+  font-size: 0.76rem;
+  color: var(--text-3);
+}
+
+/* ─── Phone: the dialog is the screen ──────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .pm-overlay {
+    align-items: stretch;
+  }
+
+  .pm-dialog {
+    width: 100%;
+    max-height: none;
+    height: 100dvh;
+    border: none;
+    border-radius: 0;
+  }
+
+  .pm-search {
+    max-width: none;
+    flex-basis: 100%;
+  }
+
+  .pm-toolbar-end {
+    margin-left: 0;
+  }
+
+  .pm-bulk-field {
+    max-width: none;
+    flex-basis: 100%;
+  }
+
+  .pm-foot-note {
+    flex-basis: 100%;
+  }
+
+  .pm-foot {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+}
+
+/* The app's toasts stay where they always are, bottom-center (main.tsx). While this dialog
+   is the whole screen, its footer is the bottom of the screen, so the toaster is lifted
+   above it — an Undo toast must never sit on Cancel/Done. Both of sonner's offsets, since
+   its own phone breakpoint (600px) is not this one (640px). `!important` because sonner
+   writes them as inline styles on the toaster. 8rem clears the footer as measured at
+   320–640px in both languages (99–104px, ~110px once touch sizes the buttons to 44px) —
+   raise it if the footer grows. */
+@media (max-width: 640px) {
+  body:has(.pm-dialog) [data-sonner-toaster] {
+    --offset-bottom: 8rem !important;
+    --mobile-offset-bottom: 8rem !important;
+  }
+}
+
+/* Cancel and Done decide whether a mapping is kept — the last thing touched on a phone
+   and the easiest to fat-finger. */
+@media (pointer: coarse) {
+  .pm-foot .btn,
+  .pm-chip,
+  .pm-add-trigger,
+  .pm-close {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pm-overlay,
+  .pm-dialog,
+  .pm-progress > span {
+    animation: none;
+    transition: none;
+  }
 }

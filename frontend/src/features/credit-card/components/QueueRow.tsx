@@ -4,7 +4,7 @@ import { ExternalLink } from 'lucide-react'
 import { useT } from '@/i18n/LanguageContext'
 import CustomModal from '@/shared/components/common/CustomModal'
 import { glFieldLabel, glFieldList } from '@/features/credit-card/lib/glFieldLabels'
-import { FIX, fixLinkProps, stopText } from '@/shared/lib/reviewReasons'
+import { FIX, stopText } from '@/shared/lib/reviewReasons'
 import { getCarmenUrl } from '@/shared/lib/url'
 import { recordInputTax } from '@/features/credit-card/api/emailReview'
 import type { ReviewDocument } from '@/features/credit-card/api/emailReview'
@@ -39,12 +39,15 @@ function reasonFor(row: ReviewDocument): { key: TKey; tone: string; fields: stri
   if (f.includes('unbalanced')) return { key: 'review.reasonUnbalanced', tone: 'warn', fields: [] }
   if (f.includes('mapping_guessed'))
     return { key: 'review.reasonGuessed', tone: 'warn', fields: row.guessed || [] }
-  // Below the two mapping reasons because a reviewer can post this one as it stands — but
-  // above `warnings`, since it is the only flag about something we could not check rather
-  // than something we read: both duplicate guards key on the document number, so without
-  // one nothing can catch the same statement arriving twice.
+  // Below the mapping reasons because a reviewer can post this one as it stands — but
+  // above `warnings`, since these two are about something we could not check rather than
+  // something we read: both duplicate guards key on the document number, so without one
+  // nothing can catch the same statement arriving twice; a settlement report with no
+  // matching CSV row is unverified the same way, not wrong.
   if (f.includes('doc_no_missing'))
     return { key: 'review.reasonDocNoMissing', tone: 'warn', fields: [] }
+  if (f.includes('tin_unverified'))
+    return { key: 'review.reasonTinUnverified', tone: 'warn', fields: [] }
   if (f.includes('warnings')) return { key: 'review.reasonWarnings', tone: 'warn', fields: [] }
   // Green, and phrased as the next action rather than as the absence of a problem. This is
   // the row a reviewer should spend the least time on, so it gets the strongest "skip me"
@@ -207,13 +210,11 @@ function RowAction({ row, onOpen, onChanged }: Props) {
   // row is no longer duplicated onto `review`, and a fixable reason off that chip no longer
   // implies somebody dismissed it. Dismissal is a cause's gesture now, not a row's.
   //
-  // Where it goes is `fixLinkProps`'s call, not this component's: a settings cause opens
-  // Carmen's screen in a tab of its own — the same door the dialog's banner opens.
-  const link = fixLinkProps(fix)
+  // Where it goes is `FIX`'s call, not this component's — the same door the dialog's banner
+  // opens, in this tab: every fix is a screen of this app (decision #34).
   return (
-    <a className="btn btn-outline btn-sm" {...link}>
+    <a className="btn btn-outline btn-sm" href={fix.href}>
       {t(fix.key)}
-      {link.target && <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />}
     </a>
   )
 }
@@ -290,12 +291,14 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
 
   if (pending) {
     const reason = reasonFor(row)
-    const named = reason.fields.length ? glFieldList(reason.fields) : ''
+    const named = reason.fields.length ? glFieldList(reason.fields, t) : ''
     return (
       <span
         className={`rq-reason rq-reason--${reason.tone}`}
         // The cell ellipsizes, so the full list lives here rather than being lost.
-        title={reason.fields.length ? reason.fields.map(glFieldLabel).join(', ') : undefined}
+        title={
+          reason.fields.length ? reason.fields.map(f => glFieldLabel(f, t)).join(', ') : undefined
+        }
       >
         {named ? `${t(reason.key)}: ${named}` : t(reason.key)}
       </span>

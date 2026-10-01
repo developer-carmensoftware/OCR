@@ -138,7 +138,7 @@ describe('which state the automation page paints', () => {
 
   it('greets a BU that has never scanned with the first scan, not an email pitch', async () => {
     // Most BUs scan by hand and always will. The landing page is their activity log, and
-    // Carmen's own settings screen is what introduces the automation.
+    // Carmen's menu, opening our settings screen, is what introduces the automation.
     mount([], ZERO)
     expect(await screen.findByText('No scans yet')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Upload documents/ })).toHaveLength(1)
@@ -167,6 +167,9 @@ describe('the message column', () => {
     [['unbalanced'], 'Amounts do not reconcile'],
     [['mapping_guessed'], 'AI suggested mapping'],
     [['doc_no_missing'], 'No document number'],
+    // AR reconciliation only (ticket 04): no CSV sidecar confirmed this settlement
+    // report's tax ID.
+    [['tin_unverified'], 'Tax ID not verified'],
     [['warnings'], 'Extraction warnings'],
     // Also the auto-post rule: an empty flag list is what posts unattended, so this phrase
     // and that decision are the same test read two ways.
@@ -251,7 +254,7 @@ describe('a skipped attachment on Not posted', () => {
     expect(screen.getByText(/password/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open settings' })).toHaveAttribute(
       'href',
-      expect.stringContaining('/#/setting')
+      '#/CreditCardOCR/email-settings'
     )
   })
 
@@ -284,11 +287,11 @@ describe('what a stopped row offers', () => {
     mount([skipped()], { ...ZERO, all: 1, unposted: 1 })
     fireEvent.click(await screen.findByRole('tab', { name: /Not posted/ }))
     await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))
-    // Carmen's screen owns every field this button is about, and it is another application:
-    // its own tab, so the queue is still there when the reviewer comes back.
+    // Every field this button is about lives on our settings screen (decision #34): this
+    // tab, like Fix mapping, and the page's Back to queue brings the reviewer home.
     const link = screen.getByRole('link', { name: 'Open settings' })
-    expect(link).toHaveAttribute('href', expect.stringContaining('/#/setting'))
-    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('href', '#/CreditCardOCR/email-settings')
+    expect(link).not.toHaveAttribute('target')
   })
 
   it('never offers a repair on a document waiting for review', async () => {
@@ -703,7 +706,7 @@ describe('the actions column', () => {
     // it with a dismiss; the dismiss belongs to the cause now, so the dialog held nothing
     // the row was not already printing.
     mount([doc({ status: 'failed', reason_code: 'mapping_incomplete', total: 0 })])
-    // The other half of `fixLinkProps`: the GL mapping is ours, so it stays in this tab.
+    // Every fix is a screen of this app, so it opens in this tab.
     const link = await screen.findByRole('link', { name: 'Fix mapping' })
     expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
     expect(link).not.toHaveAttribute('target')
@@ -721,10 +724,20 @@ describe('the actions column', () => {
       mount([doc({ status: 'skipped', reason_code, total: 0 })])
       expect(await screen.findByRole('link', { name: 'Open settings' })).toHaveAttribute(
         'href',
-        expect.stringContaining('/#/setting')
+        '#/CreditCardOCR/email-settings'
       )
     }
   )
+
+  it('sends a foreign tax ID to the settings screen, where the register lives', async () => {
+    // Charged, so `failed` rather than `skipped`. A new one parks for review instead
+    // (decision-log #22), where the dialog's banner offers this same link.
+    mount([doc({ status: 'failed', reason_code: 'tax_id_mismatch', total: 0 })])
+    expect(await screen.findByRole('link', { name: 'Open settings' })).toHaveAttribute(
+      'href',
+      '#/CreditCardOCR/email-settings'
+    )
+  })
 
   it('gives a dead Carmen credential its own word, not a generic settings link', async () => {
     // One expired token fails EVERY document of the BU until someone re-pastes it, so it
@@ -733,7 +746,12 @@ describe('the actions column', () => {
     expect(
       await screen.findByText(/Carmen posting credential is no longer accepted/)
     ).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Reconnect' })).toBeInTheDocument()
+    // Same screen as the other settings causes — its Posting credential card is where the
+    // dead token shows — under the word that says what is wrong.
+    expect(screen.getByRole('link', { name: 'Reconnect' })).toHaveAttribute(
+      'href',
+      '#/CreditCardOCR/email-settings'
+    )
     expect(screen.queryByRole('link', { name: 'Open settings' })).not.toBeInTheDocument()
   })
 
@@ -888,8 +906,8 @@ describe('a row that has already been resolved', () => {
 
 describe('the auto-post switch', () => {
   it('is not on this page at all, whatever the status says', async () => {
-    // One field of the BU's settings, one writer: `PUT /api/v1/carmen/settings`, which is
-    // Carmen's own settings screen. The gear that used to live here was a second writer,
+    // One field of the BU's settings, one writer: `PUT /api/v1/carmen/settings`, behind one
+    // screen, `#/CreditCardOCR/email-settings`. The gear that used to live here was a second writer,
     // and two writers is what let an unrelated settings save turn review back on behind
     // the customer's back. The page still *reads* `auto_post` — it just cannot set it.
     mount([doc()])
