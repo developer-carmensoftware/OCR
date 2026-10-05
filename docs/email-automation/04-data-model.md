@@ -131,9 +131,9 @@ every raise site in `_run_document()` / `_open_or_fail()` and the three `except`
 | `reason_code` | Raised from | Charged first? | Refunded? | Final `status` |
 |---|---|---|---|---|
 | `unsupported_attachment` | `_attachments()` refused every named part — wrong extension, an empty part, or a `.zip` holding nothing readable | No | — | `skipped` |
-| `ingest_paused` | The message arrived before `email_ingest_settings.enabled_at` — the BU had automation switched off and was keying those documents by hand | No | — | `skipped` |
+| `ingest_paused` | The message arrived before `email_ingest_settings.enabled_at` — the BU had automation switched off and was keying those documents by hand. **Also** per attachment: `match_rules()` is empty but would match with every rule active, i.e. only a switched-off rule names the file (that bank is off) | No | — | `skipped` |
 | `sender_not_allowed` | `sender_allowed()` fails | No | — | `skipped` |
-| `no_rule_match` | `match_rules()` returns empty | No | — | `skipped` |
+| `no_rule_match` | `match_rules()` returns empty, and no switched-off rule names the file either (hidden from the BU's queue) | No | — | `skipped` |
 | `unreadable_document` | `_open_or_fail()` — bad magic bytes or corrupt PDF | No | — | `skipped` |
 | `wrong_pdf_password` | `_open_or_fail()` — every password tried, none worked | No | — | `skipped` |
 | `unreadable_document` | `create_task` / `extract_stateless` / `finalize_extraction` threw — **inside the refund boundary** | Yes | **Yes** — the only refund left in the pipeline | `failed` |

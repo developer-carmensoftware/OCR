@@ -297,6 +297,15 @@ async def _run_document(
                 f"this mail carries {seen}",
             )
         matched = match_rules(rules, sender, filename)
+        if not matched and match_rules([{**r, "is_active": True} for r in rules], sender, filename):
+            # A file the BU's own switched-off rule names is theirs, not noise: turning a
+            # bank off is the per-bank form of turning the feature off — they are keying it
+            # by hand. Same code and same visible row as `ingest_paused` at message level,
+            # so the queue lists what arrived instead of hiding it as `no_rule_match`.
+            raise _Skip(
+                "ingest_paused",
+                "Arrived while this bank's rule was switched off — key this one by hand",
+            )
         if not matched:
             # A too-narrow pattern silently dropped real documents before the tag named
             # the tenant. Now the miss is a row in *this BU's* ledger, diagnosable from
@@ -340,8 +349,8 @@ async def _run_document(
                 )
             # The rule is the switch (2026-09-29): an active `ar_reconcile` rule means
             # reconcile this bank, and there is no second toggle to consult. Switching it
-            # off is Carmen deactivating the rule, which `match_rules` already skips —
-            # `no_rule_match`, free, before the charge, same as the old toggle was.
+            # off is deactivating the rule, which `match_rules` already skips —
+            # `ingest_paused`, free, before the charge, same as the old toggle was.
             # How it groups is the BU's own choice on the mapping page, not the rule's.
             ar_post_type = await _ar_post_type(tenant_id, bank_code)
         # No fee-invoice double-book guard here (deleted 2026-09-29): `match_rules` gives
