@@ -889,6 +889,26 @@ async def test_a_filename_no_rule_claims_is_never_sent_to_the_llm():
 
 
 @pytest.mark.asyncio
+async def test_a_file_only_a_switched_off_rule_names_is_ingest_paused_not_noise():
+    """Turning one bank's rule off is the per-bank form of turning the feature off: the
+    BU keys those by hand, so the file is listed for them (`ingest_paused`, visible) rather
+    than filed with signature logos (`no_rule_match`, hidden). Still free."""
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        filename="KTC-MDR-0901.jpg",
+        rules=[{"bank_code": "KTC", "filename_patterns": ["MDR"], "is_active": False}],
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 0},
+    )
+    assert outcome == "skipped"
+    assert db.added[0].reason_code == "ingest_paused"
+    p.extract.assert_not_awaited()
+    p.consume_document.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_sender_hit_does_not_buy_a_filename_miss_an_llm_call():
     """Mail from KTC's address carrying a file only the BBL rule names must stop."""
     db = _FakeDB()

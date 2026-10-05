@@ -434,13 +434,13 @@ async def test_a_disagreeing_csv_figure_parks_with_a_warning_instead_of_a_skip()
 
 @pytest.mark.asyncio
 async def test_ar_switched_off_costs_nothing():
-    """Switching reconciliation off is Carmen deactivating the rule — `match_rules` skips
-    it before the charge, so the mail that keeps arriving costs nothing."""
+    """Switching reconciliation off is deactivating the rule — `match_rules` skips it before
+    the charge, so the mail that keeps arriving costs nothing, and the BU sees it listed."""
     db = _FakeDB()
     outcome, p = await _run_ar(db, rules=[{**AR_RULE[0], "is_active": False}], carmen_result=None)
 
     assert outcome == "skipped"
-    assert db.added[0].reason_code == "no_rule_match"
+    assert db.added[0].reason_code == "ingest_paused"
     p.consume_document.assert_not_called()
     p.extract.assert_not_called()
 

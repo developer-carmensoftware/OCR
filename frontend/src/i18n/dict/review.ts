@@ -273,7 +273,8 @@ export const en = {
   // Names the field that fixes it, and drops a claim we cannot make: a revoked token and a
   // lapsed one write the same row, and only one of them expired.
   'review.rcCarmenUnauthorized': 'The Carmen posting credential is no longer accepted',
-  'review.rcIngestPaused': 'Arrived while AI JV Automation was off',
+  // Two causes, one code: the whole switch was off (`enabled_at`), or this bank's rule was.
+  'review.rcIngestPaused': "Arrived while AI JV Automation or this bank's rule was off",
   'review.rcArDisabled': 'Arrived while AR reconciliation was off for this bank',
   'review.rcUnbalanced': 'Debit and credit do not agree — a figure was misread',
   'review.rcCoveredBySettlement': "This bank's settlement report already covers this commission",
@@ -473,7 +474,7 @@ export const th: Record<keyof typeof en, string> = {
   'review.rcMappingIncomplete': 'ยังไม่มีผังบัญชี',
   'review.rcCarmenRejected': 'Carmen ปฏิเสธ',
   'review.rcCarmenUnauthorized': 'Carmen ไม่รับ token สำหรับส่งเอกสารแล้ว',
-  'review.rcIngestPaused': 'เข้ามาตอนที่ปิด AI JV Automation อยู่',
+  'review.rcIngestPaused': 'เข้ามาตอนที่ปิด AI JV Automation หรือปิด rule ของธนาคารนี้อยู่',
   'review.rcArDisabled': 'เข้ามาตอนที่ปิดการกระทบยอดลูกหนี้บัตรของธนาคารนี้อยู่',
   'review.rcUnbalanced': 'ยอดเดบิตกับเครดิตไม่ตรงกัน — น่าจะอ่านตัวเลขผิด',
   'review.rcCoveredBySettlement': 'รายงาน settlement ของธนาคารนี้ครอบคลุมค่าธรรมเนียมนี้ไว้แล้ว',
