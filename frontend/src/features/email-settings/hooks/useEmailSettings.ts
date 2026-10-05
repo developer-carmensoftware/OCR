@@ -21,6 +21,7 @@ import {
   getSettings,
   getToken,
   putToken,
+  RECONCILE_BANK,
   saveSettings,
   type BankCode,
   type EmailDocType,
@@ -40,6 +41,7 @@ export interface RuleDraft {
   pdf_password: string
   is_active: boolean
   doc_type: EmailDocType
+  merchant_id: string
   has_password: boolean
 }
 
@@ -58,6 +60,7 @@ export const EMPTY_RULE: RuleDraft = {
   pdf_password: '',
   is_active: true,
   doc_type: 'fee_invoice',
+  merchant_id: '',
   has_password: false,
 }
 
@@ -96,6 +99,7 @@ export function seedDraft(settings: EmailSettings | null): Draft {
       pdf_password: '',
       is_active: r.is_active,
       doc_type: r.doc_type || 'fee_invoice',
+      merchant_id: r.merchant_id || '',
       has_password: Boolean(r.has_password),
     })),
   }
@@ -105,9 +109,12 @@ const toPayloadRules = (rules: RuleDraft[]): EmailRulePayload[] =>
   rules.map(r => ({
     bank_code: r.bank_code || null,
     bank_sender_email: r.bank_sender_email.trim() || null,
-    filename_patterns: splitList(r.filename_patterns),
+    // The KBANK rule's files are named by its toggle; patterns there are never read.
+    filename_patterns: r.bank_code === RECONCILE_BANK ? [] : splitList(r.filename_patterns),
     is_active: r.is_active,
     doc_type: r.doc_type,
+    // Sent whichever way the toggle sits, so switching off and on again keeps it.
+    merchant_id: r.merchant_id.trim(),
     // null = keep what is stored; '' would clear it. Only a typed value sets one.
     pdf_password: r.pdf_password || null,
   }))

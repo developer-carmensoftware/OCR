@@ -26,6 +26,9 @@ class RuleIn(BaseModel):
     # and dropped. A list because the likeliest real failure is a bank alternating
     # between `MDR_…` and `Commission_…`, or an employee renaming the PDF before
     # forwarding it. `.pdf` accepts everything of that type and is the escape hatch.
+    #
+    # Not on the KBANK rule (2026-10-05): its files are fixed by `doc_type` instead —
+    # `E-TAX_INVOICE_CARD_*` off, `SUM_<merchant_id>` on (`imap.kbank_file`). Ignored there.
     filename_patterns: list[str] = Field(default_factory=list)
     pdf_password: str | None = None  # write-only: omit = keep, "" = clear
     is_active: bool = True
@@ -42,6 +45,9 @@ class RuleIn(BaseModel):
     # the JV groups (Detail/Summary) is still ours: the mapping page, beside the accounts
     # each grouping needs.
     doc_type: str | None = None
+    # The merchant whose settlement report this rule reads — `SUM_<merchant_id>` in the
+    # file's name. Required on a settlement rule, one per bank. Omit = keep, "" = clear.
+    merchant_id: str | None = None
 
 
 class SettingsIn(BaseModel):

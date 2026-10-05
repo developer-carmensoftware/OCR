@@ -15,11 +15,12 @@ either of those — see codebase-refactor-recursive-scroll.md's stated direction
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from functools import partial
 from typing import Any
 
-from app.constants import DocType, Module, PostType
+from app.constants import SETTLEMENT_BANK, DocType, Module, PostType
 from app.database import async_session
 from app.exceptions import (
     ExtractionError,
@@ -43,6 +44,8 @@ from app.services.credit_card.jv import (
     build_jv_rows,
     group_key,
     is_balanced,
+    num,
+    r2,
     unmapped_payment_types,
 )
 from app.services.email_automation import credential
@@ -78,6 +81,11 @@ logger = logging.getLogger(__name__)
 # mail back unread rather than spending a ledger row — and a ledger row is exactly what
 # would make it unrecoverable, since `_claim` dedupes on (tenant, message, attachment).
 _HOLD = (InsufficientCredits, ModuleDisabled)
+
+# The merchant in KBANK's commission tax invoice's own name,
+# `E-TAX_INVOICE_CARD_<merchant>_<tax invoice>_<date>.PDF` — the fallback when the page's
+# was not read, for finding this invoice's row in its zip's tax summary.
+_KBANK_FEE_FILE_MERCHANT = re.compile(r"E-TAX_INVOICE_CARD_(\d{6,})_", re.I)
 
 
 class _Skip(Exception):
@@ -336,10 +344,10 @@ async def _run_document(
             # `no_rule_match`, free, before the charge, same as the old toggle was.
             # How it groups is the BU's own choice on the mapping page, not the rule's.
             ar_post_type = await _ar_post_type(tenant_id, bank_code)
-        # No fee-invoice double-book guard any more (2026-09-29). It caught a KBANK fee
-        # invoice matched by a KBANK fee-invoice rule while KBANK reconciled — and rules
-        # are one per bank, so "KBANK reconciles" now *is* that rule being `ar_reconcile`.
-        # The state it guarded against cannot exist.
+        # No fee-invoice double-book guard here (deleted 2026-09-29): `match_rules` gives
+        # KBANK's two files to the KBANK rule alone (2026-10-05, decision-log #37), so while
+        # it reconciles, no rule — an "Other" `.pdf` one included — can read the commission
+        # tax invoice beside the settlement report that already books it.
 
         # Before any charge: a disguised, locked or corrupt file must not cost anything.
         password = await _open_or_fail(blob, filename, passwords)
@@ -484,6 +492,31 @@ async def _run_document(
                 # `kbank_tax_summary.cross_check`.
                 extracted.warnings.extend(
                     kbank_tax_summary.cross_check(csv_row, extracted.doc_no, extracted.total_row)
+                )
+        elif bank_code == SETTLEMENT_BANK and tax_summary:
+            # KBANK's commission tax invoice, read beside its zip's tax summary when one came
+            # (2026-10-05). The same two checks, minus `tin_unverified`: this document prints
+            # its own TIN, so a missing CSV costs it nothing. Its merchant is read off the page,
+            # else off the file's name (`E-TAX_INVOICE_CARD_<merchant>_…`).
+            merchant = kbank_tax_summary.digits_only(extracted.merchant_id) or (
+                m.group(1) if (m := _KBANK_FEE_FILE_MERCHANT.search(filename)) else ""
+            )
+            csv_row = tax_summary.get(merchant) if merchant else None
+            if csv_row:
+                if csv_row.get("tax_id"):
+                    tax_ids_to_check.append(csv_row["tax_id"])
+                # Fee and VAT only: an invoice's total is fee + VAT, not the CSV's net.
+                total = lambda field: str(  # noqa: E731
+                    r2(sum(num(getattr(d, field)) for d in extracted.details))
+                )
+                extracted.warnings.extend(
+                    kbank_tax_summary.cross_check(
+                        csv_row,
+                        extracted.doc_no,
+                        ExtractedDetailRow(
+                            commis_amt=total("commis_amt"), tax_amt=total("tax_amt")
+                        ),
+                    )
                 )
 
         async with async_session() as db:

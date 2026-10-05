@@ -1031,3 +1031,35 @@ Dept/Account pickers, comments, amounts and the input-tax panel.
 
 Dropped with the pane: the disclosure of which printed labels a Summary leg folded, and the rows
 for lines printed at zero.
+
+## 37. KBANK's rule is a reconciliation toggle, and its files are its own (2026-10-05)
+
+#31 made the rule's `doc_type` the settlement switch, but the BU still typed the filename
+patterns that decided which KBANK file was read (`KB1P554V2` for one tenant, `KB1P554V2_SUM`
+for another). The settings dialog offered the document type as a `<select>` on every bank's
+rule, though only KBANK has a settlement layout.
+
+**Decision.** On the KBANK rule, `doc_type` names the files and patterns are not used:
+
+| Toggle "Detailed Credit Card AR Reconciliation" | Reads | Tax summary CSV in the same zip |
+|---|---|---|
+| off (`fee_invoice`) | `E-TAX_INVOICE_CARD_*` | when present: its TIN into `foreign_tax_id`, fee and VAT cross-checked; absent is fine |
+| on (`ar_reconcile`) | `SUM_<merchant_id>` only | as before; absent → `tin_unverified` |
+
+- **One merchant per bank,** a new rule field `merchant_id`. It is required when the toggle is
+  on and stored as digits. A rule saved before it existed reads any settlement report until it
+  is saved again.
+- **KBANK's two files are the KBANK rule's alone** (`imap.match_rules`). While a KBANK rule
+  exists, on or off, no other rule may claim either file. This closes the gap #31 named: an
+  "Other" `.pdf` rule could read the commission tax invoice beside a settlement report that
+  already books the commission and its VAT. A settlement report is never read as a fee
+  invoice, with or without a rule.
+- **The dialog shows the toggle on the KBANK rule only,** with a Merchant ID field when it is
+  on. The patterns field is hidden there, and a "Reads …" line says which file is read.
+
+**Why in code, not in data.** These two files are fixed by KBANK, not chosen by the BU. A typed
+pattern was one more way to read the wrong one: the version prefix (`KB1P554V2`) can change,
+and a broad pattern catches both files.
+
+**What it costs.** A KBANK file renamed before forwarding is no longer read by the KBANK rule.
+Neither is any third KBANK document a BU might once have matched by pattern.

@@ -16,7 +16,7 @@ export const en = {
   // Read-only since 2026-09-29: the switch is the bank's email rule, on the AI JV Automation
   // settings screen (in this app since decision #34 — named the way that page titles itself).
   'ar.enabledOffHint':
-    'Not reconciling — switch it on in AI JV Automation settings by setting this bank’s email rule to Settlement report.',
+    'Not reconciling — switch on Detailed Credit Card AR Reconciliation on this bank’s rule in AI JV Automation settings, with its merchant ID.',
 
   // The settlement card's posting controls.
   'ar.postingRules': 'Posting rules',
@@ -79,7 +79,7 @@ export const th: Record<keyof typeof en, string> = {
     'แยกยอดบัญชีคุมยอดบัตรเครดิตก้อนเดียวออกเป็นลูกหนี้รายค่ายบัตร เมื่อรายงาน settlement ส่งเข้ามาทางอีเมล',
   'ar.bank': 'ธนาคารผู้รับบัตร',
   'ar.enabledOffHint':
-    'ยังไม่ได้เปิดกระทบยอด — เปิดได้ที่หน้าตั้งค่า AI JV Automation โดยตั้ง rule อีเมลของธนาคารนี้เป็น Settlement report',
+    'ยังไม่ได้เปิดกระทบยอด — เปิด Detailed Credit Card AR Reconciliation ที่ rule ของธนาคารนี้ในหน้าตั้งค่า AI JV Automation พร้อมใส่ merchant ID',
 
   'ar.postingRules': 'กติกาการลงบัญชี',
   'ar.postType': 'รูปแบบการแบ่งยอดเครดิต',

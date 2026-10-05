@@ -981,3 +981,69 @@ async def test_a_settlement_rule_is_validated_where_it_is_set(rule, field, code)
         await es.save_settings(db, _tenant(), _settings(rule))
     assert exc.value.errors[0]["field"] == f"rules[0].{field}"
     assert exc.value.errors[0]["code"] == code
+
+
+# ── KBANK: a toggle and a merchant, not patterns (2026-10-05) ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_kbank_rule_needs_no_filename_pattern():
+    """Its toggle names its files (`imap.kbank_file`); a pattern there is never read."""
+    existing = SimpleNamespace(tenant_id=uuid4(), enabled=False, tax_ids=[], rules=[])
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[_exec(scalars=["KBANK"]), _exec(scalar_one_or_none=existing)]
+    )
+    row = await es.save_settings(
+        db, _tenant(), _settings(RuleIn(bank_code="KBANK", doc_type="fee_invoice"))
+    )
+    assert row.rules[0]["bank_code"] == "KBANK"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("merchant", "code"), [(None, "required"), ("", "required"), ("12-34", "invalid")]
+)
+async def test_a_settlement_rule_needs_its_merchant(merchant, code):
+    """Its file is `SUM_<merchant>` and nothing else, so without one it reads nothing."""
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_exec(scalars=["KBANK"]), _exec(scalars=["KBANK"])])
+    rule = RuleIn(bank_code="KBANK", doc_type="ar_reconcile", merchant_id=merchant)
+    with pytest.raises(FieldValidationError) as exc:
+        await es.save_settings(db, _tenant(), _settings(rule))
+    assert [(e["field"], e["code"]) for e in exc.value.errors] == [("rules[0].merchant_id", code)]
+
+
+def test_the_merchant_is_stored_as_the_digits_the_file_name_carries():
+    rule = RuleIn(bank_code="KBANK", doc_type="ar_reconcile", merchant_id=" 451-005282039001 ")
+    assert es._merge_rule(rule, None)["merchant_id"] == "451005282039001"
+
+
+def test_an_omitted_merchant_keeps_the_stored_one_and_an_empty_one_clears_it():
+    previous = {"bank_code": "KBANK", "merchant_id": "451005282039001"}
+    kept = es._merge_rule(RuleIn(bank_code="KBANK"), previous)
+    cleared = es._merge_rule(RuleIn(bank_code="KBANK", merchant_id=""), previous)
+    assert (kept["merchant_id"], cleared["merchant_id"]) == ("451005282039001", None)
+
+
+def test_the_settings_response_hands_the_merchant_back():
+    row = SimpleNamespace(
+        enabled=True,
+        auto_post=False,
+        ingest_tag="abc123",
+        enabled_at=None,
+        owner_emails=[],
+        tax_ids=[],
+        rules=[
+            {"bank_code": "KBANK", "doc_type": "ar_reconcile", "merchant_id": "451005282039001"},
+            {"bank_code": "KTC", "filename_patterns": [".pdf"]},
+        ],
+        gmail_confirmed_at=None,
+        gmail_confirm_code=None,
+        gmail_confirm_at=None,
+        carmen_token_fp=None,
+        carmen_token_verified_at=None,
+        carmen_uri=None,
+    )
+    body = es.to_response(row, "hotel.carmenwork.com", "hq")
+    assert [r["merchant_id"] for r in body["rules"]] == ["451005282039001", None]

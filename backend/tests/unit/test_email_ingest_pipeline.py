@@ -918,14 +918,15 @@ async def test_a_sender_hit_does_not_buy_a_filename_miss_an_llm_call():
 async def test_a_rule_never_picks_the_extraction_layout():
     """A filename substring cannot choose a bank prompt, however unambiguous the match.
 
-    Reading a KTC invoice with the KBANK layout mismaps its columns and makes it answer
-    "ธนาคารกสิกรไทย", which then confirms the wrong bank to every later reader.
+    Reading a KTC invoice with the BBL layout mismaps its columns and makes it answer
+    "ธนาคารกรุงเทพ", which then confirms the wrong bank to every later reader. (Not KBANK:
+    its rule names its files by type, never by pattern — `imap.match_rules`.)
     """
     db = _FakeDB()
     _, p = await _run(
         db,
         filename="MDR-aug.jpg",
-        rules=[{"bank_code": "KBANK", "filename_patterns": ["MDR"], "is_active": True}],
+        rules=[{"bank_code": "BBL", "filename_patterns": ["MDR"], "is_active": True}],
         extracted=_extracted(),
         config=_config(),
         carmen_result={"Code": 0, "InternalMessage": "JV-1"},
@@ -949,7 +950,7 @@ async def test_the_document_outranks_the_rule_that_matched_it():
     outcome, p = await _run(
         db,
         filename="anything.jpg",
-        rules=[{"bank_code": "KBANK", "filename_patterns": [".jpg"], "is_active": True}],
+        rules=[{"bank_code": "BBL", "filename_patterns": [".jpg"], "is_active": True}],
         extracted=extracted,
         config=_config(),
         carmen_result={"Code": 0, "InternalMessage": "JV-1"},
@@ -962,7 +963,7 @@ async def test_the_document_outranks_the_rule_that_matched_it():
     # or naming neither — is one the reviewer cannot act on, which is the same as no
     # warning at all.
     assert [w.code for w in extracted.warnings] == ["bankMismatch"]
-    assert extracted.warnings[0].params == {"rule": "KBANK", "detected": "KTC"}
+    assert extracted.warnings[0].params == {"rule": "BBL", "detected": "KTC"}
 
 
 @pytest.mark.asyncio
@@ -1008,7 +1009,7 @@ async def test_three_banks_in_one_poll_come_out_as_three_banks():
     rules = [
         # The broad one. Sole match for anything the two below miss — which used to make
         # it the answer for every bank.
-        {"bank_code": "KBANK", "filename_patterns": [".pdf"], "is_active": True},
+        {"bank_code": "SCB", "filename_patterns": [".pdf"], "is_active": True},
         {"bank_code": "KTC", "filename_patterns": ["MDR"], "is_active": True},
         {"bank_code": "BAY", "filename_patterns": ["krungsri"], "is_active": True},
     ]
@@ -1017,7 +1018,7 @@ async def test_three_banks_in_one_poll_come_out_as_three_banks():
     # disagree with the document and raise the over-reach warning — and that warning is a
     # flag, which keeps the document out of auto-post.
     mail = [
-        ("kbank-july.pdf", "ธนาคารกสิกรไทย จำกัด (มหาชน)", "KBANK", "posted"),
+        ("scb-july.pdf", "ธนาคารไทยพาณิชย์ จำกัด (มหาชน)", "SCB", "posted"),
         # Two rules claim these, so neither is the answer and nothing is assumed.
         ("MDR-july.pdf", "บริษัท บัตรกรุงไทย จำกัด (มหาชน)", "KTC", "posted"),
         ("krungsri-july.pdf", "ธนาคารกรุงศรีอยุธยา จำกัด (มหาชน)", "BAY", "posted"),

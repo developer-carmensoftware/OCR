@@ -116,6 +116,8 @@ pg_cron → POST /api/v1/email/ingest  (internal job token)
       email_ingest_settings  entitled? backlog under the cap? → else hand the mail back unread
   services/email_automation/pipeline.py  ← _run_document: everything that decides meaning and cost
       filename must match one of this BU's rules; this BU's PDF passwords
+      (KBANK's rule has no patterns: its toggle reads E-TAX_INVOICE_CARD off,
+       SUM_<merchant_id> on, and no other rule may claim either file — decision-log #37)
       consume_document() → same extract → GL-map → POST JV path as the Credit Card wizard
       tax ID vs this BU's register  ← verification, not routing; parks only on positive conflict
       _review_flags() non-empty, or auto_post = false (default)

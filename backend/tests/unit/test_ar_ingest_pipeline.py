@@ -448,12 +448,14 @@ async def test_ar_switched_off_costs_nothing():
 @pytest.mark.asyncio
 async def test_a_settlement_rule_with_no_bank_costs_nothing():
     """`PUT /carmen/settings` refuses this; the pipeline still stops before the charge for
-    a rule that got stored some other way, since it cannot pick a layout without a bank."""
+    a rule that got stored some other way. Since 2026-10-05 it stops one step earlier: a
+    settlement report is read by the KBANK rule alone (`imap.match_rules`), so a bankless
+    rule never claims the file at all."""
     db = _FakeDB()
     outcome, p = await _run_ar(db, rules=[{**AR_RULE[0], "bank_code": None}], carmen_result=None)
 
     assert outcome == "skipped"
-    assert db.added[0].reason_code == "ar_reconcile_disabled"
+    assert db.added[0].reason_code == "no_rule_match"
     p.consume_document.assert_not_called()
 
 
@@ -590,3 +592,72 @@ async def test_a_report_nobodys_password_opens_costs_nothing():
     assert db.added[0].reason_code == "wrong_pdf_password"
     p.consume_document.assert_not_called()
     p.extract.assert_not_called()
+
+
+# ── KBANK with the toggle off: the commission tax invoice, and its zip's CSV ─────
+#
+# 2026-10-05 (decision-log #37). The tax summary rides in the same zip whichever file the
+# toggle reads, and on the tax invoice it runs the same two checks — its TIN into
+# `foreign_tax_id`, its fee and VAT against the invoice's — minus `tin_unverified`: this
+# document prints its own TIN, so a missing CSV costs it nothing.
+
+KBANK_FEE_RULE = [{"bank_code": "KBANK", "is_active": True, "doc_type": "fee_invoice"}]
+KBANK_FEE_FILE = "E-TAX_INVOICE_CARD_451005282039001_210726E00035291_20260721.PDF"
+
+
+def _kbank_fee_invoice(**over):
+    # No merchant on the page: the file's own name supplies it.
+    return _extracted(
+        bank_company_name="ธนาคารกสิกรไทย จำกัด (มหาชน)",
+        bank_name=None,
+        doc_no="210726E00035291",
+        **over,
+    )
+
+
+def _csv(**over):
+    row = {
+        "tax_id": "0835553001610",
+        "tax_invoice_no": "210726E00035291",
+        "fee": "30.00",
+        "vat": "2.10",
+        # The settlement's net, not the invoice's total — never compared on this path.
+        "net": "24,467.20",
+    }
+    return {"451005282039001": {**row, **over}}
+
+
+async def _run_kbank_fee(db, **kw):
+    kw.setdefault("extracted", _kbank_fee_invoice())
+    kw.setdefault("config", _config())
+    kw.setdefault("carmen_result", {"Code": 0, "InternalMessage": "JV-1"})
+    return await _run(db, filename=KBANK_FEE_FILE, rules=KBANK_FEE_RULE, **kw)
+
+
+@pytest.mark.asyncio
+async def test_the_kbank_tax_invoice_feeds_its_csv_tin_into_the_existing_check():
+    outcome, p = await _run_kbank_fee(_FakeDB(), tax_summary=_csv())
+
+    assert outcome == "posted"
+    assert "0835553001610" in p.foreign_tax_id.call_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_a_csv_disagreeing_with_the_tax_invoice_parks_it_with_a_warning():
+    db = _FakeDB()
+    outcome, p = await _run_kbank_fee(db, tax_summary=_csv(vat="9.99"))
+
+    assert outcome == "pending_review"
+    p.post_gljv.assert_not_called()
+    warnings = db.added[0].review_payload["extracted"]["warnings"]
+    assert [(w["code"], w["params"]) for w in warnings] == [
+        ("csvVatMismatch", {"csv": "9.99", "report": "2.10"})
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_kbank_tax_invoice_without_a_csv_posts_as_it_always_did():
+    db = _FakeDB()
+    outcome, _ = await _run_kbank_fee(db, tax_summary={})
+
+    assert outcome == "posted"
