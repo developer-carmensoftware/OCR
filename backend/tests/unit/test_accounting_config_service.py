@@ -191,6 +191,30 @@ async def test_a_payment_type_with_no_entry_yet_is_created_as_custom():
 
 
 @pytest.mark.asyncio
+async def test_a_settlement_key_keeps_the_layout_it_came_from():
+    """The review screen maps a settlement key in place. A new entry takes the layout tag
+    it was sent, or the mapping page — which reads Settlement rows back by `source` —
+    would not list it there; an existing entry's tag is not a correction's to change."""
+    existing = _entry("VS INTER PREM", "GEN", "1021004")
+    existing.source = "settlement_detail"
+    db = _db(SimpleNamespace(id=1), [existing])
+
+    await patch_config(
+        db,
+        TENANT_ID,
+        mappings={
+            "VS INTER PREM": {"dept": "GEN", "acc": "1021005", "source": "settlement_summary"},
+            "JCB PREM": {"dept": "GEN", "acc": "1021008", "source": "settlement_detail"},
+        },
+        bank_code="KBANK",
+    )
+
+    (added,) = [c.args[0] for c in db.add.call_args_list]
+    assert (added.field_type, added.source) == ("JCB PREM", "settlement_detail")
+    assert (existing.acc_code, existing.source) == ("1021005", "settlement_detail")
+
+
+@pytest.mark.asyncio
 async def test_a_correction_for_one_bank_leaves_another_banks_entry_alone():
     """The row `_get_entries` returns belongs to KBANK; a correction made about SCB must
     create SCB's own row rather than overwriting KBANK's, even though both use `tax`."""

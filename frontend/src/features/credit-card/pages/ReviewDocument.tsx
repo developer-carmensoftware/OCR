@@ -1,12 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, Settings, X } from 'lucide-react'
 import CustomModal from '@/shared/components/common/CustomModal'
 import SwapLabel from '@/shared/components/common/SwapLabel'
 import JvHeaderCard from '@/features/credit-card/components/JvHeaderCard'
 import InputTaxPanel from '@/features/credit-card/components/InputTaxPanel'
 import JvEditor from '@/features/credit-card/components/JvEditor'
-import ARReviewPane from '@/features/credit-card/components/ARReviewPane'
 import { useT } from '@/i18n/LanguageContext'
 import { useReviewDocument } from '@/features/credit-card/hooks/useReviewDocument'
 import { useScrollLock } from '@/shared/hooks/useScrollLock'
@@ -47,14 +46,12 @@ export default function ReviewDocument({ id, onClose, onDone, bankHint }: Props)
     warnings,
     postInputTax,
     itx,
-    itxBlocked,
     setItxBlocked,
     overrides,
     aiKeys,
     prefix,
     description,
     descs,
-    jv,
     config,
     configLoading,
     busy,
@@ -66,13 +63,11 @@ export default function ReviewDocument({ id, onClose, onDone, bankHint }: Props)
     discarding,
     setDiscarding,
     bankCode,
-    effectivePrefix,
     blockReason,
+    blocked,
     isAR,
-    arJv,
-    arBlockReason,
-    prefixFix,
-    arSettingsLink,
+    settlement,
+    itxDetails,
     requestClose,
     updateHeader,
     updateAmount,
@@ -241,6 +236,24 @@ export default function ReviewDocument({ id, onClose, onDone, bankHint }: Props)
               </span>
             )
           )}
+          {/* The mapping page, on this document's bank — in a new tab, as the queue's own
+              button opens it, so the document and anything corrected on it stay here. */}
+          <button
+            type="button"
+            className="btn-icon rd-mapping"
+            onClick={() =>
+              window.open(
+                bankCode
+                  ? `#/CreditCardOCR/mapping?bank=${encodeURIComponent(bankCode)}`
+                  : '#/CreditCardOCR/mapping',
+                '_blank'
+              )
+            }
+            aria-label={t('cc.mappingSettings')}
+            title={t('cc.mappingSettings')}
+          >
+            <Settings size={16} />
+          </button>
           <button
             type="button"
             className="btn-icon rd-close"
@@ -368,68 +381,60 @@ export default function ReviewDocument({ id, onClose, onDone, bankHint }: Props)
                   description={description}
                   onPrefix={onPrefix}
                   onDescription={onDescription}
-                  /* None of these four reaches Carmen on the AR path: the server rebuilds
-                     that JV from the document, and the config write is skipped. They
-                     were four inputs that discarded what was typed into them. */
-                  readOnly={isAR}
-                  descriptionOverride={isAR ? arJv?.description : undefined}
                 />
               </section>
 
-              {isAR ? (
-                <section aria-label={t('review.paneJv')}>
-                  <ARReviewPane jv={arJv} details={details} />
-                  {/* Named for its destination, so it needs no sentence in front of it —
-                      see review-queue.css's history on `.rd-ar-hint` for why one isn't
-                      there any more. `.btn.btn-outline.btn-sm` rather than a one-off class:
-                      the same secondary-button weight `.rd-alert-fix` above already wears,
-                      reused instead of re-invented. Right-aligned, on the same edge as
-                      Approve/Reject below it — shorter mouse travel between "check the
-                      settings" and "act on the document" than a flush-left placement. */}
-                  <div className="rd-ar-hint">
-                    <a className="btn btn-outline btn-sm" {...arSettingsLink}>
-                      {t('review.arSettings')}
-                    </a>
-                  </div>
-                </section>
-              ) : (
-                <>
-                  <section aria-label={t('review.paneJv')}>
-                    <JvEditor
-                      details={details}
-                      config={config as Record<string, unknown> | null}
-                      configLoading={configLoading}
-                      overrides={overrides}
-                      onOverride={onOverride}
-                      onUndo={onUndo}
-                      guessedKeys={aiKeys}
-                      unmappedKeys={doc.unmapped || []}
-                      onAmount={updateAmount}
-                      descs={descs}
-                      onDesc={onDesc}
-                      onState={onJvState}
-                      bankCode={bankCode}
-                    />
-                  </section>
+              {/* One JV table for both document types. A settlement report only adds its
+                  grouping and its total row (`settlement`). */}
+              <section aria-label={t('review.paneJv')}>
+                {isAR && !settlement ? (
+                  <>
+                    <p className="jv-empty">{t('review.arNotConfigured')}</p>
+                    {/* No JV at all: this bank has no active settlement rule, and that
+                        switch is the rule's document type on the settings screen
+                        (decision #31, in this app since #34). */}
+                    <div className="rd-ar-hint">
+                      <a className="btn btn-outline btn-sm" href="#/CreditCardOCR/email-settings">
+                        {t('review.actionOpenSettings')}
+                      </a>
+                    </div>
+                  </>
+                ) : (
+                  <JvEditor
+                    details={details}
+                    config={config as Record<string, unknown> | null}
+                    configLoading={configLoading}
+                    overrides={overrides}
+                    onOverride={onOverride}
+                    onUndo={onUndo}
+                    guessedKeys={aiKeys}
+                    unmappedKeys={doc.unmapped || []}
+                    onAmount={updateAmount}
+                    descs={descs}
+                    onDesc={onDesc}
+                    onState={onJvState}
+                    bankCode={bankCode}
+                    settlement={settlement}
+                  />
+                )}
+              </section>
 
-                  {/* The second document this approval files. Its own fields live with it
+              {/* The second document this approval files. Its own fields live with it
                   rather than in the JV header, which is the only place they were ever
                   wanted. */}
-                  <section aria-label={t('review.secTax')}>
-                    <InputTaxPanel
-                      details={details}
-                      headerData={headerData}
-                      bank={bankCode}
-                      enabled={postInputTax}
-                      onEnabledChange={onPostInputTax}
-                      onUpdate={updateHeader}
-                      overrides={itx}
-                      onOverride={onItxOverride}
-                      onBlocked={setItxBlocked}
-                    />
-                  </section>
-                </>
-              )}
+              <section aria-label={t('review.secTax')}>
+                <InputTaxPanel
+                  details={itxDetails}
+                  headerData={headerData}
+                  bank={bankCode}
+                  enabled={postInputTax}
+                  onEnabledChange={onPostInputTax}
+                  onUpdate={updateHeader}
+                  overrides={itx}
+                  onOverride={onItxOverride}
+                  onBlocked={setItxBlocked}
+                />
+              </section>
             </div>
 
             <footer className="rd-modal-foot">
@@ -446,11 +451,6 @@ export default function ReviewDocument({ id, onClose, onDone, bankHint }: Props)
                 <p className="rd-blocked" id="rd-blocked" role="status">
                   <AlertTriangle size={14} aria-hidden="true" />
                   {blockReason}
-                  {prefixFix && (
-                    <a className="rd-blocked-fix" {...prefixFix}>
-                      {t('review.actionSetPrefix')}
-                    </a>
-                  )}
                 </p>
               )}
               <div className="rd-actions">
@@ -466,9 +466,7 @@ export default function ReviewDocument({ id, onClose, onDone, bankHint }: Props)
                   type="button"
                   className="btn btn-primary"
                   onClick={approve}
-                  disabled={
-                    busy || (isAR ? !!arBlockReason : jv.blocked || !effectivePrefix || itxBlocked)
-                  }
+                  disabled={busy || blocked}
                   /* The sentence above is the reason the control is unavailable, so a
                      screen reader is given it along with the disabled state. */
                   aria-describedby={blockReason && !postError ? 'rd-blocked' : undefined}

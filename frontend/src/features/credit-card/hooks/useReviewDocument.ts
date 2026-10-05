@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { DetailRow } from '@/features/credit-card/components/DetailTable'
-import type { JvState, Overrides } from '@/features/credit-card/components/JvEditor'
+import { BU_WIDE, type JvState, type Overrides } from '@/features/credit-card/components/JvEditor'
+import {
+  getARSettings,
+  SOURCE_BY_POST_TYPE,
+  type PostType,
+} from '@/features/credit-card/api/arReconcile'
+import { appKey } from '@/shared/lib/storage'
 import { useT } from '@/i18n/LanguageContext'
 // The barrel, not './useAccountingConfig': ReviewDocument.test.tsx stands in for the
 // accounting config by mocking this exact module.
@@ -9,7 +15,7 @@ import { showToast } from '@/shared/lib/toast'
 import { fmt } from '@/shared/lib/format'
 import { toExtractedRows } from '@/shared/api/ocr'
 import { normalizeDateStringToCE } from '@/shared/lib/date'
-import { applyJvAmount, type JvRow } from '@/features/credit-card/lib/ccJv'
+import { applyJvAmount, type JvRow, type Settlement } from '@/features/credit-card/lib/ccJv'
 import type { ExtractionWarning } from '@/shared/lib/reviewReasons'
 import { patchAccountingConfig } from '@/shared/api/config'
 import {
@@ -45,6 +51,9 @@ export function useReviewDocument(
 
   const [headerData, setHeaderData] = useState<Record<string, string>>({})
   const [details, setDetails] = useState<DetailRow[]>([])
+  // A settlement report's total row: the source of its three debit legs and of its
+  // input-tax record. State, not payload, because those legs are edited on the JV too.
+  const [totalRow, setTotalRow] = useState<DetailRow | null>(null)
   const [bank, setBank] = useState<BankCode | ''>('')
   const [warnings, setWarnings] = useState<(ExtractionWarning | string)[]>([])
   const [postInputTax, setPostInputTax] = useState(true)
@@ -136,6 +145,8 @@ export function useReviewDocument(
             _uid: crypto.randomUUID(),
           }))
         )
+        const total = ext.total_row as Record<string, string> | null | undefined
+        setTotalRow(total ? { ...toExtractedRows([total])[0] } : null)
         setWarnings((ext.warnings as (ExtractionWarning | string)[]) || [])
         setBank((detectBankFromExtracted(ext as Record<string, string>) || '') as BankCode | '')
         // What the AI proposed at ingest, into the pickers as the starting answer. Not
@@ -183,10 +194,21 @@ export function useReviewDocument(
   // An amount typed on the JV goes back into the lines it was summed from. `details` is
   // not display: the input-tax record is filed from it, per line, so a figure that moved
   // only on the journal would post a VAT record that disagrees with it.
-  const updateAmount = useCallback((row: JvRow, next: number) => {
-    setDirty(true)
-    setDetails(d => applyJvAmount(d, row, next))
-  }, [])
+  const isAR = doc?.doc_type === 'ar_reconcile'
+  const updateAmount = useCallback(
+    (row: JvRow, next: number) => {
+      setDirty(true)
+      // A settlement report's debit legs are its total row's figures, so that is where an
+      // edit to one goes — the same column `applyJvAmount` writes for a fee invoice's.
+      if (isAR && BU_WIDE.includes(row.key)) {
+        setTotalRow(r => (r ? applyJvAmount([r], { ...row, lines: [0] }, next)[0] : r))
+        return
+      }
+      // A group that netted negative sits on the debit side; its lines carry the sign.
+      setDetails(d => applyJvAmount(d, row, isAR && row.debit ? -next : next))
+    },
+    [isAR]
+  )
 
   const onOverride = useCallback(
     (key: string, mapping: { dept?: string | null; acc?: string | null }, byUser = true) => {
@@ -249,59 +271,78 @@ export function useReviewDocument(
   // Read the same way JvHeaderCard displays it, so the field and the block agree.
   const effectivePrefix = prefix ?? ((config?.filePrefix as string) || '')
 
-  // AR reconciliation is a different document with a different JV, and the browser has no
-  // arithmetic builder for it: the server sent the rows, the server rebuilds the same rows
-  // on approve, and this screen only shows them — read-only, since 2026-09-16. Every GL
-  // account for this feature — the three fixed debit legs (decision #28) and the credit
-  // mappings — is a bank-level setting fixed on the mapping page, not a per-document
-  // correction. That is why the whole JvEditor / InputTaxPanel half of the modal is
-  // replaced rather than disabled, but `ARReviewPane` itself is not.
-  const arJv = doc?.doc_type === 'ar_reconcile' ? (doc.ar_jv ?? null) : null
-  const isAR = doc?.doc_type === 'ar_reconcile'
+  // A settlement report goes through the same JvEditor as a fee invoice: the browser
+  // builds its JV (`buildJvRows`' settlement branch, contract-pinned to the server's), and
+  // approve rebuilds the same rows from the edited lines, the total row and the rules it
+  // saves first. `ar_jv` is still read for the two things only the server knows: whether
+  // this bank has an active settlement rule (null = it does not), and how its JV groups.
+  //
+  // The grouping is re-read whenever the mapping page saves — it is switched there, in a
+  // tab of its own, and the server posts with whatever it is at approve time. The rules
+  // re-read on the same signal inside `useAccountingConfig`.
+  const [postType, setPostType] = useState<PostType | null>(null)
+  useEffect(() => {
+    if (!isAR || !bankCode) return
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== appKey('accounting_config_updated')) return
+      getARSettings(bankCode)
+        .then(s => setPostType(s.post_type))
+        .catch(() => {
+          // Keeps the grouping it had. Approve still posts the server's, and refuses an
+          // entry that no longer balances or maps.
+        })
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [isAR, bankCode])
+  const settlement = useMemo<Settlement | undefined>(
+    () => (isAR && doc.ar_jv ? { postType: postType ?? doc.ar_jv.post_type, totalRow } : undefined),
+    [isAR, doc, postType, totalRow]
+  )
+  // The input-tax record a settlement report files sums its total row, not its lines,
+  // which print the commission and VAT columns as dashes — what `approve_document` sends.
+  const itxDetails = useMemo(
+    () => (isAR ? (totalRow ? [totalRow] : []) : details),
+    [isAR, totalRow, details]
+  )
 
-  const arBlockReason = !arJv
-    ? t('review.arNotConfigured')
-    : arJv.unmapped.length > 0
-      ? t('review.arUnmapped', { types: arJv.unmapped.join(', ') })
-      : !arJv.balanced
-        ? t('review.jvOffBy', { diff: fmt(Math.abs(arJv.total_debit - arJv.total_credit)) })
-        : !effectivePrefix
-          ? t('review.prefixRequired')
+  // A settlement report's approve refuses any leg missing either code — the three debit
+  // legs even at zero (`unmapped_payment_types`) — where JvEditor only asks for an account
+  // on a leg carrying money. Said here rather than learned from a refused post.
+  const arUnmapped = settlement
+    ? [...new Set(jv.rows.filter(r => !r.dept || !r.acc).map(r => r.key))]
+    : []
+
+  // What stops the JV, then what stops either document. The JV comes first: it is the
+  // document being posted, and the input-tax record is filed after it.
+  const jvReason =
+    isAR && !settlement
+      ? t('review.arNotConfigured')
+      : jv.reason
+        ? jv.reason === 'account'
+          ? t('review.jvBlankAccount')
+          : jv.reason === 'unbalanced'
+            ? t('review.jvOffBy', { diff: fmt(Math.abs(jv.totalDr - jv.totalCr)) })
+            : t('review.jvNothing')
+        : arUnmapped.length
+          ? t('review.arUnmapped', { types: arUnmapped.join(', ') })
           : null
+  const blockReason =
+    jvReason ??
+    (!effectivePrefix ? t('review.prefixRequired') : itxBlocked ? t('review.itxBlocked') : null)
+  // `jv.blocked` too: JvEditor reports no reason while the masters load, and there are no
+  // rows to post until they arrive. `configLoading` because a re-read (the mapping page
+  // saved) keeps the old rules on screen until the new ones land.
+  const blocked = !!blockReason || jv.blocked || configLoading
 
-  const blockReason = isAR
-    ? arBlockReason
-    : jv.reason
-      ? jv.reason === 'account'
-        ? t('review.jvBlankAccount')
-        : jv.reason === 'unbalanced'
-          ? t('review.jvOffBy', { diff: fmt(Math.abs(jv.totalDr - jv.totalCr)) })
-          : t('review.jvNothing')
-      : !effectivePrefix
-        ? t('review.prefixRequired')
-        : itxBlocked
-          ? t('review.itxBlocked')
-          : null
-
-  // The journal book is BU config, and on the AR path the field that used to hold it is
-  // read-only — so the sentence naming it has to come with the door. Same `<a>` shape the
-  // stop-reason banner uses, rather than a second kind of link on the same dialog. On the
-  // fee-invoice path the picker is right there in the header and a link would be noise.
-  const prefixFix =
-    isAR && blockReason === t('review.prefixRequired') ? { href: '#/CreditCardOCR/mapping' } : null
-
-  // Two doors behind one button, picked by what is wrong. No JV at all means this bank has
-  // no active settlement rule — the switch is the rule's document type on the AI JV
-  // Automation settings screen (decision #31, moved in-app by #34), so that is where it
-  // opens. Otherwise the gap is an account, fixed on the mapping page, and every value
-  // there is per bank, so the door carries this document's.
-  const arSettingsLink = {
-    href: !arJv
-      ? '#/CreditCardOCR/email-settings'
-      : bankCode
-        ? `#/CreditCardOCR/mapping?bank=${encodeURIComponent(bankCode)}`
-        : '#/CreditCardOCR/mapping',
-  }
+  /** A line in the shape `extracted` carries it. */
+  const toWire = (d: DetailRow) => ({
+    transaction: d.Transaction || '',
+    pay_amt: d.PayAmt || '',
+    commis_amt: d.CommisAmt || '',
+    tax_amt: d.TaxAmt || '',
+    total: d.Total || '',
+  })
 
   async function approve() {
     if (!doc) return
@@ -318,13 +359,29 @@ export function useReviewDocument(
     // there, carried no flag, and auto-posted on something no human had read. `overrides`
     // arrives seeded with what the AI proposed, so pressing Approve is what turns it into
     // the BU's rule — once per payment type, by a person, which is the whole point.
-    // Not on the AR path: its accounts are the bank's settlement mapping, fixed on the
-    // mapping page, and nothing on this screen edits them.
-    if (ruleCount && !isAR) {
+    // On the AR path this is also the only writer: ingest suggests nothing for a
+    // settlement report, and the server rebuilds the JV from what lands here.
+    if (ruleCount) {
       try {
         await patchAccountingConfig({
           mappings: Object.fromEntries(
-            Object.entries(overrides).map(([k, m]) => [k, { dept: m.dept || '', acc: m.acc || '' }])
+            Object.entries(overrides)
+              // A settlement key from a grouping no longer on screen (Credit breakdown was
+              // switched meanwhile) is not something this approval looked at.
+              .filter(([k]) => !settlement || jv.rows.some(r => r.key === k))
+              .map(([k, m]) => [
+                k,
+                {
+                  dept: m.dept || '',
+                  acc: m.acc || '',
+                  // A settlement key first mapped here is tagged with its layout, the way
+                  // the mapping page tags its own rows, or that page would not list it under
+                  // Settlement. The server applies it to a new entry only.
+                  ...(settlement && !BU_WIDE.includes(k)
+                    ? { source: SOURCE_BY_POST_TYPE[settlement.postType] }
+                    : {}),
+                },
+              ])
           ),
           ...(prefix === null ? {} : { file_prefix: prefix }),
           ...(description === null ? {} : { description }),
@@ -347,24 +404,14 @@ export function useReviewDocument(
           doc_date: headerData.DocDate,
           // The input-tax record's only document field, edited in its own panel.
           branch_no: headerData.BranchNo,
-          details: details.map(d => ({
-            transaction: d.Transaction || '',
-            pay_amt: d.PayAmt || '',
-            commis_amt: d.CommisAmt || '',
-            tax_amt: d.TaxAmt || '',
-            total: d.Total || '',
-          })),
+          details: details.map(toWire),
+          // A settlement report's debit legs, as the reviewer left them.
+          ...(isAR ? { total_row: totalRow ? toWire(totalRow) : null } : {}),
         },
-        // AR: the server rebuilds these from the BU's current mapping and ignores what is
-        // sent, so sending the rows it just handed us keeps the request honest rather
-        // than pretending the browser composed them.
-        rows: isAR ? (arJv?.rows ?? []) : jv.rows,
-        // AR always attempts it (decision #28): since the fee invoice that used to file
-        // this claim is no longer processed once AR reconciliation covers a bank, the
-        // settlement report claims the commission's VAT itself. No panel offers a
-        // reviewer a choice here the way `postInputTax` does for a fee invoice, so this
-        // is unconditional — matching the unattended path's own default.
-        post_input_tax: isAR ? true : postInputTax,
+        // A settlement report's are rebuilt server-side from the above, keeping only each
+        // leg's comment from here — see `approve_document`.
+        rows: jv.rows,
+        post_input_tax: postInputTax,
         // Omitted entirely when nothing was touched, so the server derives the record the
         // same way the unattended path does.
         input_tax: Object.keys(itx).length ? itx : undefined,
@@ -415,14 +462,12 @@ export function useReviewDocument(
     warnings,
     postInputTax,
     itx,
-    itxBlocked,
     setItxBlocked,
     overrides,
     aiKeys,
     prefix,
     description,
     descs,
-    jv,
     config,
     configLoading,
     busy,
@@ -434,13 +479,11 @@ export function useReviewDocument(
     discarding,
     setDiscarding,
     bankCode,
-    effectivePrefix,
     blockReason,
+    blocked,
     isAR,
-    arJv,
-    arBlockReason,
-    prefixFix,
-    arSettingsLink,
+    settlement,
+    itxDetails,
     requestClose,
     updateHeader,
     updateAmount,

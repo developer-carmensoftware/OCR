@@ -1,15 +1,14 @@
 export const en = {
   // -- Settlement report (AR reconciliation) — the mapping page's Settlement card and
-  // the review screen's read-only JV. KBANK KB1P554V2 today; decision #3 (2026-09-22).
+  // the review screen's settlement JV. KBANK KB1P554V2 today; decision #3 (2026-09-22).
 
   // — AR reconciliation settings (#/CreditCardOCR/ar-settings) —
   //
-  // The review modal points people here by name (review.arSettings), so the heading they
-  // land on is the same words. Columns are NOT re-declared: the preview table reuses
+  // Columns are NOT re-declared: the preview table reuses
   // review.jvDept / jvAccount / jvDesc / jvDebit / jvCredit and the segmented control
-  // reuses review.arPostTypeDetail / arPostTypeSummary, because ARReviewPane already names
-  // the same things that way (same `desc` field too, since 2026-09-17) and two vocabularies
-  // for one column is how a reader starts wondering whether they are the same column.
+  // reuses review.arPostTypeDetail / arPostTypeSummary, because the review screen's JV
+  // names the same things that way, and two vocabularies for one column is how a reader
+  // starts wondering whether they are the same column.
   'ar.title': 'AR Reconciliation',
   'ar.intro':
     'Splits the lump credit-card control account into per-scheme receivables when a settlement report arrives by email.',
@@ -19,7 +18,7 @@ export const en = {
   'ar.enabledOffHint':
     'Not reconciling — switch it on in AI JV Automation settings by setting this bank’s email rule to Settlement report.',
 
-  // The three controls the review dialog's AR reconciliation settings link sends people here for.
+  // The settlement card's posting controls.
   'ar.postingRules': 'Posting rules',
   'ar.postType': 'Credit breakdown',
   'ar.postTypeMapped': '{mapped}/{total} mapped',

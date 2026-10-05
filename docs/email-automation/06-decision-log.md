@@ -1000,3 +1000,34 @@ returned, and the next menu open replaces it anyway. Deleting our copy on OFF wa
 we could do it on our own, but it strands a customer who switches back on in the same visit:
 they would have to reopen from Carmen's menu. Carmen's checklist loses item C. Nothing is
 waiting on Carmen except the menu item.
+
+## 36. A settlement report is reviewed in the fee invoice's JV table (2026-10-05)
+
+The review modal showed a settlement report in its own read-only pane (`ARReviewPane`) since
+2026-09-16, because the feature then had its own settings screen and mapping table. #29 folded
+both into the credit-card mapping, so a settlement key is the same kind of rule as a fee
+invoice's payment type. The modal now uses `JvEditor` for both document types: header,
+Dept/Account pickers, comments, amounts and the input-tax panel.
+
+- **The browser builds the settlement JV.** `buildJvRows` gained the settlement branch of
+  `build_jv_rows` (grouping by Credit breakdown, debit legs from the total row). Two settlement
+  cases in `contracts/cc-jv.contract.json` pin the two builders together, as they already were
+  for the fee invoice.
+- **Approve still rebuilds, and now refuses a JV that differs from the screen.** The server
+  builds from the `extracted` it is sent (edited lines and total row) and the config the review
+  screen saves just before. It then compares that with the rows the screen sent:
+  - same legs, accounts and figures → it posts, with each leg's comment from the screen;
+  - anything else → it refuses ("changed since the review screen built it"). That only happens
+    when something moved under the reviewer, such as a colleague's mapping save or a Credit
+    breakdown switched in another browser. The screen re-reads both when the mapping page saves
+    in this browser.
+- **Edits land where the server reads them.** A credit leg's figure goes into its line(s). A
+  debit leg's goes into the total row, which is also what the input-tax record files from.
+- **The input-tax record is the reviewer's choice now**, as on a fee invoice. Until now a
+  settlement report always filed it (#28), because no panel offered the choice.
+- **Still not guessed.** JvEditor's AI fill is off for a settlement report. Ingest suggests
+  nothing for one (`_run_document`), and extending guess-then-approve to it remains its own
+  decision.
+
+Dropped with the pane: the disclosure of which printed labels a Summary leg folded, and the rows
+for lines printed at zero.

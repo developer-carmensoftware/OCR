@@ -5,11 +5,12 @@ had no test until this file: the eight tests in test_ar_ingest_pipeline cover th
 unattended path only, and the two differ in the one place that matters — what decides the
 rows that post.
 
-The credit-card path posts the rows the browser sent, because the browser derived them and
-the reviewer may have edited a leg. This feature has no browser-side JV builder, so its
-rows are rebuilt here from the BU's current mapping and the caller's are ignored. Same rule
-("post what was on screen") reached the other way round: the screen displayed what
-jv_for_document returned, and this rebuilds exactly that.
+The credit-card path posts the rows the browser sent. A settlement report's are rebuilt
+here from the document the caller sent (its edited lines and total row) and the BU's
+current mapping, which the review screen writes first; only each leg's comment is taken
+from the caller. Same rule ("post what was on screen") reached the other way round: the
+browser builds those rows with a twin of this builder, pinned by
+contracts/cc-jv.contract.json.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -78,18 +79,75 @@ async def _approve(db, row, *, built, rows_from_client=None, carmen_result=None)
 # ── What posts ────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_the_rows_are_rebuilt_from_the_mapping_not_taken_from_the_client():
-    row = _ar_row()
-    db = _ReviewDB(row)
-    junk = [{"dept": "OPS", "acc": "9999", "debit": 1_000_000.0, "credit": 0.0}]
+def _as_sent(built):
+    """`built`'s rows as the review screen sends them: the fixed legs keyed."""
+    keys = iter(["commission", "tax", "net"])
+    return [{**r.model_dump(), "key": r.key or next(keys)} for r in built.rows]
 
-    _, build = await _approve(db, row, built=_built(), rows_from_client=junk)
+
+def _keyed_built():
+    return _built(
+        rows=[
+            ARPreviewRow(dept="GEN", acc="1021001", desc="VS", debit=0.0, credit=25091.0, key="VS"),
+            ARPreviewRow(
+                dept="GEN", acc="5001", desc="Credit card commission", debit=582.99, credit=0.0
+            ),
+            ARPreviewRow(dept="GEN", acc="5002", desc="Input Tax", debit=40.81, credit=0.0),
+            ARPreviewRow(dept="GEN", acc="1010", desc="Bank Account", debit=24467.20, credit=0.0),
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_rows_that_post_are_the_rebuild_when_they_match_the_screen():
+    row = _ar_row()
+    built = _keyed_built()
+
+    _, build = await _approve(_ReviewDB(row), row, built=built, rows_from_client=_as_sent(built))
 
     posted = build.call_args.args[0]
-    assert posted != junk, "a browser cannot hand us legs against the fixed debit accounts"
-    assert [r["acc"] for r in posted] == ["5001", "5002", "1010", "1021001"]
+    assert [r["acc"] for r in posted] == ["1021001", "5001", "5002", "1010"]
+    assert [r["key"] for r in posted] == ["VS", "", "", ""]  # the server's, not the browser's
     assert sum(r["debit"] for r in posted) == sum(r["credit"] for r in posted) == 25091.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda rows: rows[0].update(acc="1021009"),  # a colleague re-mapped the leg
+        lambda rows: rows[1].update(debit=583.0),  # a figure the rebuild does not have
+        lambda rows: rows[0].update(key="VS INTER PREM"),  # grouped as Detail on screen
+        lambda rows: rows.pop(),  # a leg fewer
+    ],
+)
+async def test_a_jv_that_is_not_the_one_on_screen_is_refused_not_posted(change):
+    """The rebuild and the screen can only part when something moved under the reviewer —
+    a mapping save, a Credit breakdown switched in another tab or browser. Posting the
+    rebuild then posts a JV nobody looked at; refusing sends them back to look."""
+    row = _ar_row()
+    built = _keyed_built()
+    sent = _as_sent(built)
+    change(sent)
+
+    with pytest.raises(ValidationError, match="changed since the review screen built it"):
+        _, build = await _approve(_ReviewDB(row), row, built=built, rows_from_client=sent)
+
+
+@pytest.mark.asyncio
+async def test_a_legs_comment_is_the_reviewers_and_nothing_else_is():
+    """The review screen edits a leg's wording as it does a fee invoice's. That text is
+    kept; an emptied one falls back to the rebuild's."""
+    row = _ar_row()
+    built = _keyed_built()
+    sent = _as_sent(built)
+    sent[1]["desc"] = "Card fee 21/07"
+    sent[3]["desc"] = "  "
+
+    _, build = await _approve(_ReviewDB(row), row, built=built, rows_from_client=sent)
+
+    posted = build.call_args.args[0]
+    assert [r["desc"] for r in posted] == ["VS", "Card fee 21/07", "Input Tax", "Bank Account"]
 
 
 @pytest.mark.asyncio

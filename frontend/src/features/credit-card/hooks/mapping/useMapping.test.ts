@@ -284,6 +284,29 @@ describe('useMapping — saving', () => {
     expect(result.current.saving).toBe(false)
   })
 
+  it('tells other tabs only once the Credit breakdown is saved too', async () => {
+    // An open review regroups its JV on this signal. Sent between the two saves, it read
+    // the grouping that was about to be replaced.
+    saveAccountingConfig.mockResolvedValue({} as never)
+    let signalledBeforeProfile: string | null = 'unset'
+    saveARSettings.mockImplementation(async () => {
+      signalledBeforeProfile = localStorage.getItem(appKey('accounting_config_updated'))
+    })
+    const { result } = await loaded()
+
+    await act(() =>
+      result.current.saveAllSettings({
+        hasSettlementLayout: true,
+        mappingsToSave: {},
+        postType: 'Summary',
+        bankCode: 'KTC',
+      })
+    )
+
+    expect(signalledBeforeProfile).toBeNull()
+    expect(localStorage.getItem(appKey('accounting_config_updated'))).not.toBeNull()
+  })
+
   it('says it saved, then goes back to the queue', async () => {
     saveAccountingConfig.mockResolvedValue({} as never)
     const { result } = await loaded()
