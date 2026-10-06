@@ -240,6 +240,10 @@ async def patch_config(
 ) -> None:
     """Write the named GL rules and header columns, overwriting, and touch nothing else.
 
+    A mapping's optional `source` (`settlement_detail` / `settlement_summary`) is applied
+    to an entry this call creates and never to an existing one — it says which layout a
+    key came from, and a correction to its account does not change that.
+
     The third writer of this table, and it exists because neither of the other two fits a
     reviewer correcting one GL rule from the review screen:
 
@@ -297,6 +301,7 @@ async def patch_config(
                     acc_code=mapping["acc"],
                     is_custom=(field_type not in _FIXED_TYPES),
                     bank_code=entry_bank,
+                    source=mapping.get("source") or None,
                 )
             )
         else:

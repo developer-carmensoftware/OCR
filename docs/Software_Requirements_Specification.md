@@ -816,7 +816,7 @@ Business flow ฉบับเต็ม: [Billing_Purchase_Flow.md](./Billing_Pur
 # OpenRouter API Configuration
 OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_OCR_MODEL=google/gemini-2.5-flash-lite
-OPENROUTER_SUGGESTION_MODEL=google/gemini-2.0-flash-lite
+OPENROUTER_SUGGESTION_MODEL=deepseek/deepseek-v4-flash
 OPENROUTER_AP_INVOICE_MODEL=google/gemini-2.5-flash-lite
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
@@ -844,7 +844,7 @@ ALLOWED_CARMEN_HOSTS=carmen.example.com
 | `OPENROUTER_API_KEY` | Yes | - | API key สำหรับ OpenRouter Vision LLM |
 | `OPENROUTER_OCR_MODEL` | No | google/gemini-2.5-flash-lite | Model สำหรับ Credit Card OCR extraction |
 | `OPENROUTER_AP_INVOICE_MODEL` | No | google/gemini-2.5-flash-lite | Model สำหรับ AP Invoice extraction |
-| `OPENROUTER_SUGGESTION_MODEL` | No | google/gemini-2.0-flash-lite | Model สำหรับ AI suggestion |
+| `OPENROUTER_SUGGESTION_MODEL` | No | deepseek/deepseek-v4-flash | Model สำหรับ AI suggestion — ต้องเป็น model ที่ provider ใน `LLM_TEXT_PROVIDER_ALLOWLIST` ให้บริการ |
 | `OPENROUTER_BASE_URL` | No | `https://openrouter.ai/api/v1` | Base URL ของ OpenRouter |
 | `DATABASE_URL` | Yes | - | PostgreSQL connection string (asyncpg) |
 | `OCR_JWT_SECRET` | Yes | - | Secret สำหรับ user JWT signing |

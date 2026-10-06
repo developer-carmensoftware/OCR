@@ -17,11 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import encrypt_carmen_token
 from app.config import settings as app_settings
-from app.constants import DocType
+from app.constants import SETTLEMENT_BANK, DocType
 from app.exceptions import ConflictError, FieldValidationError, ValidationError
 from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument, EmailIngestSettings
 from app.models.identity import Tenant
+from app.services.credit_card.kbank_tax_summary import digits_only
 from app.services.shared.credits import active_subscription
 
 logger = logging.getLogger(__name__)
@@ -336,6 +337,7 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
                 # Read back so the settings screen round-trips it. PUT is a full replace,
                 # so a field this GET omits is a field the next save silently clears.
                 "doc_type": r.get("doc_type") or DocType.FEE_INVOICE,
+                "merchant_id": r.get("merchant_id"),
             }
             for r in rules
         ],
@@ -474,7 +476,8 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
         supported = await _active_bank_codes(db)
         seen_banks: dict[str | None, int] = {}
         for i, rule in enumerate(rules):
-            if not _clean_patterns(rule):
+            # The KBANK rule has no patterns: its toggle names its files (`imap.kbank_file`).
+            if rule.bank_code != SETTLEMENT_BANK and not _clean_patterns(rule):
                 errors.append(
                     {
                         "field": f"rules[{i}].filename_patterns",
@@ -516,6 +519,19 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
                             f"{rule.bank_code} has no settlement-report layout"
                             if rule.bank_code
                             else "A settlement-report rule must name its bank"
+                        ),
+                    }
+                )
+            # One merchant per bank: its settlement report is `SUM_<merchant>` and nothing else,
+            # so a settlement rule without one would read no file at all.
+            if rule.doc_type == DocType.AR_RECONCILE and len(digits_only(rule.merchant_id)) < 6:
+                errors.append(
+                    {
+                        "field": f"rules[{i}].merchant_id",
+                        "code": "invalid" if (rule.merchant_id or "").strip() else "required",
+                        "message": (
+                            "Merchant ID is the number after SUM_ in the settlement report's "
+                            "file name, at least 6 digits"
                         ),
                     }
                 )
@@ -628,6 +644,9 @@ def _merge_rule(incoming: Any, previous: dict | None) -> dict:
         "doc_type": incoming.doc_type or (previous or {}).get("doc_type") or DocType.FEE_INVOICE,
         "pdf_password_enc": (previous or {}).get("pdf_password_enc"),
     }
+    # Digits only — `imap.match_rules` compares it with the digits in the file's name.
+    if incoming.merchant_id is not None:
+        rule["merchant_id"] = digits_only(incoming.merchant_id) or None
     if incoming.pdf_password is not None:
         rule["pdf_password_enc"] = (
             encrypt_carmen_token(incoming.pdf_password, app_settings.session_encryption_key)

@@ -1001,7 +1001,70 @@ we could do it on our own, but it strands a customer who switches back on in the
 they would have to reopen from Carmen's menu. Carmen's checklist loses item C. Nothing is
 waiting on Carmen except the menu item.
 
-## 36. One token: the link's `token` is the posting credential (2026-10-06)
+## 36. A settlement report is reviewed in the fee invoice's JV table (2026-10-05)
+
+The review modal showed a settlement report in its own read-only pane (`ARReviewPane`) since
+2026-09-16, because the feature then had its own settings screen and mapping table. #29 folded
+both into the credit-card mapping, so a settlement key is the same kind of rule as a fee
+invoice's payment type. The modal now uses `JvEditor` for both document types: header,
+Dept/Account pickers, comments, amounts and the input-tax panel.
+
+- **The browser builds the settlement JV.** `buildJvRows` gained the settlement branch of
+  `build_jv_rows` (grouping by Credit breakdown, debit legs from the total row). Two settlement
+  cases in `contracts/cc-jv.contract.json` pin the two builders together, as they already were
+  for the fee invoice.
+- **Approve still rebuilds, and now refuses a JV that differs from the screen.** The server
+  builds from the `extracted` it is sent (edited lines and total row) and the config the review
+  screen saves just before. It then compares that with the rows the screen sent:
+  - same legs, accounts and figures → it posts, with each leg's comment from the screen;
+  - anything else → it refuses ("changed since the review screen built it"). That only happens
+    when something moved under the reviewer, such as a colleague's mapping save or a Credit
+    breakdown switched in another browser. The screen re-reads both when the mapping page saves
+    in this browser.
+- **Edits land where the server reads them.** A credit leg's figure goes into its line(s). A
+  debit leg's goes into the total row, which is also what the input-tax record files from.
+- **The input-tax record is the reviewer's choice now**, as on a fee invoice. Until now a
+  settlement report always filed it (#28), because no panel offered the choice.
+- **Still not guessed.** JvEditor's AI fill is off for a settlement report. Ingest suggests
+  nothing for one (`_run_document`), and extending guess-then-approve to it remains its own
+  decision.
+
+Dropped with the pane: the disclosure of which printed labels a Summary leg folded, and the rows
+for lines printed at zero.
+
+## 37. KBANK's rule is a reconciliation toggle, and its files are its own (2026-10-05)
+
+#31 made the rule's `doc_type` the settlement switch, but the BU still typed the filename
+patterns that decided which KBANK file was read (`KB1P554V2` for one tenant, `KB1P554V2_SUM`
+for another). The settings dialog offered the document type as a `<select>` on every bank's
+rule, though only KBANK has a settlement layout.
+
+**Decision.** On the KBANK rule, `doc_type` names the files and patterns are not used:
+
+| Toggle "Detailed Credit Card AR Reconciliation" | Reads | Tax summary CSV in the same zip |
+|---|---|---|
+| off (`fee_invoice`) | `E-TAX_INVOICE_CARD_*` | when present: its TIN into `foreign_tax_id`, fee and VAT cross-checked; absent is fine |
+| on (`ar_reconcile`) | `SUM_<merchant_id>` only | as before; absent → `tin_unverified` |
+
+- **One merchant per bank,** a new rule field `merchant_id`. It is required when the toggle is
+  on and stored as digits. A rule saved before it existed reads any settlement report until it
+  is saved again.
+- **KBANK's two files are the KBANK rule's alone** (`imap.match_rules`). While a KBANK rule
+  exists, on or off, no other rule may claim either file. This closes the gap #31 named: an
+  "Other" `.pdf` rule could read the commission tax invoice beside a settlement report that
+  already books the commission and its VAT. A settlement report is never read as a fee
+  invoice, with or without a rule.
+- **The dialog shows the toggle on the KBANK rule only,** with a Merchant ID field when it is
+  on. The patterns field is hidden there, and a "Reads …" line says which file is read.
+
+**Why in code, not in data.** These two files are fixed by KBANK, not chosen by the BU. A typed
+pattern was one more way to read the wrong one: the version prefix (`KB1P554V2`) can change,
+and a broad pattern catches both files.
+
+**What it costs.** A KBANK file renamed before forwarding is no longer read by the KBANK rule.
+Neither is any third KBANK document a BU might once have matched by pattern.
+
+## 38. One token: the link's `token` is the posting credential (2026-10-06)
 
 **Decided:** with Carmen, 2026-10-06. It amends #35's "two tokens, kept apart".
 

@@ -142,18 +142,31 @@ function mountWith(loaded: EmailRule[]) {
 }
 
 describe('bank rules', () => {
-  it('can tag a rule as a settlement report', async () => {
-    // Otherwise there is no way to switch AR reconciliation on at all: the rule's document
-    // type is the only switch (decision #31), and this is its only screen (#34).
+  it('switches AR reconciliation on for KBANK, and asks for its merchant', async () => {
+    // The rule's document type is the only switch (decision #31) and this is its only
+    // screen (#34). On KBANK it is a toggle that names the files itself (#37): no
+    // patterns, and a merchant ID once it is on.
     mountWith([])
     fireEvent.click(screen.getByRole('button', { name: /Add rule/i }))
 
     const rule = dialog()
-    // Nothing to save until the rule names at least one filename pattern.
-    expect(rule.getByRole('button', { name: 'Add rule' })).toBeDisabled()
-    fireEvent.change(rule.getByLabelText(/^Document type/i), { target: { value: 'ar_reconcile' } })
+    const toggle = () =>
+      rule.queryByRole('switch', { name: 'Detailed Credit Card AR Reconciliation' })
+    expect(toggle()).not.toBeInTheDocument()
+    expect(rule.getByLabelText(/^Filename patterns/i)).toBeInTheDocument()
+
     fireEvent.change(rule.getByLabelText(/^Bank$/i), { target: { value: 'KBANK' } })
-    fireEvent.change(rule.getByLabelText(/^Filename patterns/i), { target: { value: 'KB1P554V2' } })
+    expect(rule.queryByLabelText(/^Filename patterns/i)).not.toBeInTheDocument()
+    expect(rule.getByText('E-TAX_INVOICE_CARD')).toBeInTheDocument()
+    // Off reads the commission tax invoice and needs nothing more.
+    expect(rule.getByRole('button', { name: 'Add rule' })).toBeEnabled()
+
+    fireEvent.click(toggle()!)
+    expect(rule.getByRole('button', { name: 'Add rule' })).toBeDisabled()
+    fireEvent.change(rule.getByLabelText(/^Merchant ID/i), {
+      target: { value: '451005282039001' },
+    })
+    expect(rule.getByText('SUM_451005282039001')).toBeInTheDocument()
     fireEvent.click(rule.getByRole('button', { name: 'Add rule' }))
 
     // Saved by the dialog itself; the page's own Save is not involved.
@@ -163,8 +176,31 @@ describe('bank rules', () => {
       expect.objectContaining({
         bank_code: 'KBANK',
         doc_type: 'ar_reconcile',
-        filename_patterns: 'KB1P554V2',
+        merchant_id: '451005282039001',
       }),
+    ])
+  })
+
+  it('a bank other than KBANK cannot be left reconciling', async () => {
+    mountWith([
+      {
+        bank_code: 'KBANK',
+        bank_sender_email: null,
+        filename_patterns: [],
+        is_active: true,
+        doc_type: 'ar_reconcile',
+        merchant_id: '451005282039001',
+      },
+    ])
+    openRule(1)
+    const rule = dialog()
+    fireEvent.change(rule.getByLabelText(/^Bank$/i), { target: { value: 'KTC' } })
+    fireEvent.change(rule.getByLabelText(/^Filename patterns/i), { target: { value: 'MDR' } })
+    fireEvent.click(rule.getByRole('button', { name: 'Save rule' }))
+
+    await waitFor(() => expect(saveRules).toHaveBeenCalledTimes(1))
+    expect(sentRules()).toEqual([
+      expect.objectContaining({ bank_code: 'KTC', doc_type: 'fee_invoice' }),
     ])
   })
 
@@ -229,9 +265,8 @@ describe('bank rules', () => {
     // thing because the server defaults, and leaving that to chance is what this is about.
     expect(draft.rules[0].doc_type).toBe('fee_invoice')
     openRule(1)
-    expect((dialog().getByLabelText(/^Document type/i) as HTMLSelectElement).value).toBe(
-      'fee_invoice'
-    )
+    // Only KBANK reconciles, so another bank's rule offers no switch at all.
+    expect(dialog().queryByRole('switch', { name: /AR Reconciliation/i })).not.toBeInTheDocument()
   })
 
   it('switching a rule off in its row saves it at once', async () => {

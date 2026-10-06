@@ -24,6 +24,13 @@ import { API } from '@/shared/api/endpoints'
  *  share the bank, the date and the tax invoice number. */
 export type EmailDocType = 'fee_invoice' | 'ar_reconcile'
 
+/** The one bank whose rule is a reconciliation toggle instead of filename patterns: off
+ *  reads its commission tax invoice (`E-TAX_INVOICE_CARD_*`), on one merchant's settlement
+ *  report (`…SUM_<merchant>_…`) — `imap.kbank_file` server-side. ponytail: one bank by name;
+ *  a second one with a settlement layout needs `banks.settlement_grouping` from
+ *  `/bank-codes` instead. */
+export const RECONCILE_BANK = 'KBANK'
+
 export interface EmailRule {
   bank_code: string | null
   bank_sender_email: string | null
@@ -34,6 +41,9 @@ export interface EmailRule {
   /** Absent on a rule stored before this field existed; the server reads those as
    *  `fee_invoice`, which is what they were. */
   doc_type?: EmailDocType
+  /** The merchant whose settlement report a reconciling rule reads — the digits after
+   *  `SUM_` in its file name. */
+  merchant_id?: string | null
 }
 
 /** What we PUT. `pdf_password` is write-only: omitted (null) keeps the stored one,

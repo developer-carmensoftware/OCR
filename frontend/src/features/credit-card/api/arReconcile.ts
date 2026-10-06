@@ -17,6 +17,13 @@ import type { FieldMapping } from '@/shared/types/api'
 export type PostType = 'Detail' | 'Summary'
 export const POST_TYPES: PostType[] = ['Detail', 'Summary']
 
+/** The `source` a settlement key's mapping entry is tagged with, which is how the mapping
+ *  page reads each post type's rows back out of the one mapping dict. */
+export const SOURCE_BY_POST_TYPE: Record<PostType, string> = {
+  Detail: 'settlement_detail',
+  Summary: 'settlement_summary',
+}
+
 /** One payment type a settlement report has printed, before it has a GL account of its
  *  own — `getSamplePaymentTypes`' only remaining shape. Once a code has an account it is
  *  an ordinary entry in `AccountingConfigResponse.mappings`, like any other. */

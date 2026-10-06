@@ -236,6 +236,232 @@
         ],
         "DimHList": { "Dim": [] }
       }
+    },
+
+    {
+      "name": "settlement report, Detail — one credit leg per printed type",
+      "why": "KB1P554V2 21/07/2026, real figures. Each printed payment type is its own key; the three debit legs are read off the report's total row (its per-type lines print those columns as dashes), not summed. Credit legs first, debit legs last.",
+      "bankCode": "KBANK",
+      "docDate": "21/07/2026",
+      "config": {
+        "filePrefix": "AR",
+        "fileSource": "",
+        "bankDescriptions": { "KBANK": "KBANK settlement {Settlement_Date}" }
+      },
+      "mappings": {
+        "commission": { "dept": "GEN", "acc": "6080008" },
+        "tax": { "dept": "GEN", "acc": "1022004" },
+        "net": { "dept": "GEN", "acc": "1011001" }
+      },
+      "paymentTypes": {
+        "VS INTER NON-PREM": { "dept": "GEN", "acc": "1021004" },
+        "VS INTER PREM": { "dept": "GEN", "acc": "1021004" },
+        "VS INTER UP PREM": { "dept": "GEN", "acc": "1021004" },
+        "MC INTER NON-PREM": { "dept": "GEN", "acc": "1021005" },
+        "MC INTER PREM": { "dept": "GEN", "acc": "1021005" },
+        "MC INTER UP PREM": { "dept": "GEN", "acc": "1021005" },
+        "JCB PREM": { "dept": "GEN", "acc": "1021008" }
+      },
+      "settlement": {
+        "postType": "Detail",
+        "totalRow": {
+          "Transaction": "TOTAL",
+          "PayAmt": "25,091.00",
+          "CommisAmt": "582.99",
+          "TaxAmt": "40.81",
+          "Total": "24,467.20"
+        }
+      },
+      "details": [
+        {
+          "Transaction": "VS INTER NON-PREM",
+          "PayAmt": "2,200.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "VS INTER PREM",
+          "PayAmt": "3,251.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "VS INTER UP PREM",
+          "PayAmt": "10,020.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "MC INTER NON-PREM",
+          "PayAmt": "1,000.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "MC INTER PREM",
+          "PayAmt": "5,945.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "MC INTER UP PREM",
+          "PayAmt": "2,375.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "JCB PREM",
+          "PayAmt": "300.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        }
+      ],
+      "expectedJvhDateUtc": "2026-07-21T00:00:00.000Z",
+      "expected": {
+        "JvhSeq": -1,
+        "Prefix": "AR",
+        "JvhNo": "Auto",
+        "JvhSource": "ACKB",
+        "Status": "Draft",
+        "Description": "KBANK settlement 21/07/2026",
+        "Detail": [
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1021004", "Description": "VS INTER NON-PREM", "CurCode": "THB", "CurRate": 1, "CrAmount": 2200.0, "CrBase": 2200.0, "DrAmount": 0.0, "DrBase": 0.0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1021004", "Description": "VS INTER PREM", "CurCode": "THB", "CurRate": 1, "CrAmount": 3251.0, "CrBase": 3251.0, "DrAmount": 0.0, "DrBase": 0.0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1021004", "Description": "VS INTER UP PREM", "CurCode": "THB", "CurRate": 1, "CrAmount": 10020.0, "CrBase": 10020.0, "DrAmount": 0.0, "DrBase": 0.0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1021005", "Description": "MC INTER NON-PREM", "CurCode": "THB", "CurRate": 1, "CrAmount": 1000.0, "CrBase": 1000.0, "DrAmount": 0.0, "DrBase": 0.0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1021005", "Description": "MC INTER PREM", "CurCode": "THB", "CurRate": 1, "CrAmount": 5945.0, "CrBase": 5945.0, "DrAmount": 0.0, "DrBase": 0.0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1021005", "Description": "MC INTER UP PREM", "CurCode": "THB", "CurRate": 1, "CrAmount": 2375.0, "CrBase": 2375.0, "DrAmount": 0.0, "DrBase": 0.0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1021008", "Description": "JCB PREM", "CurCode": "THB", "CurRate": 1, "CrAmount": 300.0, "CrBase": 300.0, "DrAmount": 0.0, "DrBase": 0.0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "6080008", "Description": "Credit card commission", "CurCode": "THB", "CurRate": 1, "CrAmount": 0.0, "CrBase": 0.0, "DrAmount": 582.99, "DrBase": 582.99, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1022004", "Description": "Input Tax", "CurCode": "THB", "CurRate": 1, "CrAmount": 0.0, "CrBase": 0.0, "DrAmount": 40.81, "DrBase": 40.81, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1011001", "Description": "Bank Account", "CurCode": "THB", "CurRate": 1, "CrAmount": 0.0, "CrBase": 0.0, "DrAmount": 24467.2, "DrBase": 24467.2, "DimList": {} }
+        ],
+        "DimHList": { "Dim": [] }
+      }
+    },
+
+    {
+      "name": "settlement report, Summary — schemes fold, a refund nets negative",
+      "why": "Same report folded onto first tokens (VS / MC / JCB), plus an AMEX refund that nets negative and so swaps to the debit side at its absolute value, and a line printed at zero that produces nothing. The total row's net is 50.00 lower to match.",
+      "bankCode": "KBANK",
+      "docDate": "21/07/2026",
+      "config": {
+        "filePrefix": "AR",
+        "fileSource": "",
+        "bankDescriptions": { "KBANK": "KBANK settlement {Settlement_Date}" }
+      },
+      "mappings": {
+        "commission": { "dept": "GEN", "acc": "6080008" },
+        "tax": { "dept": "GEN", "acc": "1022004" },
+        "net": { "dept": "GEN", "acc": "1011001" }
+      },
+      "paymentTypes": {
+        "VS": { "dept": "GEN", "acc": "1021004" },
+        "MC": { "dept": "GEN", "acc": "1021005" },
+        "JCB": { "dept": "GEN", "acc": "1021008" },
+        "AMEX": { "dept": "GEN", "acc": "1021009" }
+      },
+      "settlement": {
+        "postType": "Summary",
+        "totalRow": {
+          "Transaction": "TOTAL",
+          "PayAmt": "25,041.00",
+          "CommisAmt": "582.99",
+          "TaxAmt": "40.81",
+          "Total": "24,417.20"
+        }
+      },
+      "details": [
+        {
+          "Transaction": "VS INTER NON-PREM",
+          "PayAmt": "2,200.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "VS INTER PREM",
+          "PayAmt": "3,251.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "VS INTER UP PREM",
+          "PayAmt": "10,020.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "MC INTER NON-PREM",
+          "PayAmt": "1,000.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "MC INTER PREM",
+          "PayAmt": "5,945.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "MC INTER UP PREM",
+          "PayAmt": "2,375.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "JCB PREM",
+          "PayAmt": "300.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "AMEX REFUND",
+          "PayAmt": "-50.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        },
+        {
+          "Transaction": "UP PREM",
+          "PayAmt": "0.00",
+          "CommisAmt": "",
+          "TaxAmt": "",
+          "Total": ""
+        }
+      ],
+      "expectedJvhDateUtc": "2026-07-21T00:00:00.000Z",
+      "expected": {
+        "JvhSeq": -1,
+        "Prefix": "AR",
+        "JvhNo": "Auto",
+        "JvhSource": "ACKB",
+        "Status": "Draft",
+        "Description": "KBANK settlement 21/07/2026",
+        "Detail": [
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1021004", "Description": "VS", "CurCode": "THB", "CurRate": 1, "CrAmount": 15471.0, "CrBase": 15471.0, "DrAmount": 0.0, "DrBase": 0.0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1021005", "Description": "MC", "CurCode": "THB", "CurRate": 1, "CrAmount": 9320.0, "CrBase": 9320.0, "DrAmount": 0.0, "DrBase": 0.0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1021008", "Description": "JCB", "CurCode": "THB", "CurRate": 1, "CrAmount": 300.0, "CrBase": 300.0, "DrAmount": 0.0, "DrBase": 0.0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1021009", "Description": "AMEX", "CurCode": "THB", "CurRate": 1, "CrAmount": 0.0, "CrBase": 0.0, "DrAmount": 50.0, "DrBase": 50.0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "6080008", "Description": "Credit card commission", "CurCode": "THB", "CurRate": 1, "CrAmount": 0.0, "CrBase": 0.0, "DrAmount": 582.99, "DrBase": 582.99, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1022004", "Description": "Input Tax", "CurCode": "THB", "CurRate": 1, "CrAmount": 0.0, "CrBase": 0.0, "DrAmount": 40.81, "DrBase": 40.81, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "GEN", "AccCode": "1011001", "Description": "Bank Account", "CurCode": "THB", "CurRate": 1, "CrAmount": 0.0, "CrBase": 0.0, "DrAmount": 24417.2, "DrBase": 24417.2, "DimList": {} }
+        ],
+        "DimHList": { "Dim": [] }
+      }
     }
   ]
 }

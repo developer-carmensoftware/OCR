@@ -4,7 +4,7 @@ import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
 import NumericInput from '@/shared/components/common/NumericInput'
 import { useT } from '@/i18n/LanguageContext'
 import { fmt, parseNum, round2 } from '@/shared/lib/format'
-import { buildJvRows, type JvRow } from '@/features/credit-card/lib/ccJv'
+import { buildJvRows, type JvRow, type Settlement } from '@/features/credit-card/lib/ccJv'
 import { accountName, allowedAccountsForDept, isAccountAllowed } from '@/shared/lib/deptAccounts'
 import { GROUP_DEBIT_BY_TRANSACTION } from '@/shared/constants/banks'
 import { useGlMasters } from '@/features/credit-card/hooks/mapping/useGlMasters'
@@ -54,6 +54,9 @@ interface Props {
   onDesc: (id: string, value: string) => void
   onState: (state: JvState) => void
   bankCode?: string
+  /** Set for a settlement report: its payment types group by this layout, and its three
+   *  debit legs come from the report's total row (`buildJvRows`' settlement branch). */
+  settlement?: Settlement
 }
 
 /** Identity of one leg, stable across a rebuild. Not the array index: zeroing an amount
@@ -64,10 +67,11 @@ const rowId = (r: JvRow) => `${r.key}:${r.lines.join(',')}`
  *  prints it, but commission, input tax and the bank account are one answer for the whole
  *  business unit — so confirming one of these here writes it for every bank the BU
  *  receives, not just the one on screen. `_FIXED_TYPES` server-side. */
-const BU_WIDE = ['commission', 'tax', 'net']
+export const BU_WIDE = ['commission', 'tax', 'net']
 
 /**
- * The JV as it will post, with every GL rule editable in place.
+ * The JV as it will post, with every GL rule editable in place — for a fee invoice and,
+ * since 2026-10-05, a settlement report too: one review table for both document types.
  *
  * Not a variant of `AccountingReview`. That component is the wizard's data-entry step and
  * owns a Back/Submit/mapping-page footer; this one is a verification surface whose footer
@@ -94,6 +98,7 @@ export default function JvEditor({
   onDesc,
   onState,
   bankCode,
+  settlement,
 }: Props) {
   const { t } = useT()
   const { accounts, departments, loading: mastersLoading } = useGlMasters()
@@ -124,17 +129,22 @@ export default function JvEditor({
 
   const rows = useMemo(() => {
     const built = effective
-      ? buildJvRows(details, effective, { consolidateDebit: !GROUP_DEBIT_BY_TRANSACTION })
+      ? buildJvRows(details, effective, {
+          consolidateDebit: !GROUP_DEBIT_BY_TRANSACTION,
+          settlement,
+        })
       : []
     return built.map(r => {
       const id = rowId(r)
       return id in descs ? { ...r, desc: descs[id] } : r
     })
-  }, [details, effective, descs])
+  }, [details, effective, descs, settlement])
 
   const totalDr = round2(rows.reduce((s, r) => s + r.debit, 0))
   const totalCr = round2(rows.reduce((s, r) => s + r.credit, 0))
-  const imbalanced = Math.abs(totalDr - totalCr) > 0.01
+  // Half a satang, as `is_balanced` server-side: both totals are already rounded to the
+  // satang, so anything above this is a real difference Carmen refuses.
+  const imbalanced = Math.abs(totalDr - totalCr) > 0.005
   // A row carrying money with no account posts a GL line Carmen cannot file. Zero-amount
   // legs are display-only (a gateway invoice's 0.00 net) and are dropped before posting,
   // so an empty account on one is not a problem.
@@ -184,7 +194,9 @@ export default function JvEditor({
   )
 
   useEffect(() => {
-    if (loading || !accounts.length) return
+    // Not for a settlement report: its keys are never guessed (`_run_document` suggests
+    // nothing for one), and extending guess-then-approve to it is its own decision.
+    if (loading || !accounts.length || settlement) return
     const fresh = missingNow.filter(k => !asked.current.has(k))
     if (!fresh.length) return
     fresh.forEach(k => asked.current.add(k))
@@ -212,7 +224,7 @@ export default function JvEditor({
     return () => {
       alive = false
     }
-  }, [missingNow, loading, accounts, departments, bankCode, onOverride])
+  }, [missingNow, loading, accounts, departments, bankCode, onOverride, settlement])
 
   const change = useCallback(
     (key: string, field: 'dept' | 'acc', value: string) => {
@@ -497,6 +509,11 @@ function Amount({
   if (!value && other) return <td className="jv-num jv-num--empty">—</td>
 
   const shared = row.lines.length > 1
+  // A settlement report's debit legs come from its total row, not from any one line.
+  const field =
+    row.lines.length === 1
+      ? t('review.jvLineOf', { field: row.desc, line: String(row.lines[0] + 1) })
+      : row.desc
   return (
     <td className="jv-num" data-label={label}>
       <NumericInput
@@ -505,11 +522,7 @@ function Amount({
         // the line number is part of the name — otherwise the second is unreachable by
         // anything that finds a control by its label, screen readers included. A summed
         // leg spans every line and has no number to give.
-        aria-label={t(side === 'debit' ? 'review.jvDebitFor' : 'review.jvCreditFor', {
-          field: shared
-            ? row.desc
-            : t('review.jvLineOf', { field: row.desc, line: String(row.lines[0] + 1) }),
-        })}
+        aria-label={t(side === 'debit' ? 'review.jvDebitFor' : 'review.jvCreditFor', { field })}
         title={shared ? t('review.jvSharedHint', { count: String(row.lines.length) }) : undefined}
         data-shared={shared || undefined}
         value={fmt(value)}

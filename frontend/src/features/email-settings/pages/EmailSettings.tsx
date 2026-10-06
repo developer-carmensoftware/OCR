@@ -48,7 +48,11 @@ import {
   useEmailSettings,
   type RuleDraft,
 } from '@/features/email-settings/hooks'
-import type { BankCode, EmailDocType } from '@/features/email-settings/api/emailAutomation'
+import {
+  RECONCILE_BANK,
+  type BankCode,
+  type EmailDocType,
+} from '@/features/email-settings/api/emailAutomation'
 import { showToast } from '@/shared/lib/toast'
 import '@/styles/pages/email-settings.css'
 
@@ -65,14 +69,15 @@ const NEXT_STEP: Record<string, { text: string; target?: string; href?: string }
 
 const DOC_TYPE_LABEL: Record<EmailDocType, string> = {
   fee_invoice: 'Commission invoice',
-  ar_reconcile: 'Settlement report',
+  ar_reconcile: 'AR reconciliation',
 }
 
-/** Behind the select's (i), so the option text stays short enough for a half-width field. */
-const DOC_TYPE_HELP: Record<EmailDocType, string> = {
-  fee_invoice: 'The fee the bank charges you, posted as an expense.',
-  ar_reconcile: 'Splits the credit-card control account into receivables per card scheme.',
-}
+/** The files the KBANK rule reads, named the way KBANK names them — what its toggle decides
+ *  in place of filename patterns (`imap.kbank_file` server-side). */
+const kbankFiles = (rule: RuleDraft) =>
+  rule.doc_type === 'ar_reconcile'
+    ? `SUM_${rule.merchant_id.trim() || '<merchant ID>'}`
+    : 'E-TAX_INVOICE_CARD'
 
 /** Day, month, year and time: the activity log is read in Thailand, where 10/1 means January. */
 const when = (iso: string) =>
@@ -141,6 +146,7 @@ function InfoTip({ label, text }: { label: string; text: string }) {
 const RULE_FIELDS = [
   'bank_code',
   'doc_type',
+  'merchant_id',
   'bank_sender_email',
   'pdf_password',
   'filename_patterns',
@@ -194,7 +200,8 @@ function RuleRow({
 }) {
   const n = index + 1
   const bank = banks.find(b => b.code === rule.bank_code)
-  const patterns = splitList(rule.filename_patterns)
+  const patterns =
+    rule.bank_code === RECONCILE_BANK ? [kbankFiles(rule)] : splitList(rule.filename_patterns)
   const ruleErrors = Object.keys(errors).filter(f => f.startsWith(`rules[${index}]`))
 
   return (
@@ -299,9 +306,27 @@ function RuleDialog({
   const isNew = index === null
   const prefix = `rules[${errorIndex}]`
   const ruleErrors = Object.keys(errors).filter(f => f.startsWith(prefix))
-  const otherErrors = ruleErrors.filter(f => !RULE_FIELDS.some(k => f.startsWith(`${prefix}.${k}`)))
   const touched = JSON.stringify(rule) !== JSON.stringify(initial)
-  const canSave = splitList(rule.filename_patterns).length > 0 && !saving
+  const isKbank = rule.bank_code === RECONCILE_BANK
+  const reconciling = isKbank && rule.doc_type === 'ar_reconcile'
+  // A field this rule does not show cannot hold its error, so that one prints below too.
+  const shown = RULE_FIELDS.filter(k =>
+    k === 'filename_patterns'
+      ? !isKbank
+      : k === 'doc_type'
+        ? isKbank
+        : k === 'merchant_id'
+          ? reconciling
+          : true
+  )
+  const otherErrors = ruleErrors.filter(f => !shown.some(k => f.startsWith(`${prefix}.${k}`)))
+  // KBANK's toggle names its files, so it needs a merchant when on and nothing when off;
+  // every other bank still needs a pattern.
+  const canSave =
+    !saving &&
+    (isKbank
+      ? !reconciling || rule.merchant_id.replace(/\D/g, '').length >= 6
+      : splitList(rule.filename_patterns).length > 0)
   const fieldId = (name: string) => `email-rule-dialog-${name}`
   const set = (part: Partial<RuleDraft>) => setRule(prev => ({ ...prev, ...part }))
 
@@ -385,7 +410,13 @@ function RuleDialog({
                 id={fieldId('bank')}
                 className="admin-form-input"
                 value={rule.bank_code}
-                onChange={e => set({ bank_code: e.target.value })}
+                // Only KBANK reconciles: any other bank is a commission invoice.
+                onChange={e =>
+                  set({
+                    bank_code: e.target.value,
+                    ...(e.target.value === RECONCILE_BANK ? {} : { doc_type: 'fee_invoice' }),
+                  })
+                }
               >
                 <option value="">Other (detect from the document)</option>
                 {banks.map(b => (
@@ -397,25 +428,61 @@ function RuleDialog({
               <FieldError errors={errors} prefix={`${prefix}.bank_code`} />
             </div>
 
-            {/* Ours. Both documents arrive from the same bank carrying the same tax
-                invoice number, so nothing on the page tells them apart — a settlement
-                report matched by a commission rule is read with the wrong layout. */}
-            <div className="email-field">
-              <div className="email-label-row">
-                <label htmlFor={fieldId('type')}>Document type</label>
-                <InfoTip label="About document type" text={DOC_TYPE_HELP[rule.doc_type]} />
+            {/* KBANK's rule is a toggle, not a pattern list (decision-log #37): off reads
+                its commission tax invoice, on the settlement report for one merchant. Both
+                arrive in one zip with the same tax invoice number, so the rule — not the
+                page — has to say which one this BU posts. */}
+            {isKbank && (
+              <div className="email-field email-field--wide">
+                <div className="email-row">
+                  <div className="email-row__text">
+                    <div className="email-label-row">
+                      <span className="email-row__title">
+                        Detailed Credit Card AR Reconciliation
+                      </span>
+                      <InfoTip
+                        label="About AR reconciliation"
+                        text="Off: reads KBANK's commission tax invoice and posts the fee as an expense. On: reads the settlement report for your merchant ID instead and splits the card receivables per scheme in one JV. Either way, the tax summary CSV in the same zip is checked when it is attached."
+                      />
+                    </div>
+                    <p className="email-row__note">
+                      Reads <span className="email-mono">{kbankFiles(rule)}</span>
+                      {' · '}plus <span className="email-mono">TAX_SUMMARY_BY_TAX_ID_CSV</span> when
+                      attached
+                    </p>
+                  </div>
+                  <Switch
+                    checked={reconciling}
+                    ariaLabel="Detailed Credit Card AR Reconciliation"
+                    onChange={on => set({ doc_type: on ? 'ar_reconcile' : 'fee_invoice' })}
+                  />
+                </div>
+                <FieldError errors={errors} prefix={`${prefix}.doc_type`} />
               </div>
-              <select
-                id={fieldId('type')}
-                className="admin-form-input"
-                value={rule.doc_type}
-                onChange={e => set({ doc_type: e.target.value as EmailDocType })}
-              >
-                <option value="fee_invoice">Commission invoice</option>
-                <option value="ar_reconcile">Settlement report (KBANK only)</option>
-              </select>
-              <FieldError errors={errors} prefix={`${prefix}.doc_type`} />
-            </div>
+            )}
+
+            {reconciling && (
+              <div className="email-field">
+                <div className="email-label-row">
+                  <label htmlFor={fieldId('merchant')}>
+                    Merchant ID <span className="email-tag">Required</span>
+                  </label>
+                  <InfoTip
+                    label="About merchant ID"
+                    text="The number after SUM_ in the settlement report's file name — 451005282039001 in KB1P554V2_SUM_451005282039001_20260721.pdf."
+                  />
+                </div>
+                <input
+                  id={fieldId('merchant')}
+                  className="admin-form-input email-mono"
+                  inputMode="numeric"
+                  placeholder="451005282039001"
+                  value={rule.merchant_id}
+                  onChange={e => set({ merchant_id: e.target.value })}
+                />
+                <FieldError errors={errors} prefix={`${prefix}.merchant_id`} />
+              </div>
+            )}
 
             <div className="email-field">
               <div className="email-label-row">
@@ -454,25 +521,27 @@ function RuleDialog({
               <FieldError errors={errors} prefix={`${prefix}.pdf_password`} />
             </div>
 
-            <div className="email-field email-field--wide">
-              <div className="email-label-row">
-                <label htmlFor={fieldId('patterns')}>
-                  Filename patterns <span className="email-tag">Required</span>
-                </label>
-                <InfoTip
-                  label="About filename patterns"
-                  text="Any part of the filename. Separate several with commas. .pdf accepts every PDF from this bank."
+            {!isKbank && (
+              <div className="email-field email-field--wide">
+                <div className="email-label-row">
+                  <label htmlFor={fieldId('patterns')}>
+                    Filename patterns <span className="email-tag">Required</span>
+                  </label>
+                  <InfoTip
+                    label="About filename patterns"
+                    text="Any part of the filename. Separate several with commas. .pdf accepts every PDF from this bank."
+                  />
+                </div>
+                <input
+                  id={fieldId('patterns')}
+                  className="admin-form-input email-mono"
+                  placeholder="MDR, Commission"
+                  value={rule.filename_patterns}
+                  onChange={e => set({ filename_patterns: e.target.value })}
                 />
+                <FieldError errors={errors} prefix={`${prefix}.filename_patterns`} />
               </div>
-              <input
-                id={fieldId('patterns')}
-                className="admin-form-input email-mono"
-                placeholder="MDR, Commission"
-                value={rule.filename_patterns}
-                onChange={e => set({ filename_patterns: e.target.value })}
-              />
-              <FieldError errors={errors} prefix={`${prefix}.filename_patterns`} />
-            </div>
+            )}
           </div>
 
           {otherErrors.map(f => (

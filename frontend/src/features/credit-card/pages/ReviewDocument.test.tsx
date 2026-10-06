@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { LanguageProvider } from '@/i18n/LanguageContext'
 import ReviewDocument from './ReviewDocument'
 import type { ReviewDocumentDetail } from '@/features/credit-card/api/emailReview'
+import { appKey } from '@/shared/lib/storage'
 
 vi.mock('@/features/credit-card/api/emailReview', () => ({
   getPending: vi.fn(),
@@ -11,6 +12,11 @@ vi.mock('@/features/credit-card/api/emailReview', () => ({
 }))
 vi.mock('@/shared/api/config', () => ({ patchAccountingConfig: vi.fn() }))
 vi.mock('@/features/credit-card/api/mapping', () => ({ suggestPaymentTypes: vi.fn() }))
+// Only the posting-profile read: a settlement review re-reads it when the mapping page saves.
+vi.mock('@/features/credit-card/api/arReconcile', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/features/credit-card/api/arReconcile')>()),
+  getARSettings: vi.fn(),
+}))
 vi.mock('@/shared/api/carmen', () => ({
   fetchAccountCodes: vi.fn(async () => [
     { AccCode: '510300', Description: 'Bank charge' },
@@ -18,6 +24,10 @@ vi.mock('@/shared/api/carmen', () => ({
     { AccCode: '511300', Description: 'Input tax (alt)' },
     { AccCode: '110200', Description: 'Bank - KBANK' },
     { AccCode: '110300', Description: 'Settlement receivable' },
+    // A settlement report's three debit legs.
+    { AccCode: '6080008', Description: 'Credit card commission' },
+    { AccCode: '1022005', Description: 'Input tax (settlement)' },
+    { AccCode: '1011001', Description: 'Bank - current' },
   ]),
   fetchTaxProfiles: vi.fn(async () => [
     { code: 'VAT07', desc: 'VAT 7%', rate: 7 },
@@ -1110,67 +1120,32 @@ describe('leaving', () => {
 
 // ── AR reconciliation ─────────────────────────────────────────────────────────
 //
-// A settlement report is a different document producing a different JV, and the browser
-// has no builder for it: the server sends the rows, `approve` posts the rows the server
-// rebuilds. So this half of the screen is a readout, not an editor, and what these cover
-// is that it stays one — plus that the credit-card path beside it is untouched.
-//
-// The pane is a reconciliation, so the assertions are about the join: every payment type
-// the report printed appears against the leg it became, and a printed line that produced
-// no leg says so rather than vanishing.
+// A settlement report is reviewed in the same JvEditor as a fee invoice (2026-10-05). The
+// browser builds its JV with `buildJvRows`' settlement branch — the grouping and the total
+// row are the only differences — and approve rebuilds the same rows server-side from what
+// this screen sends. So these pin what is particular to it: the legs it groups into, where
+// an edited debit leg goes (the total row), and what approve sends back.
 
 const AR_LINES = [
   { transaction: 'VS INTER UP PREM', pay_amt: '15,000.00', commis_amt: '', tax_amt: '', total: '' },
   { transaction: 'VS LOCAL UP PREM', pay_amt: '10,091.00', commis_amt: '', tax_amt: '', total: '' },
 ]
 
-// The three fixed debit legs (decision #28) — commission / input tax / bank account,
-// always in that order and always after the credit legs, each with an empty key since
-// none is a printed payment type.
-// `build_ar_jv_rows` reads them off the report's own total row, independent of the
-// credit rows below — real worked-example figures, so Σ debit = Σ credit = 25,091.00.
-const AR_CONTROL_ROWS = [
-  {
-    dept: 'GEN',
-    acc: '6080008',
-    desc: 'Credit card commission',
-    debit: 582.99,
-    credit: 0,
-    key: '',
-  },
-  { dept: 'GEN', acc: '1022005', desc: 'Input Tax', debit: 40.81, credit: 0, key: '' },
-  { dept: 'GEN', acc: '1011001', desc: 'Bank Account', debit: 24467.2, credit: 0, key: '' },
-]
+/** The report's own total row, which carries the three debit legs. 582.99 + 40.81 +
+ *  24,467.20 = 25,091.00, the sum of the two credit lines above. */
+const TOTAL_ROW = {
+  transaction: 'TOTAL',
+  pay_amt: '25,091.00',
+  commis_amt: '582.99',
+  tax_amt: '40.81',
+  total: '24,467.20',
+}
 
-/** `AR_CONTROL_ROWS`, as `paneRows()` reads them back from the DOM. */
-const CONTROL_PANE_ROWS = [
-  ['', 'GEN', '6080008', 'Credit card commission', '582.99', ''],
-  ['', 'GEN', '1022005', 'Input Tax', '40.81', ''],
-  ['', 'GEN', '1011001', 'Bank Account', '24,467.20', ''],
-]
-
-/** Detail: the printed label is the key, so the table is one row per printed line. */
+/** What the server says about the bank: it has an active settlement rule, and how it
+ *  groups. Its rows are not what the screen shows any more. */
 const AR_JV = {
-  rows: [
-    {
-      dept: 'GEN',
-      acc: '510300',
-      desc: 'VS INTER UP PREM',
-      debit: 0,
-      credit: 15000,
-      key: 'VS INTER UP PREM',
-    },
-    {
-      dept: 'GEN',
-      acc: '511200',
-      desc: 'VS LOCAL UP PREM',
-      debit: 0,
-      credit: 10091,
-      key: 'VS LOCAL UP PREM',
-    },
-    ...AR_CONTROL_ROWS,
-  ],
-  description: 'Credit Card AR Reconcile 21/07/2026',
+  rows: [],
+  description: '',
   doc_no: '210726E00035291',
   doc_date: '21/07/2026',
   total_debit: 25091,
@@ -1180,24 +1155,25 @@ const AR_JV = {
   post_type: 'Detail',
 }
 
-/** Summary: both printed labels fold onto the scheme, which is the case worth showing. */
-const AR_JV_SUMMARY = {
-  ...AR_JV,
-  post_type: 'Summary',
-  rows: [
-    {
-      dept: 'GEN',
-      acc: '510300',
-      desc: 'VS',
-      debit: 0,
-      credit: 25091,
-      key: 'VS',
+/** This bank's rules: the three fixed legs plus its settlement keys, in both layouts. */
+function arConfig(paymentAmount: Record<string, { dept: string; acc: string }> = {}) {
+  storedConfig = {
+    filePrefix: 'AR',
+    mappings: {
+      commission: { dept: 'GEN', acc: '6080008' },
+      tax: { dept: 'GEN', acc: '1022005' },
+      net: { dept: 'GEN', acc: '1011001' },
     },
-    ...AR_CONTROL_ROWS,
-  ],
+    paymentAmount: {
+      'VS INTER UP PREM': { dept: 'GEN', acc: '510300' },
+      'VS LOCAL UP PREM': { dept: 'GEN', acc: '511200' },
+      VS: { dept: 'GEN', acc: '510300' },
+      ...paymentAmount,
+    },
+  }
 }
 
-function arDetail(over: Record<string, unknown> = {}) {
+function arDetail(over: Record<string, unknown> = {}, extracted: Record<string, unknown> = {}) {
   return detail({
     bank_code: 'KBANK',
     doc_no: '210726E00035291',
@@ -1208,244 +1184,310 @@ function arDetail(over: Record<string, unknown> = {}) {
       doc_no: '210726E00035291',
       doc_date: '21/07/2026',
       details: AR_LINES,
+      total_row: TOTAL_ROW,
+      ...extracted,
     },
     ...over,
   } as Partial<ReviewDocumentDetail>)
 }
 
-/** The pane's own rows, in order, as `[dept, acc, payment type, debit, credit]`. Every
- *  cell is a plain value now (2026-09-16 — the pane went back to read-only), but the
- *  `<select>` fallback stays: nothing in this pane renders one any more, so it is
- *  permanently a no-op, not a bet on the pane staying read-only. */
-function paneRows() {
-  return Array.from(document.querySelectorAll('.arv .jv-table tbody tr')).map(tr =>
+/** The JV as `[dept, acc, comment, debit, credit]`, reading each control's value. */
+function jvRows() {
+  return Array.from(document.querySelectorAll('.jv-table tbody tr')).map(tr =>
     Array.from(tr.querySelectorAll('td')).map(td => {
-      const select = td.querySelector('select')
-      return select ? select.value : (td.textContent?.trim() ?? '')
+      const control = td.querySelector('select, input') as HTMLInputElement | null
+      return control ? control.value : (td.textContent?.trim() ?? '')
     })
   )
 }
 
+const DEBIT_ROWS = [
+  ['GEN', '6080008', 'Credit card commission', '582.99', '—'],
+  ['GEN', '1022005', 'Input Tax', '40.81', '—'],
+  ['GEN', '1011001', 'Bank Account', '24,467.20', '—'],
+]
+
 describe('a parked settlement report', () => {
-  it('puts every printed payment type against the leg it became', async () => {
+  // `clearAllMocks` keeps implementations, and an earlier block leaves this one rejecting.
+  beforeEach(() => {
+    vi.mocked(cfgApi.patchAccountingConfig).mockResolvedValue(undefined)
+    arConfig()
+  })
+
+  it('is reviewed in the same table as a fee invoice, one leg per printed type', async () => {
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
     mount()
 
-    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
-    expect(paneRows()).toEqual([
-      ['', 'GEN', '510300', 'VS INTER UP PREM', '', '15,000.00'],
-      ['', 'GEN', '511200', 'VS LOCAL UP PREM', '', '10,091.00'],
-      ...CONTROL_PANE_ROWS,
+    await screen.findByLabelText('Account for VS LOCAL UP PREM')
+    expect(jvRows()).toEqual([
+      ['GEN', '510300', 'VS INTER UP PREM', '—', '15,000.00'],
+      ['GEN', '511200', 'VS LOCAL UP PREM', '—', '10,091.00'],
+      ...DEBIT_ROWS,
     ])
-    // The credit-card half of the modal is replaced, not disabled.
-    expect(screen.queryByText('ACCOUNT CODE MAPPING')).not.toBeInTheDocument()
+    expect(screen.getByText('Balanced')).toBeInTheDocument()
   })
 
-  it('shows what a Summary merge folded together, with the figures it folded, one click away', async () => {
-    // The one thing a reviewer cannot check from a grouped table alone: that 15,000 and
-    // 10,091 are the two lines behind the single 25,091 credit. Collapsed on open — a wall
-    // of quiet rows under every scheme leg before anyone asked to see them was the thing
-    // fixed here — and opened by clicking the leg's own toggle.
-    vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: AR_JV_SUMMARY }))
-    mount()
-
-    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
-    expect(paneRows()).toEqual([
-      ['', 'GEN', '510300', 'VS2 folded in', '', '25,091.00'],
-      ...CONTROL_PANE_ROWS,
-    ])
-    expect(document.querySelectorAll('.arv-row-src')).toHaveLength(0)
-
-    // The toggle is its own icon-only button leading the row now (Dept/Account are wide
-    // pickers, so one living inside the Payment type cell after them read as stuck in the
-    // middle) — found by its accessible name, which names what it would reveal. It still
-    // names the bare scheme, not the posted comment: the toggle is about the merge, not
-    // about what posts.
-    fireEvent.click(screen.getByRole('button', { name: 'Show 2 lines folded into VS' }))
-
-    expect(paneRows()).toEqual([
-      ['', 'GEN', '510300', 'VS2 folded in', '', '25,091.00'],
-      ['', '', '', 'VS INTER UP PREM', '', ''],
-      ['', '', '', 'VS LOCAL UP PREM', '', ''],
-      ...CONTROL_PANE_ROWS,
-    ])
-  })
-
-  it('keeps a line the report printed at zero, and says it produced nothing', async () => {
+  it('folds the printed types onto their scheme in Summary', async () => {
     vi.mocked(api.getPending).mockResolvedValue(
-      arDetail({
-        extracted: {
-          ...EXTRACTED,
-          doc_no: '210726E00035291',
-          doc_date: '21/07/2026',
-          details: [...AR_LINES, { transaction: 'AMEX PREM', pay_amt: '0.00' }],
-        },
-      })
+      arDetail({ ar_jv: { ...AR_JV, post_type: 'Summary' } })
     )
     mount()
 
-    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
-    const zero = document.querySelector('.arv-row-zero')
-    expect(zero).toHaveTextContent('AMEX PREM')
-    expect(zero).toHaveTextContent('no journal line')
+    await screen.findByLabelText('Account for VS')
+    expect(jvRows()).toEqual([['GEN', '510300', 'VS', '—', '25,091.00'], ...DEBIT_ROWS])
   })
 
-  it('does not offer header fields it would then throw away', async () => {
-    // Doc no. and Doc date drive the JV the SERVER rebuilds on approve; the prefix and
-    // description are BU config the AR path never writes. Editable, all four silently
-    // discarded what was typed.
+  it('regroups when the mapping page saves another Credit breakdown, without reopening', async () => {
+    // The mapping page is a tab of its own and announces a save on this key; the server
+    // posts with whatever grouping is saved by the time Approve is pressed.
+    const arApi = await import('@/features/credit-card/api/arReconcile')
+    vi.mocked(arApi.getARSettings).mockResolvedValue({
+      bank_code: 'KBANK',
+      post_type: 'Summary',
+      enabled: true,
+      has_settlement_layout: true,
+    })
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
     mount()
+    await screen.findByLabelText('Account for VS LOCAL UP PREM')
 
-    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
-    expect(screen.queryByLabelText('Document no.')).not.toBeInTheDocument()
-    expect(document.querySelectorAll('.rd-doc input, .rd-doc select')).toHaveLength(0)
-    expect(document.querySelector('.rd-f--docno')).toHaveTextContent('210726E00035291')
+    window.dispatchEvent(new StorageEvent('storage', { key: appKey('accounting_config_updated') }))
+
+    await screen.findByLabelText('Account for VS')
+    expect(arApi.getARSettings).toHaveBeenCalledWith('KBANK')
+    expect(jvRows()).toEqual([['GEN', '510300', 'VS', '—', '25,091.00'], ...DEBIT_ROWS])
   })
 
-  it('shows the description that will post, not the credit-card wording', async () => {
-    storedConfig = { ...(storedConfig as object), description: 'Card settlement' }
-    vi.mocked(api.getPending).mockResolvedValue(arDetail())
-    mount()
-
-    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
-    expect(document.querySelector('.rd-f--grow')).toHaveTextContent(
-      'Credit Card AR Reconcile 21/07/2026'
+  it('does not save a rule from a grouping it no longer shows', async () => {
+    // Re-mapped VS under Summary, then the mapping page switched the bank to Detail: the
+    // JV on screen has no VS leg, so this approval never looked at that rule.
+    const arApi = await import('@/features/credit-card/api/arReconcile')
+    vi.mocked(arApi.getARSettings).mockResolvedValue({
+      bank_code: 'KBANK',
+      post_type: 'Detail',
+      enabled: true,
+      has_settlement_layout: true,
+    })
+    vi.mocked(api.getPending).mockResolvedValue(
+      arDetail({ ar_jv: { ...AR_JV, post_type: 'Summary' } })
     )
-    expect(document.querySelector('.rd-f--grow')).not.toHaveTextContent('Card settlement')
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
+    mount()
+    fireEvent.change(await screen.findByLabelText('Account for VS'), {
+      target: { value: '511300' },
+    })
+    fireEvent.change(screen.getByLabelText('Prefix'), { target: { value: 'AJ' } })
+
+    window.dispatchEvent(new StorageEvent('storage', { key: appKey('accounting_config_updated') }))
+    await screen.findByLabelText('Account for VS LOCAL UP PREM')
+    await clickApprove()
+
+    await waitFor(() => expect(cfgApi.patchAccountingConfig).toHaveBeenCalled())
+    expect(vi.mocked(cfgApi.patchAccountingConfig).mock.calls[0][0].mappings).toEqual({})
   })
 
-  it('posts the rows it was shown and always attempts its own input-tax record', async () => {
-    // Decision #28: the fee invoice that used to file this claim is no longer processed
-    // once AR reconciliation covers a bank, so the settlement report claims it itself —
-    // unconditionally, since no panel offers a reviewer a choice the way it does for a
-    // fee invoice's own `postInputTax` toggle.
+  it('asks for both codes on every leg, as the server does, even at zero', async () => {
+    // `unmapped_payment_types` refuses a debit leg with no department whatever it carries;
+    // JvEditor alone asks only for an account on a leg with money in it.
+    storedConfig = {
+      ...(storedConfig as Record<string, unknown>),
+      mappings: {
+        commission: { dept: 'GEN', acc: '6080008' },
+        tax: { dept: 'GEN', acc: '1022005' },
+        net: { dept: '', acc: '1011001' },
+      },
+    }
+    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    mount()
+
+    expect(
+      await screen.findByText('Map these payment types before posting: net')
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Approve/ })).toBeDisabled()
+  })
+
+  it('edits the header the way a fee invoice does', async () => {
+    // The server rebuilds this JV from the `extracted` approve sends and the config it
+    // writes first, so every one of the four fields reaches Carmen.
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
     vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
     mount()
 
-    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
+    fireEvent.change(await screen.findByDisplayValue('210726E00035291'), {
+      target: { value: '210726E00035292' },
+    })
+    fireEvent.change(screen.getByLabelText('Prefix'), { target: { value: 'AJ' } })
     await clickApprove()
 
     await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
+    expect(vi.mocked(cfgApi.patchAccountingConfig).mock.calls[0][0]).toMatchObject({
+      file_prefix: 'AJ',
+      bank_code: 'KBANK',
+    })
     const body = vi.mocked(api.approveDocument).mock.calls[0][1]
-    expect(body.rows).toEqual(AR_JV.rows)
-    expect(body.post_input_tax).toBe(true)
+    expect((body.extracted as { doc_no: string }).doc_no).toBe('210726E00035292')
   })
 
-  it('never writes the credit-card mapping table', async () => {
-    // `overrides` is the wizard's vocabulary; this document's accounts live in
-    // ar_reconcile_mappings. Saving them here would file the right codes under the
-    // wrong feature's keys.
+  it('saves a re-mapped payment type before posting, tagged with its layout', async () => {
+    // The mapping page reads its Settlement rows back by `source`, so a key first mapped
+    // here has to carry one. Rules first, post second — same order as a fee invoice.
+    const order: string[] = []
+    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    vi.mocked(cfgApi.patchAccountingConfig).mockImplementation(async () => {
+      order.push('rules')
+    })
+    vi.mocked(api.approveDocument).mockImplementation(async () => {
+      order.push('post')
+      return { jv_no: 'JV-9', tax_note: null }
+    })
+    mount()
+
+    fireEvent.change(await screen.findByLabelText('Account for VS LOCAL UP PREM'), {
+      target: { value: '511300' },
+    })
+    await clickApprove()
+
+    await waitFor(() => expect(order).toEqual(['rules', 'post']))
+    expect(vi.mocked(cfgApi.patchAccountingConfig).mock.calls[0][0]).toMatchObject({
+      mappings: {
+        'VS LOCAL UP PREM': { dept: 'GEN', acc: '511300', source: 'settlement_detail' },
+      },
+      bank_code: 'KBANK',
+    })
+  })
+
+  it('edits a debit leg as the BU rule it is, untagged', async () => {
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
     vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
     mount()
 
-    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
+    fireEvent.change(await screen.findByLabelText('Account for Input Tax'), {
+      target: { value: '511300' },
+    })
+    await clickApprove()
+
+    await waitFor(() => expect(cfgApi.patchAccountingConfig).toHaveBeenCalled())
+    expect(vi.mocked(cfgApi.patchAccountingConfig).mock.calls[0][0].mappings).toEqual({
+      tax: { dept: 'GEN', acc: '511300' },
+    })
+  })
+
+  it('writes an edited figure back where the server will read it', async () => {
+    // A credit leg's figure is its printed line's; a debit leg's is the total row's. The
+    // server rebuilds the JV from both, and files the input tax from the total row, so an
+    // edit that stayed on screen would post the old figure.
+    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
+    mount()
+
+    fireEvent.change(await screen.findByLabelText('Credit for VS LOCAL UP PREM line 2'), {
+      target: { value: '10,091.19' },
+    })
+    fireEvent.change(screen.getByLabelText('Debit for Input Tax'), { target: { value: '41.00' } })
+    expect(screen.getByText('Balanced')).toBeInTheDocument()
     await clickApprove()
 
     await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
+    const extracted = vi.mocked(api.approveDocument).mock.calls[0][1].extracted as {
+      details: { pay_amt: string }[]
+      total_row: { tax_amt: string; commis_amt: string }
+    }
+    expect(extracted.details[1].pay_amt).toBe('10091.19')
+    expect(extracted.total_row).toMatchObject({ tax_amt: '41.00', commis_amt: '582.99' })
+  })
+
+  it('posts the retyped comment and saves no rule for it', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
+    mount()
+
+    fireEvent.change(await screen.findByLabelText('Comment for Bank Account'), {
+      target: { value: 'KBANK settlement 21/07' },
+    })
+    await clickApprove()
+
+    await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
+    const rows = vi.mocked(api.approveDocument).mock.calls[0][1].rows as { desc: string }[]
+    expect(rows.map(r => r.desc)).toContain('KBANK settlement 21/07')
     expect(cfgApi.patchAccountingConfig).not.toHaveBeenCalled()
   })
 
-  it('will not approve while a payment type is unmapped, and marks the cell', async () => {
-    const unmapped = {
-      ...AR_JV,
-      unmapped: ['VS LOCAL UP PREM'],
-      // Every leg untouched except VS LOCAL UP PREM, which loses its mapping.
-      rows: AR_JV.rows.map(r => (r.key === 'VS LOCAL UP PREM' ? { ...r, dept: '', acc: '' } : r)),
+  it('will not approve while a payment type is unmapped, and fills in place', async () => {
+    storedConfig = {
+      ...(storedConfig as Record<string, unknown>),
+      paymentAmount: { 'VS INTER UP PREM': { dept: 'GEN', acc: '510300' } },
     }
-    vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: unmapped }))
+    vi.mocked(api.getPending).mockResolvedValue(arDetail({ unmapped: ['VS LOCAL UP PREM'] }))
     mount()
 
-    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
-    expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
-    // Said twice on purpose, and both matter: on the row that has the gap (its Dept/Account
-    // cells read "Not mapped", unlike the two mapped rows beside it, and the row itself
-    // carries `jv-row--needed`), and as the reason the disabled button gives — a reader who
-    // scrolled past the table still gets told what to go and fix.
-    expect(document.querySelectorAll('.arv .jv-row--needed')).toHaveLength(1)
-    expect(paneRows().find(r => r[3] === 'VS LOCAL UP PREM')).toEqual([
-      '',
-      'Not mapped',
-      'Not mapped',
-      'VS LOCAL UP PREM',
-      '',
-      '10,091.00',
-    ])
-    expect(document.querySelector('#rd-blocked')).toHaveTextContent('VS LOCAL UP PREM')
+    const approve = await screen.findByRole('button', { name: /Approve/ })
+    expect(approve).toBeDisabled()
+    expect(await screen.findByText(/Choose an account for every line/)).toBeInTheDocument()
+    // Nobody guesses a settlement key: the reviewer fills it.
+    expect(mapApi.suggestPaymentTypes).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('Department for VS LOCAL UP PREM'), {
+      target: { value: 'GEN' },
+    })
+    fireEvent.change(screen.getByLabelText('Account for VS LOCAL UP PREM'), {
+      target: { value: '110300' },
+    })
+    await waitFor(() => expect(approve).toBeEnabled())
   })
 
   it('will not approve an entry that does not balance', async () => {
     vi.mocked(api.getPending).mockResolvedValue(
-      arDetail({ ar_jv: { ...AR_JV, balanced: false, total_credit: 25000 } })
+      arDetail({}, { total_row: { ...TOTAL_ROW, total: '24,400.00' } })
     )
     mount()
 
-    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
-    expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
-    expect(document.querySelector('.jv-total--bad')).toBeInTheDocument()
+    await screen.findByLabelText('Account for VS LOCAL UP PREM')
+    expect(screen.getByRole('button', { name: /Approve/ })).toBeDisabled()
+    expect(screen.getByText('Does not balance')).toBeInTheDocument()
   })
 
-  it('says so when the bank is no longer configured', async () => {
+  it("files its input tax from the report's total row", async () => {
+    // The per-type lines print the commission and VAT columns as dashes; the total row is
+    // what `approve_document` files the claim from, so it is what the panel shows.
+    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
+    mount()
+
+    await screen.findByLabelText('Account for VS LOCAL UP PREM')
+    fireEvent.click(screen.getByRole('button', { name: /Show details/ }))
+    for (const figure of ['582.99', '40.81', '623.80']) {
+      expect(within(itxBody()).getByText(figure)).toBeInTheDocument()
+    }
+
+    // And it is the reviewer's to decline, as on a fee invoice.
+    fireEvent.click(screen.getByRole('checkbox'))
+    await clickApprove()
+    await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
+    expect(vi.mocked(api.approveDocument).mock.calls[0][1].post_input_tax).toBe(false)
+  })
+
+  it('says so when the bank is no longer configured, and opens the settings screen', async () => {
+    // No JV means no active `ar_reconcile` rule for this bank — the switch is the rule's
+    // document type on the settings screen (#31; in this app since #34).
     vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: null }))
     mount()
 
     expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
-    // Twice, like the unmapped case above: in the space the table would have filled, and
-    // as the reason the disabled button gives.
+    // In the space the table would have filled, and as the reason the button gives.
     expect(screen.getAllByText(/no longer configured/i)).toHaveLength(2)
+    const link = screen.getByRole('link', { name: 'Open settings' })
+    expect(link).toHaveAttribute('href', expect.stringMatching(/#\/setting$/))
   })
+})
 
-  it('sends the reviewer somewhere when the journal book is unset', async () => {
-    // The field that used to hold it is read-only on this path, so the sentence naming it
-    // has to come with the door.
-    storedConfig = { ...(storedConfig as object), filePrefix: '' }
-    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+describe('the mapping page', () => {
+  it("opens on this document's bank, in a new tab, so the document stays open", async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
 
-    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
-    expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
-    const link = screen.getByRole('link', { name: /Set the journal book/i })
-    expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
-  })
-
-  it('points at where these accounts are actually set, for this document’s bank', async () => {
-    // The settings screen is per bank profile and this is now its only door, so the
-    // document's own bank travels with the link rather than letting that screen guess.
-    vi.mocked(api.getPending).mockResolvedValue(arDetail())
-    mount()
-
-    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
-    const link = screen.getByRole('link', { name: /AR reconciliation settings/i })
-    expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping?bank=KBANK')
-  })
-
-  it('falls back to the bare door when the document names no bank', async () => {
-    // `bank_code` null AND a name `detectBankFromExtracted` cannot resolve — both, because
-    // the browser detection is the fallback for rows written before the column existed.
-    vi.mocked(api.getPending).mockResolvedValue(
-      arDetail({
-        bank_code: null,
-        extracted: { ...EXTRACTED, bank_name: 'Unlisted Issuer Ltd', details: AR_LINES },
-      })
-    )
-    mount()
-
-    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
-    const link = screen.getByRole('link', { name: /AR reconciliation settings/i })
-    expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
-  })
-
-  it('sends a bank with no settlement rule to the settings screen, where the switch lives', async () => {
-    // No JV means no active `ar_reconcile` rule for this bank — set on the AI JV Automation
-    // settings screen (the rule's document type, #31; in this app since #34), not on our
-    // mapping page, which would open on a bank with nothing to fix.
-    vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: null }))
-    mount()
-
-    const link = await screen.findByRole('link', { name: /AR reconciliation settings/i })
-    expect(link).toHaveAttribute('href', '#/CreditCardOCR/email-settings')
-    expect(link).not.toHaveAttribute('target')
+    fireEvent.click(await screen.findByRole('button', { name: 'Mapping Settings' }))
+    expect(open).toHaveBeenCalledWith('#/CreditCardOCR/mapping?bank=KTC', '_blank')
+    open.mockRestore()
   })
 })

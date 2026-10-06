@@ -161,6 +161,25 @@ describe('every save carries the whole rules array', () => {
     // '' would clear it (`_merge_rule`); untouched must mean untouched.
     expect(sentRules().every(r => r.pdf_password === null)).toBe(true)
   })
+
+  it('sends the KBANK merchant back, and no patterns for KBANK', async () => {
+    // Its toggle names its files (decision-log #37), so a stored pattern is dropped rather
+    // than kept looking meaningful; the merchant is a full-replace field like any other.
+    const result = await loaded()
+    await act(async () => {
+      result.current.patch({
+        rules: result.current.draft.rules.map(r =>
+          r.bank_code === 'KBANK' ? { ...r, merchant_id: ' 451005282039001 ' } : r
+        ),
+      })
+    })
+    await act(async () => {
+      await result.current.save()
+    })
+    const [kbank, ktc] = sentRules()
+    expect(kbank).toMatchObject({ filename_patterns: [], merchant_id: '451005282039001' })
+    expect(ktc).toMatchObject({ filename_patterns: ['.pdf'], merchant_id: '' })
+  })
 })
 
 describe('the dirty form', () => {
@@ -228,6 +247,7 @@ describe('seedDraft', () => {
           is_active: true,
           has_password: true,
           doc_type: 'ar_reconcile',
+          merchant_id: '451005282039001',
         },
       ],
     } as unknown as api.EmailSettings)
@@ -239,6 +259,7 @@ describe('seedDraft', () => {
       pdf_password: '',
       is_active: true,
       doc_type: 'ar_reconcile',
+      merchant_id: '451005282039001',
       has_password: true,
     })
   })

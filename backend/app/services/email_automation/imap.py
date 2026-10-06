@@ -28,6 +28,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.constants import SETTLEMENT_BANK, DocType
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,14 @@ ALLOWED_EXTENSIONS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", 
 # KBANK settlement zip's `TAX_SUMMARY_BY_TAX_ID_CSV_*` — see
 # `services/kbank_tax_summary.py`, the only reader of what this collects.
 SIDECAR_EXTENSIONS = (".csv",)
+
+# The two KBANK documents, by the names KBANK gives them. The KBANK rule reads exactly one
+# of them, chosen by its reconciliation toggle (`match_rules`): the commission tax invoice
+# `E-TAX_INVOICE_CARD_<merchant>_<tax invoice>_<date>.PDF`, or the settlement report
+# `KB1P554V2_SUM_<merchant>_<date>.pdf` — matched on `SUM_<merchant>` alone, so a new
+# report version (`KB1P555…`) does not drop it.
+_KBANK_FEE_FILE = re.compile(r"E-TAX_INVOICE_CARD", re.I)
+_KBANK_SETTLEMENT_FILE = re.compile(r"SUM_(\d{6,})", re.I)
 
 # Socket timeout for every IMAP call — see `_connect`. Generous enough for a slow FETCH
 # of a 5 MB attachment, short enough that a dead mailbox frees the thread this minute
@@ -805,6 +814,15 @@ def people_addresses(people: str) -> list[str]:
     return list(dict.fromkeys(addr.lower() for _, addr in getaddresses([people]) if addr))
 
 
+def kbank_file(filename: str) -> tuple[str, str | None] | None:
+    """Which KBANK document a filename names: `("fee", None)`, `("settlement", merchant)`,
+    or None for anything else."""
+    if _KBANK_FEE_FILE.search(filename):
+        return ("fee", None)
+    m = _KBANK_SETTLEMENT_FILE.search(filename)
+    return ("settlement", m.group(1)) if m else None
+
+
 def match_rules(rules: list[dict], sender: str, filename: str) -> list[dict]:
     """This BU's rules that claim this attachment. **Empty means stop** — no LLM call.
 
@@ -823,12 +841,36 @@ def match_rules(rules: list[dict], sender: str, filename: str) -> list[dict]:
 
     Several matches means the BU's patterns overlap, which is harmless — the list is
     returned rather than a winner because there is nothing here worth picking a winner for.
+
+    **KBANK's two files are its rule's alone** (2026-10-05, decision-log #37). That rule has
+    no patterns: its toggle reads the commission tax invoice when off and this merchant's
+    settlement report when on, and nothing else. While it is active no other rule may
+    claim either file — an "Other" `.pdf` rule reading the tax invoice beside a settlement
+    report books the commission and its VAT twice. A settlement report is never read as a
+    fee invoice at all, rule or no rule: it has no layout on that path. A switched-off KBANK
+    rule still owns both — off means the BU keys KBANK by hand, not that another rule may.
     """
     active = [r for r in rules if r.get("is_active", True)]
+    kind = kbank_file(filename)
+    kbank = next((r for r in rules if (r.get("bank_code") or "").upper() == SETTLEMENT_BANK), None)
+    if kind and kbank:
+        if not kbank.get("is_active", True):
+            return []
+        reconciling = kbank.get("doc_type") == DocType.AR_RECONCILE
+        if kind[0] == "fee":
+            return [] if reconciling else [kbank]
+        merchant = kbank.get("merchant_id")
+        # A rule saved before merchants existed reads any settlement report until it is
+        # saved again, which then asks for one.
+        return [kbank] if reconciling and (not merchant or merchant == kind[1]) else []
+    if kind and kind[0] == "settlement":
+        return []
+
     sender_l, filename_l = sender.lower(), filename.lower()
+    others = [r for r in active if r is not kbank]
     by_sender = [
         r
-        for r in active
+        for r in others
         if (addr := (r.get("bank_sender_email") or "").lower()) and addr in sender_l
     ]
     # Substring, case-insensitive — `%pattern%`, so the word may sit anywhere in the
@@ -836,6 +878,6 @@ def match_rules(rules: list[dict], sender: str, filename: str) -> list[dict]:
     # files before forwarding.
     return [
         r
-        for r in (by_sender or active)
+        for r in (by_sender or others)
         if any(p.lower() in filename_l for p in (r.get("filename_patterns") or []) if p)
     ]

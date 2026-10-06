@@ -30,7 +30,13 @@ from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.email_automation import ReviewDocument
 from app.services.credit_card import ar_reconcile as ar_svc
 from app.services.credit_card.accounting_config import get_accounting_config
-from app.services.credit_card.jv import build_gljv_payload, num, r2
+from app.services.credit_card.jv import (
+    _FIXED_TYPES,
+    BALANCE_EPSILON,
+    build_gljv_payload,
+    num,
+    r2,
+)
 from app.services.email_automation import credential
 from app.services.email_automation import ingest_settings as es
 from app.services.email_automation.ledger import _finish, _mark_submitted
@@ -125,6 +131,48 @@ async def _release_claim(ledger_id: uuid.UUID) -> None:
         logger.exception("[email] Could not release the review claim on %s", ledger_id)
 
 
+def _as_shown(built: list[dict], sent: list[dict]) -> list[dict]:
+    """A rebuilt settlement JV, refused unless it is the one the screen showed, and carrying
+    the comment the reviewer gave each leg.
+
+    The figures and accounts are rebuilt from the document and the config, and the browser
+    builds the same legs in the same order (`buildJvRows`' settlement branch, pinned by
+    contracts/cc-jv.contract.json). So the two can only differ when something moved under
+    the reviewer — a colleague's mapping save, a Credit breakdown switched elsewhere — and
+    posting the rebuild then would post a JV nobody looked at. The three fixed legs are
+    keyless here and keyed commission/tax/net there.
+
+    An empty `sent` compares nothing and keeps the rebuild's wording; the review screen
+    always sends what it showed.
+    """
+    if not sent:
+        return built
+    if len(sent) != len(built):
+        raise ValidationError(_JV_MOVED)
+    out = []
+    for b, s in zip(built, sent):
+        same_leg = (s.get("key") or "") == b["key"] or (
+            not b["key"] and s.get("key") in _FIXED_TYPES
+        )
+        same_post = (
+            (s.get("dept") or "") == b["dept"]
+            and (s.get("acc") or "") == b["acc"]
+            and abs(num(str(s.get("debit") or 0)) - b["debit"]) <= BALANCE_EPSILON
+            and abs(num(str(s.get("credit") or 0)) - b["credit"]) <= BALANCE_EPSILON
+        )
+        if not (same_leg and same_post):
+            raise ValidationError(_JV_MOVED)
+        desc = s.get("desc")
+        out.append({**b, "desc": desc} if isinstance(desc, str) and desc.strip() else b)
+    return out
+
+
+_JV_MOVED = (
+    "This JV changed since the review screen built it — the mapping or the Credit breakdown "
+    "was saved meanwhile. Close and reopen the document, then check it again."
+)
+
+
 async def approve_document(
     document_id: uuid.UUID,
     *,
@@ -211,12 +259,13 @@ async def approve_document(
 
         description: str | None = None
         if doc_type == DocType.AR_RECONCILE:
-            # The rows the caller sent are ignored on this path, and that is not a
-            # weakening of "post what the screen displayed" but the same rule reached
-            # differently. This feature has no browser-side JV builder: the screen
-            # *displays* what `jv_for_document` returned, so rebuilding it here from the
-            # same current mapping reproduces exactly that, while a browser free to send
-            # arbitrary rows against a control account is not something to accept on trust.
+            # Rebuilt here rather than taken from the caller, which is not a weakening of
+            # "post what the screen displayed" but the same rule reached differently: the
+            # screen builds these rows with a contract-pinned twin of this builder, from the
+            # same edited document and the mapping it saved just before, while a browser
+            # free to send arbitrary figures against a control account is not something to
+            # accept on trust. The caller's rows are the check that the two agree, and each leg's
+            # comment is theirs (`_as_shown`).
             async with async_session() as db:
                 built = await ar_svc.jv_for_document(
                     db, tenant_id, bank_code, extracted.model_dump(mode="json")
@@ -238,8 +287,23 @@ async def approve_document(
                     "This report's totals don't reconcile — check the settlement report "
                     "before posting"
                 )
-            rows = [r.model_dump() for r in built.rows]
+            rows = _as_shown([r.model_dump() for r in built.rows], rows)
             description = built.description
+        else:
+            # The screen will not post a line carrying money without an account (JvEditor's
+            # `blankAccount`), and neither does this. The API is reachable without the
+            # screen, and Carmen refuses such a line only after the post — as
+            # `carmen_rejected`, with the GL code nowhere in its message.
+            blank = [
+                str(r.get("desc") or "a line")
+                for r in rows
+                if (num(str(r.get("debit") or 0)) or num(str(r.get("credit") or 0)))
+                and not str(r.get("acc") or "").strip()
+            ]
+            if blank:
+                raise ValidationError(
+                    "Choose an account for every line that carries an amount: " + ", ".join(blank)
+                )
 
         payload = build_gljv_payload(
             rows,

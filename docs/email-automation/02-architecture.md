@@ -45,7 +45,7 @@ sequenceDiagram
     participant API as OCR API
 
     User->>Carmen: Open AI JV Automation settings
-    Note over Carmen: one token: the link's `token` is also stored<br/>as the BU's posting credential (decision-log #36)
+    Note over Carmen: one token: the link's `token` is also stored<br/>as the BU's posting credential (decision-log #38)
     Carmen->>Page: open #/CreditCardOCR/email-settings?token=&bu=&uri= (same SSO link as the queue)
     Page->>API: PUT /api/v1/carmen/settings/token (the link's token), before anything is read
     API->>Carmen: verify_token() — GET /department with it
@@ -409,7 +409,7 @@ copy of a screen Carmen was to build. Four things about it are deliberate:
 - **English-only**, as CLAUDE.md makes English the default for a new surface.
 - **The posting credential shows status only** — no paste or delete (removed 2026-10-06: a
   customer has no token to paste). The link's `token` is stored as the credential before
-  anything is read, and the page says so at the top if that fails (decision-log #35, #36).
+  anything is read, and the page says so at the top if that fails (decision-log #35, #38).
 - **Bypasses `apiFetch`** (`features/email-settings/api/emailAutomation.ts:108-128`) — it sends the raw Carmen
   token with no `Bearer` scheme, matching exactly what `_caller()` expects and what Carmen
   itself sends. A 401 here means *Carmen* rejected the token, which the page renders

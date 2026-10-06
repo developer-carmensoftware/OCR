@@ -27,6 +27,13 @@ class DocType:
     ALL = (FEE_INVOICE, AR_RECONCILE)
 
 
+# The one bank whose email rule is a reconciliation toggle rather than a list of filename
+# patterns: off reads its commission tax invoice, on its settlement report for one merchant
+# (`imap.kbank_file`). ponytail: one bank, by name — a second one with a settlement layout
+# needs its file names here and `banks.settlement_grouping` read instead.
+SETTLEMENT_BANK = "KBANK"
+
+
 class PostType:
     """How finely a settlement-report JV splits its credit side.
 

@@ -5,6 +5,7 @@ import {
   getSamplePaymentTypes,
   previewARJv,
   POST_TYPES,
+  SOURCE_BY_POST_TYPE,
   type ARMappingItem,
   type ARPreview,
   type ARSettingsResponse,
@@ -42,11 +43,6 @@ import type { FieldMapping } from '@/shared/types/api'
  * with its own accounts, and losing Summary's rows because the toggle sat on Detail
  * when Save was pressed would be a real loss, not a display quirk.
  */
-
-const SOURCE_BY_POST_TYPE: Record<PostType, string> = {
-  Detail: 'settlement_detail',
-  Summary: 'settlement_summary',
-}
 
 /** A saved entry this hook owns (either post type's) rather than the fee-invoice list. */
 export const isSettlementSource = (source: string | null | undefined): boolean =>

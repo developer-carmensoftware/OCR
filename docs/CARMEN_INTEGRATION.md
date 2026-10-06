@@ -631,7 +631,7 @@ OCR app.
 model allows to configure Email Automation. When it is clicked:
 
 1. Open, in a new tab, the same SSO link you already use for the queue, with a different
-   route (**one token**, agreed 2026-10-06; decision-log #36):
+   route (**one token**, agreed 2026-10-06; decision-log #38):
 
    ```text
    https://<ocr-app>/#/CreditCardOCR/email-settings?token=<user's Carmen token>&bu=<bu>&user=<user>&uri=<your origin>
@@ -691,14 +691,24 @@ The API stays live and unchanged for anything else you want to read from it, for
 
 ### 2.9 Settlement reports — `doc_type` on a rule is the switch (2026-09-29)
 
-KBANK sends two documents for one settlement: the commission tax invoice and the merchant
-settlement report (`KB1P554V2`). They share the bank, the date and the tax invoice number, so
-nothing on the page tells them apart — **the rule says which one its files are**.
+KBANK sends two documents for one settlement, in one zip with its tax summary CSV: the
+commission tax invoice (`E-TAX_INVOICE_CARD_*`) and the merchant settlement report
+(`KB1P554V2_SUM_<merchant>_*`). They share the bank, the date and the tax invoice number, so
+nothing on the page tells them apart — **the rule says which one this BU posts**.
 
 ```jsonc
-{ "bank_code": "KBANK", "filename_patterns": ["KB1P554V2"], "is_active": true,
-  "doc_type": "ar_reconcile" }
+{ "bank_code": "KBANK", "is_active": true,
+  "doc_type": "ar_reconcile", "merchant_id": "451005282039001" }
 ```
+
+- **The KBANK rule names its files by `doc_type`, not by `filename_patterns`** (2026-10-05):
+  `fee_invoice` reads `E-TAX_INVOICE_CARD_*`, `ar_reconcile` reads `SUM_<merchant_id>` and
+  nothing else. Patterns are optional there and ignored. While a KBANK rule exists — on or
+  off — no other rule may read either file, so an "Other" `.pdf` rule cannot book the
+  commission a second time beside a settlement report. The tax summary CSV in the same zip is
+  checked against whichever file is read, when it is there.
+- **`merchant_id`** is required on `ar_reconcile` (`rules[i].merchant_id` = `required` /
+  `invalid`, at least 6 digits) and merges on omit.
 
 - **`doc_type: "ar_reconcile"` on an active rule *is* "reconcile this bank".** There is no
   other switch — not in our app, not elsewhere in this payload. To stop, set `is_active:
@@ -957,7 +967,7 @@ Two consequences worth stating plainly:
 >
 > | # | We need | Blocks |
 > |---|---|---|
-> | A | A menu item, shown only to users you allow, that runs §2.8: open our `#/CreditCardOCR/email-settings` with the one SSO `token` (decision-log #36) | every customer's way into the settings |
+> | A | A menu item, shown only to users you allow, that runs §2.8: open our `#/CreditCardOCR/email-settings` with the one SSO `token` (decision-log #38) | every customer's way into the settings |
 > | B | Item 3 below, unchanged: the JV endpoint accepts the BU token | automated posting |
 >
 > Items 4–7 below do not change. The settings form, the `auto_post` switch and the

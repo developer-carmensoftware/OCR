@@ -889,6 +889,26 @@ async def test_a_filename_no_rule_claims_is_never_sent_to_the_llm():
 
 
 @pytest.mark.asyncio
+async def test_a_file_only_a_switched_off_rule_names_is_ingest_paused_not_noise():
+    """Turning one bank's rule off is the per-bank form of turning the feature off: the
+    BU keys those by hand, so the file is listed for them (`ingest_paused`, visible) rather
+    than filed with signature logos (`no_rule_match`, hidden). Still free."""
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        filename="KTC-MDR-0901.jpg",
+        rules=[{"bank_code": "KTC", "filename_patterns": ["MDR"], "is_active": False}],
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 0},
+    )
+    assert outcome == "skipped"
+    assert db.added[0].reason_code == "ingest_paused"
+    p.extract.assert_not_awaited()
+    p.consume_document.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_sender_hit_does_not_buy_a_filename_miss_an_llm_call():
     """Mail from KTC's address carrying a file only the BBL rule names must stop."""
     db = _FakeDB()
@@ -918,14 +938,15 @@ async def test_a_sender_hit_does_not_buy_a_filename_miss_an_llm_call():
 async def test_a_rule_never_picks_the_extraction_layout():
     """A filename substring cannot choose a bank prompt, however unambiguous the match.
 
-    Reading a KTC invoice with the KBANK layout mismaps its columns and makes it answer
-    "ธนาคารกสิกรไทย", which then confirms the wrong bank to every later reader.
+    Reading a KTC invoice with the BBL layout mismaps its columns and makes it answer
+    "ธนาคารกรุงเทพ", which then confirms the wrong bank to every later reader. (Not KBANK:
+    its rule names its files by type, never by pattern — `imap.match_rules`.)
     """
     db = _FakeDB()
     _, p = await _run(
         db,
         filename="MDR-aug.jpg",
-        rules=[{"bank_code": "KBANK", "filename_patterns": ["MDR"], "is_active": True}],
+        rules=[{"bank_code": "BBL", "filename_patterns": ["MDR"], "is_active": True}],
         extracted=_extracted(),
         config=_config(),
         carmen_result={"Code": 0, "InternalMessage": "JV-1"},
@@ -949,7 +970,7 @@ async def test_the_document_outranks_the_rule_that_matched_it():
     outcome, p = await _run(
         db,
         filename="anything.jpg",
-        rules=[{"bank_code": "KBANK", "filename_patterns": [".jpg"], "is_active": True}],
+        rules=[{"bank_code": "BBL", "filename_patterns": [".jpg"], "is_active": True}],
         extracted=extracted,
         config=_config(),
         carmen_result={"Code": 0, "InternalMessage": "JV-1"},
@@ -962,7 +983,7 @@ async def test_the_document_outranks_the_rule_that_matched_it():
     # or naming neither — is one the reviewer cannot act on, which is the same as no
     # warning at all.
     assert [w.code for w in extracted.warnings] == ["bankMismatch"]
-    assert extracted.warnings[0].params == {"rule": "KBANK", "detected": "KTC"}
+    assert extracted.warnings[0].params == {"rule": "BBL", "detected": "KTC"}
 
 
 @pytest.mark.asyncio
@@ -1008,7 +1029,7 @@ async def test_three_banks_in_one_poll_come_out_as_three_banks():
     rules = [
         # The broad one. Sole match for anything the two below miss — which used to make
         # it the answer for every bank.
-        {"bank_code": "KBANK", "filename_patterns": [".pdf"], "is_active": True},
+        {"bank_code": "SCB", "filename_patterns": [".pdf"], "is_active": True},
         {"bank_code": "KTC", "filename_patterns": ["MDR"], "is_active": True},
         {"bank_code": "BAY", "filename_patterns": ["krungsri"], "is_active": True},
     ]
@@ -1017,7 +1038,7 @@ async def test_three_banks_in_one_poll_come_out_as_three_banks():
     # disagree with the document and raise the over-reach warning — and that warning is a
     # flag, which keeps the document out of auto-post.
     mail = [
-        ("kbank-july.pdf", "ธนาคารกสิกรไทย จำกัด (มหาชน)", "KBANK", "posted"),
+        ("scb-july.pdf", "ธนาคารไทยพาณิชย์ จำกัด (มหาชน)", "SCB", "posted"),
         # Two rules claim these, so neither is the answer and nothing is assumed.
         ("MDR-july.pdf", "บริษัท บัตรกรุงไทย จำกัด (มหาชน)", "KTC", "posted"),
         ("krungsri-july.pdf", "ธนาคารกรุงศรีอยุธยา จำกัด (มหาชน)", "BAY", "posted"),
@@ -3086,6 +3107,30 @@ async def test_approve_posts_the_rows_the_reviewer_saw():
                 rows=edited,
             )
     assert build.call_args.args[0] == edited
+
+
+@pytest.mark.asyncio
+async def test_approve_refuses_a_line_with_money_and_no_account():
+    """The screen blocks this; the API must too. Carmen would refuse it only after the
+    post, as `carmen_rejected`, with nothing saying which line lacked a code (2026-10-05
+    end-to-end run, F-3). A display-only zero leg with no account is not a problem."""
+    row = _pending_row()
+    db = _ReviewDB(row)
+    rows = [
+        {"dept": "GEN", "acc": "", "desc": "บัตรเครดิต/เดบิต", "debit": 0, "credit": 25091.0},
+        {"dept": "GEN", "acc": "", "desc": "Bank Account", "debit": 0, "credit": 0},
+    ]
+    with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-1"}) as p:
+        with pytest.raises(ValidationError, match="บัตรเครดิต/เดบิต$"):
+            await review.approve_document(
+                row.id,
+                tenant_id=str(row.tenant_id),
+                reviewer="u",
+                extracted=_extracted(),
+                rows=rows,
+            )
+    p.post.assert_not_awaited()
+    assert row.status == "pending_review"  # still the reviewer's to fix and approve
 
 
 @pytest.mark.asyncio

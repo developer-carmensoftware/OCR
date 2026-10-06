@@ -99,7 +99,12 @@ async def patch_accounting_config(
         db,
         session.tenant_id,
         mappings={
-            k: {"dept": v.dept or "", "acc": v.acc or ""} for k, v in (req.mappings or {}).items()
+            k: {
+                "dept": v.dept or "",
+                "acc": v.acc or "",
+                **({"source": v.source} if v.source else {}),
+            }
+            for k, v in (req.mappings or {}).items()
         },
         file_prefix=req.file_prefix,
         description=req.description,

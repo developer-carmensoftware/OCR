@@ -92,11 +92,12 @@ const leg = (
 export function buildJvRows(
   details: Detail[],
   config: Record<string, unknown>,
-  opts: { consolidateDebit?: boolean } = {}
+  opts: { consolidateDebit?: boolean; settlement?: Settlement } = {}
 ): JvRow[] {
   const mappings = (config.mappings || {}) as Record<string, Mapping>
   const paymentAmount = (config.paymentAmount || {}) as Record<string, Mapping>
 
+  if (opts.settlement) return settlement(details, mappings, paymentAmount, opts.settlement)
   if (opts.consolidateDebit) return consolidated(details, mappings, paymentAmount)
 
   const rows: JvRow[] = []
@@ -155,6 +156,69 @@ function consolidated(
   )
   rows.push(leg(mappings.tax || {}, 'Input Tax', sum('TaxAmt'), 0, 'tax', all))
   rows.push(leg(mappings.net || {}, 'Bank Account', sum('Total'), 0, 'net', all))
+  return rows
+}
+
+/** A settlement report's two extra inputs: how its printed payment types group, and the
+ *  report's own total row, which carries the three debit legs. */
+export interface Settlement {
+  postType: 'Detail' | 'Summary'
+  totalRow: Detail | null
+}
+
+/** The mapping key a printed settlement payment type resolves to. Detail keeps the label
+ *  as printed; Summary takes its first token (`VS INTER UP PREM` → `VS`). Twin of
+ *  `group_key` in credit_card/jv.py. */
+export function groupKey(label: string, postType: Settlement['postType']): string {
+  const l = (label || '').trim()
+  return postType === 'Summary' ? l.split(' ')[0] : l
+}
+
+/**
+ * A settlement report's JV — twin of `build_jv_rows(..., total_row=, grouping=)`, pinned
+ * to it by `contracts/cc-jv.contract.json`.
+ *
+ * One credit leg per grouped payment type, in the order the report first prints each,
+ * then the three fixed debit legs, read off the total row rather than summed: the report's
+ * per-type lines print those columns as dashes. A group that nets negative (a refund
+ * settling on the same day) swaps to the debit side. The fixed legs carry no `lines` —
+ * their figures belong to the total row, not to any detail line.
+ */
+function settlement(
+  details: Detail[],
+  mappings: Record<string, Mapping>,
+  paymentAmount: Record<string, Mapping>,
+  { postType, totalRow }: Settlement
+): JvRow[] {
+  const groups = new Map<string, { amt: number; lines: number[] }>()
+  details.forEach((d, i) => {
+    const amt = parseNum(d.PayAmt)
+    if (!amt) return
+    const key = groupKey(d.Transaction || 'UNKNOWN', postType)
+    const g = groups.get(key) ?? { amt: 0, lines: [] }
+    g.amt += amt
+    g.lines.push(i)
+    groups.set(key, g)
+  })
+  if (groups.size === 0) return []
+
+  const rows = [...groups].map(([key, g]) => {
+    const amt = round2(g.amt)
+    return leg(paymentAmount[key] || {}, key, amt < 0 ? -amt : 0, amt >= 0 ? amt : 0, key, g.lines)
+  })
+  const anchor = (k: keyof Detail) => (totalRow ? round2(parseNum(totalRow[k])) : 0)
+  rows.push(
+    leg(
+      mappings.commission || {},
+      'Credit card commission',
+      anchor('CommisAmt'),
+      0,
+      'commission',
+      []
+    )
+  )
+  rows.push(leg(mappings.tax || {}, 'Input Tax', anchor('TaxAmt'), 0, 'tax', []))
+  rows.push(leg(mappings.net || {}, 'Bank Account', anchor('Total'), 0, 'net', []))
   return rows
 }
 

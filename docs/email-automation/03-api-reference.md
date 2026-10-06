@@ -192,7 +192,9 @@ Validation codes, all raised from `save_settings()` (`email_automation/ingest_se
 | `invalid_email` | `owner_emails[i]` | Doesn't look like an address |
 | `invalid_checksum` | `tax_ids[i]` | Not 13 digits with a valid Thai check digit |
 | `reserved_tax_id` | `tax_ids[i]` | That number belongs to a bank, not a customer |
-| `required` | `rules[i].filename_patterns` or `tax_ids` | Missing something that's mandatory |
+| `required` | `rules[i].filename_patterns`, `rules[i].merchant_id` or `tax_ids` | Missing something that's mandatory — patterns on every rule but KBANK's, a merchant on a settlement rule |
+| `invalid` | `rules[i].doc_type`, `rules[i].merchant_id` | An unknown document type; a merchant ID of fewer than 6 digits |
+| `no_settlement_layout` | `rules[i].doc_type` | `ar_reconcile` on a bank with no settlement-report layout, or on a rule with no bank |
 | `unsupported_bank` | `rules[i].bank_code` | Not in the active `banks` table |
 | `duplicate_bank` | `rules[i].bank_code` | Two rules name the same bank (or two `null`/"Other" rules) |
 | `not_entitled` | `enabled` | Enabling without an active monthly package |
@@ -243,7 +245,12 @@ copy we deleted is still live everywhere else.
   "ingest_address": "AIAGENT+a1b2c3d4@carmensoftware.com",   // null until a tag is issued
   "tax_ids": ["0105536000127"],
   "rules": [ { "bank_code": "KTC", "bank_sender_email": "no-reply@ktc.co.th",
-               "filename_patterns": ["MDR", "Commission"], "has_password": true, "is_active": true } ],
+               "filename_patterns": ["MDR", "Commission"], "has_password": true, "is_active": true,
+               "doc_type": "fee_invoice", "merchant_id": null },
+             // KBANK names its files by doc_type: E-TAX_INVOICE_CARD_* off, SUM_<merchant_id> on
+             { "bank_code": "KBANK", "bank_sender_email": null, "filename_patterns": [],
+               "has_password": false, "is_active": true,
+               "doc_type": "ar_reconcile", "merchant_id": "451005282039001" } ],
   "gmail_confirmed_at": null,
   "gmail_confirm": null,
   "status": {

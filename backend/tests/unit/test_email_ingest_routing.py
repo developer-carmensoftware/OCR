@@ -488,3 +488,72 @@ def test_no_rules_at_all_matches_nothing():
 def test_a_rule_with_no_patterns_matches_nothing():
     """save_settings rejects this, but a legacy row must fail closed, not open."""
     assert match_rules([{"bank_code": "KTC", "is_active": True}], "x@y.com", "a.pdf") == []
+
+
+# ── KBANK: a toggle, not a pattern list (decision-log #37) ────────────────────
+#
+# The KBANK rule reads its commission tax invoice when off and one merchant's settlement
+# report when on, and while it exists no other rule may claim either file — an "Other"
+# `.pdf` rule reading the tax invoice beside a posted settlement report books the
+# commission and its VAT twice.
+
+FEE = "E-TAX_INVOICE_CARD_451005282039001_210726E00035291_20260721.PDF"
+SUM = "KB1P554V2_SUM_451005282039001_20260721.pdf"
+OTHER_MERCHANT_SUM = "KB1P554V2_SUM_999999999999999_20260721.pdf"
+OTHER_PDF = {"bank_code": None, "filename_patterns": [".pdf"], "is_active": True}
+
+
+def _kbank(on: bool, merchant: str | None = "451005282039001", **over) -> dict:
+    return {
+        "bank_code": "KBANK",
+        # Stored by hand before the toggle existed; never read for KBANK any more.
+        "filename_patterns": ["KB1P554V2", "E-TAX"],
+        "is_active": True,
+        "doc_type": "ar_reconcile" if on else "fee_invoice",
+        "merchant_id": merchant,
+        **over,
+    }
+
+
+@pytest.mark.parametrize(
+    ("on", "filename", "claimed"),
+    [
+        (False, FEE, True),
+        (False, SUM, False),
+        (True, SUM, True),
+        (True, FEE, False),
+        (True, OTHER_MERCHANT_SUM, False),
+    ],
+)
+def test_the_toggle_decides_which_kbank_file_is_read(on, filename, claimed):
+    rules = [_kbank(on), OTHER_PDF]
+    assert _codes("employee@hotelgroup.com", filename, rules) == (["KBANK"] if claimed else [])
+
+
+def test_the_kbank_rule_never_matches_by_pattern():
+    """Its stored patterns name a file of neither kind; it does not claim it."""
+    assert _codes("x@y.com", "E-TAX_summary_aug.pdf", [_kbank(False)]) == []
+
+
+def test_a_settlement_rule_saved_before_merchants_reads_any_settlement_report():
+    """Until it is saved again, which then asks for the merchant."""
+    assert _codes("x@y.com", OTHER_MERCHANT_SUM, [_kbank(True, merchant=None)]) == ["KBANK"]
+
+
+def test_a_switched_off_kbank_rule_still_keeps_its_files_from_other_rules():
+    """Off is the BU keying KBANK by hand, not an opening for the `.pdf` rule."""
+    rules = [_kbank(False, is_active=False), OTHER_PDF]
+    assert _codes("x@y.com", FEE, rules) == []
+
+
+def test_a_settlement_report_is_never_read_as_a_fee_invoice():
+    assert _codes("x@y.com", SUM, [OTHER_PDF]) == []
+
+
+def test_without_a_kbank_rule_its_tax_invoice_is_an_ordinary_file():
+    """Nothing reconciles KBANK, so nothing can be booked twice — as before."""
+    assert _codes("x@y.com", FEE, [OTHER_PDF]) == [None]
+
+
+def test_other_files_still_reach_other_rules_beside_a_kbank_rule():
+    assert _codes("x@y.com", "MDR-aug.pdf", [_kbank(True), OTHER_PDF]) == [None]

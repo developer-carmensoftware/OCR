@@ -32,6 +32,8 @@ interface Case {
   mappings: Record<string, { dept: string; acc: string }>
   paymentTypes: Record<string, { dept: string; acc: string }>
   details: Record<string, string>[]
+  /** Present on a settlement-report case: its grouping and its total row. */
+  settlement?: { postType: 'Detail' | 'Summary'; totalRow: Record<string, string> }
   expectedJvhDateUtc: string
   expected: Record<string, unknown>
 }
@@ -72,6 +74,7 @@ describe('cc JV cross-language contract', () => {
         // GROUP_DEBIT_BY_TRANSACTION is false, so the wizard always consolidates —
         // which is the only layout the Python twin implements.
         consolidateDebit: true,
+        settlement: c.settlement,
       }
     )
 

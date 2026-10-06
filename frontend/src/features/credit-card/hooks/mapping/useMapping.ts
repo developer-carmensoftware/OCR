@@ -469,7 +469,11 @@ export function useMapping() {
         mappings,
         paymentAmount: paymentTypes.paymentAmount,
       })
-      localStorage.setItem(appKey('accounting_config_updated'), Date.now().toString())
+      // Tabs holding this BU's rules (the wizard, an open review) re-read on this key, so it
+      // goes out once there is nothing left to save — after the posting profile below too,
+      // or a review re-reading early would regroup on the Credit breakdown it is replacing.
+      const announce = () =>
+        localStorage.setItem(appKey('accounting_config_updated'), Date.now().toString())
 
       // Rules first, JV posting profile second — same order and the same reasoning
       // ReviewDocument.approve() uses for rules-then-JV: a correction is right on its
@@ -483,6 +487,8 @@ export function useMapping() {
             post_type: settlement.postType,
           })
         } catch (err) {
+          // The rules above did save, and the tabs reading them should hear so.
+          announce()
           setSaving(false)
           setModalConfig({
             show: true,
@@ -495,6 +501,7 @@ export function useMapping() {
           return
         }
       }
+      announce()
 
       showToast(t('cc.saveDone', { bank: selectedCode ?? '' }), 'success')
       // Opened from the wizard or the queue in a tab of its own: that tab re-reads on the

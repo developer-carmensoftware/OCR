@@ -246,25 +246,36 @@ def _config(case: dict) -> SimpleNamespace:
     )
 
 
+def _detail(d: dict) -> ExtractedDetailRow:
+    return ExtractedDetailRow(
+        transaction=d["Transaction"],
+        pay_amt=d["PayAmt"],
+        commis_amt=d["CommisAmt"],
+        tax_amt=d["TaxAmt"],
+        total=d["Total"],
+    )
+
+
 def test_contract_fixture():
     for case in CONTRACT["cases"]:
         # The TS builder takes fixed types and payment types as two dicts; ours takes
         # one merged dict. Merging here (rather than in the fixture) keeps that
         # difference visible instead of baking one side's shape into the shared file.
         mappings = {**case["mappings"], **case["paymentTypes"]}
-        details = [
-            ExtractedDetailRow(
-                transaction=d["Transaction"],
-                pay_amt=d["PayAmt"],
-                commis_amt=d["CommisAmt"],
-                tax_amt=d["TaxAmt"],
-                total=d["Total"],
-            )
-            for d in case["details"]
-        ]
+        details = [_detail(d) for d in case["details"]]
 
+        # A settlement case also carries the report's grouping and its total row.
+        settlement = case.get("settlement")
+        settle_kw = (
+            {
+                "total_row": _detail(settlement["totalRow"]),
+                "grouping": partial(group_key, post_type=settlement["postType"]),
+            }
+            if settlement
+            else {}
+        )
         body = build_gljv_payload(
-            build_jv_rows(details, mappings),
+            build_jv_rows(details, mappings, **settle_kw),
             doc_date=case["docDate"],
             bank_code=case["bankCode"],
             config=_config(case),

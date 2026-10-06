@@ -14,7 +14,7 @@
 > รายละเอียดอยู่ที่ §7 ท้ายหน้านี้ และ CARMEN_INTEGRATION.md §2.8
 >
 > ถ้าตกลงตามนี้ Carmen **ไม่ต้องเรียก API ของเราเลย** ลิงก์มี `token` ตัวเดียว
-> (ตกลงกันแล้วว่าใช้ token เดียว, decision-log #36) หน้าเราเอา `token` นั้นไป `PUT /settings/token` ให้เองด้วย ส่วน §6 (badge) ยังใช้ได้ถ้าต้องการ
+> (ตกลงกันแล้วว่าใช้ token เดียว, decision-log #38) หน้าเราเอา `token` นั้นไป `PUT /settings/token` ให้เองด้วย ส่วน §6 (badge) ยังใช้ได้ถ้าต้องการ
 > ถ้ายังไม่ตกลง เนื้อหาข้างล่างทั้งหมดยังเป็นสัญญาที่ใช้งานจริง
 
 ---
@@ -193,10 +193,11 @@ Authorization: <token>
 |---|---|---|
 | `bank_code` | string \| null | ดูค่าที่ใช้ได้จาก `GET /bank-codes` (§0) · `null` = อื่น ๆ · **ห้ามซ้ำกันในลิสต์ `rules` เดียวกัน รวมถึง `null` ก็ได้แค่ 1 rule** |
 | `bank_sender_email` | string \| null | จำกัดผู้ส่งของ rule นี้ |
-| `filename_patterns` **required ≥1** | string[] | substring ของชื่อไฟล์ ไม่สนตัวพิมพ์ · เข้าเงื่อนไขข้อใดข้อหนึ่งก็พอ · **ไฟล์ที่ไม่ตรง rule ไหนเลย = ไม่ถูกอ่าน ไม่ถูกคิดเงิน** · ใส่ `".pdf"` = รับ PDF ทุกไฟล์ |
+| `filename_patterns` **required ≥1** (ยกเว้น `KBANK`) | string[] | substring ของชื่อไฟล์ ไม่สนตัวพิมพ์ · เข้าเงื่อนไขข้อใดข้อหนึ่งก็พอ · **ไฟล์ที่ไม่ตรง rule ไหนเลย = ไม่ถูกอ่าน ไม่ถูกคิดเงิน** · ใส่ `".pdf"` = รับ PDF ทุกไฟล์ · **rule `KBANK` ไม่ใช้ช่องนี้** — `doc_type` เป็นตัวกำหนดไฟล์ (CARMEN_INTEGRATION.md §2.9) |
 | `pdf_password` | string \| null | **write-only** · **ไม่ส่ง = คงค่าเดิม** · `""` = ล้างทิ้ง · มีค่า = ตั้งใหม่ |
 | `is_active` | bool | default `true` |
 | `doc_type` | `"fee_invoice"` \| `"ar_reconcile"` \| null | **ไม่ส่ง = คงค่าเดิม** · default `fee_invoice` · `ar_reconcile` = ไฟล์ของ rule นี้เป็น settlement report (ตอนนี้มีแค่ `KBANK`) · `422 no_settlement_layout` / `invalid` (CARMEN_INTEGRATION.md §2.9) |
+| `merchant_id` | string \| null | merchant ของ settlement report — เลขหลัง `SUM_` ในชื่อไฟล์ · **required (≥6 หลัก) เมื่อ `doc_type: "ar_reconcile"`** · เก็บเป็นตัวเลขล้วน · **ไม่ส่ง = คงค่าเดิม** · `""` = ล้างทิ้ง · `422 required` / `invalid` |
 
 ⚠ **`pdf_password` ผูกกับ `bank_code`** — ตอน save เรา match rule เก่ากับใหม่ด้วย `bank_code`
 ถ้าลูกค้าแก้ `bank_code` ของ rule เดิม password ที่เก็บไว้จะไม่ตามไป ต้องกรอกใหม่
