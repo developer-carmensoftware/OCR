@@ -366,7 +366,7 @@ client-IP logging and rate limiting read a spoofable header.
 ```env
 OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_OCR_MODEL=google/gemini-2.5-flash-lite
-OPENROUTER_SUGGESTION_MODEL=google/gemini-2.0-flash-lite
+OPENROUTER_SUGGESTION_MODEL=deepseek/deepseek-v4-flash   # non-Google: must be served by the allowlist below
 OPENROUTER_AP_INVOICE_MODEL=google/gemini-2.5-flash-lite
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 LLM_DATA_COLLECTION=deny            # per-request no-train/no-collect enforcement (see Key Design Decisions)

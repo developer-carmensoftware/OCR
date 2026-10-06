@@ -328,6 +328,37 @@ class TestProviderPrefs:
             assert _provider_prefs("text")["only"] == ["fireworks", "deepinfra"]
             assert "only" not in _provider_prefs("vision")
 
+    @pytest.mark.parametrize(
+        ("model", "allowlist", "unroutable"),
+        [
+            # The dev drift of 2026-09-30: a Google model behind the US-host allowlist.
+            ("google/gemini-2.5-flash-lite", ["fireworks", "deepinfra", "digitalocean"], True),
+            # The decided pairing (2026-07-13).
+            ("deepseek/deepseek-v4-flash", ["fireworks", "deepinfra", "digitalocean"], False),
+            # No allowlist, or one that names Google, routes fine.
+            ("google/gemini-2.5-flash-lite", [], False),
+            ("google/gemini-2.5-flash-lite", ["google-vertex"], False),
+            # The other way round: a Google-only allowlist serves no DeepSeek.
+            ("deepseek/deepseek-v4-flash", ["google-ai-studio", "google-vertex"], True),
+        ],
+    )
+    def test_a_text_model_its_allowlist_cannot_serve_is_unroutable(
+        self, model, allowlist, unroutable
+    ):
+        from app.config import text_model_unroutable
+
+        assert text_model_unroutable(model, allowlist) is unroutable
+
+    def test_the_shipped_defaults_route(self):
+        """The default model and the default allowlist must agree — they did not."""
+        from app.config import Settings, text_model_unroutable
+
+        fields = Settings.model_fields
+        assert not text_model_unroutable(
+            fields["openrouter_suggestion_model"].default,
+            [p for p in fields["llm_text_provider_allowlist"].default.split(",") if p],
+        )
+
 
 # ── Capacity pool: acquire / distribution / failover ──────────────────────────
 

@@ -43,8 +43,13 @@ services:
         value: https://openrouter.ai/api/v1
       - key: OPENROUTER_OCR_MODEL
         value: google/gemini-2.5-flash-lite
+      # Non-Google, pinned to US hosts by the allowlist below (decided 2026-07-13). The two
+      # move together: a Google model here, or a Google-only allowlist, 404s every
+      # suggestion call (app/config.py `text_model_unroutable` logs CRITICAL at boot).
       - key: OPENROUTER_SUGGESTION_MODEL
-        value: google/gemini-2.0-flash-lite
+        value: deepseek/deepseek-v4-flash
+      - key: LLM_TEXT_PROVIDER_ALLOWLIST
+        value: fireworks,deepinfra,digitalocean
       - key: OPENROUTER_AP_INVOICE_MODEL
         value: google/gemini-2.5-flash-lite
 

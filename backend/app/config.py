@@ -66,7 +66,10 @@ class Settings(BaseSettings):
     llm_max_queue_wait_seconds: float = 10.0
     openrouter_ocr_model: str = "google/gemini-2.0-flash-001"
     openrouter_ap_invoice_model: str = "google/gemini-2.0-flash-001"
-    openrouter_suggestion_model: str = "google/gemini-2.0-flash-001"
+    # Non-Google on purpose (2026-07-13): `llm_text_provider_allowlist` below pins it to
+    # US hosts, and that allowlist names no provider that serves a Google model — so a
+    # Google model here 404s on every call (`text_model_unroutable`, checked at boot).
+    openrouter_suggestion_model: str = "deepseek/deepseek-v4-flash"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     # ── LLM privacy enforcement ───────────────────────────────────────────────
@@ -284,6 +287,36 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def text_model_unroutable(model: str, allowlist: list[str]) -> bool:
+    """The text model pinned to providers none of which serves it.
+
+    OpenRouter answers every such call with `404 No allowed providers`, and the GL
+    suggestion swallows the failure: documents park with empty pickers and nothing says
+    why. Google models are served only by `google-vertex` / `google-ai-studio`, and those
+    serve nothing else — so either side of the pairing can break it.
+    """
+    if not allowlist:
+        return False
+    google = [p for p in allowlist if p.lower().startswith("google")]
+    others = [p for p in allowlist if not p.lower().startswith("google")]
+    return not (google if model.startswith("google/") else others)
+
+
+# Every environment, not only production: this one broke AI suggestions on dev silently
+# for a week (2026-09-30 → 10-05) when the suggestion model was switched to a Google one.
+if text_model_unroutable(
+    settings.openrouter_suggestion_model, settings.llm_text_provider_allowlist_list
+):
+    _config_logger.critical(
+        "OPENROUTER_SUGGESTION_MODEL=%r, but LLM_TEXT_PROVIDER_ALLOWLIST=%r names no provider "
+        "that serves it — every AI GL suggestion will fail (OpenRouter 404) and documents "
+        "will park with empty pickers. The pairing decided on 2026-07-13 is "
+        "deepseek/deepseek-v4-flash with fireworks,deepinfra,digitalocean.",
+        settings.openrouter_suggestion_model,
+        settings.llm_text_provider_allowlist,
+    )
 
 
 def normalize_origin_regex(raw: str) -> str:
