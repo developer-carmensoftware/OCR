@@ -38,7 +38,11 @@ export function useCarmenSSO(): CarmenSSOState {
     // Only the settings link carries it: a BU posting token Carmen minted for this open,
     // which killed the one we hold (decision #35). Stashed, not sent: the settings page
     // stores it once /exchange has created the tenant it belongs to.
-    const postingToken = params.get('posting_token')
+    // Agreed with Carmen: one token. The settings link carries only `token`, and that same
+    // value is the posting credential; `posting_token` stays honoured if Carmen sends one.
+    // Settings link only: the queue's link must not overwrite the stored credential.
+    const postingToken =
+      params.get('posting_token') || (hash.includes('email-settings?') ? token : null)
     if (postingToken) sessionStorage.setItem(CARMEN_POSTING_TOKEN_KEY, postingToken)
 
     const cleanHash = hash.slice(0, qIndex) || '#/'
