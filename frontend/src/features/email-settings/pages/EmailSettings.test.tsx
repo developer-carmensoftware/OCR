@@ -331,25 +331,6 @@ describe('the two exits that lose something', () => {
     confirm.mockRestore()
   })
 
-  it('asks before deleting the stored posting token', () => {
-    // Our copy is what every JV of this BU posts with; deleting it stops them all.
-    tokenStatus = {
-      configured: true,
-      fingerprint: '9c1f3a2b',
-      carmen_uri: 'https://hotel.carmenwork.com',
-      verified_at: '2026-10-01T00:00:00Z',
-    }
-    mountWith([])
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-
-    fireEvent.click(screen.getByText('Set a token manually'))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
-
-    expect(confirm).toHaveBeenCalled()
-    expect(removeToken).not.toHaveBeenCalled()
-    confirm.mockRestore()
-  })
-
   it('says at the top when the token Carmen sent could not be stored', () => {
     // Minting it killed the stored one, so the card's "Connected" would be a lie.
     tokenStatus = {

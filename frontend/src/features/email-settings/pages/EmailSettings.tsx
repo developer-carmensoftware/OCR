@@ -548,7 +548,6 @@ function Skeleton() {
 export default function EmailSettings() {
   const ctrl = useEmailSettings()
   const { draft, dirty, settings, fieldErrors, saving } = ctrl
-  const [tokenInput, setTokenInput] = useState('')
   /** The rule dialog: closed, a new rule (`index: null`), or the rule at `index`. */
   const [dialog, setDialog] = useState<{ index: number | null } | null>(null)
 
@@ -936,8 +935,7 @@ export default function EmailSettings() {
         >
           {/* Carmen issues it (its menu mints a fresh one on every open and passes it in the
               link, CARMEN_INTEGRATION.md §2.8), so the customer reads its status and nothing more.
-              Pasting one by hand is support's fallback, folded away so a customer is not
-              handed a box they have nothing to put in. */}
+              There is no manual entry: a customer has no token to paste. */}
           <div className="email-panel">
             <p className="email-cred" data-tone={tokenTone}>
               <span className="email-dot" aria-hidden="true" />
@@ -960,63 +958,9 @@ export default function EmailSettings() {
             {tokenTone !== 'ok' && (
               <p className="email-help">
                 Nothing can post until Carmen connects this business unit. Reopen this page from
-                Carmen&apos;s menu, or contact support.
+                Carmen&apos;s menu.
               </p>
             )}
-            <details className="email-manual-token">
-              <summary>
-                <ChevronRight
-                  className="email-manual-token__chevron"
-                  size={14}
-                  aria-hidden="true"
-                />
-                Set a token manually
-              </summary>
-              <div className="email-copyrow">
-                <input
-                  className="admin-form-input"
-                  type="password"
-                  placeholder="Paste the Carmen token JVs are posted with"
-                  aria-label="Carmen posting token"
-                  value={tokenInput}
-                  onChange={e => setTokenInput(e.target.value)}
-                  autoComplete="new-password"
-                />
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled={!tokenInput.trim() || saving}
-                  onClick={async () => {
-                    if (await ctrl.saveToken(tokenInput.trim())) {
-                      setTokenInput('')
-                      showToast('Token checked and stored', 'success')
-                    }
-                  }}
-                >
-                  Save token
-                </Button>
-                {token?.configured && (
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    disabled={saving}
-                    onClick={() => {
-                      // Deleting our copy stops every JV of this BU from posting, and it does
-                      // not revoke the token in Carmen — worth one question.
-                      if (
-                        window.confirm(
-                          'Delete the stored token? Documents will stop posting until a new one is set.'
-                        )
-                      ) {
-                        void ctrl.removeToken()
-                      }
-                    }}
-                  >
-                    Delete
-                  </Button>
-                )}
-              </div>
-            </details>
           </div>
         </Section>
       </div>
