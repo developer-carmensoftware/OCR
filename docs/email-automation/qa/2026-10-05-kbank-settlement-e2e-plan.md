@@ -1,7 +1,11 @@
 # KBANK settlement & review — end-to-end test plan
 
-**Date:** 2026-10-05 · **Branch under test:** `feat/settlement-review-like-fee-invoice` (uncommitted)
+**Date:** 2026-10-05 · **Branch under test:** `feat/settlement-review-like-fee-invoice`
 · **Environment:** dev only (`ycykjisvvrrbgeiirqre`, `dev.carmen4.com`).
+
+> **Run 2026-10-05 (`1791179483`), Carmen dry-run:** B, C, D and the review screen pass. A
+> (settings dialog, needs a real Carmen token) and E were not run live. See the
+> [report](2026-10-05-kbank-settlement-e2e-report.md), including findings F-1–F-3.
 
 ## Goal
 
