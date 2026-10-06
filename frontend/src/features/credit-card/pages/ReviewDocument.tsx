@@ -10,7 +10,7 @@ import ARReviewPane from '@/features/credit-card/components/ARReviewPane'
 import { useT } from '@/i18n/LanguageContext'
 import { useReviewDocument } from '@/features/credit-card/hooks/useReviewDocument'
 import { useScrollLock } from '@/shared/hooks/useScrollLock'
-import { FIX, stopText, warningText } from '@/shared/lib/reviewReasons'
+import { FIX, fixLinkProps, stopText, warningText } from '@/shared/lib/reviewReasons'
 
 interface Props {
   id: string
@@ -340,7 +340,7 @@ export default function ReviewDocument({ id, onClose, onDone, bankHint }: Props)
                       this app since decision #34, so it opens in this tab, as the GL
                       mapping fix always did. */}
                   {fix && (
-                    <a className="btn btn-outline btn-sm rd-alert-fix" href={fix.href}>
+                    <a className="btn btn-outline btn-sm rd-alert-fix" {...fixLinkProps(fix)}>
                       {t(fix.key)}
                     </a>
                   )}
