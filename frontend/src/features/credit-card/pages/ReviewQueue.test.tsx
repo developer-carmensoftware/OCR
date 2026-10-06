@@ -254,7 +254,7 @@ describe('a skipped attachment on Not posted', () => {
     expect(screen.getByText(/password/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open settings' })).toHaveAttribute(
       'href',
-      '#/CreditCardOCR/email-settings'
+      expect.stringMatching(/#\/setting$/)
     )
   })
 
@@ -290,8 +290,8 @@ describe('what a stopped row offers', () => {
     // Every field this button is about lives on our settings screen (decision #34): this
     // tab, like Fix mapping, and the page's Back to queue brings the reviewer home.
     const link = screen.getByRole('link', { name: 'Open settings' })
-    expect(link).toHaveAttribute('href', '#/CreditCardOCR/email-settings')
-    expect(link).not.toHaveAttribute('target')
+    expect(link).toHaveAttribute('href', expect.stringMatching(/#\/setting$/))
+    expect(link).toHaveAttribute('target', '_blank')
   })
 
   it('never offers a repair on a document waiting for review', async () => {
@@ -724,7 +724,7 @@ describe('the actions column', () => {
       mount([doc({ status: 'skipped', reason_code, total: 0 })])
       expect(await screen.findByRole('link', { name: 'Open settings' })).toHaveAttribute(
         'href',
-        '#/CreditCardOCR/email-settings'
+        expect.stringMatching(/#\/setting$/)
       )
     }
   )
@@ -735,7 +735,7 @@ describe('the actions column', () => {
     mount([doc({ status: 'failed', reason_code: 'tax_id_mismatch', total: 0 })])
     expect(await screen.findByRole('link', { name: 'Open settings' })).toHaveAttribute(
       'href',
-      '#/CreditCardOCR/email-settings'
+      expect.stringMatching(/#\/setting$/)
     )
   })
 
@@ -750,7 +750,7 @@ describe('the actions column', () => {
     // dead token shows — under the word that says what is wrong.
     expect(screen.getByRole('link', { name: 'Reconnect' })).toHaveAttribute(
       'href',
-      '#/CreditCardOCR/email-settings'
+      expect.stringMatching(/#\/setting$/)
     )
     expect(screen.queryByRole('link', { name: 'Open settings' })).not.toBeInTheDocument()
   })

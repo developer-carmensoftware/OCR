@@ -1,3 +1,4 @@
+import { getCarmenUrl } from './url'
 import type { TKey } from '@/i18n/dict'
 
 /**
@@ -131,11 +132,10 @@ export function warningText(
   return text === key ? warning.code : text
 }
 
-/** The AI JV Automation settings screen — ours, in this app, since 2026-10-01 (decision #34). */
-const SETTINGS = {
-  key: 'review.actionOpenSettings' as TKey,
-  href: '#/CreditCardOCR/email-settings',
-}
+/** Carmen's settings screen, as a path: `getCarmenUrl` reads the session's Carmen origin, which
+ *  is not set when this module is imported, so `fixLinkProps` resolves it at render. It must be
+ *  Carmen's page, not ours: opening it there is what mints the BU posting token (decision #35). */
+const SETTINGS = { key: 'review.actionOpenSettings' as TKey, href: '/setting' }
 
 /**
  * Where a person fixes each cause — and nothing at all for the ones they cannot.
@@ -176,4 +176,14 @@ export const FIX: Record<string, { key: TKey; href: string }> = {
   wrong_pdf_password: SETTINGS,
   ingest_paused: SETTINGS,
   tax_id_mismatch: SETTINGS,
+}
+
+/** `<a>` props for a fix button: an in-app hash stays in this tab, Carmen's screen gets its own. */
+export function fixLinkProps(fix: { href: string }): {
+  href: string
+  target?: string
+  rel?: string
+} {
+  if (fix.href.startsWith('#')) return { href: fix.href }
+  return { href: getCarmenUrl(fix.href), target: '_blank', rel: 'noopener noreferrer' }
 }

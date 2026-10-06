@@ -1476,7 +1476,7 @@ describe('a parked settlement report', () => {
     // In the space the table would have filled, and as the reason the button gives.
     expect(screen.getAllByText(/no longer configured/i)).toHaveLength(2)
     const link = screen.getByRole('link', { name: 'Open settings' })
-    expect(link).toHaveAttribute('href', '#/CreditCardOCR/email-settings')
+    expect(link).toHaveAttribute('href', expect.stringMatching(/#\/setting$/))
   })
 })
 

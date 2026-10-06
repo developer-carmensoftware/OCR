@@ -4,7 +4,7 @@ import { ExternalLink } from 'lucide-react'
 import { useT } from '@/i18n/LanguageContext'
 import CustomModal from '@/shared/components/common/CustomModal'
 import { glFieldLabel, glFieldList } from '@/features/credit-card/lib/glFieldLabels'
-import { FIX, stopText } from '@/shared/lib/reviewReasons'
+import { FIX, fixLinkProps, stopText } from '@/shared/lib/reviewReasons'
 import { getCarmenUrl } from '@/shared/lib/url'
 import { recordInputTax } from '@/features/credit-card/api/emailReview'
 import type { ReviewDocument } from '@/features/credit-card/api/emailReview'
@@ -213,7 +213,7 @@ function RowAction({ row, onOpen, onChanged }: Props) {
   // Where it goes is `FIX`'s call, not this component's — the same door the dialog's banner
   // opens, in this tab: every fix is a screen of this app (decision #34).
   return (
-    <a className="btn btn-outline btn-sm" href={fix.href}>
+    <a className="btn btn-outline btn-sm" {...fixLinkProps(fix)}>
       {t(fix.key)}
     </a>
   )
