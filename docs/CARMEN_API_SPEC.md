@@ -13,8 +13,8 @@
 > `#/CreditCardOCR` ที่ใช้อยู่แล้ว ส่วนใครกดเมนูได้ Carmen กำหนดเองตามระบบสิทธิ์ที่มีอยู่
 > รายละเอียดอยู่ที่ §7 ท้ายหน้านี้ และ CARMEN_INTEGRATION.md §2.8
 >
-> ถ้าตกลงตามนี้ Carmen **ไม่ต้องเรียก API ของเราเลย** ทุกครั้งที่เปิดเมนูให้ mint token ของ BU ใหม่
-> แล้วใส่มาในลิงก์เป็น `posting_token` หน้าเราจะ `PUT /settings/token` ให้เอง ส่วน §6 (badge) ยังใช้ได้ถ้าต้องการ
+> ถ้าตกลงตามนี้ Carmen **ไม่ต้องเรียก API ของเราเลย** ลิงก์มี `token` ตัวเดียว
+> (ตกลงกันแล้วว่าใช้ token เดียว, decision-log #38) หน้าเราเอา `token` นั้นไป `PUT /settings/token` ให้เองด้วย ส่วน §6 (badge) ยังใช้ได้ถ้าต้องการ
 > ถ้ายังไม่ตกลง เนื้อหาข้างล่างทั้งหมดยังเป็นสัญญาที่ใช้งานจริง
 
 ---
@@ -327,18 +327,17 @@ curl "https://{ocr-host}/api/v1/carmen/notifications?uri=https%3A%2F%2Fhotelgrou
 **Carmen ทำ 1 เมนู ไม่มีฟอร์ม** แสดงเฉพาะ user ที่ระบบสิทธิ์ของ Carmen อนุญาต กดแล้วทำ 2 ขั้น:
 
 ```text
-1) mint token ของ BU ตัวใหม่ (ทับตัวเดิม ตัวเดิมหมดอายุไปเอง)
-2) เปิด tab ใหม่ไปที่
-   https://{ocr-app}/#/CreditCardOCR/email-settings?token=<token ของ user>&posting_token=<token ของ BU ที่เพิ่ง mint>&bu=<bu>&user=<user>&uri=<origin ของ Carmen>
+เปิด tab ใหม่ไปที่
+   https://{ocr-app}/#/CreditCardOCR/email-settings?token=<token ของ user>&bu=<bu>&user=<user>&uri=<origin ของ Carmen>
 ```
 
 ไม่ต้องเรียก API ของเราเลย ลิงก์เป็นรูปแบบเดียวกับลิงก์ `#/CreditCardOCR` ที่ใช้อยู่แล้ว ต่างกันแค่ route
-กับ `posting_token` ที่เพิ่มมา หน้าเราจะ `PUT /settings/token` ด้วย `posting_token` ก่อนอ่านอย่างอื่น
-(เราเช็คกับ Carmen ก่อนเก็บเหมือนเดิม) แล้วใช้ `token` เรียก §1–§2 · สอง token นี้ห้ามสลับกัน:
-`token` คือคนที่เปิดหน้า `posting_token` คือ BU
+หน้าเราจะ `PUT /settings/token` ด้วย `token` นั้นก่อนอ่านอย่างอื่น (เราเช็คกับ Carmen ก่อนเก็บเหมือนเดิม)
+แล้วใช้ `token` เดิมเรียก §1–§2 · **ใช้ token เดียว**: credential ที่โพสต์ JV คือ token ของคนที่เปิดเมนูล่าสุด
+ดังนั้นมันมีอายุเท่าที่ Carmen ให้ token นั้นใช้ได้ (ถ้า Carmen ยังส่ง `posting_token` มาด้วย เราจะใช้ค่านั้นแทน)
 
 **ทำไมส่ง token ผ่านลิงก์ได้** — ค่าหลัง `#` ไม่ถูกส่งไป server ไหนเลย (ทั้งของเราและของ Carmen) และไม่อยู่ใน
-`Referer` หน้าเราลบ query ออกจาก address bar ทันทีที่อ่าน และระบบ error reporting ซ่อนทั้งสอง token
+`Referer` หน้าเราลบ query ออกจาก address bar ทันทีที่อ่าน และระบบ error reporting ซ่อน token
 ที่เหลือคือ browser history ในเครื่องนั้น ซึ่ง token จะใช้ไม่ได้แล้วตั้งแต่มีคนเปิดเมนูครั้งถัดไป
 
 **ถ้าเก็บไม่สำเร็จ** (Carmen ไม่รับ token, เน็ตหลุด) — เพราะการเปิดเมนูทำให้ token ตัวเดิมที่เราเก็บไว้ใช้ไม่ได้แล้ว

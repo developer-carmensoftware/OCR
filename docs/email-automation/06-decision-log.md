@@ -1063,3 +1063,23 @@ and a broad pattern catches both files.
 
 **What it costs.** A KBANK file renamed before forwarding is no longer read by the KBANK rule.
 Neither is any third KBANK document a BU might once have matched by pattern.
+
+## 38. One token: the link's `token` is the posting credential (2026-10-06)
+
+**Decided:** with Carmen, 2026-10-06. It amends #35's "two tokens, kept apart".
+
+**Decision.** Carmen's menu sends one `token` in the settings link and nothing else. On a link
+that opens `email-settings`, `useCarmenSSO` stashes that `token` as the posting credential and
+`useEmailSettings.reload()` `PUT`s it before reading anything, as #35 did for `posting_token`.
+An explicit `posting_token` still wins, so Carmen can add one later without a release here.
+
+- **Found by a real open.** With #35 alone, Carmen's link carried no `posting_token`, so no
+  `PUT` happened and the card stayed on the old, rejected credential (DevTools: GETs only).
+- **Settings link only.** The queue's link carries the same `token`, but must not replace a
+  working credential with a user token that may be about to expire.
+- **No manual entry.** The *Set a token manually* paste/Delete section is gone; a customer
+  has no token to paste, and the only source is the link.
+- **What it costs.** The credential is now a person's token, so JVs post as the last person to
+  open the menu and stop when Carmen expires or replaces that token (a new login may). The
+  card then reads *No longer accepted*, a post fails `carmen_unauthorized`, and *Reconnect*
+  opens Carmen's `/setting` (#278). Verified end to end 2026-10-06: Connected, then a JV posted.

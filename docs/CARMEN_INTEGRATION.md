@@ -630,24 +630,26 @@ OCR app.
 **What Carmen builds: one menu item, no form.** Show it only to users your own permission
 model allows to configure Email Automation. When it is clicked:
 
-1. Mint a fresh posting token for the BU (§2.6). Minting replaces the previous one, which
-   stops working; that is what you told us your side does, and it is what we rely on.
-2. Open, in a new tab, the same SSO link you already use for the queue, with a different
-   route and one more parameter, `posting_token`:
+1. Open, in a new tab, the same SSO link you already use for the queue, with a different
+   route (**one token**, agreed 2026-10-06; decision-log #38):
 
    ```text
-   https://<ocr-app>/#/CreditCardOCR/email-settings?token=<user's Carmen token>&posting_token=<the BU token you just minted>&bu=<bu>&user=<user>&uri=<your origin>
+   https://<ocr-app>/#/CreditCardOCR/email-settings?token=<user's Carmen token>&bu=<bu>&user=<user>&uri=<your origin>
    ```
 
-That is all. You call none of our endpoints. Our screen stores `posting_token` through
-`PUT /settings/token` (§2.6) before it reads anything, so it is checked against your Carmen
-on the way in, and then reads and writes §2.2–§2.3 with `token`, exactly as your screen would
-have. Keep the two apart: `token` is the person at the screen, `posting_token` is the BU.
+   (Earlier drafts minted a separate BU token and sent it as `posting_token`. If you still
+   send one we use it in place of `token`; you do not have to.)
+
+That is all. You call none of our endpoints. Our screen stores `token` as the posting
+credential through `PUT /settings/token` (§2.6) before it reads anything, so it is checked
+against your Carmen on the way in, and then reads and writes §2.2–§2.3 with the same `token`,
+exactly as your screen would have. Consequence of one token: JVs post as the last person to
+open the menu, and posting works for as long as your side keeps that token valid.
 
 **Why a credential in a link is acceptable here.** Everything after `#` stays in the
 browser: it is never sent to our server or yours, and never appears in a `Referer`. Our page
 removes the query from the address bar the moment it reads it, and our error reporting
-redacts both tokens. What remains is the browser's own history on that machine, and a token
+redacts the token. What remains is the browser's own history on that machine, and a token
 there stops working the next time anyone opens the menu, because that open mints its
 replacement.
 
@@ -965,7 +967,7 @@ Two consequences worth stating plainly:
 >
 > | # | We need | Blocks |
 > |---|---|---|
-> | A | A menu item, shown only to users you allow, that runs §2.8 steps 1–2: mint a fresh BU token, then open our `#/CreditCardOCR/email-settings` with it as `posting_token` | every customer's way into the settings |
+> | A | A menu item, shown only to users you allow, that runs §2.8: open our `#/CreditCardOCR/email-settings` with the one SSO `token` (decision-log #38) | every customer's way into the settings |
 > | B | Item 3 below, unchanged: the JV endpoint accepts the BU token | automated posting |
 >
 > Items 4–7 below do not change. The settings form, the `auto_post` switch and the
