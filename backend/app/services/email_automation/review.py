@@ -289,6 +289,21 @@ async def approve_document(
                 )
             rows = _as_shown([r.model_dump() for r in built.rows], rows)
             description = built.description
+        else:
+            # The screen will not post a line carrying money without an account (JvEditor's
+            # `blankAccount`), and neither does this. The API is reachable without the
+            # screen, and Carmen refuses such a line only after the post — as
+            # `carmen_rejected`, with the GL code nowhere in its message.
+            blank = [
+                str(r.get("desc") or "a line")
+                for r in rows
+                if (num(str(r.get("debit") or 0)) or num(str(r.get("credit") or 0)))
+                and not str(r.get("acc") or "").strip()
+            ]
+            if blank:
+                raise ValidationError(
+                    "Choose an account for every line that carries an amount: " + ", ".join(blank)
+                )
 
         payload = build_gljv_payload(
             rows,

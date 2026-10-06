@@ -3110,6 +3110,30 @@ async def test_approve_posts_the_rows_the_reviewer_saw():
 
 
 @pytest.mark.asyncio
+async def test_approve_refuses_a_line_with_money_and_no_account():
+    """The screen blocks this; the API must too. Carmen would refuse it only after the
+    post, as `carmen_rejected`, with nothing saying which line lacked a code (2026-10-05
+    end-to-end run, F-3). A display-only zero leg with no account is not a problem."""
+    row = _pending_row()
+    db = _ReviewDB(row)
+    rows = [
+        {"dept": "GEN", "acc": "", "desc": "บัตรเครดิต/เดบิต", "debit": 0, "credit": 25091.0},
+        {"dept": "GEN", "acc": "", "desc": "Bank Account", "debit": 0, "credit": 0},
+    ]
+    with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-1"}) as p:
+        with pytest.raises(ValidationError, match="บัตรเครดิต/เดบิต$"):
+            await review.approve_document(
+                row.id,
+                tenant_id=str(row.tenant_id),
+                reviewer="u",
+                extracted=_extracted(),
+                rows=rows,
+            )
+    p.post.assert_not_awaited()
+    assert row.status == "pending_review"  # still the reviewer's to fix and approve
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("branch_no", "expected"),
     [("00012", "00012"), (None, "00000")],
