@@ -80,6 +80,17 @@ export const en = {
 
   'apiKeys.toast.revoked': 'Key revoked',
   'apiKeys.toast.loadFailed': 'API keys: {error}',
+
+  'apiKeys.pms.title': 'PMS connection',
+  'apiKeys.pms.description':
+    "Carmen sends this business unit's PMS data to the AI with an API key. Create the key here, then paste it into the PMS settings in Carmen.",
+  'apiKeys.pms.context': 'Business unit',
+  'apiKeys.pms.keysTitle': 'API keys',
+  'apiKeys.pms.capHint': 'At most 2 active keys. Revoke one to create another.',
+  'apiKeys.pms.empty': 'No keys yet. Create one, then paste it into the PMS settings in Carmen.',
+  'apiKeys.pms.loading': 'Loading keys…',
+  'apiKeys.pms.loadFailed': "Couldn't load your keys.",
+  'apiKeys.pms.retry': 'Try again',
 } as const
 
 export const th: Record<keyof typeof en, string> = {
@@ -164,4 +175,15 @@ export const th: Record<keyof typeof en, string> = {
 
   'apiKeys.toast.revoked': 'เพิกถอน key แล้ว',
   'apiKeys.toast.loadFailed': 'API key: {error}',
+
+  'apiKeys.pms.title': 'การเชื่อมต่อ PMS',
+  'apiKeys.pms.description':
+    'Carmen ส่งข้อมูล PMS ของ business unit นี้ให้ AI โดยใช้ API key สร้าง key ที่นี่ แล้วนำไปวางในหน้าตั้งค่า PMS ของ Carmen',
+  'apiKeys.pms.context': 'Business unit',
+  'apiKeys.pms.keysTitle': 'API key',
+  'apiKeys.pms.capHint': 'ใช้งานได้พร้อมกันสูงสุด 2 key เพิกถอน key หนึ่งก่อนจึงจะสร้างใหม่ได้',
+  'apiKeys.pms.empty': 'ยังไม่มี key สร้าง key แล้วนำไปวางในหน้าตั้งค่า PMS ของ Carmen',
+  'apiKeys.pms.loading': 'กำลังโหลด key…',
+  'apiKeys.pms.loadFailed': 'โหลด key ไม่สำเร็จ',
+  'apiKeys.pms.retry': 'ลองอีกครั้ง',
 }

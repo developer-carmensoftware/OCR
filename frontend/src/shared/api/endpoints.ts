@@ -131,9 +131,12 @@ export const API = {
     preview: `${V1}/files/preview`,
   },
 
-  // Carmen calls this one, not the browser: the admin page only shows and copies it.
   pms: {
+    // Carmen calls this one, not the browser: the key pages only show and copy it.
     events: `${V1}/pms/events`,
+    // The BU's own keys (#/pms), on its session.
+    keys: `${V1}/pms/keys`,
+    key: (id: string) => `${V1}/pms/keys/${id}`,
   },
 
   admin: {
