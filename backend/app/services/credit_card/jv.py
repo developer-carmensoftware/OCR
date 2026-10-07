@@ -42,16 +42,16 @@ from typing import Any
 from app.constants import PostType
 from app.models.schemas import ExtractedDetailRow
 
-# Bank code → Carmen GL source. Mirrors BANK_SOURCE_MAP in frontend/src/constants/banks.ts.
+# Bank code → Carmen GL source. Mirrors BANK_SOURCE_MAP in frontend/src/shared/constants/banks.ts.
 BANK_SOURCE_MAP: dict[str, str] = {
-    "BBL": "ACBB",
-    "KBANK": "ACKB",
-    "SCB": "ACSC",
-    "BAY": "ACBY",
-    "KTC": "ACKC",
-    "GHL": "ACGH",
-    "PAYPAL": "ACPP",
-    "SIAMPAY": "ACSP",
+    "BBL": "AICCBBL",
+    "KBANK": "AICCKBANK",
+    "SCB": "AICCSCB",
+    "BAY": "AICCBAY",
+    "KTC": "AICCKTC",
+    "GHL": "AICCGHL",
+    "PAYPAL": "AICCPAYPAL",
+    "SIAMPAY": "AICCSPAY",
 }
 
 # Same three fixed field types the accounting-config service uses; everything else in

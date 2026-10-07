@@ -69,14 +69,14 @@ export const BANK_INFO: Record<BankDisplayName, BankInfo> = {
 
 /** Display name → GL source code mapping */
 export const BANK_SOURCE_MAP: Record<BankDisplayName, string> = {
-  'Bangkok Bank (BBL)': 'ACBB',
-  'Kasikornbank (KBANK)': 'ACKB',
-  'Siam Commercial Bank (SCB)': 'ACSC',
-  'Krungsri (BAY)': 'ACBY',
-  'Krungthai Card (KTC)': 'ACKC',
-  'GHL (NTT DATA)': 'ACGH',
-  'PayPal (PAYPAL)': 'ACPP',
-  'SiamPay (SIAMPAY)': 'ACSP',
+  'Bangkok Bank (BBL)': 'AICCBBL',
+  'Kasikornbank (KBANK)': 'AICCKBANK',
+  'Siam Commercial Bank (SCB)': 'AICCSCB',
+  'Krungsri (BAY)': 'AICCBAY',
+  'Krungthai Card (KTC)': 'AICCKTC',
+  'GHL (NTT DATA)': 'AICCGHL',
+  'PayPal (PAYPAL)': 'AICCPAYPAL',
+  'SiamPay (SIAMPAY)': 'AICCSPAY',
 }
 
 /** Display name → API bank code mapping */

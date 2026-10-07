@@ -109,7 +109,7 @@ export const en = {
     'Prefix for the journal voucher file name sent to Carmen (e.g. IC for invoice credit, AP for accounts payable)',
   'cc.cfgFileSource': 'File Source',
   'cc.cfgFileSourceHelp':
-    'Carmen Cloud source code that identifies the originating bank or system — one code per bank (e.g. ACBB = Bangkok Bank, ACKB = Kasikornbank, ACBY = Krungsri, ACKC = Krungthai Card). Auto-set from the selected Bank.',
+    'Carmen Cloud source code that identifies the originating bank or system — one code per bank (e.g. AICCBBL = Bangkok Bank, AICCKBANK = Kasikornbank, AICCBAY = Krungsri, AICCKTC = Krungthai Card). Auto-set from the selected Bank.',
   'cc.cfgFileSourcePlaceholder': 'Select a bank',
   'cc.cfgFileSourceAuto': 'Auto-set from Bank',
   'cc.cfgDescription': 'Description',
@@ -347,7 +347,7 @@ export const th: Record<keyof typeof en, string> = {
     'คำนำหน้าชื่อไฟล์ใบสำคัญรายวันที่ส่งเข้า Carmen (เช่น IC สำหรับ invoice credit, AP สำหรับเจ้าหนี้)',
   'cc.cfgFileSource': 'รหัสแหล่งที่มา (Source)',
   'cc.cfgFileSourceHelp':
-    'รหัสแหล่งที่มาของ Carmen Cloud ที่ระบุว่าเอกสารมาจากธนาคารหรือระบบใด หนึ่งรหัสต่อหนึ่งธนาคาร (เช่น ACBB = ธนาคารกรุงเทพ, ACKB = กสิกรไทย, ACBY = กรุงศรี, ACKC = กรุงไทยการ์ด) ระบบตั้งให้อัตโนมัติจากธนาคารที่เลือก',
+    'รหัสแหล่งที่มาของ Carmen Cloud ที่ระบุว่าเอกสารมาจากธนาคารหรือระบบใด หนึ่งรหัสต่อหนึ่งธนาคาร (เช่น AICCBBL = ธนาคารกรุงเทพ, AICCKBANK = กสิกรไทย, AICCBAY = กรุงศรี, AICCKTC = กรุงไทยการ์ด) ระบบตั้งให้อัตโนมัติจากธนาคารที่เลือก',
   'cc.cfgFileSourcePlaceholder': 'เลือกธนาคารก่อน',
   'cc.cfgFileSourceAuto': 'ตั้งอัตโนมัติจากธนาคาร',
   'cc.cfgDescription': 'คำอธิบาย',

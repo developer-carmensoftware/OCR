@@ -39,14 +39,14 @@
 
   "bankSourceMap": {
     "$comment": "Bank code to Carmen GL source. A third copy of this table lives in frontend/src/shared/constants/banks.ts (BANK_SOURCE_MAP, keyed by display name via OCR_BANK_MAP) and a second in credit_card/jv.py. Both tests assert their own map reproduces this one.",
-    "BBL": "ACBB",
-    "KBANK": "ACKB",
-    "SCB": "ACSC",
-    "BAY": "ACBY",
-    "KTC": "ACKC",
-    "GHL": "ACGH",
-    "PAYPAL": "ACPP",
-    "SIAMPAY": "ACSP"
+    "BBL": "AICCBBL",
+    "KBANK": "AICCKBANK",
+    "SCB": "AICCSCB",
+    "BAY": "AICCBAY",
+    "KTC": "AICCKTC",
+    "GHL": "AICCGHL",
+    "PAYPAL": "AICCPAYPAL",
+    "SIAMPAY": "AICCSPAY"
   },
 
   "cases": [
@@ -90,7 +90,7 @@
         "JvhSeq": -1,
         "Prefix": "IC",
         "JvhNo": "Auto",
-        "JvhSource": "ACBB",
+        "JvhSource": "AICCBBL",
         "Status": "Draft",
         "Description": "Credit card settlement",
         "Detail": [
@@ -136,7 +136,7 @@
         "JvhSeq": -1,
         "Prefix": "IC",
         "JvhNo": "Auto",
-        "JvhSource": "ACPP",
+        "JvhSource": "AICCPAYPAL",
         "Status": "Draft",
         "Description": "PayPal monthly fees",
         "Detail": [
@@ -225,7 +225,7 @@
         "JvhSeq": -1,
         "Prefix": "IC",
         "JvhNo": "Auto",
-        "JvhSource": "ACKB",
+        "JvhSource": "AICCKBANK",
         "Status": "Draft",
         "Description": "BE date - 25/08/2569",
         "Detail": [
@@ -328,7 +328,7 @@
         "JvhSeq": -1,
         "Prefix": "AR",
         "JvhNo": "Auto",
-        "JvhSource": "ACKB",
+        "JvhSource": "AICCKBANK",
         "Status": "Draft",
         "Description": "KBANK settlement 21/07/2026",
         "Detail": [
@@ -448,7 +448,7 @@
         "JvhSeq": -1,
         "Prefix": "AR",
         "JvhNo": "Auto",
-        "JvhSource": "ACKB",
+        "JvhSource": "AICCKBANK",
         "Status": "Draft",
         "Description": "KBANK settlement 21/07/2026",
         "Detail": [

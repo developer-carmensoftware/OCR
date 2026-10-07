@@ -930,6 +930,10 @@ Two things that still need Carmen's side, and are the reason §5 is not empty:
    postings apart from wizard postings when reviewing later. Still true with review on: an
    approved document was checked on a screen, not keyed by hand, and the approver's name is
    recorded on our side rather than in Carmen.
+   *(Resolved 2026-10-07, CA-110: every JV this app posts, from the wizard or from email,
+   carries an `AICC<bank>` source (`AICCKBANK`, `AICCBBL`, …; SiamPay is `AICCSPAY`), which
+   sets it apart from hand-keyed JVs. `UserModified = 'OCR-EMAIL'` then tells email apart
+   from the wizard.)*
 
 The JV content itself is unchanged from what the wizard posts today
 (`JvhSeq/JvhDate/Prefix/JvhSource/Detail[]`), and the GL accounts come from the mapping
@@ -994,7 +998,7 @@ The rest of the integration:
 | 4 | Webhook endpoint URL + secret exchange channel (§3.4) | every webhook |
 | 5 | Which Carmen field holds the BU tax ID (§2.4) | switching the feature on |
 | 6 | Yes/no on the proposed `document.*` events (§3.3) | outcome reporting |
-| 7 | Confirmation that automated JVs are distinguishable in `JvhSource` (§4) | audit review |
+| 7 | ~~Confirmation that automated JVs are distinguishable in `JvhSource` (§4)~~ Done 2026-10-07 (CA-110): `AICC<bank>` sources | audit review |
 | 8 | **An `auto_post` switch on the settings screen (§2.7)** — send it on `PUT /settings`, omit it everywhere else. *Withdrawn if §2.8 is agreed.* | a customer ever turning review off |
 | 9 | **Document type on the rule card (§2.9)** — `doc_type`; echo it back on every save. *Withdrawn if §2.8 is agreed.* | a BU reconciling its KBANK settlement report |
 
