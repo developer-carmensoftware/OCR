@@ -244,7 +244,7 @@ describe('useOcrSubmission', () => {
       } as unknown as AccountingConfigResponse)
       submitToCarmen.mockResolvedValue({ Code: 0 })
 
-      const props = makeProps() // bank: 'KBANK' → source ACKB
+      const props = makeProps() // bank: 'KBANK' → source AICCKBANK
       const { result } = renderHook(() => useOcrSubmission(props))
       await act(async () => {
         await result.current.handleSubmitFinal(defaultRows)
@@ -252,7 +252,7 @@ describe('useOcrSubmission', () => {
 
       const payload = submitToCarmen.mock.calls[0][0] as CarmenJvPayload
       expect(payload.Prefix).toBe('API_PRE')
-      expect(payload.JvhSource).toBe('ACKB')
+      expect(payload.JvhSource).toBe('AICCKBANK')
     })
 
     it('F4.2 – unknown bank → JvhSource falls back to the stored file_source', async () => {

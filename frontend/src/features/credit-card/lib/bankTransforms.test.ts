@@ -5,11 +5,11 @@ import { codeToSource } from './bankTransforms'
 // to the wrong Carmen source and GL-history lookups break.
 describe('codeToSource', () => {
   it('maps known bank codes to their GL source code', () => {
-    expect(codeToSource('KBANK')).toBe('ACKB')
-    expect(codeToSource('BBL')).toBe('ACBB')
-    expect(codeToSource('SCB')).toBe('ACSC')
-    expect(codeToSource('BAY')).toBe('ACBY')
-    expect(codeToSource('KTC')).toBe('ACKC')
+    expect(codeToSource('KBANK')).toBe('AICCKBANK')
+    expect(codeToSource('BBL')).toBe('AICCBBL')
+    expect(codeToSource('SCB')).toBe('AICCSCB')
+    expect(codeToSource('BAY')).toBe('AICCBAY')
+    expect(codeToSource('KTC')).toBe('AICCKTC')
   })
 
   it('returns "" for empty/unknown/nullish input (safe fallback)', () => {

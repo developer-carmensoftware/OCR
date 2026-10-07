@@ -31,7 +31,7 @@ function getGLSourceCode(displayName: string): string {
   return BANK_SOURCE_MAP[displayName as BankDisplayName] || ''
 }
 
-/** Bank code → Carmen GL source code (e.g. 'KBANK' → 'ACKB'). The single
+/** Bank code → Carmen GL source code (e.g. 'KBANK' → 'AICCKBANK'). The single
  * authority for source: 1:1 with the bank, add/remove a code in BANK_SOURCE_MAP. */
 export function codeToSource(bankCode: string | null | undefined): string {
   const name = codeToDisplayName(bankCode)
