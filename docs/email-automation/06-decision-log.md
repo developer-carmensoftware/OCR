@@ -1107,3 +1107,27 @@ and the body never names one. Contract: [`docs/PMS_INTEGRATION.md`](../PMS_INTEG
 - **Aggregates only.** The contract excludes guest PII; processing nulls the payload once done.
 - **What it costs.** Phase 1 stores and does nothing else, so events pile up in
   `pms_events` until the processing ticket. That is fine at about one per BU per day.
+
+## 40. A BU creates its own PMS key from Carmen's menu (2026-10-07)
+
+**Decided:** 2026-10-07 (CA-117). It amends #39's "keys are issued from `#/admin/api-keys`".
+
+**Decision.** Carmen's menu opens `#/pms` through the same SSO link as email-settings. The
+user sees their BU's keys and can create and revoke them, then pastes the key into Carmen's
+PMS settings.
+
+- **Why.** An admin could only issue a key for a tenant that already existed. Tenants are
+  created at SSO login, so a BU that had never opened the AI app couldn't get a key, and
+  picking a tenant by hand could pick the wrong one. Through SSO, `/auth/exchange` creates or
+  finds exactly that (host, BU) and Carmen proves who it is.
+- **Carmen gates, we don't** (as #34). We keep no roles. Any token Carmen accepts may create
+  and revoke for its BU. The page is reachable only from Carmen's menu: no Home tile, no
+  in-app link.
+- **The first visit is a normal first login:** the consent popup and the 30 signup credits,
+  with no special-casing.
+- **At most 2 active keys per BU,** enforced in `api_keys.issue()` for both paths.
+- **The reveal is compact** (key + endpoint): the user pastes the key themselves. The admin
+  page keeps the full Send-to-Carmen block for support.
+- **English only,** like email-settings. `FixedLanguage` pins the page whatever the toggle says.
+- **No entitlement gate yet.** Billing belongs to processing (CA-119).
+- **Carmen calls none of our APIs** for this either: it builds a menu link and a field.

@@ -190,11 +190,20 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
       stamps last_used_at/ip — what #/admin/api-keys reads as "is Carmen calling?"
   body {event_id, type, data} ≤ 1 MB → pms_events, unique (tenant_id, event_id)
       202 new · 200 {duplicate:true} on a retry · 401 · 413 · 422
+
+Carmen menu → #/pms?token=&bu=&user=&uri=   (same SSO link as email-settings)
+  features/pms/pages/PmsPage.tsx   the BU's own keys: list · create · revoke (English only)
+  GET/POST /api/v1/pms/keys, DELETE /keys/{id}   session JWT → the session's tenant only
 ```
 
 The first endpoint Carmen calls *into* (decision-log #39). The key **is** the tenant: no
-host/bu in the body, so a key cannot write into another BU. Keys are issued, shown once and
-revoked at `#/admin/api-keys`; revoking is how a BU is switched off (no `modules` row yet).
+host/bu in the body, so a key cannot write into another BU. **The BU creates its own key** at
+`#/pms`, opened only from Carmen's menu (decision-log #40). The SSO login creates or finds
+exactly that tenant, so a BU that never used AI can still get a key and nobody picks a tenant
+by hand. `#/admin/api-keys` stays as a support tool. Keys are shown once and capped at **2
+active per BU** (`api_keys.issue()`, both paths). Revoking is how a BU is switched off (no
+`modules` row yet). The key dialogs, status line and copy button live in
+`shared/components/apiKeys/` and are used by both pages.
 Contract for Carmen: [`docs/PMS_INTEGRATION.md`](docs/PMS_INTEGRATION.md).
 
 ### Admin dashboard (`#/admin/*`) — check here before writing SQL

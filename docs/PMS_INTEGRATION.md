@@ -6,7 +6,7 @@ next phase, so you can integrate against this today and nothing here should chan
 when processing lands.
 
 When a BU's PMS data arrives in Carmen, Carmen POSTs it to us. That is the whole integration
-for now: one URL, one key per BU.
+for now: one URL, and a key per BU that the BU creates itself (§2).
 
 ---
 
@@ -24,22 +24,41 @@ POST {base}/api/v1/pms/events
 The URL is the same for every BU. The key tells us which BU an event belongs to; the body
 never names one.
 
-## 2. Authentication — one key per BU
+## 2. Authentication — one key per BU, created by the BU
 
 ```text
 Authorization: Bearer cpk_…
 ```
 
-- We issue the key, one per BU, from our admin dashboard and send it to you. Store it in
-  that BU's configuration. It is shown to us once and we keep only a hash, so if it is lost
-  we issue a new one rather than look the old one up.
+The BU creates its own key from the AI menu in Carmen, and pastes it into Carmen's PMS
+settings. Nobody hand-picks the BU: the menu link signs the user in through the same SSO as
+our other screens, and the key belongs to exactly that (host, BU).
+
+**What Carmen builds:**
+
+1. **A menu item** that opens
+
+   ```text
+   https://<ocr-app>/#/pms?token=<user's Carmen token>&bu=<bu>&user=<user>&uri=<your origin>
+   ```
+
+   with the same parameters as the email-settings link. Show it only to users your own
+   permission model allows; we check no roles of our own (decision #34). The page lists the
+   BU's keys and lets the user create and revoke them.
+2. **A field in PMS settings** where the BU pastes the key. Send it on every event.
+
+**Rules:**
+
+- A key is shown once, on creation, and we keep only a hash. If it is lost, create a new one
+  and revoke the old one.
 - `Bearer ` is optional. A bare `Authorization: cpk_…` works too.
-- Keys do not expire. **Rotation:** we issue a second key for the BU, you switch to it, we
-  revoke the first. Both work during the switch, so nothing is dropped.
+- Keys do not expire. **Rotation:** create a second key, paste it into Carmen, then revoke
+  the first. Both work during the switch, so nothing is dropped.
 - **At most 2 active keys per BU** (enough for a rotation). A third is refused until one is
   revoked.
 - **Revocation is immediate** and is how a BU is switched off. A revoked key gets `401`.
 - Server-to-server only, over HTTPS. Never put the key in a browser or a URL.
+- Our admins can also see and revoke any BU's keys (`#/admin/api-keys`), for support.
 
 ## 3. Request body
 
@@ -107,7 +126,7 @@ curl -X POST https://carmen-ocr-backend-xntb.onrender.com/api/v1/pms/events \
 
 ---
 
-*Internal notes:* keys are rows in `api_keys` with scope `pms:events`, managed at
-`#/admin/api-keys`. Events land in `pms_events`, unique on `(tenant_id, event_id)`. Code:
-`backend/app/routers/pms.py`, `services/shared/api_keys.py`. Decision:
-[email-automation decision log #39](email-automation/06-decision-log.md).
+*Internal notes:* keys are rows in `api_keys` with scope `pms:events`, created by the BU at
+`#/pms` (session-scoped `/api/v1/pms/keys`) or by an admin at `#/admin/api-keys`. Events land in `pms_events`, unique on `(tenant_id, event_id)`. Code:
+`backend/app/routers/pms.py`, `services/shared/api_keys.py`. Decisions:
+[email-automation decision log #39 and #40](email-automation/06-decision-log.md).
