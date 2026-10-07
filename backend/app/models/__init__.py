@@ -43,6 +43,7 @@ from .observability import (
     OutboundCallLog,
     PerformanceLog,
 )
+from .pms import PmsEvent
 from .schemas import (
     BugReportRequest,
     BugReportResponse,
@@ -107,6 +108,8 @@ __all__ = [
     # Email Automation
     "EmailIngestSettings",
     "EmailDocument",
+    # PMS interface
+    "PmsEvent",
     # Observability
     "LLMUsageLog",
     "AuditLog",
