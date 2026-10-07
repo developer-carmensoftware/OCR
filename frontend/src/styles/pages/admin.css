@@ -582,6 +582,13 @@ body:has(.admin-login-page) {
   padding: 0.65rem 1rem;
   border-bottom: 1px solid var(--border);
 }
+/* A filter at the start, search at the end; they stack rather than squeeze. */
+.admin-table-toolbar--split {
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
 .admin-table-search {
   display: flex;
   align-items: center;
@@ -840,6 +847,28 @@ body:has(.admin-login-page) {
   background: var(--rose-fill);
   color: white;
   border-color: var(--rose-fill);
+}
+
+/* ─── COPY BUTTON (features/admin/components/CopyButton.tsx) ───────────────── */
+
+.copy-btn {
+  flex-shrink: 0;
+}
+/* Icon-only: a square that sits on a line of mono text without raising it. */
+.copy-btn--icon {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+}
+.copy-btn.is-copied {
+  border-color: var(--emerald);
+  color: var(--emerald-text);
+}
+@media (max-width: 768px) {
+  .copy-btn--icon {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 .alert-resolve-btn {

@@ -1,6 +1,9 @@
 export const en = {
   'admin.common.tenantSelector.filterTitle': 'Filter by tenant',
   'admin.common.tenantSelector.allTenants': 'All Tenants',
+  'admin.common.copy': 'Copy',
+  'admin.common.copied': 'Copied',
+  'admin.common.copyFailed': "Couldn't copy. Select the text and copy it by hand.",
   'admin.common.chart.loadingAria': 'Loading chart…',
   'admin.common.chart.noData': 'No data for selected period',
   'admin.common.table.noData': 'No data',
@@ -23,6 +26,9 @@ export const en = {
 export const th: Record<keyof typeof en, string> = {
   'admin.common.tenantSelector.filterTitle': 'กรองตาม Tenant ',
   'admin.common.tenantSelector.allTenants': ' Tenant ทั้งหมด',
+  'admin.common.copy': 'คัดลอก',
+  'admin.common.copied': 'คัดลอกแล้ว',
+  'admin.common.copyFailed': 'คัดลอกไม่สำเร็จ เลือกข้อความแล้วคัดลอกเอง',
   'admin.common.chart.loadingAria': 'กำลังโหลดกราฟ…',
   'admin.common.chart.noData': 'ไม่มีข้อมูลในช่วงเวลาที่เลือก',
   'admin.common.table.noData': 'ไม่มีข้อมูล',

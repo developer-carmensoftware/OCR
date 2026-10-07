@@ -292,3 +292,25 @@ describe('DataTable server mode', () => {
     expect(onChange).toHaveBeenCalledWith({ sort: 'code', dir: 'asc', offset: 0 })
   })
 })
+
+describe('DataTable toolbar and column widths', () => {
+  it('puts toolbarStart before the search box, in one toolbar row', () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        rows={rows}
+        toolbarStart={<span>filters</span>}
+        search={{ value: '', onChange: () => {} }}
+      />
+    )
+    const toolbar = container.querySelector('.admin-table-toolbar--split')!
+    expect(toolbar.firstElementChild).toHaveTextContent('filters')
+    expect(toolbar.querySelector('input[type="search"]')).toBeInTheDocument()
+  })
+
+  it('sizes a header cell from its column width', () => {
+    render(<DataTable columns={[{ ...columns[0], width: '30%' }, columns[1]]} rows={rows} />)
+    expect(screen.getAllByRole('columnheader')[0]).toHaveStyle({ width: '30%' })
+    expect(screen.getAllByRole('columnheader')[1].getAttribute('style')).toBeNull()
+  })
+})

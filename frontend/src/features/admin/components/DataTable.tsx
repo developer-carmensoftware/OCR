@@ -25,6 +25,8 @@ export interface Column<T> {
    *  column smallest-first); set it explicitly on date columns, which are left-aligned
    *  but still want newest first. */
   defaultDesc?: boolean
+  /** A share of the table, e.g. '30%'. Unset columns split what is left. */
+  width?: string
 }
 
 export type SortDir = 'asc' | 'desc'
@@ -62,6 +64,8 @@ export interface DataTableProps<T = Record<string, unknown>> {
   server?: ServerTable
   /** Renders a search box above the table. Server-side when `server` is set. */
   search?: { value: string; onChange: (q: string) => void; placeholder?: string }
+  /** Controls at the start of the toolbar row (a segmented filter); search keeps the end. */
+  toolbarStart?: React.ReactNode
 }
 
 interface ExpandedRowWrapperProps<T> {
@@ -143,6 +147,7 @@ export default function DataTable<T = Record<string, unknown>>({
   renderExpandedRow,
   server,
   search,
+  toolbarStart,
 }: DataTableProps<T>) {
   // The pagination controls and the empty fallback used to be hardcoded English,
   // so every admin page rendered "‹ Prev / Next › / of" untranslated no matter what
@@ -249,6 +254,7 @@ export default function DataTable<T = Record<string, unknown>>({
             <th
               key={String(col.key)}
               className={`admin-th${col.sortable ? ' sortable' : ''}${col.align === 'right' ? ' text-right' : ''}`}
+              style={col.width ? { width: col.width } : undefined}
               aria-sort={
                 col.sortable
                   ? isSorted
@@ -292,15 +298,19 @@ export default function DataTable<T = Record<string, unknown>>({
   // Rendered in both branches, never inside the loading early-return: with server-side
   // search every keystroke refetches, and an input that unmounts mid-fetch loses focus
   // after the first character.
-  const toolbar = search ? (
-    <div className="admin-table-toolbar">
-      <SearchBox
-        value={search.value}
-        onChange={search.onChange}
-        placeholder={search.placeholder ?? t('admin.common.table.searchPlaceholder')}
-      />
-    </div>
-  ) : null
+  const toolbar =
+    search || toolbarStart ? (
+      <div className={`admin-table-toolbar${toolbarStart ? ' admin-table-toolbar--split' : ''}`}>
+        {toolbarStart}
+        {search && (
+          <SearchBox
+            value={search.value}
+            onChange={search.onChange}
+            placeholder={search.placeholder ?? t('admin.common.table.searchPlaceholder')}
+          />
+        )}
+      </div>
+    ) : null
 
   // Skeletons only on the FIRST load. A page turn already has rows on screen, and
   // replacing them with skeletons and back makes every arrow click flash — the reader
