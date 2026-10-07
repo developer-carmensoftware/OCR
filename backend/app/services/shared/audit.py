@@ -30,6 +30,7 @@ class AuditAction:
     BANK_CREATE = "BANK_CREATE"
     BANK_UPDATE = "BANK_UPDATE"
     PROMPT_PUBLISH = "PROMPT_PUBLISH"
+    API_KEY_CREATE = "API_KEY_CREATE"
     API_KEY_REVOKE = "API_KEY_REVOKE"
     # No longer written (the quota editor went away with the free-trial counter),
     # but audit_logs rows carrying these actions are kept for 5 years — the values
