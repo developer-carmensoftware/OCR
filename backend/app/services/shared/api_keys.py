@@ -100,3 +100,42 @@ async def authenticate(
         update(APIKey).where(APIKey.id == key.id).values(last_used_at=now, last_used_ip=ip)
     )
     return key
+
+
+def key_row(key: APIKey, tenants: dict[str, dict[str, str]]) -> dict:
+    """A key as both key screens show it (admin and the BU's own `#/pms`). Never the hash."""
+    tenant = tenants.get(str(key.tenant_id), {})
+    return {
+        "id": str(key.id),
+        "tenant_id": str(key.tenant_id) if key.tenant_id else None,
+        "tenant_name": f"{tenant['name']} ({tenant['bu_code']})" if tenant else None,
+        "bu_code": tenant.get("bu_code"),
+        "tenant_host": tenant.get("host"),
+        "name": key.name,
+        "key_prefix": key.key_prefix,
+        "scopes": key.scopes or [],
+        "created_at": key.created_at.isoformat() if key.created_at else None,
+        "last_used_at": key.last_used_at.isoformat() if key.last_used_at else None,
+        "last_used_ip": key.last_used_ip,
+        "revoked_at": key.revoked_at.isoformat() if key.revoked_at else None,
+        "revoke_reason": key.revoke_reason,
+    }
+
+
+async def revoke(
+    db: AsyncSession,
+    key_id: UUID,
+    *,
+    by: str,
+    reason: str | None,
+    tenant_id: UUID | str | None = None,
+) -> bool:
+    """Stamp a live key revoked. `tenant_id` confines it to one BU's keys. False = no live
+    key matched (unknown, already revoked, or another BU's), which the caller answers 404."""
+    stmt = update(APIKey).where(APIKey.id == key_id, APIKey.revoked_at.is_(None))
+    if tenant_id is not None:
+        stmt = stmt.where(APIKey.tenant_id == tenant_id)
+    result = await db.execute(
+        stmt.values(revoked_at=datetime.now(UTC), revoked_by=by, revoke_reason=reason)
+    )
+    return bool(result.rowcount)

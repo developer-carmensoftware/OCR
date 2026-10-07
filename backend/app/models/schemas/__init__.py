@@ -84,7 +84,7 @@ from app.models.schemas.ocr import (
     OCRTaskResponse,
     OCRUploadResponse,
 )
-from app.models.schemas.pms import ApiKeyCreateIn, PmsEventIn, PmsEventOut
+from app.models.schemas.pms import ApiKeyCreateIn, PmsEventIn, PmsEventOut, PmsKeyCreateIn
 from app.models.schemas.quotas import ModuleToggleRequest
 
 __all__ = [
@@ -152,6 +152,7 @@ __all__ = [
     "ApiKeyCreateIn",
     "PmsEventIn",
     "PmsEventOut",
+    "PmsKeyCreateIn",
     # quotas
     "ModuleToggleRequest",
     # ap_invoice

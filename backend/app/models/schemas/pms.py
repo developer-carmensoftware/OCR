@@ -25,6 +25,12 @@ class PmsEventOut(BaseModel):
     duplicate: bool
 
 
+class PmsKeyCreateIn(BaseModel):
+    """A BU creating its own key on `#/pms`: the business unit comes from the session."""
+
+    name: str = Field("PMS webhook", min_length=1, max_length=100)
+
+
 class ApiKeyCreateIn(BaseModel):
     tenant_id: UUID
     name: str = Field("PMS webhook", min_length=1, max_length=100)
