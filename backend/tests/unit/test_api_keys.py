@@ -124,3 +124,31 @@ async def test_revoking_a_key_that_is_not_live_is_404():
         await revoke_api_key(uuid4(), _REQUEST, None, db, _admin())
     assert exc.value.status_code == 404
     db.commit.assert_not_awaited()
+
+
+def test_a_row_names_its_business_unit_by_code_and_host():
+    from app.routers.admin.api_keys import _row
+
+    tenant_id = uuid4()
+    key = SimpleNamespace(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        name="PMS webhook",
+        key_prefix="cpk_abcdefgh",
+        scopes=[api_keys.PMS_SCOPE],
+        created_at=None,
+        last_used_at=None,
+        last_used_ip=None,
+        revoked_at=None,
+        revoke_reason=None,
+    )
+    info = {str(tenant_id): {"name": "Grand Hotel", "bu_code": "gh01", "host": "gh.carmen4.com"}}
+    row = _row(key, info)
+    assert (row["bu_code"], row["tenant_host"], row["tenant_name"]) == (
+        "gh01",
+        "gh.carmen4.com",
+        "Grand Hotel (gh01)",
+    )
+    # A key with no live tenant (the old POC keys) still renders, with nothing to name.
+    orphan = _row(SimpleNamespace(**{**vars(key), "tenant_id": None}), info)
+    assert (orphan["bu_code"], orphan["tenant_host"], orphan["tenant_name"]) == (None, None, None)

@@ -26,6 +26,23 @@ async def tenant_name_map(db: AsyncSession, tenant_ids: list) -> dict[str, str]:
     return {str(r.id): f"{r.name} ({r.bu_code})" for r in result.mappings().all()}
 
 
+async def tenant_info_map(db: AsyncSession, tenant_ids: list) -> dict[str, dict[str, str]]:
+    """Bulk-resolve tenant_id -> {name, bu_code, host}, for a cell that shows the BU code and
+    the host on separate lines. Same text comparison as `tenant_name_map`, same omissions."""
+    ids = [str(t) for t in tenant_ids if t]
+    if not ids:
+        return {}
+    result = await db.execute(
+        select(Tenant.id, Tenant.name, Tenant.bu_code, Tenant.host).where(
+            cast(Tenant.id, String).in_(ids), Tenant.deleted_at.is_(None)
+        )
+    )
+    return {
+        str(r.id): {"name": r.name, "bu_code": r.bu_code, "host": r.host}
+        for r in result.mappings().all()
+    }
+
+
 async def username_map(db: AsyncSession, carmen_user_ids: list) -> dict[str, str]:
     """Bulk-resolve carmen_user_id -> username.
 

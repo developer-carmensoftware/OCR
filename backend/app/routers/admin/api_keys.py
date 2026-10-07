@@ -17,7 +17,7 @@ from app.models.admin import APIKey
 from app.models.schemas.pms import ApiKeyCreateIn
 from app.services.shared import api_keys
 from app.services.shared.audit import AuditAction, log_admin_action
-from app.services.shared.tenant_lookup import tenant_name_map
+from app.services.shared.tenant_lookup import tenant_info_map
 from app.utils.client_ip import get_client_ip
 from app.utils.pagination import paginate
 
@@ -27,11 +27,14 @@ from .deps import require_permission
 router = APIRouter()
 
 
-def _row(k: APIKey, names: dict[str, str]) -> dict:
+def _row(k: APIKey, tenants: dict[str, dict[str, str]]) -> dict:
+    tenant = tenants.get(str(k.tenant_id), {})
     return {
         "id": str(k.id),
         "tenant_id": str(k.tenant_id) if k.tenant_id else None,
-        "tenant_name": names.get(str(k.tenant_id)),
+        "tenant_name": f"{tenant['name']} ({tenant['bu_code']})" if tenant else None,
+        "bu_code": tenant.get("bu_code"),
+        "tenant_host": tenant.get("host"),
         "name": k.name,
         "key_prefix": k.key_prefix,
         "scopes": k.scopes or [],
@@ -71,12 +74,12 @@ async def list_api_keys(
         searchable=(APIKey.name, APIKey.key_prefix),
     )
     rows, total = await paginate(db, q, lq.limit, lq.offset)
-    names = await tenant_name_map(db, [r.tenant_id for r in rows])
+    tenants = await tenant_info_map(db, [r.tenant_id for r in rows])
     return {
         "total": total,
         "limit": lq.limit,
         "offset": lq.offset,
-        "data": [_row(r, names) for r in rows],
+        "data": [_row(r, tenants) for r in rows],
     }
 
 
@@ -102,9 +105,9 @@ async def create_api_key(
         after_value={"tenant_id": str(body.tenant_id), "name": key.name, "prefix": key.key_prefix},
         ip_address=get_client_ip(request),
     )
-    names = await tenant_name_map(db, [key.tenant_id])
+    tenants = await tenant_info_map(db, [key.tenant_id])
     # `key` is the only copy of the plaintext anywhere — the row holds its hash.
-    return {**_row(key, names), "key": plaintext}
+    return {**_row(key, tenants), "key": plaintext}
 
 
 @router.delete("/api-keys/{key_id}")
