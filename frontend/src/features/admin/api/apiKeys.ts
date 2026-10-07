@@ -9,6 +9,9 @@ export interface ApiKeyRow {
   id: string
   tenant_id: string | null
   tenant_name: string | null
+  /** Null for a key whose tenant is gone or never existed (the 2026-08 POC keys). */
+  bu_code: string | null
+  tenant_host: string | null
   name: string
   key_prefix: string
   scopes: string[]

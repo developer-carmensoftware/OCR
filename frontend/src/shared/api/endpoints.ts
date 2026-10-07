@@ -131,6 +131,11 @@ export const API = {
     preview: `${V1}/files/preview`,
   },
 
+  // Carmen calls this one, not the browser: the admin page only shows and copies it.
+  pms: {
+    events: `${V1}/pms/events`,
+  },
+
   admin: {
     login: `${V1}/admin/auth/login`,
     me: `${V1}/admin/auth/me`,
