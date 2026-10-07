@@ -14,6 +14,8 @@ interface DialogProps {
    *  step whose content would be lost (a secret shown once). */
   onDismiss: (() => void) | null
   initialFocus?: () => HTMLElement | null
+  /** Focus target on close instead of the opener (see useDialogFocus). */
+  returnFocus?: () => HTMLElement | null
   /** Accessible name for the backdrop button. */
   closeLabel?: string
   /** The dialog box, e.g. to refocus it after a refused save disabled the focused button. */
@@ -35,6 +37,7 @@ export default function Dialog({
   error,
   onDismiss,
   initialFocus,
+  returnFocus,
   closeLabel = 'Close',
   ref,
   className,
@@ -43,7 +46,7 @@ export default function Dialog({
   const boxRef = ref ?? ownRef
   const titleId = useId()
   useScrollLock(true)
-  useDialogFocus(boxRef, { initialFocus, onEscape: onDismiss })
+  useDialogFocus(boxRef, { initialFocus, returnFocus, onEscape: onDismiss })
 
   return createPortal(
     <div className="ui-dialog-overlay">

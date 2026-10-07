@@ -13,6 +13,9 @@ interface Options {
   initialFocus?: () => HTMLElement | null
   /** Called on Escape. `null` makes Escape inert — for a step that must be closed on purpose. */
   onEscape: (() => void) | null
+  /** Where focus goes on close, when not back to the opener — e.g. the opener is a row's
+   *  button that the action just removed. Null/absent = the opener. */
+  returnFocus?: () => HTMLElement | null
 }
 
 /**
@@ -35,7 +38,7 @@ export function useDialogFocus(dialogRef: RefObject<HTMLElement | null>, options
     const target =
       latest.current.initialFocus?.() ?? focusablesIn(dialogRef.current)[0] ?? dialogRef.current
     target?.focus()
-    return () => opener?.focus()
+    return () => (latest.current.returnFocus?.() ?? opener)?.focus()
   }, [dialogRef])
 
   useEffect(() => {

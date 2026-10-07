@@ -64,3 +64,31 @@ describe('Dialog', () => {
     expect(done).toHaveFocus()
   })
 })
+
+describe('Dialog returnFocus', () => {
+  it('sends focus where the caller says when the opener is about to disappear', () => {
+    function RowHarness() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <div data-testid="table" tabIndex={-1} />
+          <button onClick={() => setOpen(true)}>Revoke</button>
+          {open && (
+            <Dialog
+              title="Revoke API key"
+              onDismiss={vi.fn()}
+              returnFocus={() => screen.getByTestId('table')}
+              footer={<button onClick={() => setOpen(false)}>Confirm</button>}
+            >
+              <p>Sure?</p>
+            </Dialog>
+          )}
+        </>
+      )
+    }
+    render(<RowHarness />)
+    fireEvent.click(screen.getByText('Revoke'))
+    fireEvent.click(screen.getByText('Confirm'))
+    expect(screen.getByTestId('table')).toHaveFocus()
+  })
+})

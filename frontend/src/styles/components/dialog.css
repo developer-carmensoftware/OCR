@@ -102,10 +102,22 @@
   font-weight: 600;
   color: var(--text);
 }
+/* One control height in a dialog, whichever admin class the control wears: the tenant
+   picker is an .admin-select (filter-sized) and would otherwise sit shorter than its
+   neighbouring text input. */
 .ui-dialog .admin-form-input,
 .ui-dialog .admin-tenant-input {
   width: 100%;
-  border-color: var(--border-input);
+  min-height: 2.5rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--border-input);
+  font-size: 0.875rem;
+}
+@media (max-width: 768px) {
+  .ui-dialog .admin-form-input,
+  .ui-dialog .admin-tenant-input {
+    min-height: 44px;
+  }
 }
 
 @media (max-width: 640px) {
