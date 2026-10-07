@@ -36,6 +36,8 @@ Authorization: Bearer cpk_…
 - `Bearer ` is optional. A bare `Authorization: cpk_…` works too.
 - Keys do not expire. **Rotation:** we issue a second key for the BU, you switch to it, we
   revoke the first. Both work during the switch, so nothing is dropped.
+- **At most 2 active keys per BU** (enough for a rotation). A third is refused until one is
+  revoked.
 - **Revocation is immediate** and is how a BU is switched off. A revoked key gets `401`.
 - Server-to-server only, over HTTPS. Never put the key in a browser or a URL.
 

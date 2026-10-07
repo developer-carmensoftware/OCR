@@ -13,15 +13,18 @@ import secrets
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.exceptions import NotFoundError
+from app.exceptions import ConflictError, NotFoundError
 from app.models.admin import APIKey
 from app.models.identity import Tenant
 
 PREFIX = "cpk_"
 PMS_SCOPE = "pms:events"
+# A rotation needs two live keys at once (new one issued, old one still in Carmen); a third
+# is a key nobody can say Carmen is using. Every key issue() makes is a PMS key today.
+MAX_ACTIVE_PER_TENANT = 2
 
 
 def hash_key(plaintext: str) -> str:
@@ -41,6 +44,18 @@ async def issue(db: AsyncSession, tenant_id: UUID, name: str, actor: str) -> tup
     )
     if tenant is None:
         raise NotFoundError("Tenant not found")
+    # ponytail: count-then-insert; two creates in the same instant can make a third key.
+    # Keys are created by hand, a few times per BU; lock the tenant row if that changes.
+    active = await db.scalar(
+        select(func.count())
+        .select_from(APIKey)
+        .where(APIKey.tenant_id == tenant_id, APIKey.revoked_at.is_(None))
+    )
+    if (active or 0) >= MAX_ACTIVE_PER_TENANT:
+        raise ConflictError(
+            f"This business unit already has {MAX_ACTIVE_PER_TENANT} active keys. "
+            "Revoke one before creating another."
+        )
     plaintext, prefix, digest = generate()
     key = APIKey(
         name=name,

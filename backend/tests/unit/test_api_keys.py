@@ -16,6 +16,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.auth.admin_session import AdminPrincipal
+from app.exceptions import ConflictError
 from app.models.schemas.pms import ApiKeyCreateIn
 from app.services.shared import api_keys
 
@@ -92,7 +93,7 @@ async def test_create_returns_the_plaintext_once_and_stores_only_its_hash():
 
     tenant_id = uuid4()
     db = MagicMock(
-        scalar=AsyncMock(return_value=tenant_id),
+        scalar=AsyncMock(side_effect=[tenant_id, 0]),  # the tenant, then its active keys
         flush=AsyncMock(),
         commit=AsyncMock(),
         execute=AsyncMock(return_value=MagicMock()),
@@ -102,6 +103,21 @@ async def test_create_returns_the_plaintext_once_and_stores_only_its_hash():
     assert stored.key_hash == api_keys.hash_key(out["key"])
     assert stored.scopes == [api_keys.PMS_SCOPE]
     assert out["key"] not in json.dumps({k: v for k, v in out.items() if k != "key"})
+
+
+@pytest.mark.asyncio
+async def test_a_third_active_key_is_refused():
+    db = MagicMock(scalar=AsyncMock(side_effect=[uuid4(), api_keys.MAX_ACTIVE_PER_TENANT]))
+    with pytest.raises(ConflictError, match="Revoke one"):
+        await api_keys.issue(db, uuid4(), "PMS webhook", actor="admin:a-1")
+    db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_second_key_is_allowed_for_a_rotation():
+    db = MagicMock(scalar=AsyncMock(side_effect=[uuid4(), 1]), flush=AsyncMock())
+    _, plaintext = await api_keys.issue(db, uuid4(), "PMS webhook (new)", actor="admin:a-1")
+    assert plaintext.startswith("cpk_")
 
 
 @pytest.mark.asyncio
