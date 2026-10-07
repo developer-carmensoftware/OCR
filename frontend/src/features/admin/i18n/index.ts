@@ -25,6 +25,7 @@ import * as userUsage from './userUsage'
 import * as tenants from './tenants'
 import * as quotas from './quotas'
 import * as adminUsers from './adminUsers'
+import * as apiKeys from './apiKeys'
 
 export const adminDict = {
   en: {
@@ -49,6 +50,7 @@ export const adminDict = {
     ...tenants.en,
     ...quotas.en,
     ...adminUsers.en,
+    ...apiKeys.en,
   },
   th: {
     ...chrome.th,
@@ -72,6 +74,7 @@ export const adminDict = {
     ...tenants.th,
     ...quotas.th,
     ...adminUsers.th,
+    ...apiKeys.th,
   },
 }
 

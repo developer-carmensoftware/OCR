@@ -182,6 +182,8 @@ export const API = {
     emailPoll: `${V1}/admin/email-ingest/poll`,
     emailConfirmations: `${V1}/admin/email-ingest/confirmations`,
     adminUsers: `${V1}/admin/admin-users`,
+    apiKeys: `${V1}/admin/api-keys`,
+    apiKey: (id: string) => `${V1}/admin/api-keys/${id}`,
     adminUser: (userId: string) => `${V1}/admin/admin-users/${userId}`,
     adminUserPasswordReset: (userId: string) => `${V1}/admin/admin-users/${userId}/password-reset`,
     adminUserRoles: (userId: string) => `${V1}/admin/admin-users/${userId}/roles`,
