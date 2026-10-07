@@ -30,7 +30,7 @@ export default function CopyButton({
     try {
       await navigator.clipboard.writeText(value)
     } catch {
-      toast.error(t('admin.common.copyFailed'))
+      toast.error(t('common.copyFailed'))
       return
     }
     setCopied(true)
@@ -44,14 +44,14 @@ export default function CopyButton({
       size="sm"
       variant={variant}
       onClick={copy}
-      aria-label={label ? undefined : (ariaLabel ?? t('admin.common.copy'))}
-      title={label ? undefined : (ariaLabel ?? t('admin.common.copy'))}
+      aria-label={label ? undefined : (ariaLabel ?? t('common.copy'))}
+      title={label ? undefined : (ariaLabel ?? t('common.copy'))}
       className={`copy-btn${label ? '' : ' copy-btn--icon'}${copied ? ' is-copied' : ''}${className ? ` ${className}` : ''}`}
     >
       <Icon size={14} strokeWidth={2} aria-hidden="true" />
-      {label && <span>{copied ? t('admin.common.copied') : label}</span>}
+      {label && <span>{copied ? t('common.copied') : label}</span>}
       <span className="sr-only" aria-live="polite">
-        {copied ? t('admin.common.copied') : ''}
+        {copied ? t('common.copied') : ''}
       </span>
     </Button>
   )

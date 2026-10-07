@@ -4,28 +4,9 @@ import { buildQs, unwrapDetail, type QueryParams } from '@/features/admin/api/co
 import { adminFetch } from '@/shared/api/adminAuth'
 import { API } from '@/shared/api/endpoints'
 import type { Page } from '@/shared/api/page'
+import type { ApiKeyRow, IssuedApiKey } from '@/shared/lib/apiKeys'
 
-export interface ApiKeyRow {
-  id: string
-  tenant_id: string | null
-  tenant_name: string | null
-  /** Null for a key whose tenant is gone or never existed (the 2026-08 POC keys). */
-  bu_code: string | null
-  tenant_host: string | null
-  name: string
-  key_prefix: string
-  scopes: string[]
-  created_at: string | null
-  last_used_at: string | null
-  last_used_ip: string | null
-  revoked_at: string | null
-  revoke_reason: string | null
-}
-
-/** The create response — the only time `key` (the plaintext) exists outside Carmen. */
-export interface IssuedApiKey extends ApiKeyRow {
-  key: string
-}
+export type { ApiKeyRow, IssuedApiKey }
 
 export async function fetchApiKeys(params: QueryParams = {}): Promise<Page<ApiKeyRow>> {
   const res = await adminFetch(`${API.admin.apiKeys}${buildQs(params)}`)

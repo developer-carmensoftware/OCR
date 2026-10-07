@@ -72,38 +72,38 @@ beforeEach(() => {
 async function openCreateAndPickBu() {
   render(<ApiKeysPage />)
   await screen.findByText('PMS webhook')
-  fireEvent.click(screen.getByRole('button', { name: 'admin.apiKeys.create' }))
-  const dialog = screen.getByRole('dialog', { name: 'admin.apiKeys.createDialog.title' })
-  const submit = within(dialog).getByRole('button', { name: 'admin.apiKeys.createDialog.submit' })
+  fireEvent.click(screen.getByRole('button', { name: 'apiKeys.create' }))
+  const dialog = screen.getByRole('dialog', { name: 'apiKeys.createDialog.title' })
+  const submit = within(dialog).getByRole('button', { name: 'apiKeys.createDialog.submit' })
   expect(submit).toBeDisabled()
   await waitFor(() => expect(dialog.querySelectorAll('datalist option')).toHaveLength(1))
-  fireEvent.change(within(dialog).getByLabelText('admin.apiKeys.createDialog.bu'), {
+  fireEvent.change(within(dialog).getByLabelText('apiKeys.createDialog.bu'), {
     target: { value: 'Grand Hotel (gh01)' },
   })
   expect(submit).toBeEnabled()
   fireEvent.click(submit)
-  return screen.findByRole('dialog', { name: 'admin.apiKeys.reveal.title' })
+  return screen.findByRole('dialog', { name: 'apiKeys.reveal.title' })
 }
 
 describe('ApiKeysPage — create', () => {
   it('creates for the picked BU, shows the key once, and closes only on Done', async () => {
     const reveal = await openCreateAndPickBu()
     expect(createApiKey).toHaveBeenCalledWith({ tenant_id: 't-1', name: 'PMS webhook' })
-    expect(within(reveal).getByLabelText('admin.apiKeys.reveal.key')).toHaveValue(KEY)
+    expect(within(reveal).getByLabelText('apiKeys.reveal.key')).toHaveValue(KEY)
 
     // Escape and the backdrop would throw away the only copy of the key.
     fireEvent.keyDown(document.body, { key: 'Escape' })
     fireEvent.click(document.querySelector('.ui-dialog-backdrop')!)
-    expect(screen.getByRole('dialog', { name: 'admin.apiKeys.reveal.title' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'apiKeys.reveal.title' })).toBeInTheDocument()
 
-    fireEvent.click(within(reveal).getByRole('button', { name: 'admin.apiKeys.reveal.done' }))
+    fireEvent.click(within(reveal).getByRole('button', { name: 'apiKeys.reveal.done' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue(KEY)).not.toBeInTheDocument()
   })
 
   it('copies the whole Carmen setup in one go', async () => {
     const reveal = await openCreateAndPickBu()
-    fireEvent.click(within(reveal).getByRole('button', { name: 'admin.apiKeys.reveal.copySetup' }))
+    fireEvent.click(within(reveal).getByRole('button', { name: 'apiKeys.reveal.copySetup' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledOnce())
     const text = writeText.mock.calls[0][0] as string
     expect(text).toContain('/api/v1/pms/events')
@@ -116,14 +116,12 @@ describe('ApiKeysPage — revoke', () => {
   it('revokes in a dialog, with the reason', async () => {
     render(<ApiKeysPage />)
     await screen.findByText('PMS webhook')
-    fireEvent.click(screen.getByRole('button', { name: /admin\.apiKeys\.revokeAria/ }))
-    const dialog = screen.getByRole('dialog', { name: 'admin.apiKeys.revokeDialog.title' })
-    fireEvent.change(within(dialog).getByLabelText(/admin\.apiKeys\.revokeDialog\.reason/), {
+    fireEvent.click(screen.getByRole('button', { name: /apiKeys.revokeAria/ }))
+    const dialog = screen.getByRole('dialog', { name: 'apiKeys.revokeDialog.title' })
+    fireEvent.change(within(dialog).getByLabelText(/apiKeys.revokeDialog\.reason/), {
       target: { value: 'Rotated' },
     })
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'admin.apiKeys.revokeDialog.submit' })
-    )
+    fireEvent.click(within(dialog).getByRole('button', { name: 'apiKeys.revokeDialog.submit' }))
     await waitFor(() => expect(revokeApiKey).toHaveBeenCalledWith('k-1', 'Rotated'))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
@@ -133,14 +131,14 @@ describe('ApiKeysPage — status line and empty state', () => {
   it('says the feed is not set up, and teaches the next step, when no key is active', async () => {
     serve([])
     render(<ApiKeysPage />)
-    expect(await screen.findByText('admin.apiKeys.status.none')).toBeInTheDocument()
-    expect(await screen.findByText('admin.apiKeys.emptyTitle')).toBeInTheDocument()
+    expect(await screen.findByText('apiKeys.status.none')).toBeInTheDocument()
+    expect(await screen.findByText('apiKeys.emptyTitle')).toBeInTheDocument()
   })
 
   it('reports the last call when a key has been used', async () => {
     serve([{ ...ROW, last_used_at: new Date().toISOString(), last_used_ip: '127.0.0.1' } as never])
     render(<ApiKeysPage />)
-    expect(await screen.findByText(/admin\.apiKeys\.status\.lastCall/)).toBeInTheDocument()
-    expect(screen.getByText('admin.apiKeys.status.keysOne')).toBeInTheDocument()
+    expect(await screen.findByText(/apiKeys.status\.lastCall/)).toBeInTheDocument()
+    expect(screen.getByText('apiKeys.status.keysOne')).toBeInTheDocument()
   })
 })
