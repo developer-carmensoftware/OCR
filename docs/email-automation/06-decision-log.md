@@ -1083,3 +1083,27 @@ An explicit `posting_token` still wins, so Carmen can add one later without a re
   open the menu and stop when Carmen expires or replaces that token (a new login may). The
   card then reads *No longer accepted*, a post fails `carmen_unauthorized`, and *Reconnect*
   opens Carmen's `/setting` (#278). Verified end to end 2026-10-06: Connected, then a JV posted.
+
+## 39. Carmen calls into us for PMS data, with a key we issue (2026-10-07)
+
+**Decided:** 2026-10-07 (CA-93). Scope: the PMS interface only. Email automation still calls
+none of our endpoints (#35).
+
+**Decision.** Carmen POSTs PMS data to `/api/v1/pms/events` and authenticates with a per-BU
+key we issue from `#/admin/api-keys`. The key identifies the BU, so one URL serves every BU
+and the body never names one. Contract: [`docs/PMS_INTEGRATION.md`](../PMS_INTEGRATION.md).
+
+- **Push, with the data in the body.** We never call back to Carmen for PMS data, so no Carmen
+  credential per BU is needed (the email posting token, #38, is a person's and expires).
+- **Bearer key, hashed.** sha256 only; plaintext shown once. Not HMAC: TLS already protects
+  the body, and a signature would force us to store the secret decryptably.
+- **Reuses `api_keys`**, a baseline table that nothing had used until now, with scope
+  `pms:events`. Many live keys per BU and no expiry, so rotation needs no downtime. A key
+  that expires on its own is a webhook that goes silent with nobody watching.
+- **The key is the switch.** No `modules` row until processing exists; revoking the key
+  turns a BU off.
+- **Envelope `{event_id, type, data}`.** `unique (tenant_id, event_id)` makes a retry a
+  no-op answered `200 duplicate`. `data` is opaque until processing defines it.
+- **Aggregates only.** The contract excludes guest PII; processing nulls the payload once done.
+- **What it costs.** Phase 1 stores and does nothing else, so events pile up in
+  `pms_events` until the processing ticket. That is fine at about one per BU per day.

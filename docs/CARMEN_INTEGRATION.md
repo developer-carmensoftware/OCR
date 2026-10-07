@@ -640,7 +640,8 @@ model allows to configure Email Automation. When it is clicked:
    (Earlier drafts minted a separate BU token and sent it as `posting_token`. If you still
    send one we use it in place of `token`; you do not have to.)
 
-That is all. You call none of our endpoints. Our screen stores `token` as the posting
+That is all. You call none of our endpoints (for email automation — PMS data is the one
+exception and has its own contract, [`PMS_INTEGRATION.md`](PMS_INTEGRATION.md)). Our screen stores `token` as the posting
 credential through `PUT /settings/token` (§2.6) before it reads anything, so it is checked
 against your Carmen on the way in, and then reads and writes §2.2–§2.3 with the same `token`,
 exactly as your screen would have. Consequence of one token: JVs post as the last person to
