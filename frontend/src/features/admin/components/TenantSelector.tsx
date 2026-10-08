@@ -13,6 +13,11 @@ interface Tenant {
 interface TenantSelectorProps {
   value: string
   onChange: (tenantId: string) => void
+  /** For an outside <label htmlFor>. */
+  id?: string
+  /** Defaults name the control as a filter; a form field (a dialog's "Business unit") says so. */
+  ariaLabel?: string
+  placeholder?: string
 }
 
 /** The endpoint's maximum. It defaulted to 200, so BU #201 was simply not in the list. */
@@ -20,7 +25,13 @@ const TENANT_LIMIT = 500
 
 const label = (t: Tenant) => `${t.name || t.host} (${t.bu_code})`
 
-export default function TenantSelector({ value, onChange }: TenantSelectorProps) {
+export default function TenantSelector({
+  value,
+  onChange,
+  id,
+  ariaLabel,
+  placeholder,
+}: TenantSelectorProps) {
   const { t } = useT()
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [text, setText] = useState('')
@@ -47,11 +58,12 @@ export default function TenantSelector({ value, onChange }: TenantSelectorProps)
         type="text"
         role="combobox"
         list={listId}
+        id={id}
         className="admin-select admin-tenant-input"
         value={text}
-        placeholder={t('admin.common.tenantSelector.allTenants')}
-        aria-label={t('admin.common.tenantSelector.filterTitle')}
-        title={t('admin.common.tenantSelector.filterTitle')}
+        placeholder={placeholder ?? t('admin.common.tenantSelector.allTenants')}
+        aria-label={ariaLabel ?? t('admin.common.tenantSelector.filterTitle')}
+        title={ariaLabel ? undefined : t('admin.common.tenantSelector.filterTitle')}
         onChange={e => {
           const next = e.target.value
           setText(next)

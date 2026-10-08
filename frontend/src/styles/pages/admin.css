@@ -582,6 +582,13 @@ body:has(.admin-login-page) {
   padding: 0.65rem 1rem;
   border-bottom: 1px solid var(--border);
 }
+/* A filter at the start, search at the end; they stack rather than squeeze. */
+.admin-table-toolbar--split {
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
 .admin-table-search {
   display: flex;
   align-items: center;
@@ -840,18 +847,6 @@ body:has(.admin-login-page) {
   background: var(--rose-fill);
   color: white;
   border-color: var(--rose-fill);
-}
-
-.alert-resolve-btn {
-  align-self: center;
-  border: 1px solid var(--primary-mid);
-  background: var(--card-bg);
-  color: var(--primary);
-}
-.alert-resolve-btn:hover {
-  background: var(--primary);
-  color: white;
-  border-color: var(--primary);
 }
 
 /* ─── ALERT LIST ───────────────────────────────────────────────────────── */

@@ -4,6 +4,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   startTransition,
   type ReactNode,
 } from 'react'
@@ -65,4 +66,18 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
 export function useT(): LanguageCtx {
   return useContext(Ctx) ?? FALLBACK_CTX
+}
+
+/**
+ * Pin a subtree to one language, whatever the toggle says: an English-only surface (`#/pms`)
+ * that renders shared, translated components. `setLang` still reaches the app's provider, so
+ * the toggle keeps working everywhere else.
+ */
+export function FixedLanguage({ lang, children }: { lang: Lang; children: ReactNode }) {
+  const { setLang } = useT()
+  const value = useMemo<LanguageCtx>(
+    () => ({ lang, setLang, t: (key, vars) => translate(lang, key, vars) }),
+    [lang, setLang]
+  )
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

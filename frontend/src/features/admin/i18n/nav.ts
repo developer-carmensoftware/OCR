@@ -22,6 +22,7 @@ export const en = {
   'admin.nav.item.quotaModules': 'Quota & Modules',
   'admin.nav.section.accessControl': 'Access Control',
   'admin.nav.item.adminUsers': 'Admin Users',
+  'admin.nav.item.apiKeys': 'API Keys',
   'admin.nav.item.maintenance': 'Maintenance',
 } as const
 
@@ -49,5 +50,6 @@ export const th: Record<keyof typeof en, string> = {
   'admin.nav.item.quotaModules': 'โควตาและโมดูล',
   'admin.nav.section.accessControl': 'การควบคุมสิทธิ์เข้าถึง',
   'admin.nav.item.adminUsers': 'ผู้ดูแลระบบ',
+  'admin.nav.item.apiKeys': 'API Key',
   'admin.nav.item.maintenance': 'ปิดปรับปรุงระบบ',
 }

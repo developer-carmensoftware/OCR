@@ -2,6 +2,9 @@ export const en = {
   // — Shared chrome —
   'common.back': 'Back',
   'common.cancel': 'Cancel',
+  'common.copy': 'Copy',
+  'common.copied': 'Copied',
+  'common.copyFailed': "Couldn't copy. Select the text and copy it by hand.",
   'common.submitData': 'Submit Data',
   'common.mapped': 'Mapped',
   'common.unmapped': 'Unmapped',
@@ -38,6 +41,9 @@ export const th: Record<keyof typeof en, string> = {
   // — Shared chrome —
   'common.back': 'ย้อนกลับ',
   'common.cancel': 'ยกเลิก',
+  'common.copy': 'คัดลอก',
+  'common.copied': 'คัดลอกแล้ว',
+  'common.copyFailed': 'คัดลอกไม่สำเร็จ เลือกข้อความแล้วคัดลอกเอง',
   'common.submitData': 'ส่งข้อมูล',
   'common.mapped': 'จับคู่แล้ว',
   'common.unmapped': 'ยังไม่ได้จับคู่',
