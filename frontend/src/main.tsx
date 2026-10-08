@@ -77,6 +77,7 @@ const Pricing = lazy(() => import('@/features/billing/pages/Pricing'))
 const OrderHistory = lazy(() => import('@/features/billing/pages/OrderHistory'))
 const WhatsNew = lazy(() => import('@/features/home/pages/WhatsNew'))
 const EmailSettings = lazy(() => import('@/features/email-settings/pages/EmailSettings'))
+const PmsPage = lazy(() => import('@/features/pms/pages/PmsPage'))
 
 // Admin pages
 const AdminRouter = lazy(() => import('@/features/admin/pages/AdminRouter'))
@@ -175,6 +176,10 @@ function Router() {
     const query = window.location.hash.split('?')[1]
     window.location.replace(`#/CreditCardOCR/email-settings${query ? `?${query}` : ''}`)
     Page = <EmailSettings />
+  } else if (route === 'pms') {
+    // A BU's own PMS keys (CA-117). Opened only from Carmen's menu with the SSO link
+    // (decision #40); deliberately no Home tile or in-app link.
+    Page = <PmsPage />
   } else if (route === 'pricing/orders') {
     Page = <OrderHistory />
   } else if (route.startsWith('pricing')) {

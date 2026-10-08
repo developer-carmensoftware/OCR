@@ -40,6 +40,7 @@ import * as review from './review'
 import * as whatsnew from './whatsnew'
 import * as home from './home'
 import * as maintenance from './maintenance'
+import * as apiKeys from './apiKeys'
 
 export type Lang = 'en' | 'th'
 
@@ -70,6 +71,7 @@ const en = {
   ...whatsnew.en,
   ...home.en,
   ...maintenance.en,
+  ...apiKeys.en,
 }
 
 const th = {
@@ -99,6 +101,7 @@ const th = {
   ...whatsnew.th,
   ...home.th,
   ...maintenance.th,
+  ...apiKeys.th,
 }
 
 export type TKey = keyof typeof en | AdminKey

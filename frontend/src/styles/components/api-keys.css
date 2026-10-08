@@ -1,0 +1,606 @@
+/* ── API keys (shared/components/apiKeys, #/admin/api-keys, #/pms) ───────────────
+   The PMS webhook key surfaces: status line, key list, create/reveal and revoke dialogs,
+   and the copy button they share. Loaded app-wide from index.css. */
+
+/* ─── COPY BUTTON (shared/components/ui/CopyButton.tsx) ──────────────────── */
+
+.copy-btn {
+  flex-shrink: 0;
+}
+/* Icon-only: a square that sits on a line of mono text without raising it. */
+.copy-btn--icon {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+}
+.copy-btn.is-copied {
+  border-color: var(--emerald);
+  color: var(--emerald-text);
+}
+@media (max-width: 768px) {
+  .copy-btn--icon {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+.alert-resolve-btn {
+  align-self: center;
+  border: 1px solid var(--primary-mid);
+  background: var(--card-bg);
+  color: var(--primary);
+}
+.alert-resolve-btn:hover {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* ─── API KEYS ─────────────────────────────────────────────────────────────── */
+
+/* Status line (DESIGN.md §5 "status line first"): is Carmen's feed live, and where it posts. */
+.apikeys-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-xs);
+}
+.apikeys-status[data-tone='warn'] {
+  border-color: var(--amber-mid);
+  background: var(--amber-light);
+}
+.apikeys-status__text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  min-width: 0;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+.apikeys-status__text strong {
+  font-weight: 600;
+}
+.apikeys-status[data-tone='warn'] .apikeys-status__text {
+  color: var(--amber-text);
+}
+.apikeys-status__meta {
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.apikeys-status[data-tone='warn'] .apikeys-status__meta {
+  color: var(--amber-text);
+}
+.apikeys-status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-4);
+  box-shadow: 0 0 0 3px var(--gray-100);
+}
+.apikeys-status__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  min-width: 0;
+}
+/* The next step, as DESIGN.md §5's amber pill: pressable, but not the brand blue. */
+.apikeys-step {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--amber-mid);
+  border-radius: var(--radius-pill);
+  background: var(--card-bg);
+  color: var(--amber-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.apikeys-step:hover {
+  border-color: var(--amber);
+}
+.apikeys-step:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+.apikeys-status[data-tone='ok'] .apikeys-status__dot {
+  background: var(--emerald);
+  box-shadow: 0 0 0 3px var(--emerald-light);
+}
+.apikeys-status[data-tone='warn'] .apikeys-status__dot {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-mid);
+}
+.apikeys-status__endpoint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.apikeys-status__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.apikeys-method {
+  flex-shrink: 0;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--gray-50);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+.apikeys-url {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text);
+  overflow-wrap: break-word;
+  user-select: all;
+}
+
+/* Table: identity on two lines, the second one quieter; codes and keys in mono. */
+.apikeys-table:focus {
+  outline: none;
+}
+.apikeys-table .admin-table-toolbar .ui-tabs {
+  height: 2.25rem;
+  margin-bottom: 0;
+  box-sizing: border-box;
+}
+.apikeys-table .admin-table-toolbar .ui-tab {
+  display: inline-flex;
+  align-items: center;
+  padding-block: 0;
+}
+.apikeys-table .admin-table-search {
+  min-height: 2.25rem;
+  box-sizing: border-box;
+}
+.apikeys-table .admin-table-search input {
+  min-height: 0;
+}
+.apikeys-table .apikeys-tenant .admin-tenant-input {
+  min-height: 2.25rem;
+  border: 1px solid var(--border-input);
+  box-shadow: none;
+}
+/* The tenant type-ahead: a drawn search icon instead of the datalist triangle. */
+.apikeys-tenant {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+.ui-dialog .apikeys-tenant {
+  width: 100%;
+}
+.apikeys-tenant > svg {
+  position: absolute;
+  top: 50%;
+  left: 0.7rem;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  pointer-events: none;
+}
+.apikeys-tenant .admin-tenant-input {
+  padding-left: 2rem;
+}
+.apikeys-tenant .admin-tenant-input::-webkit-calendar-picker-indicator {
+  display: none !important;
+}
+.apikeys-toolbar__end {
+  display: flex;
+  margin-left: auto;
+}
+.apikeys-name {
+  font-weight: 500;
+  color: var(--text);
+}
+.apikeys-bu {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.apikeys-sub {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.apikeys-sub--mono {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+.apikeys-date {
+  font-variant-numeric: tabular-nums;
+}
+.apikeys-muted {
+  color: var(--text-3);
+}
+/* A revoked key steps back by ink, never by opacity (DESIGN.md §6). */
+.apikeys-cell.is-revoked,
+.apikeys-cell.is-revoked .apikeys-name,
+.apikeys-cell.is-revoked .apikeys-bu {
+  color: color-mix(in oklch, var(--text-3) 70%, var(--text-2));
+}
+
+.apikeys-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+}
+.apikeys-state__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--emerald);
+  box-shadow: 0 0 0 3px var(--emerald-light);
+}
+.apikeys-state[data-state='revoked'] {
+  color: color-mix(in oklch, var(--text-3) 70%, var(--text-2));
+}
+.apikeys-state[data-state='revoked'] .apikeys-state__dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--text-4);
+}
+
+/* One quiet action per row; it turns rose only on intent, so a list of keys is not a
+   column of red outlines. */
+.apikeys-revoke {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.apikeys-revoke:hover,
+.apikeys-revoke:focus-visible {
+  border-color: var(--rose-mid);
+  background: var(--rose-light);
+  color: var(--rose-text);
+}
+.apikeys-revoke:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+.apikeys-revoke:active {
+  transform: scale(0.97);
+}
+
+/* Dialog content */
+.apikeys-lede {
+  margin: 0 0 var(--space-4);
+  max-width: 62ch;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+.apikeys-perm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+.apikeys-chip {
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--gray-50);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text);
+}
+/* Full border + tint, no side stripe (DESIGN.md §6). */
+.apikeys-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--amber-mid);
+  border-radius: var(--radius-sm);
+  background: var(--amber-light);
+  color: var(--amber-text);
+}
+.apikeys-callout svg {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+.apikeys-callout p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.apikeys-reveal {
+  animation: ui-dialog-rise 260ms var(--ease) both;
+}
+.apikeys-secret {
+  display: flex;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.apikeys-secret__value {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  background: var(--gray-50);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+.apikeys-secret__value::selection {
+  background: color-mix(in oklch, var(--primary) 24%, transparent);
+  color: var(--text);
+}
+.apikeys-secret__value:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+.apikeys-handoff {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.apikeys-handoff__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.apikeys-handoff__bu {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-2);
+}
+/* Label column + value column; a value's copy button sits at the end of its line. */
+.apikeys-pairs {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+.apikeys-pairs > div {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 2rem;
+}
+.apikeys-pairs dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.apikeys-pairs dd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+.apikeys-pairs code {
+  min-width: 0;
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  overflow-wrap: break-word;
+}
+.apikeys-pairs--summary {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--gray-50);
+}
+.apikeys-pairs--summary code {
+  flex: 0 1 auto;
+}
+.ui-dialog .apikeys-reason {
+  resize: vertical;
+  min-height: 4.5rem;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 768px) {
+  .apikeys-revoke {
+    min-height: 44px;
+  }
+  .apikeys-toolbar__end {
+    margin-left: 0;
+    flex: 1;
+  }
+  .apikeys-toolbar__end .admin-tenant-input {
+    width: 100%;
+  }
+  .apikeys-table .admin-table-search {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+  .apikeys-table .admin-table-toolbar .ui-tabs,
+  .apikeys-table .apikeys-tenant .admin-tenant-input {
+    height: auto;
+    min-height: 44px;
+  }
+  .apikeys-toolbar__end .apikeys-tenant {
+    flex: 1;
+  }
+}
+@media (max-width: 640px) {
+  /* Label and method over the URL, which keeps its copy button on its own line. */
+  .apikeys-status__endpoint {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'label method method'
+      'url url copy';
+    width: 100%;
+  }
+  .apikeys-status__endpoint .apikeys-status__label {
+    grid-area: label;
+  }
+  .apikeys-status__endpoint .apikeys-method {
+    grid-area: method;
+    justify-self: start;
+  }
+  .apikeys-status__endpoint .apikeys-url {
+    grid-area: url;
+  }
+  .apikeys-status__endpoint .copy-btn {
+    grid-area: copy;
+  }
+  .apikeys-pairs > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+  .apikeys-secret {
+    flex-direction: column;
+  }
+}
+
+/* ─── #/pms (features/pms/pages/PmsPage.tsx) ──────────────────────────────────
+   The BU's own keys. Same frame as the other settings screen Carmen's menu opens
+   (email-settings): 1040px, status line first, one section of rows. */
+
+.pms-page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-7);
+}
+.pms-context {
+  margin: calc(-1 * var(--space-3)) 0 var(--space-5);
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+.pms-context strong {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text);
+}
+.pms-keys__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.pms-keys__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.pms-keys__hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+.pms-keys__card {
+  overflow-x: auto;
+}
+.pms-keys__card:focus {
+  outline: none;
+}
+.pms-keys__card > .ui-card-body,
+.pms-keys__card {
+  padding: 0;
+}
+.pms-keys__note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-5);
+  font-size: 0.875rem;
+  color: var(--text-2);
+}
+.pms-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.pms-table th {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--gray-50);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.pms-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  color: var(--text);
+}
+.pms-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.pms-table__action {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .pms-page {
+    padding-top: var(--space-5);
+  }
+  .pms-table th,
+  .pms-table td {
+    padding-inline: var(--space-3);
+  }
+}

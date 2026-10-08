@@ -131,6 +131,14 @@ export const API = {
     preview: `${V1}/files/preview`,
   },
 
+  pms: {
+    // Carmen calls this one, not the browser: the key pages only show and copy it.
+    events: `${V1}/pms/events`,
+    // The BU's own keys (#/pms), on its session.
+    keys: `${V1}/pms/keys`,
+    key: (id: string) => `${V1}/pms/keys/${id}`,
+  },
+
   admin: {
     login: `${V1}/admin/auth/login`,
     me: `${V1}/admin/auth/me`,
@@ -182,6 +190,8 @@ export const API = {
     emailPoll: `${V1}/admin/email-ingest/poll`,
     emailConfirmations: `${V1}/admin/email-ingest/confirmations`,
     adminUsers: `${V1}/admin/admin-users`,
+    apiKeys: `${V1}/admin/api-keys`,
+    apiKey: (id: string) => `${V1}/admin/api-keys/${id}`,
     adminUser: (userId: string) => `${V1}/admin/admin-users/${userId}`,
     adminUserPasswordReset: (userId: string) => `${V1}/admin/admin-users/${userId}/password-reset`,
     adminUserRoles: (userId: string) => `${V1}/admin/admin-users/${userId}/roles`,

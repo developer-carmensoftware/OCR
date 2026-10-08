@@ -181,9 +181,38 @@ migration — see [`05-operations.md`](docs/email-automation/05-operations.md#sc
 
 Design: [`07-human-in-the-loop.md`](docs/email-automation/07-human-in-the-loop.md).
 
+### PMS webhook (CA-93, phase 1: an inbox, nothing processes it yet)
+
+```text
+Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key also accepted)
+  routers/pms.py  _pms_key → services/shared/api_keys.authenticate()
+      sha256(key) → api_keys row (scope pms:events, not revoked, tenant live) → tenant_id
+      stamps last_used_at/ip — what #/admin/api-keys reads as "is Carmen calling?"
+  body {InterfaceType:"PMS", InterfaceName, DocType, DocDate} ≤ 16 KB   (Carmen's own hook)
+      → pms_events, one row per BU × Data Bank day: event_id = "PMS/Comanche/Daily/2026-10-07"
+      202 new day · 200 {duplicate:true} same day again (moves updated_at) · 401 · 413 · 422
+  the hook carries no data: processing (CA-119) reads the day back from Carmen's Data Bank,
+      GET /api/interface/PMS/{name}/{docType}/Date/{docDate}
+
+Carmen menu → #/pms?token=&bu=&user=&uri=   (same SSO link as email-settings)
+  features/pms/pages/PmsPage.tsx   the BU's own keys: list · create · revoke (English only)
+  GET/POST /api/v1/pms/keys, DELETE /keys/{id}   session JWT → the session's tenant only
+```
+
+The first endpoint Carmen calls *into* (decision-log #39; the body is Carmen's 4-field hook
+since #41). The key **is** the tenant: no
+host/bu in the body, so a key cannot write into another BU. **The BU creates its own key** at
+`#/pms`, opened only from Carmen's menu (decision-log #40). The SSO login creates or finds
+exactly that tenant, so a BU that never used AI can still get a key and nobody picks a tenant
+by hand. `#/admin/api-keys` stays as a support tool. Keys are shown once and capped at **2
+active per BU** (`api_keys.issue()`, both paths). Revoking is how a BU is switched off (no
+`modules` row yet). The key dialogs, status line and copy button live in
+`shared/components/apiKeys/` and are used by both pages.
+Contract for Carmen: [`docs/PMS_INTEGRATION.md`](docs/PMS_INTEGRATION.md).
+
 ### Admin dashboard (`#/admin/*`) — check here before writing SQL
 
-18 pages already exist. **Read this table before hand-querying the DB** — on 2026-07-16
+19 pages already exist. **Read this table before hand-querying the DB** — on 2026-07-16
 a full day went into ad-hoc SQL to answer questions that four of these pages already
 answered, purely because nobody knew they were there.
 
@@ -204,6 +233,7 @@ answered, purely because nobody knew they were there.
 | | `#/admin/email` | email-ingestion runs + cron health |
 | | `#/admin/maintenance` | maintenance-mode flag + window (what `MaintenanceGate` reads) |
 | Who can touch it? | `#/admin/admin-users` | RBAC |
+| | `#/admin/api-keys` | keys we issue to external systems (Carmen's PMS webhook) — issue, revoke, **last used** |
 
 Gotchas worth knowing before trusting a number:
 
@@ -407,7 +437,8 @@ EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # dev default; per-BU routing uses
 |---|---|
 | Identity | `tenants` (composite host+bu), `plans` |
 | Admin RBAC | `admin_users`, `roles`, `permissions`, `role_permissions`, `admin_user_roles` |
-| API Keys | `api_keys`, `api_key_usage` |
+| API Keys | `api_keys` (wired 2026-10-07: the PMS webhook's per-BU keys), `api_key_usage` (still unused) |
+| PMS interface | `pms_events` (what Carmen pushed, one row per tenant × `event_id`) |
 | Modules | `modules`, `tenant_modules` |
 | Bank CMS | `banks`, `prompt_templates` |
 | Config | `system_configs`, `tenant_config_overrides`, `feature_flags`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries` |

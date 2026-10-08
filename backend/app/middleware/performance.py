@@ -102,6 +102,9 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
         duration_ms = (time.perf_counter() - start) * 1000
 
         final_doc_ref = getattr(request.state, "document_ref", doc_ref)
+        # A caller that is not one of our JWTs (the PMS webhook's API key) names its
+        # tenant here once its auth dependency has run.
+        tenant_id = getattr(request.state, "tenant_id", None) or tenant_id
 
         _PERF_BUFFER.append(
             {

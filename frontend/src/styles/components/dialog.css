@@ -1,0 +1,140 @@
+/* ── Dialog (shared/components/ui/Dialog.tsx) ─────────────────────────────────
+   The record dialog of DESIGN.md §5, shared. Same shell and values as the rule dialog in
+   email-settings.css (backdrop, centred 560px card, full screen on a phone); that page keeps
+   its own copy until it moves to this component. Arrives by fade + rise, leaves at once. */
+
+.ui-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal-backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: ui-dialog-fade 180ms var(--ease) both;
+}
+.ui-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: color-mix(in oklch, var(--foreground) 38%, transparent);
+  cursor: default;
+}
+.ui-dialog {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100% - 2rem));
+  max-height: min(90vh, 720px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-xl);
+  animation: ui-dialog-rise 220ms var(--ease) both;
+}
+.ui-dialog:focus {
+  outline: none;
+}
+@keyframes ui-dialog-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes ui-dialog-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+.ui-dialog__head {
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.ui-dialog__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-wrap: balance;
+}
+.ui-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+.ui-dialog__error {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--rose-mid);
+  border-radius: var(--radius-md);
+  background: var(--rose-light);
+  font-size: 0.8125rem;
+  color: var(--rose-text);
+}
+.ui-dialog__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border);
+}
+.ui-dialog__spacer {
+  flex: 1;
+}
+
+/* Fields: label over control, one column. Controls meet WCAG 1.4.11 (DESIGN.md "Border
+   Input"), which the shared admin input class predates. */
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.ui-field + .ui-field {
+  margin-top: var(--space-4);
+}
+.ui-field__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+/* One control height in a dialog, whichever admin class the control wears: the tenant
+   picker is an .admin-select (filter-sized) and would otherwise sit shorter than its
+   neighbouring text input. */
+.ui-dialog .admin-form-input,
+.ui-dialog .admin-tenant-input {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--border-input);
+  font-size: 0.875rem;
+}
+@media (max-width: 768px) {
+  .ui-dialog .admin-form-input,
+  .ui-dialog .admin-tenant-input {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  /* On a phone the dialog is the screen. */
+  .ui-dialog-overlay {
+    align-items: stretch;
+  }
+  .ui-dialog {
+    width: 100%;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+  }
+  /* …so its footer is the bottom of the screen, where the toasts sit: lift the toaster above
+     it, as email-settings.css does (sonner writes these offsets inline, hence !important). */
+  body:has(.ui-dialog) [data-sonner-toaster] {
+    --offset-bottom: 6rem !important;
+    --mobile-offset-bottom: 6rem !important;
+  }
+}

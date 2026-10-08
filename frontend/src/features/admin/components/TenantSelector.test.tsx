@@ -87,3 +87,23 @@ describe('TenantSelector', () => {
     expect(box()).toHaveValue('Carmen Cloud (carmencloud)')
   })
 })
+
+describe('TenantSelector as a form field', () => {
+  it('takes the name, id and placeholder a dialog gives it', async () => {
+    render(
+      <TenantSelector
+        value=""
+        onChange={() => {}}
+        id="bu-field"
+        ariaLabel="Business unit"
+        placeholder="Search business units…"
+      />
+    )
+    const field = screen.getByLabelText('Business unit')
+    expect(field).toHaveAttribute('id', 'bu-field')
+    expect(field).toHaveAttribute('placeholder', 'Search business units…')
+    // A field is named by its label; the filter tooltip would contradict it.
+    expect(field).not.toHaveAttribute('title')
+    await waitFor(() => expect(fetchTenants).toHaveBeenCalled())
+  })
+})

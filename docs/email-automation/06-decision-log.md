@@ -1083,3 +1083,89 @@ An explicit `posting_token` still wins, so Carmen can add one later without a re
   open the menu and stop when Carmen expires or replaces that token (a new login may). The
   card then reads *No longer accepted*, a post fails `carmen_unauthorized`, and *Reconnect*
   opens Carmen's `/setting` (#278). Verified end to end 2026-10-06: Connected, then a JV posted.
+
+## 39. Carmen calls into us for PMS data, with a key we issue (2026-10-07)
+
+**Decided:** 2026-10-07 (CA-93). Scope: the PMS interface only. Email automation still calls
+none of our endpoints (#35).
+
+**Decision.** Carmen POSTs PMS data to `/api/v1/pms/events` and authenticates with a per-BU
+key we issue from `#/admin/api-keys`. The key identifies the BU, so one URL serves every BU
+and the body never names one. Contract: [`docs/PMS_INTEGRATION.md`](../PMS_INTEGRATION.md).
+
+- **Push, with the data in the body.** We never call back to Carmen for PMS data, so no Carmen
+  credential per BU is needed (the email posting token, #38, is a person's and expires).
+- **Bearer key, hashed.** sha256 only; plaintext shown once. Not HMAC: TLS already protects
+  the body, and a signature would force us to store the secret decryptably.
+- **Reuses `api_keys`**, a baseline table that nothing had used until now, with scope
+  `pms:events`. Many live keys per BU and no expiry, so rotation needs no downtime. A key
+  that expires on its own is a webhook that goes silent with nobody watching.
+- **The key is the switch.** No `modules` row until processing exists; revoking the key
+  turns a BU off.
+- **Envelope `{event_id, type, data}`.** `unique (tenant_id, event_id)` makes a retry a
+  no-op answered `200 duplicate`. `data` is opaque until processing defines it.
+- **Aggregates only.** The contract excludes guest PII; processing nulls the payload once done.
+- **What it costs.** Phase 1 stores and does nothing else, so events pile up in
+  `pms_events` until the processing ticket. That is fine at about one per BU per day.
+
+## 40. A BU creates its own PMS key from Carmen's menu (2026-10-07)
+
+**Decided:** 2026-10-07 (CA-117). It amends #39's "keys are issued from `#/admin/api-keys`".
+
+**Decision.** Carmen's menu opens `#/pms` through the same SSO link as email-settings. The
+user sees their BU's keys and can create and revoke them, then pastes the key into Carmen's
+PMS settings.
+
+- **Why.** An admin could only issue a key for a tenant that already existed. Tenants are
+  created at SSO login, so a BU that had never opened the AI app couldn't get a key, and
+  picking a tenant by hand could pick the wrong one. Through SSO, `/auth/exchange` creates or
+  finds exactly that (host, BU) and Carmen proves who it is.
+- **Carmen gates, we don't** (as #34). We keep no roles. Any token Carmen accepts may create
+  and revoke for its BU. The page is reachable only from Carmen's menu: no Home tile, no
+  in-app link.
+- **The first visit is a normal first login:** the consent popup and the 30 signup credits,
+  with no special-casing.
+- **At most 2 active keys per BU,** enforced in `api_keys.issue()` for both paths.
+- **The reveal is compact** (key + endpoint): the user pastes the key themselves. The admin
+  page keeps the full Send-to-Carmen block for support.
+- **English only,** like email-settings. `FixedLanguage` pins the page whatever the toggle says.
+- **No entitlement gate yet.** Billing belongs to processing (CA-119).
+- **Carmen calls none of our APIs** for this either: it builds a menu link and a field.
+
+## 41. Carmen's hook names a Data Bank day; we read the data back (2026-10-08)
+
+**Decided:** 2026-10-08 (CA-93). It amends #39's "push, with the data in the body" and its
+`{event_id, type, data}` envelope.
+
+**Decision.** Carmen's real hook is four fields: `{InterfaceType, InterfaceName, DocType,
+DocDate}`. Those fields name a row in Carmen's Data Bank, the store the PMS writes into
+through `POST`/`PATCH /api/interface/PMS/{name}/{docType}`. `/api/v1/pms/events` accepts
+exactly that body (`InterfaceType` must be `PMS`) and records one row per BU and day. Reading
+the day back (`GET /api/interface/PMS/{name}/{docType}/Date/{docDate}`) belongs to
+processing (CA-119).
+
+- **Why.** This is the shape Carmen built. We take it as-is, so Carmen has nothing to adapt
+  before testing.
+- **Same table, no migration.** `pms_events.event_id` holds the day's key,
+  `PMS/Comanche/Daily/2026-10-07`, and `unique (tenant_id, event_id)` still keeps one row per
+  day. `type` holds `InterfaceType`, and `payload` holds the hook as sent.
+- **A repeat is recorded, not dropped.** The same day again answers `200 duplicate` and moves
+  `updated_at`. Whether a repeat means a retry or a day Carmen changed with AddOrUpdate is
+  open (CA-116); `updated_at` is what processing will compare with the Data Bank's
+  `LastModified`.
+- **Lenient where a sender's defaults differ; strict where a guess could record the wrong day.**
+  Amended the same day, after a test round, to cut down the back-and-forth with Carmen.
+  - **Lenient:**
+    - field names in any case (.NET's `PostAsJsonAsync` writes camelCase);
+    - `pms`;
+    - a UTF-8 BOM;
+    - any Content-Type;
+    - `bearer`.
+  - **Strict:**
+    - `DocDate` must be an ISO date string; Pydantic would read `20261007` or `"1791331200"` as unix seconds and invent a day;
+    - the body must be valid JSON (the first sample had a trailing comma);
+    - no `/` in the name or doc type, because it separates the key's parts.
+  - The body cap drops from 1 MB to 16 KB.
+- **Cost of the change.** The data now stays in Carmen. That removes the PII question from the
+  hook, but processing now needs a Carmen credential per BU to read the Data Bank, which #39
+  had avoided. Which one is open (CA-116).
