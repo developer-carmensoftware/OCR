@@ -1,12 +1,14 @@
 # PMS Integration — Carmen → AI (CA-93)
 
 **Audience:** the Carmen developers wiring PMS data into the AI module.
-**Status:** phase 1. We accept and store events. Processing them (mapping, posting) is the
-next phase, so you can integrate against this today and nothing here should change shape
-when processing lands.
+**Status:** phase 1. We accept and record the hook. Processing it is the next phase:
+reading the day from Carmen's Data Bank, mapping and posting. You can integrate against
+this today.
 
-When a BU's PMS data arrives in Carmen, Carmen POSTs it to us. That is the whole integration
-for now: one URL, and a key per BU that the BU creates itself (§2).
+When a day of PMS data lands in Carmen's Data Bank, Carmen sends us a short hook that names
+that day. It carries no PMS data: we read the day back from the Data Bank ourselves
+(`GET /api/interface/PMS/{InterfaceName}/{DocType}/Date/{DocDate}`). That is the whole
+integration for now: one URL, and a key per BU that the BU creates itself (§2).
 
 ---
 
@@ -64,46 +66,42 @@ our other screens, and the key belongs to exactly that (host, BU).
 
 ```json
 {
-  "event_id": "NA-2026-10-06",
-  "type": "night_audit",
-  "data": { "...": "PMS figures, see §3.1" }
+  "InterfaceType": "PMS",
+  "InterfaceName": "Comanche",
+  "DocType": "Daily",
+  "DocDate": "2026-10-07"
 }
 ```
 
 | Field | Type | Rule |
 |---|---|---|
-| `event_id` | string, 1–100 chars | **Unique within the BU.** A retry must resend the **same** `event_id`. That is how we recognise a retry. |
-| `type` | string, 1–50 chars | What kind of PMS data this is (e.g. `night_audit`). Values are agreed per type before processing is built. |
-| `data` | JSON object | The PMS data itself. We store it as you send it. |
+| `InterfaceType` | string | Must be `PMS` on this endpoint. |
+| `InterfaceName` | string, 1–40 chars, no `/` | The PMS, as in the Data Bank (e.g. `Comanche`). |
+| `DocType` | string, 1–30 chars, no `/` | As in the Data Bank (e.g. `Daily`). |
+| `DocDate` | date | `2026-10-07`. The Data Bank form `2026-10-07T00:00:00` is accepted too; the time is ignored. |
 
-- `Content-Type: application/json`, UTF-8.
-- **Maximum body size: 1 MB.** That is sized for summaries (about one event per BU per day),
-  not transaction dumps. If you need more, tell us before sending it.
+- **Field names are exactly as above,** PascalCase. `interfaceType` is not recognised and is answered `422`.
+- **The body must be valid JSON.** A trailing comma, as in the first sample we were sent, is answered `422`.
+- **`Content-Type: application/json`,** UTF-8. Maximum body size is 16 KB.
+- **The hook carries no PMS data,** so no guest data travels through it. The figures stay in the Data Bank until we read them.
 
-### 3.1 What `data` may contain: aggregates only, no guest personal data
-
-Send revenue and account summaries: totals by department, revenue code, payment type, tax and
-so on. **Do not send guest names, room-to-guest assignments, passport/ID numbers, contact
-details or card numbers.** We do not need them to post accounting entries, and leaving them
-out keeps this integration outside PDPA scope for guest data. We delete the stored payload
-once an event is processed.
-
-The exact `data` schema per `type` is still open (§6).
+**One BU, one day, one row.** The four fields identify a Data Bank day. A second hook for the
+same BU and day lands on the same row: we answer `200` and record when we last heard of it.
 
 ## 4. Responses
 
 | Status | Body | Meaning | What Carmen should do |
 |---|---|---|---|
-| `202` | `{"id": "<uuid>", "duplicate": false}` | Stored | Done |
-| `200` | `{"id": "<uuid>", "duplicate": true}` | We already have this `event_id` for this BU. The first copy is kept, and this body is **not** compared with it. | Done. A new `event_id` is the only way to send changed data. |
+| `202` | `{"id": "<uuid>", "duplicate": false}` | A new day for this BU, recorded | Done |
+| `200` | `{"id": "<uuid>", "duplicate": true}` | This BU and day were already recorded; we noted the repeat | Done |
 | `401` | `{"detail": "Invalid API key"}` | Key missing, unknown or revoked, or the BU is disabled | Do not retry. Check the key. |
-| `413` | `{"detail": "..."}` | Body over 1 MB | Do not retry as is |
-| `422` | `{"detail": [...]}` | Envelope invalid (missing `event_id`, `data` not an object, not JSON …) | Do not retry. Fix the payload. |
+| `413` | `{"detail": "..."}` | Body over 16 KB | Do not retry as is |
+| `422` | `{"detail": [...]}` | Body invalid: not JSON, a field missing or misnamed, `DocDate` not a date, `InterfaceType` not `PMS` | Do not retry. Fix the body. |
 | `429` | `{"detail": "..."}` + `Retry-After` | Rate limited (120 requests/min per source IP) | Retry after the delay |
-| `5xx` / timeout | — | Our side failed | **Retry with backoff, same `event_id`** |
+| `5xx` / timeout | — | Our side failed | **Retry with backoff, same body** |
 
-Any `2xx` means "we have it". Because a retry with the same `event_id` is answered `200` with
-the original id, retrying is always safe.
+Any `2xx` means "we have it". A retry of the same body is answered `200` with the same id, so
+retrying is always safe.
 
 ## 5. Try it
 
@@ -111,22 +109,29 @@ the original id, retrying is always safe.
 curl -X POST https://carmen-ocr-backend-xntb.onrender.com/api/v1/pms/events \
   -H "Authorization: Bearer cpk_…" \
   -H "Content-Type: application/json" \
-  -d '{"event_id":"test-1","type":"night_audit","data":{"total_revenue":12345.67}}'
+  -d '{"InterfaceType":"PMS","InterfaceName":"Comanche","DocType":"Daily","DocDate":"2026-10-07"}'
 # → 202 {"id":"…","duplicate":false}; run it again → 200 {"id":"<same>","duplicate":true}
 ```
 
 ## 6. Open questions for Carmen
 
-1. **`data` schema per `type`.** Which PMS outputs exist (night audit, daily revenue, …) and
-   what fields each carries. Processing is built against this.
-2. **Volume.** Events per BU per day and typical size. The 1 MB cap and the per-IP rate limit
-   assume about one summary per BU per day. All BUs on one Carmen host share that IP's limit.
-3. **Corrections.** If PMS figures for a day are re-run, does Carmen send a new `event_id`
-   (we keep both) or expect a replace?
+Tracked in CA-116, with what we found on the dev Data Bank:
+
+1. **What the AI does with the day,** and through which path it posts:
+   - `/gljv`;
+   - Carmen's `interfacePostGL`;
+   - `interfacePostAR/CarmenAI`.
+2. **The token we use to read the Data Bank and post,** per BU, with no user session.
+3. **What a repeat hook means.** Is the hook sent on Add *and* on AddOrUpdate? Is a second
+   hook for the same day a changed day that we should process again?
+4. **Which `InterfaceType`/`DocType`** will hook us first.
 
 ---
 
 *Internal notes:* keys are rows in `api_keys` with scope `pms:events`, created by the BU at
-`#/pms` (session-scoped `/api/v1/pms/keys`) or by an admin at `#/admin/api-keys`. Events land in `pms_events`, unique on `(tenant_id, event_id)`. Code:
+`#/pms` (session-scoped `/api/v1/pms/keys`) or by an admin at `#/admin/api-keys`. Hooks land in
+`pms_events`, unique on `(tenant_id, event_id)`. There `event_id` holds the day's key
+(`PMS/Comanche/Daily/2026-10-07`), `payload` holds the hook as sent, and a repeat moves
+`updated_at`. Code:
 `backend/app/routers/pms.py`, `services/shared/api_keys.py`. Decisions:
 [email-automation decision log #39 and #40](email-automation/06-decision-log.md).

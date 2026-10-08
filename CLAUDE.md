@@ -188,15 +188,19 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
   routers/pms.py  _pms_key → services/shared/api_keys.authenticate()
       sha256(key) → api_keys row (scope pms:events, not revoked, tenant live) → tenant_id
       stamps last_used_at/ip — what #/admin/api-keys reads as "is Carmen calling?"
-  body {event_id, type, data} ≤ 1 MB → pms_events, unique (tenant_id, event_id)
-      202 new · 200 {duplicate:true} on a retry · 401 · 413 · 422
+  body {InterfaceType:"PMS", InterfaceName, DocType, DocDate} ≤ 16 KB   (Carmen's own hook)
+      → pms_events, one row per BU × Data Bank day: event_id = "PMS/Comanche/Daily/2026-10-07"
+      202 new day · 200 {duplicate:true} same day again (moves updated_at) · 401 · 413 · 422
+  the hook carries no data: processing (CA-119) reads the day back from Carmen's Data Bank,
+      GET /api/interface/PMS/{name}/{docType}/Date/{docDate}
 
 Carmen menu → #/pms?token=&bu=&user=&uri=   (same SSO link as email-settings)
   features/pms/pages/PmsPage.tsx   the BU's own keys: list · create · revoke (English only)
   GET/POST /api/v1/pms/keys, DELETE /keys/{id}   session JWT → the session's tenant only
 ```
 
-The first endpoint Carmen calls *into* (decision-log #39). The key **is** the tenant: no
+The first endpoint Carmen calls *into* (decision-log #39; the body is Carmen's 4-field hook
+since #41). The key **is** the tenant: no
 host/bu in the body, so a key cannot write into another BU. **The BU creates its own key** at
 `#/pms`, opened only from Carmen's menu (decision-log #40). The SSO login creates or finds
 exactly that tenant, so a BU that never used AI can still get a key and nobody picks a tenant

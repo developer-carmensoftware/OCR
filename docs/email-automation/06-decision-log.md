@@ -1131,3 +1131,31 @@ PMS settings.
 - **English only,** like email-settings. `FixedLanguage` pins the page whatever the toggle says.
 - **No entitlement gate yet.** Billing belongs to processing (CA-119).
 - **Carmen calls none of our APIs** for this either: it builds a menu link and a field.
+
+## 41. Carmen's hook names a Data Bank day; we read the data back (2026-10-08)
+
+**Decided:** 2026-10-08 (CA-93). It amends #39's "push, with the data in the body" and its
+`{event_id, type, data}` envelope.
+
+**Decision.** Carmen's real hook is four fields: `{InterfaceType, InterfaceName, DocType,
+DocDate}`. Those fields name a row in Carmen's Data Bank, the store the PMS writes into
+through `POST`/`PATCH /api/interface/PMS/{name}/{docType}`. `/api/v1/pms/events` accepts
+exactly that body (`InterfaceType` must be `PMS`) and records one row per BU and day. Reading
+the day back (`GET /api/interface/PMS/{name}/{docType}/Date/{docDate}`) belongs to
+processing (CA-119).
+
+- **Why.** This is the shape Carmen built. We take it as-is, so Carmen has nothing to adapt
+  before testing.
+- **Same table, no migration.** `pms_events.event_id` holds the day's key,
+  `PMS/Comanche/Daily/2026-10-07`, and `unique (tenant_id, event_id)` still keeps one row per
+  day. `type` holds `InterfaceType`, and `payload` holds the hook as sent.
+- **A repeat is recorded, not dropped.** The same day again answers `200 duplicate` and moves
+  `updated_at`. Whether a repeat means a retry or a day Carmen changed with AddOrUpdate is
+  open (CA-116); `updated_at` is what processing will compare with the Data Bank's
+  `LastModified`.
+- **Strict body.** The PascalCase names exactly, and valid JSON: the first sample had a trailing
+  comma. `DocDate` also accepts the Data Bank's `2026-10-07T00:00:00`. No `/` in the name or
+  doc type, because it separates the key's parts. The body cap drops from 1 MB to 16 KB.
+- **Cost of the change.** The data now stays in Carmen. That removes the PII question from the
+  hook, but processing now needs a Carmen credential per BU to read the Data Bank, which #39
+  had avoided. Which one is open (CA-116).
