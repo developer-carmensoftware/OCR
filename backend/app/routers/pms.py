@@ -14,7 +14,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,8 +35,9 @@ from app.utils.pagination import paginate
 
 router = APIRouter(prefix="/api/v1/pms", tags=["PMS"])
 
-# The contract promises aggregates (~1 event per BU per day), not transaction dumps.
-MAX_BODY_BYTES = 1024 * 1024
+# The hook is four short fields (the data stays in Carmen's Data Bank); anything near
+# this size is not Carmen.
+MAX_BODY_BYTES = 16 * 1024
 
 
 async def _pms_key(
@@ -78,18 +79,24 @@ async def receive_event(
     new_id = await db.scalar(
         insert(PmsEvent)
         .values(
-            tenant_id=key.tenant_id, event_id=event.event_id, type=event.type, payload=event.data
+            tenant_id=key.tenant_id,
+            event_id=event.key,
+            type=event.interface_type,
+            payload=event.model_dump(by_alias=True, mode="json"),
         )
         .on_conflict_do_nothing(index_elements=["tenant_id", "event_id"])
         .returning(PmsEvent.id)
     )
     duplicate = new_id is None
     if duplicate:
-        # A retry: answer with the row the first delivery made. Its content is not compared.
+        # The same Data Bank day again. Whether that is a retry or a re-run after Carmen's
+        # AddOrUpdate is still open (CA-116 q4), so keep one row but record when we last
+        # heard of it: `updated_at` is what processing will compare with `LastModified`.
         new_id = await db.scalar(
-            select(PmsEvent.id).where(
-                PmsEvent.tenant_id == key.tenant_id, PmsEvent.event_id == event.event_id
-            )
+            update(PmsEvent)
+            .where(PmsEvent.tenant_id == key.tenant_id, PmsEvent.event_id == event.key)
+            .values(updated_at=func.now())
+            .returning(PmsEvent.id)
         )
         response.status_code = 200
     await db.commit()

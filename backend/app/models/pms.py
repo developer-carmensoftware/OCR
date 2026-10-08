@@ -18,7 +18,12 @@ _JSON = JSON().with_variant(JSONB(), "postgresql")
 
 
 class PmsEvent(Base, TenantFKMixin, TimestampMixin):
-    """One row per (tenant, event_id) — a Carmen retry lands on the same row."""
+    """One row per BU and Data Bank day: Carmen's hook said that day is ready.
+
+    `event_id` is `PmsEventIn.key` (`PMS/Comanche/Daily/2026-10-07`), `type` the
+    InterfaceType, `payload` the hook as sent. A repeat of the same day lands on the same row
+    and moves `updated_at`. The column names predate Carmen's real hook (CA-93 phase 1).
+    """
 
     __tablename__ = "pms_events"
 
