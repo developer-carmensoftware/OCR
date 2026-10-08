@@ -140,8 +140,8 @@ BODY='{"InterfaceType":"PMS","InterfaceName":"Comanche","DocType":"Daily","DocDa
 curl -s -w ' %{http_code}\n' -X POST $URL -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d "$BODY"
 # 2. The same day again              → 200 {"id":"<same uuid>","duplicate":true}
 curl -s -w ' %{http_code}\n' -X POST $URL -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d "$BODY"
-# 3. A wrong key                     → 401 {"detail":"Invalid API key"}
-curl -s -w ' %{http_code}\n' -X POST $URL -H "Authorization: Bearer cpk_wrong" -H "Content-Type: application/json" -d "$BODY"
+# 3. A wrong key (yours + one char)  → 401 {"detail":"Invalid API key"}
+curl -s -w ' %{http_code}\n' -X POST $URL -H "Authorization: Bearer ${KEY}x" -H "Content-Type: application/json" -d "$BODY"
 # 4. DocDate missing                 → 422 … "loc":["DocDate"] …
 curl -s -w ' %{http_code}\n' -X POST $URL -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"InterfaceType":"PMS","InterfaceName":"Comanche","DocType":"Daily"}'
