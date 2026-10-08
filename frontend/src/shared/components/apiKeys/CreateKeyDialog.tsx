@@ -183,7 +183,7 @@ export default function CreateKeyDialog({
                 <div>
                   <dt>{t('apiKeys.reveal.body')}</dt>
                   <dd>
-                    <code>{'{ "event_id", "type", "data" }'}</code>
+                    <code>{'{ "InterfaceType", "InterfaceName", "DocType", "DocDate" }'}</code>
                   </dd>
                 </div>
               </dl>

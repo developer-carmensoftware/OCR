@@ -52,8 +52,8 @@ export function carmenSetupText({ buCode, host, endpoint, key }: Setup): string 
     `PMS → Carmen AI webhook — ${bu}`,
     `Endpoint: POST ${endpoint}`,
     `Header:   Authorization: Bearer ${key}`,
-    'Body:     {"event_id": "<unique per BU>", "type": "night_audit", "data": {…}}',
-    'Retry with the same event_id; a duplicate answers 200.',
+    'Body:     {"InterfaceType": "PMS", "InterfaceName": "Comanche", "DocType": "Daily", "DocDate": "2026-10-07"}',
+    'A new day answers 202; the same day again answers 200.',
   ].join('\n')
 }
 
