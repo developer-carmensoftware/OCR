@@ -9,6 +9,7 @@ Two audiences under one prefix:
 Contract: docs/PMS_INTEGRATION.md.
 """
 
+import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
@@ -49,7 +50,8 @@ async def _pms_key(
 
     Async so the tenant context it sets is visible to the handler.
     """
-    token = (authorization or "").removeprefix("Bearer ").strip()
+    # The scheme is case-insensitive (RFC 7235): "bearer cpk_…" is the same key.
+    token = re.sub(r"^\s*bearer\s+", "", authorization or "", flags=re.IGNORECASE).strip()
     key = await authenticate(db, token, PMS_SCOPE, get_client_ip(request))
     if key is None:
         raise HTTPException(401, "Invalid API key", headers={"WWW-Authenticate": "Bearer"})
@@ -70,9 +72,10 @@ async def receive_event(
     # (FastAPI reads those before any dependency runs).
     body = await request.body()
     if len(body) > MAX_BODY_BYTES:
-        raise FileTooLargeError("Event body exceeds 1 MB")
+        raise FileTooLargeError("Event body exceeds 16 KB")
     try:
-        event = PmsEventIn.model_validate_json(body)
+        # Some .NET writers put a UTF-8 BOM before the JSON; it is not part of the value.
+        event = PmsEventIn.model_validate_json(body.removeprefix(b"\xef\xbb\xbf"))
     except PydanticValidationError as exc:
         raise RequestValidationError(exc.errors(include_url=False)) from None
 
