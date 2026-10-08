@@ -42,6 +42,7 @@ import { AdminAuthProvider } from '@/shared/contexts/AdminAuthContext'
 import { LanguageProvider } from './i18n/LanguageContext'
 import ProtectedRoute from '@/shared/components/common/ProtectedRoute'
 import { ConsentGate } from '@/shared/components/common/ConsentGate'
+import { ssoLink } from '@/shared/hooks/useCarmenSSO'
 import { MaintenanceGate } from '@/shared/components/common/MaintenanceGate'
 import AdminProtectedRoute from '@/shared/components/common/AdminProtectedRoute'
 import ErrorBoundary from '@/shared/components/common/ErrorBoundary'
@@ -94,6 +95,14 @@ function Router() {
 
   useEffect(() => {
     const onHashChange = (e: HashChangeEvent) => {
+      // A Carmen SSO link landing in a tab that already runs the app (CA-121): start over,
+      // exactly as a new tab would. Signing in again in place would leave the previous BU
+      // in every mounted page and module-level cache (the GL masters). The live hash, not
+      // e.newURL: by the time a redirect's own hashchange arrives, useCarmenSSO stripped it.
+      if (ssoLink(window.location.hash)) {
+        window.location.reload()
+        return
+      }
       const next = getRoute()
       // ponytail: sessionStorage, not a store — one string, one reader.
       // Stash where we came from so pricing's back button can return there.

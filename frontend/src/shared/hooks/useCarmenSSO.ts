@@ -8,9 +8,33 @@ export interface CarmenSSOState {
   error: string | null
 }
 
+/** The SSO parameters Carmen's link carries in the hash, or null when it carries no `token`. */
+export function ssoLink(hash: string) {
+  const qIndex = hash.indexOf('?')
+  if (qIndex === -1) return null
+  const params = new URLSearchParams(hash.slice(qIndex + 1))
+  const token = params.get('token')
+  if (!token) return null
+  return {
+    token,
+    bu: params.get('bu') || params.get('BU') || '',
+    user: params.get('user') || params.get('User') || '',
+    uri: params.get('uri') || '',
+    params,
+    qIndex,
+  }
+}
+
+/**
+ * Signs in from Carmen's link, once per mount. A link that lands in a tab already running
+ * the app is not this hook's job: main.tsx reloads the page for it (CA-121), so it arrives
+ * here as a fresh mount like any new tab.
+ */
 export function useCarmenSSO(): CarmenSSOState {
   const { login } = useAuth()
-  const [exchanging, setExchanging] = useState(false)
+  // True from the first render when there is a link to exchange, so ProtectedRoute never
+  // shows a page as the previous session, or "Access via Carmen", before the exchange starts.
+  const [exchanging, setExchanging] = useState(() => !!ssoLink(window.location.hash)?.bu)
   const [error, setError] = useState<string | null>(null)
   const didRun = useRef(false)
 
@@ -19,16 +43,18 @@ export function useCarmenSSO(): CarmenSSOState {
     didRun.current = true
 
     const hash = window.location.hash
-    const qIndex = hash.indexOf('?')
-    if (qIndex === -1) return
+    const link = ssoLink(hash)
+    if (!link) return
 
-    const params = new URLSearchParams(hash.slice(qIndex + 1))
-    const token = params.get('token')
-    const bu = params.get('bu') || params.get('BU') || ''
-    const user = params.get('user') || params.get('User') || ''
-    const uri = params.get('uri') || ''
+    // The token leaves the address bar (and history) first, whatever happens next.
+    const cleanHash = hash.slice(0, link.qIndex) || '#/'
+    window.history.replaceState(null, '', window.location.pathname + cleanHash)
 
-    if (!token || !bu) return
+    const { token, bu, user, uri, params } = link
+    if (!bu) {
+      setError("This link from Carmen is missing its business unit. Reopen it from Carmen's menu.")
+      return
+    }
 
     // #/CreditCardOCR/email-settings calls `/api/v1/carmen/*` with this exact token, which proves it
     // against the customer's Carmen on every call — 401 "re-login", 502 "cannot reach
@@ -44,9 +70,6 @@ export function useCarmenSSO(): CarmenSSOState {
     const postingToken =
       params.get('posting_token') || (hash.includes('email-settings?') ? token : null)
     if (postingToken) sessionStorage.setItem(CARMEN_POSTING_TOKEN_KEY, postingToken)
-
-    const cleanHash = hash.slice(0, qIndex) || '#/'
-    window.history.replaceState(null, '', window.location.pathname + cleanHash)
 
     setExchanging(true)
     setError(null)
