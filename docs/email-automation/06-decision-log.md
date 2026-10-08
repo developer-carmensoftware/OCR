@@ -1153,9 +1153,19 @@ processing (CA-119).
   `updated_at`. Whether a repeat means a retry or a day Carmen changed with AddOrUpdate is
   open (CA-116); `updated_at` is what processing will compare with the Data Bank's
   `LastModified`.
-- **Strict body.** The PascalCase names exactly, and valid JSON: the first sample had a trailing
-  comma. `DocDate` also accepts the Data Bank's `2026-10-07T00:00:00`. No `/` in the name or
-  doc type, because it separates the key's parts. The body cap drops from 1 MB to 16 KB.
+- **Lenient where a sender's defaults differ; strict where a guess could record the wrong day.**
+  Amended the same day, after a test round, to cut down the back-and-forth with Carmen.
+  - **Lenient:**
+    - field names in any case (.NET's `PostAsJsonAsync` writes camelCase);
+    - `pms`;
+    - a UTF-8 BOM;
+    - any Content-Type;
+    - `bearer`.
+  - **Strict:**
+    - `DocDate` must be an ISO date string; Pydantic would read `20261007` or `"1791331200"` as unix seconds and invent a day;
+    - the body must be valid JSON (the first sample had a trailing comma);
+    - no `/` in the name or doc type, because it separates the key's parts.
+  - The body cap drops from 1 MB to 16 KB.
 - **Cost of the change.** The data now stays in Carmen. That removes the PII question from the
   hook, but processing now needs a Carmen credential per BU to read the Data Bank, which #39
   had avoided. Which one is open (CA-116).

@@ -75,15 +75,26 @@ our other screens, and the key belongs to exactly that (host, BU).
 
 | Field | Type | Rule |
 |---|---|---|
-| `InterfaceType` | string | Must be `PMS` on this endpoint. |
+| `InterfaceType` | string | `PMS` on this endpoint (`pms` also works). |
 | `InterfaceName` | string, 1–40 chars, no `/` | The PMS, as in the Data Bank (e.g. `Comanche`). |
 | `DocType` | string, 1–30 chars, no `/` | As in the Data Bank (e.g. `Daily`). |
-| `DocDate` | date | `2026-10-07`. The Data Bank form `2026-10-07T00:00:00` is accepted too; the time is ignored. |
+| `DocDate` | **ISO date string** | `"2026-10-07"`. A datetime such as `"2026-10-07T00:00:00"`, `…+07:00` or `…Z` also works; we take the date part. |
 
-- **Field names are exactly as above,** PascalCase. `interfaceType` is not recognised and is answered `422`.
-- **The body must be valid JSON.** A trailing comma, as in the first sample we were sent, is answered `422`.
-- **`Content-Type: application/json`,** UTF-8. Maximum body size is 16 KB.
-- **The hook carries no PMS data,** so no guest data travels through it. The figures stay in the Data Bank until we read them.
+**What we accept, so your client's defaults do not matter:**
+- field names in any case: `InterfaceType`, `interfaceType` (.NET `PostAsJsonAsync`), `interfacetype`;
+- extra fields, which we ignore;
+- any `Content-Type`, since we parse the body as JSON regardless, with or without a UTF-8 BOM;
+- `Authorization: Bearer …`, `bearer …` or the bare key.
+
+**What we refuse with `422`, because a guess could record the wrong day:**
+- **`DocDate` that is not an ISO date string.** A number such as `20261007`, `"07/10/2026"` and
+  `"2026-10-7"` are all refused: they are ambiguous, or would be read as a timestamp.
+- **Invalid JSON.** That includes a trailing comma, as in the first sample we were sent.
+- **An array.** Send one hook per day.
+- **An `InterfaceType` other than `PMS`, or a `/` in `InterfaceName`/`DocType`.**
+
+The hook carries no PMS data, so no guest data travels through it; the figures stay in the
+Data Bank until we read them. The maximum body size is 16 KB.
 
 **One BU, one day, one row.** The four fields identify a Data Bank day. A second hook for the
 same BU and day lands on the same row: we answer `200` and record when we last heard of it.
@@ -97,21 +108,48 @@ same BU and day lands on the same row: we answer `200` and record when we last h
 | `401` | `{"detail": "Invalid API key"}` | Key missing, unknown or revoked, or the BU is disabled | Do not retry. Check the key. |
 | `413` | `{"detail": "..."}` | Body over 16 KB | Do not retry as is |
 | `422` | `{"detail": [...]}` | Body invalid: not JSON, a field missing or misnamed, `DocDate` not a date, `InterfaceType` not `PMS` | Do not retry. Fix the body. |
-| `429` | `{"detail": "..."}` + `Retry-After` | Rate limited (120 requests/min per source IP) | Retry after the delay |
+| `429` | `{"detail": "Too many requests — please slow down."}` + `Retry-After: 60` | More than 120 requests a minute from one source IP | Wait `Retry-After` seconds, then resend the same body |
 | `5xx` / timeout | — | Our side failed | **Retry with backoff, same body** |
 
 Any `2xx` means "we have it". A retry of the same body is answered `200` with the same id, so
 retrying is always safe.
 
-## 5. Try it
+**Pacing.** The limit is 120 requests per minute per source IP, shared by every BU your server
+sends for. For a backfill (many days or many BUs at once), stay under 2 requests a second.
+
+**A `422` names the field.** Real bodies:
+
+```json
+{"detail":[{"type":"missing","loc":["DocDate"],"msg":"Field required", ...}]}
+{"detail":[{"type":"value_error","loc":["DocDate"],"msg":"Value error, DocDate must be an ISO date string, e.g. \"2026-10-07\"","input":20261021, ...}]}
+{"detail":[{"type":"literal_error","loc":["InterfaceType"],"msg":"Input should be 'PMS'","input":"POS", ...}]}
+{"detail":[{"type":"json_invalid","loc":[],"msg":"Invalid JSON: trailing comma at line 1 column 97", ...}]}
+```
+
+## 5. Test checklist: run these before going live
+
+These use the QA URL and the key the BU created at `#/pms`. Replace `cpk_…`, and use a
+**`DocDate` you have not used before** for step 1. Every step must give exactly the status shown.
 
 ```bash
-curl -X POST https://carmen-ocr-backend-xntb.onrender.com/api/v1/pms/events \
-  -H "Authorization: Bearer cpk_…" \
-  -H "Content-Type: application/json" \
-  -d '{"InterfaceType":"PMS","InterfaceName":"Comanche","DocType":"Daily","DocDate":"2026-10-07"}'
-# → 202 {"id":"…","duplicate":false}; run it again → 200 {"id":"<same>","duplicate":true}
+URL=https://carmen-ocr-backend-xntb.onrender.com/api/v1/pms/events
+KEY=cpk_…
+BODY='{"InterfaceType":"PMS","InterfaceName":"Comanche","DocType":"Daily","DocDate":"2026-10-07"}'
+
+# 1. A new day                       → 202 {"id":"<uuid>","duplicate":false}
+curl -s -w ' %{http_code}\n' -X POST $URL -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d "$BODY"
+# 2. The same day again              → 200 {"id":"<same uuid>","duplicate":true}
+curl -s -w ' %{http_code}\n' -X POST $URL -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d "$BODY"
+# 3. A wrong key                     → 401 {"detail":"Invalid API key"}
+curl -s -w ' %{http_code}\n' -X POST $URL -H "Authorization: Bearer cpk_wrong" -H "Content-Type: application/json" -d "$BODY"
+# 4. DocDate missing                 → 422 … "loc":["DocDate"] …
+curl -s -w ' %{http_code}\n' -X POST $URL -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"InterfaceType":"PMS","InterfaceName":"Comanche","DocType":"Daily"}'
+# 5. After the BU revokes the key at #/pms, step 1 with a new day → 401
 ```
+
+Then send from **your own code** (not curl) for one real day, and check step 1 and step 2 give
+202 and 200. Your HTTP client's defaults (content type, name casing, BOM) are covered by §3.
 
 ## 6. Open questions for Carmen
 
