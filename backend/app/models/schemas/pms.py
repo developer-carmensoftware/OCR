@@ -81,3 +81,75 @@ class PmsKeyCreateIn(BaseModel):
 class ApiKeyCreateIn(BaseModel):
     tenant_id: UUID
     name: str = Field("PMS webhook", min_length=1, max_length=100)
+
+
+# ── Processing and review (CA-119) ─────────────────────────────────────────────────
+
+
+class PmsPick(BaseModel):
+    """The account a reviewer gave one of the day's new codes."""
+
+    dept: str = Field(..., min_length=1, max_length=20)
+    acc: str = Field(..., min_length=1, max_length=20)
+
+
+class PmsNewCode(BaseModel):
+    key: str
+    code: str
+    description: str
+    type: str
+    amount: str
+    # The AI's pick, when it made a usable one.
+    dept: str | None = None
+    acc: str | None = None
+    confidence: str | None = None
+    why: str | None = None
+
+
+class PmsTerm(BaseModel):
+    type: str
+    amount: str
+
+
+class PmsDayOut(BaseModel):
+    """One parked day, as the review modal reads it. Amounts are exact decimal strings,
+    signed the way the JV posts them: + credit, − debit."""
+
+    id: UUID
+    interface: str
+    doc_type: str
+    doc_date: str
+    reason_code: str | None = None
+    error_message: str | None = None
+    terms: list[PmsTerm]
+    off: str
+    codes: int
+    # The BU's saved rules for the keys this day uses: key → {"dept", "acc"}.
+    accounts: dict[str, dict[str, str]]
+    new_codes: list[PmsNewCode]
+    rows: list[dict[str, str]]
+
+
+class PmsApproveIn(BaseModel):
+    # key → the account for each of the day's new codes.
+    mappings: dict[str, PmsPick] = Field(default_factory=dict)
+
+
+class PmsApproveOut(BaseModel):
+    jv_no: str
+
+
+class PmsRejectIn(BaseModel):
+    reason: str | None = Field(None, max_length=500)
+
+
+class PmsSettingsIn(BaseModel):
+    jv_prefix: str | None = Field(None, max_length=20)
+    auto_post: bool = False
+
+
+class PmsSettingsOut(BaseModel):
+    jv_prefix: str | None
+    auto_post: bool
+    # Whether this BU has a Carmen credential stored; nothing can be read or posted without.
+    has_credential: bool

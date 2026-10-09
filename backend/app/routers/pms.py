@@ -6,6 +6,8 @@ Three audiences under one prefix:
   which BU this is. Storing the day starts its processing (`services/pms/process.py`).
 - `/keys`: the BU's own key screen, `#/pms`, opened from Carmen's menu (decision-log #40).
   Our session JWT; the session's tenant is the only BU these routes can see or touch.
+- `/days/{id}` (+ approve, reject) and `/settings`: a parked day's review, opened from the
+  AI JV Automation queue, and how the BU's days post. Session JWT, the session's BU only.
 - `POST /process/run`: the retry sweep pg_cron calls with the internal job token.
 Contract: docs/PMS_INTEGRATION.md.
 """
@@ -28,9 +30,20 @@ from app.database import get_db
 from app.exceptions import FileTooLargeError
 from app.models.admin import APIKey
 from app.models.pms import PmsEvent
-from app.models.schemas.pms import PmsEventIn, PmsEventOut, PmsKeyCreateIn
+from app.models.schemas.pms import (
+    PmsApproveIn,
+    PmsApproveOut,
+    PmsDayOut,
+    PmsEventIn,
+    PmsEventOut,
+    PmsKeyCreateIn,
+    PmsRejectIn,
+    PmsSettingsIn,
+    PmsSettingsOut,
+)
 from app.routers.admin.deps import require_maintenance_auth
 from app.services.pms import process
+from app.services.pms import review as pms_review
 from app.services.shared import api_keys as keys
 from app.services.shared.api_keys import PMS_SCOPE, authenticate
 from app.services.shared.audit import AuditAction, log_action
@@ -219,3 +232,75 @@ async def revoke_key(
         ip_address=get_client_ip(request),
     )
     return {"id": str(key_id), "revoked": True}
+
+
+# ── A parked day's review, and how the BU's days post (CA-119) ────────────────────
+
+
+@router.get("/days/{day_id}", response_model=PmsDayOut)
+async def get_day(
+    day_id: UUID,
+    session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """One parked day of the session's BU. Anything else — another BU's, a posted one — is
+    the same 404, so "not yours" and "not there" read alike."""
+    day = await pms_review.get_day(db, UUID(session.tenant_id), day_id)
+    if day is None:
+        raise HTTPException(status_code=404, detail="This day is not waiting for review")
+    return day
+
+
+@router.post("/days/{day_id}/approve", response_model=PmsApproveOut)
+async def approve_day(
+    day_id: UUID,
+    body: PmsApproveIn,
+    session: SessionInfo = Depends(get_current_session),
+):
+    """Save the new codes' accounts and post the day. 409 when someone else has it, 400 with
+    the reason when it cannot post (and it stays parked), 503 when Carmen could not be read."""
+    return await pms_review.approve(
+        UUID(session.tenant_id),
+        day_id,
+        {k: p.model_dump() for k, p in body.mappings.items()},
+        reviewer=session.carmen_user_id,
+        reviewer_name=session.username,
+    )
+
+
+@router.post("/days/{day_id}/reject", status_code=204)
+async def reject_day(
+    day_id: UUID,
+    body: PmsRejectIn,
+    session: SessionInfo = Depends(get_current_session),
+):
+    await pms_review.reject(
+        UUID(session.tenant_id),
+        day_id,
+        body.reason,
+        reviewer=session.carmen_user_id,
+        reviewer_name=session.username,
+    )
+    return Response(status_code=204)
+
+
+@router.get("/settings", response_model=PmsSettingsOut)
+async def get_settings(
+    session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    return await pms_review.get_settings(db, UUID(session.tenant_id))
+
+
+@router.put("/settings", response_model=PmsSettingsOut)
+async def put_settings(
+    body: PmsSettingsIn,
+    session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace this BU's PMS posting settings (the JV prefix and the auto-post switch)."""
+    out = await pms_review.save_settings(
+        db, UUID(session.tenant_id), jv_prefix=body.jv_prefix, auto_post=body.auto_post
+    )
+    await db.commit()
+    return out
