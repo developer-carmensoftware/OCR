@@ -41,6 +41,7 @@ import * as whatsnew from './whatsnew'
 import * as home from './home'
 import * as maintenance from './maintenance'
 import * as apiKeys from './apiKeys'
+import * as pms from './pms'
 
 export type Lang = 'en' | 'th'
 
@@ -72,6 +73,7 @@ const en = {
   ...home.en,
   ...maintenance.en,
   ...apiKeys.en,
+  ...pms.en,
 }
 
 const th = {
@@ -102,6 +104,7 @@ const th = {
   ...home.th,
   ...maintenance.th,
   ...apiKeys.th,
+  ...pms.th,
 }
 
 export type TKey = keyof typeof en | AdminKey

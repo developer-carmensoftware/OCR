@@ -55,7 +55,7 @@ export interface ReviewDocument {
   /** Where the document came in from. `manual` rows are scans someone ran through the
    *  wizard: `status: 'posted'` once they became a JV, `'scanned'` if they were charged
    *  and never posted. */
-  source: 'email' | 'manual'
+  source: 'email' | 'manual' | 'pms'
   created_at: string | null
   attachment: string
   /** The raw ledger status, not the tab. `problem` covers two of these and the row has

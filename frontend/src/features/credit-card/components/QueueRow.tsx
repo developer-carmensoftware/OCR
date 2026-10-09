@@ -85,7 +85,9 @@ const STATUS_META: Record<string, { key: TKey; tone: string }> = {
 
 interface Props {
   row: ReviewDocument
-  onOpen: (id: string) => void
+  /** `source` picks the dialog: a PMS day opens its own (CA-119), everything else the email
+   *  review's. */
+  onOpen: (id: string, source?: ReviewDocument['source']) => void
   /** Something on this row changed server-side — refetch the table. */
   onChanged?: () => void
 }
@@ -163,7 +165,11 @@ function RowAction({ row, onOpen, onChanged }: Props) {
   // The only row that asks for a decision rather than a repair.
   if (row.status === 'pending_review') {
     return (
-      <button type="button" className="btn btn-outline btn-sm" onClick={() => onOpen(row.id)}>
+      <button
+        type="button"
+        className="btn btn-outline btn-sm"
+        onClick={() => onOpen(row.id, row.source)}
+      >
         {t('review.actionReview')}
       </button>
     )

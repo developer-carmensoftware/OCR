@@ -1169,3 +1169,43 @@ processing (CA-119).
 - **Cost of the change.** The data now stays in Carmen. That removes the PII question from the
   hook, but processing now needs a Carmen credential per BU to read the Data Bank, which #39
   had avoided. Which one is open (CA-116).
+
+## 42. A PMS day is a JV in the same review queue (2026-10-09)
+
+**Decided:** 2026-10-09 (CA-119), with the user, on the approved mock-up (CA-119 comment
+11864). It builds on #41: the hook names a Data Bank day, and this is what happens to it.
+
+**Decision.** Storing a day starts its processing:
+1. read the day back from the Data Bank;
+2. map each PMS code to the BU's GL;
+3. check that it balances;
+4. park it at `pending_review`, or post it.
+
+A parked day is one row in the AI JV Automation queue (`#/CreditCardOCR`), beside the email
+documents and the manual scans, and opens its own review modal in the email review's shell.
+
+- **One row per BU × day.** Each property sends once a day, so one hook is one row and one JV.
+  The webhook's day key is already that unit.
+- **Same rules as email.**
+  - **The AI picks, a person approves.** A code the BU has never approved gets an AI pick,
+    tagged AI in the review. Pressing Approve is what saves it as the BU's rule
+    (`pms_code_mappings`, keyed on the code, never its description).
+  - **A guessed or unbalanced day always waits.** It keeps the day in Review even with
+    auto-post on (#24).
+  - **Auto-post is per BU, off by default.** It lives on `#/pms` (`pms_settings`), with the JV
+    prefix. No prefix means nothing posts.
+- **One Carmen credential per BU.** The `#/pms` SSO link's token is stored as the BU's
+  credential, the same `email_ingest_settings.carmen_token_enc` email automation posts with
+  (#35). `PUT /api/v1/pms/credential` proves it against Carmen first, and wakes the days that
+  were waiting for one.
+- **Posting is provisional.** `services/pms/posting.post_day` uses our `/gljv`. Carmen has not
+  said whether PMS JVs belong there or on `interfacePostGL` (CA-116). That function is the
+  only thing that changes when it does.
+- **A repeat hook reads an unposted day again.** Carmen re-sends a day when the night audit
+  was re-run (AddOrUpdate). A posted day is never re-posted. Neither is one a reviewer holds
+  the claim on.
+- **No charge.** The BU pays for the PMS interface separately. The `pms_interface` module row
+  exists because `llm_usage_logs.module_id` is a foreign key.
+- **Durable without a worker.** The webhook starts processing at once (`process.kick`). A
+  pg_cron sweep every ten minutes (`/api/v1/pms/process/run`) picks up what a restart or a
+  Carmen outage left. A failing read is tried three times before the day shows as failed.

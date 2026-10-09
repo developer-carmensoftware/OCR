@@ -41,6 +41,13 @@ export const REASON_KEY: Record<string, TKey> = {
   // `consume_document` — and needs no `FIX` entry for the same reason `ar_reconcile_disabled`
   // has none: there is nothing here for a reviewer to press.
   covered_by_settlement_jv: 'review.rcCoveredBySettlement',
+  // A PMS day (CA-119) that never became a JV. `carmen_unauthorized` and `carmen_rejected`
+  // above serve PMS days too — one Carmen, the same words.
+  no_credential: 'pms.rcNoCredential',
+  day_not_found: 'pms.rcDayNotFound',
+  databank_unreachable: 'pms.rcDatabankUnreachable',
+  unreadable_day: 'pms.rcUnreadableDay',
+  processing_error: 'pms.rcProcessingError',
 }
 
 /**
@@ -176,6 +183,8 @@ export const FIX: Record<string, { key: TKey; href: string }> = {
   wrong_pdf_password: SETTINGS,
   ingest_paused: SETTINGS,
   tax_id_mismatch: SETTINGS,
+  // A PMS BU with no stored Carmen credential: #/pms, opened from Carmen's menu, stores one.
+  no_credential: { key: 'pms.actionOpenSettings', href: '#/pms' },
 }
 
 /** `<a>` props for a fix button: an in-app hash stays in this tab, Carmen's screen gets its own. */

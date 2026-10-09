@@ -67,8 +67,11 @@ export function useCarmenSSO(): CarmenSSOState {
     // Agreed with Carmen: one token. The settings link carries only `token`, and that same
     // value is the posting credential; `posting_token` stays honoured if Carmen sends one.
     // Settings link only: the queue's link must not overwrite the stored credential.
+    // #/pms carries it too: PMS days are read and posted with the same one credential
+    // (decision #42), and that page stores it the same way.
     const postingToken =
-      params.get('posting_token') || (hash.includes('email-settings?') ? token : null)
+      params.get('posting_token') ||
+      (hash.includes('email-settings?') || /^#\/pms\?/i.test(hash) ? token : null)
     if (postingToken) sessionStorage.setItem(CARMEN_POSTING_TOKEN_KEY, postingToken)
 
     setExchanging(true)

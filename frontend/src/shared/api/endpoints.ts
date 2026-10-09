@@ -137,6 +137,14 @@ export const API = {
     // The BU's own keys (#/pms), on its session.
     keys: `${V1}/pms/keys`,
     key: (id: string) => `${V1}/pms/keys/${id}`,
+    // A parked PMS day, opened from the AI JV Automation queue (CA-119).
+    day: (id: string) => `${V1}/pms/days/${id}`,
+    approve: (id: string) => `${V1}/pms/days/${id}/approve`,
+    reject: (id: string) => `${V1}/pms/days/${id}/reject`,
+    // The JV prefix and auto-post switch, set on #/pms.
+    settings: `${V1}/pms/settings`,
+    // The token #/pms was opened with, stored as the BU's Carmen credential.
+    credential: `${V1}/pms/credential`,
   },
 
   admin: {

@@ -31,6 +31,13 @@ DAY_KEY = "PMS/Comanche/Daily/2026-10-07"
 BOM = b"\xef\xbb\xbf"
 
 
+@pytest.fixture(autouse=True)
+def kick():
+    """Processing runs against Carmen and the DB; here it is only asked to start."""
+    with patch("app.routers.pms.process.kick") as mock:
+        yield mock
+
+
 def _key():
     return SimpleNamespace(id=uuid4(), tenant_id=uuid4(), scopes=[PMS_SCOPE], expires_at=None)
 
@@ -151,12 +158,46 @@ def test_new_day_is_202():
 
 def test_same_day_again_is_200_on_the_same_row():
     first_id = uuid4()
-    db = _db(None, first_id)  # the insert hits the conflict, then the update returns the row
+    # The insert hits the conflict, the update returns the row, the reset takes it back.
+    db = _db(None, first_id, first_id)
     res, _ = _post(db, _key())
     assert res.status_code == 200
     assert res.json() == {"id": str(first_id), "duplicate": True}
     update_stmt = db.scalar.await_args_list[1].args[0]
     assert "updated_at" in str(update_stmt.compile(dialect=postgresql.dialect()))
+
+
+# ── Processing starts (CA-119) ──────────────────────────────────────────────────────
+
+
+def test_a_new_day_starts_processing(kick):
+    new_id = uuid4()
+    _post(_db(new_id), _key())
+    kick.assert_called_once_with(new_id)
+
+
+def test_an_unposted_day_sent_again_is_read_again(kick):
+    first_id = uuid4()
+    db = _db(None, first_id, first_id)
+    _post(db, _key())
+    reset = db.scalar.await_args_list[2].args[0].compile(dialect=postgresql.dialect())
+    sql = str(reset)
+    assert "status != " in sql and "posting_started_at" in sql
+    assert reset.params["status"] == "received"
+    assert reset.params["attempts"] == 0
+    kick.assert_called_once_with(first_id)
+
+
+def test_a_posted_day_sent_again_is_left_alone(kick):
+    first_id = uuid4()
+    _post(_db(None, first_id, None), _key())  # the reset matched nothing: it is posted
+    kick.assert_not_called()
+
+
+def test_refused_hooks_start_nothing(kick):
+    _post(_db(), key=None)
+    _post(_db(), _key(), body="{}")
+    kick.assert_not_called()
 
 
 # ── Size ───────────────────────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -28,6 +28,9 @@ from app.services.credit_card.activity import (
     _email_stmt,
     _manual_counts_stmt,
     _manual_stmt,
+    _pms_counts_stmt,
+    _pms_row,
+    _pms_stmt,
 )
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
@@ -49,6 +52,31 @@ SESSION = SessionInfo(
 )
 
 NOW = datetime(2026, 8, 31, 10, 0, tzinfo=UTC)
+
+
+def _pms_counts(review=0, success=0, unposted=0, today=0, failed=0, stopped=0):
+    return SimpleNamespace(
+        review=review,
+        success=success,
+        unposted=unposted,
+        today=today,
+        failed=failed,
+        stopped=stopped,
+    )
+
+
+@pytest.fixture(autouse=True)
+def pms_part():
+    """PMS days (CA-119) are their own two queries, patched here so the positional
+    `db.execute` side_effect every other test drives stays the email + manual one. The PMS
+    tests at the bottom hand this fixture their own counts and rows."""
+    counts = AsyncMock(return_value=_pms_counts())
+    rows = AsyncMock(return_value=[])
+    with (
+        patch("app.services.credit_card.activity._pms_counts", counts),
+        patch("app.services.credit_card.activity._pms_rows", rows),
+    ):
+        yield SimpleNamespace(counts=counts, rows=rows)
 
 
 def _email(**overrides):
@@ -956,3 +984,80 @@ def test_only_a_real_chip_can_be_marked_seen():
             assert (
                 client.post(f"{BASE}/seen", headers=AUTH, json={"filter": bad}).status_code == 400
             )
+
+
+# ── PMS days (CA-119) ──────────────────────────────────────────────────────────
+
+
+def _pms_day(**overrides):
+    defaults = dict(
+        id=uuid.uuid4(),
+        created_at=NOW + timedelta(minutes=5),
+        payload={
+            "InterfaceType": "PMS",
+            "InterfaceName": "Comanche",
+            "DocType": "Daily",
+            "DocDate": "2024-09-05",
+        },
+        status="pending_review",
+        review_payload={
+            "rows": [{"type": "Revenue", "code": "103", "desc": "Extra Bed", "amount": "1.00"}],
+            "flags": ["mapping_guessed"],
+            "missing": [],
+            "ai": ["Revenue|103", "VAT|*"],
+        },
+        jv_no=None,
+        reason_code=None,
+        error_message=None,
+        reviewed_by_name=None,
+        reviewed_at=None,
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def test_a_parked_pms_day_reads_like_a_document():
+    row = _pms_row(_pms_day())
+    assert row.source == "pms"
+    assert (row.bank_code, row.doc_no, row.attachment) == ("PMS", "05/09/2024", "Comanche · Daily")
+    assert row.flags == ["mapping_guessed"]
+    assert row.guessed == ["103", "- VAT"]
+    assert row.line_count == 1
+
+
+def test_a_resolved_pms_day_carries_only_the_ledger_columns():
+    row = _pms_row(
+        _pms_day(status="posted", review_payload=None, jv_no="JV2409-0066", reviewed_by_name="Nok")
+    )
+    assert row.status == "posted"
+    assert row.jv_no == "JV2409-0066"
+    assert row.flags == [] and row.guessed == [] and row.doc_date is None
+
+
+def test_pms_days_join_the_counts_the_dots_and_the_list(pms_part):
+    pms_part.counts.return_value = _pms_counts(review=2, success=5, unposted=1, today=1, failed=1)
+    pms_part.rows.return_value = [_pms_row(_pms_day())]
+    db = _db(statuses={"pending_review": 1}, manual_count=0, emails=[_email()], manuals=[])
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(f"{BASE}?filter=review", headers=AUTH).json()
+
+    assert body["counts"]["review"] == 3
+    assert body["counts"]["success"] == 5
+    assert body["counts"]["unposted"] == 1
+    assert body["counts"]["all"] == 9
+    assert body["counts"]["today"] == 1
+    # A failed day lights Not posted, as a failed email document does.
+    assert body["attention"]["unposted"] == 1
+    # Newest first across sources: the day arrived five minutes after the email.
+    assert [r["source"] for r in body["data"]] == ["pms", "email"]
+    assert pms_part.rows.await_args.args[2] == "review"
+
+
+def test_the_pms_queries_hide_a_day_being_read_and_select_by_chip():
+    tenant = uuid.uuid4()
+    listed = str(_pms_stmt(tenant, "unposted").compile(compile_kwargs={"literal_binds": True}))
+    assert "pms_events.status IN ('pending_review', 'posted', 'rejected', 'failed')" in listed
+    assert "'unposted'" in listed
+    counted = str(_pms_counts_stmt(tenant, NOW).compile(compile_kwargs={"literal_binds": True}))
+    assert "'received'" not in counted
+    assert "pms_events.status IN ('pending_review', 'posted', 'rejected', 'failed')" in counted

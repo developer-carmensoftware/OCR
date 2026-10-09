@@ -10,6 +10,7 @@ class Module:
     CREDIT_CARD_OCR = "credit_card_ocr"
     AP_INVOICE = "ap_invoice"
     CC_AR_RECONCILE = "cc_ar_reconcile"
+    PMS_INTERFACE = "pms_interface"
 
 
 class DocType:

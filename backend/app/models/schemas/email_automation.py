@@ -182,7 +182,7 @@ class ActivityRow(ReviewDocument):
     not resumable), so there is nothing waiting on a human and no payload to summarise.
     """
 
-    source: str  # "email" | "manual"
+    source: str  # "email" | "manual" | "pms" (a PMS Data Bank day, CA-119)
 
     # Who ran the scan, for a manual row. **Deliberately not `reviewed_by_name`**, which it
     # would otherwise fit: that is a stored ledger column on `email_documents`, written once

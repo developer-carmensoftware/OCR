@@ -16,6 +16,7 @@ import UsageIndicator from '@/shared/components/common/UsageIndicator'
 import Pager from '@/shared/components/common/Pager'
 import QueueRow from '@/features/credit-card/components/QueueRow'
 import ReviewDocument from './ReviewDocument'
+import PmsReviewDocument from './PmsReviewDocument'
 import { useReviewQueue } from '@/features/credit-card/hooks/useReviewQueue'
 import { prefetchGlMasters } from '@/features/credit-card/hooks/mapping/useGlMasters'
 import { ACTIVITY_FILTERS, type ActivityFilter } from '@/features/credit-card/api/emailReview'
@@ -109,11 +110,15 @@ function goManual() {
 
 /** The document the URL says is open, if any. A route rather than local state so a
  *  document can be linked to, and so Back closes it. */
-function docIdFromHash(): string | null {
+function docIdFromHash(param: 'id' | 'pms' = 'id'): string | null {
   const [route, query] = window.location.hash.split('?')
   if (!route.toLowerCase().includes('/review')) return null
-  return query ? new URLSearchParams(query).get('id') : null
+  return query ? new URLSearchParams(query).get(param) : null
 }
+
+/** The PMS day the URL says is open (`?pms=`): a day is not a document, and opens its own
+ *  dialog (CA-119). */
+const pmsIdFromHash = () => docIdFromHash('pms')
 
 /** The chip the URL asked to open on, if any — how the bell's blocked/failed rows land
  *  on `unposted` instead of wherever `useReviewQueue`'s own fall-through would pick.
@@ -217,12 +222,16 @@ export default function ReviewQueue() {
     reload,
   } = useReviewQueue(limit, filterFromHash())
   const [reloading, setReloading] = useState(false)
-  const [openId, setOpenId] = useState(docIdFromHash)
+  const [openId, setOpenId] = useState(() => docIdFromHash())
+  const [openPms, setOpenPms] = useState(pmsIdFromHash)
 
   // main.tsx renders this same component for both routes, so the hash change that opens a
   // document does not remount anything — this is what notices it.
   useEffect(() => {
-    const onHash = () => setOpenId(docIdFromHash())
+    const onHash = () => {
+      setOpenId(docIdFromHash())
+      setOpenPms(pmsIdFromHash())
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
@@ -255,8 +264,8 @@ export default function ReviewQueue() {
     window.setTimeout(() => setReloading(false), 600)
   }
 
-  const openDoc = (id: string) => {
-    window.location.hash = `${QUEUE}/review?id=${id}`
+  const openDoc = (id: string, source?: string) => {
+    window.location.hash = `${QUEUE}/review?${source === 'pms' ? 'pms' : 'id'}=${id}`
   }
 
   const hasWork = rows.length > 0
@@ -439,6 +448,19 @@ export default function ReviewQueue() {
             />
           )}
         </>
+      )}
+
+      {openPms && (
+        <PmsReviewDocument
+          id={openPms}
+          onClose={() => {
+            window.location.hash = QUEUE
+          }}
+          onDone={() => {
+            window.location.hash = QUEUE
+            reload()
+          }}
+        />
       )}
 
       {openId && (

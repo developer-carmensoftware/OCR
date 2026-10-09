@@ -317,6 +317,32 @@ async def get_tax_profiles(carmen_token: str) -> Any:
         raise wrap_network_error(e) from e
 
 
+async def get_databank_day(
+    interface_type: str, name: str, doc_type: str, doc_date: str, carmen_token: str
+) -> list[dict]:
+    """The Data Bank rows Carmen holds for one interface day (CA-119).
+
+    The hook only names the day; this reads it back. Carmen answers a JSON list, or an
+    empty body when it has nothing for that date — both come back as a list.
+    """
+    from urllib.parse import quote
+
+    path = "/".join(quote(p, safe="") for p in (interface_type, name, doc_type))
+    try:
+        resp = await get_http_client().get(
+            f"{_base_url()}/{path}/Date/{quote(doc_date, safe='')}",
+            headers=_headers(carmen_token),
+        )
+        if resp.status_code != 200:
+            raise _fail(resp)
+        if not resp.content.strip():
+            return []
+        body = _json_or_raise(resp)
+        return body if isinstance(body, list) else [body] if body else []
+    except RequestError as e:
+        raise wrap_network_error(e) from e
+
+
 async def get_period_list(carmen_token: str) -> Any:
     try:
         resp = await get_http_client().get(
