@@ -1,9 +1,9 @@
 # PMS Integration — Carmen → AI (CA-93)
 
 **Audience:** the Carmen developers wiring PMS data into the AI module.
-**Status:** phase 1. We accept and record the hook. Processing it is the next phase:
-reading the day from Carmen's Data Bank, mapping and posting. You can integrate against
-this today.
+**Status:** phase 2 (CA-119). We accept the hook and process the day it names: read it from
+Carmen's Data Bank, map its codes to the BU's GL, check it balances, and post it or park it
+for the BU to review. Nothing changes for the sender. The posting path is still open (§6).
 
 When a day of PMS data lands in Carmen's Data Bank, Carmen sends us a short hook that names
 that day. It carries no PMS data: we read the day back from the Data Bank ourselves
@@ -171,5 +171,8 @@ Tracked in CA-116, with what we found on the dev Data Bank:
 `pms_events`, unique on `(tenant_id, event_id)`. There `event_id` holds the day's key
 (`PMS/Comanche/Daily/2026-10-07`), `payload` holds the hook as sent, and a repeat moves
 `updated_at`. Code:
-`backend/app/routers/pms.py`, `services/shared/api_keys.py`. Decisions:
-[email-automation decision log #39 and #40](email-automation/06-decision-log.md).
+`backend/app/routers/pms.py`, `services/shared/api_keys.py`. Processing (CA-119):
+`services/pms/` (`day` the arithmetic, `mapping` the per-BU code rules and the AI's picks,
+`process` the job, `posting` the one Carmen call, `review` approve/reject). It reads with the
+BU's stored Carmen credential (#42), stored from the `#/pms` SSO link. Decisions:
+[email-automation decision log #39 to #42](email-automation/06-decision-log.md).

@@ -181,7 +181,7 @@ migration — see [`05-operations.md`](docs/email-automation/05-operations.md#sc
 
 Design: [`07-human-in-the-loop.md`](docs/email-automation/07-human-in-the-loop.md).
 
-### PMS webhook (CA-93, phase 1: an inbox, nothing processes it yet)
+### PMS webhook (CA-93) and processing (CA-119)
 
 ```text
 Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key also accepted)
@@ -191,11 +191,26 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
   body {InterfaceType:"PMS", InterfaceName, DocType, DocDate} ≤ 16 KB   (Carmen's own hook)
       → pms_events, one row per BU × Data Bank day: event_id = "PMS/Comanche/Daily/2026-10-07"
       202 new day · 200 {duplicate:true} same day again (moves updated_at) · 401 · 413 · 422
-  the hook carries no data: processing (CA-119) reads the day back from Carmen's Data Bank,
-      GET /api/interface/PMS/{name}/{docType}/Date/{docDate}
+  the hook carries no data: storing the day starts processing (services/pms/, process.kick;
+      pg_cron sweeps /api/v1/pms/process/run every 10 min for what a restart left)
+      read the day back: GET /api/interface/PMS/{name}/{docType}/Date/{docDate}
+      with the BU's ONE stored Carmen credential (email_ingest_settings, decision #42)
+      day.py: keys on the PMS Code (ledgers by Code, " - VAT"/" - SERVICE" rows → 2 rules),
+              balance = signed sum (Guest Ledger × −1), JV by (dept, acc)
+      mapping.py: pms_code_mappings per BU; the LLM only for codes never approved
+      flags (the email ladder) or auto_post off → pending_review; else post_day (/gljv,
+      PROVISIONAL until CA-116) → posted. A repeat hook re-reads an unposted day.
+
+#/CreditCardOCR (the AI JV Automation queue) lists PMS days beside email + manual rows
+  services/credit_card/activity.py `_pms_*`: one row per BU × day, source "pms"
+  #/CreditCardOCR/review?pms=<id> → pages/PmsReviewDocument.tsx (the email modal's shell):
+      Balance, Accounts (new codes only, AI tag/Undo), JV lines | PMS rows chips
+  Approve saves the new codes' accounts as the BU's rules, rebuilds the JV server-side, posts
 
 Carmen menu → #/pms?token=&bu=&user=&uri=   (same SSO link as email-settings)
   features/pms/pages/PmsPage.tsx   the BU's own keys: list · create · revoke (English only)
+                                   + Posting: JV prefix, auto-post (default off)
+                                   + stores the link's token: PUT /api/v1/pms/credential
   GET/POST /api/v1/pms/keys, DELETE /keys/{id}   session JWT → the session's tenant only
 ```
 
@@ -438,7 +453,7 @@ EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # dev default; per-BU routing uses
 | Identity | `tenants` (composite host+bu), `plans` |
 | Admin RBAC | `admin_users`, `roles`, `permissions`, `role_permissions`, `admin_user_roles` |
 | API Keys | `api_keys` (wired 2026-10-07: the PMS webhook's per-BU keys), `api_key_usage` (still unused) |
-| PMS interface | `pms_events` (what Carmen pushed, one row per tenant × `event_id`) |
+| PMS interface | `pms_events` (one row per tenant × Data Bank day: the hook, then its processing state — `status`, `review_payload` while pending, `jv_no`), `pms_code_mappings` (per-BU PMS code → dept/acc, written by the review's Approve), `pms_settings` (JV prefix, auto-post) |
 | Modules | `modules`, `tenant_modules` |
 | Bank CMS | `banks`, `prompt_templates` |
 | Config | `system_configs`, `tenant_config_overrides`, `feature_flags`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries` |
@@ -456,7 +471,7 @@ EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # dev default; per-BU routing uses
 
 **Supported files:** JPG, PNG, WebP, BMP, TIFF, HEIC/HEIF, PDF — max 5 MB (read into memory only, never persisted to disk; HEIC → JPEG via pillow-heif in `utils/image_processing.py`)
 
-**`llm_usage_logs.module_id` values:** `credit_card_ocr` | `ap_invoice`
+**`llm_usage_logs.module_id` values:** `credit_card_ocr` | `ap_invoice` | `pms_interface` (the PMS code suggestions; no charge)
 
 ---
 
