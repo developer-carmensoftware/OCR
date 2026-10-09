@@ -1,21 +1,23 @@
-"""PMS interface (CA-93).
+"""PMS interface (CA-93, CA-119).
 
-Two audiences under one prefix:
+Three audiences under one prefix:
 - `POST /events`: Carmen pushes PMS data here, the first endpoint Carmen calls *into*
   (decision-log #39). Authenticated by a per-tenant API key; the key, not the body, says
-  which BU this is.
+  which BU this is. Storing the day starts its processing (`services/pms/process.py`).
 - `/keys`: the BU's own key screen, `#/pms`, opened from Carmen's menu (decision-log #40).
   Our session JWT; the session's tenant is the only BU these routes can see or touch.
+- `POST /process/run`: the retry sweep pg_cron calls with the internal job token.
 Contract: docs/PMS_INTEGRATION.md.
 """
 
 import re
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +29,8 @@ from app.exceptions import FileTooLargeError
 from app.models.admin import APIKey
 from app.models.pms import PmsEvent
 from app.models.schemas.pms import PmsEventIn, PmsEventOut, PmsKeyCreateIn
+from app.routers.admin.deps import require_maintenance_auth
+from app.services.pms import process
 from app.services.shared import api_keys as keys
 from app.services.shared.api_keys import PMS_SCOPE, authenticate
 from app.services.shared.audit import AuditAction, log_action
@@ -91,19 +95,52 @@ async def receive_event(
         .returning(PmsEvent.id)
     )
     duplicate = new_id is None
+    process_it = not duplicate
     if duplicate:
-        # The same Data Bank day again. Whether that is a retry or a re-run after Carmen's
-        # AddOrUpdate is still open (CA-116 q4), so keep one row but record when we last
-        # heard of it: `updated_at` is what processing will compare with `LastModified`.
+        # The same Data Bank day again: one row, and a record of when we last heard of it.
         new_id = await db.scalar(
             update(PmsEvent)
             .where(PmsEvent.tenant_id == key.tenant_id, PmsEvent.event_id == event.key)
             .values(updated_at=func.now())
             .returning(PmsEvent.id)
         )
+        # Carmen re-sends a day when the night audit was run again (AddOrUpdate), so an
+        # unposted day is read again from scratch (decision-log #42). A posted one never
+        # is — that would be a second JV — and neither is one a reviewer is acting on now.
+        process_it = (
+            await db.scalar(
+                update(PmsEvent)
+                .where(
+                    PmsEvent.id == new_id,
+                    PmsEvent.status != "posted",
+                    or_(
+                        PmsEvent.posting_started_at.is_(None),
+                        PmsEvent.posting_started_at < datetime.now(UTC) - process.REVIEW_CLAIM_TTL,
+                    ),
+                )
+                .values(
+                    status="received",
+                    attempts=0,
+                    processed_at=None,
+                    review_payload=None,
+                    reason_code=None,
+                    error_message=None,
+                )
+                .returning(PmsEvent.id)
+            )
+            is not None
+        )
         response.status_code = 200
     await db.commit()
+    if process_it:
+        process.kick(new_id)
     return PmsEventOut(id=new_id, duplicate=duplicate)
+
+
+@router.post("/process/run")
+async def run_processing(_: object = Depends(require_maintenance_auth)):
+    """The retry sweep (pg_cron, every 10 minutes): days a restart or an outage left behind."""
+    return await process.run_pms_processing()
 
 
 # ── The BU's own keys (#/pms) ──────────────────────────────────────────────────────
