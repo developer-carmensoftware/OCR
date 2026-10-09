@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from app.services.pms import posting, process
 from app.services.shared.carmen import CarmenAPIError
@@ -200,3 +201,43 @@ def test_the_newest_readable_data_bank_row_wins():
     junk = {"Id": 3, "LastModified": "2024-09-07T00:00:00", "FileData": "not json"}
     assert process._newest_day([old, new, junk])["Id"] == 2
     assert process._newest_day([junk]) is None
+
+
+def _db_returning(ids):
+    result = MagicMock(scalars=lambda: MagicMock(all=lambda: ids))
+    db = MagicMock(execute=AsyncMock(return_value=result), commit=AsyncMock())
+
+    @asynccontextmanager
+    async def session():
+        yield db
+
+    return db, session
+
+
+@pytest.mark.asyncio
+async def test_a_credential_proven_after_the_last_attempt_wakes_the_day():
+    """Any writer of the one credential wakes a day it stopped, not only PUT /pms/credential:
+    the email settings store the same token, and the daily check re-proves it."""
+    db, session = _db_returning([uuid4()])
+    with patch.object(process, "async_session", session):
+        assert await process._wake_for_new_credential() == 1
+    sql = str(db.execute.call_args.args[0].compile(dialect=postgresql.dialect()))
+    assert "FROM email_ingest_settings" in sql
+    assert "email_ingest_settings.carmen_token_verified_at > pms_events.processed_at" in sql
+    assert "pms_events.reason_code IN" in sql
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_wakes_those_days_before_it_picks():
+    pk = uuid4()
+    _, session = _db_returning([pk])
+    with (
+        patch.object(process, "_requeue_ready_days", AsyncMock(return_value=0)),
+        patch.object(process, "_wake_for_new_credential", AsyncMock(return_value=1)),
+        patch.object(process, "async_session", session),
+        patch.object(process, "process_event", AsyncMock(return_value="pending_review")) as one,
+        patch.object(process, "_record_run", AsyncMock()),
+    ):
+        summary = await process.run_pms_processing()
+    assert summary["woken"] == 1 and summary["pending_review"] == 1
+    one.assert_awaited_once_with(pk)
