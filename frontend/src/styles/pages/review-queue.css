@@ -1700,3 +1700,247 @@
     inset: -12px -8px;
   }
 }
+
+/* ── A parked PMS day (CA-119) ─────────────────────────────────────────────────
+   The email review's shell with a body that only reads: four short sections, each opening
+   on the same one-line header — a state icon, the title, one readout — and a detail frame
+   whose head and total stay put while its rows scroll. Mock-up: CA-119 comment 11864. */
+
+.pms-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.pms-head {
+  display: grid;
+  grid-template-columns: 1rem auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0 0.6rem;
+}
+
+.pms-head > svg {
+  color: var(--emerald);
+}
+
+.pms-head--warn > svg {
+  color: var(--amber-text);
+}
+
+.pms-head--bad > svg {
+  color: var(--rose-text);
+}
+
+.pms-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pms-val {
+  min-width: 0;
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+
+.pms-val .text-mono,
+.pms-val strong {
+  color: var(--text);
+}
+
+.pms-val strong {
+  font-weight: 600;
+}
+
+.pms-off,
+.pms-off .text-mono {
+  color: var(--rose-text);
+  font-weight: 600;
+}
+
+.pms-sep {
+  margin: 0 0.4rem;
+  color: var(--text-3);
+}
+
+.pms-w-amt {
+  width: 9rem;
+}
+
+.pms-w-type,
+.pms-w-dept {
+  width: 8rem;
+}
+
+.pms-w-code {
+  width: 9.5rem;
+}
+
+.pms-w-acc {
+  width: 12rem;
+}
+
+.pms-codecell {
+  flex: 1;
+  min-width: 0;
+}
+
+.pms-code {
+  margin-right: 0.4rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.pms-desc {
+  color: var(--text);
+}
+
+/* The account a new code will post to, by name — the pickers only show its number. */
+.pms-to {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--text-3);
+}
+
+/* Dr / Cr beside a single signed amount, instead of two half-empty columns of dashes. */
+.pms-dir {
+  margin-left: 0.3rem;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
+  font-size: 0.7rem;
+  color: var(--text-3);
+}
+
+.pms-nowrap {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pms-chips {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.pms-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2rem;
+  padding: 0.25rem 0.8rem;
+  border: 1px solid var(--border-raised, var(--border));
+  border-radius: var(--radius-pill, 100px);
+  background: var(--card-bg);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 150ms var(--ease),
+    background-color 150ms var(--ease),
+    border-color 150ms var(--ease);
+}
+
+.pms-chip:hover {
+  border-color: var(--primary-mid);
+  color: var(--primary);
+}
+
+.pms-chip[aria-selected='true'] {
+  border-color: var(--primary-mid);
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.pms-n {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.pms-chip[aria-selected='true'] .pms-n {
+  color: var(--primary);
+}
+
+/* The frame scrolls, not the table: `.jv-table` clips with overflow hidden, which would
+   make the table — not this frame — the scroller its sticky cells pin to. */
+.pms-scroll {
+  max-height: min(24rem, 50vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+}
+
+.pms-scroll .jv-table {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+}
+
+.pms-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.pms-scroll tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  box-shadow: 0 -1px 0 var(--border);
+}
+
+.rd-blocked--bad {
+  color: var(--rose-text);
+}
+
+.rd-blocked--note {
+  color: var(--text-2);
+}
+
+.rd-blocked--note svg {
+  color: var(--primary);
+}
+
+@media (max-width: 640px) {
+  /* components.css still sets `.jv-table { min-width: 720px }` up to 768px for the
+     scrolling table this file replaced with stacked rows; under the stacked layout that
+     width only pushed the review dialog sideways. Fixes the email review's JV too. */
+  .jv-table {
+    min-width: 0;
+  }
+
+  .pms-head {
+    grid-template-columns: 1rem minmax(0, 1fr);
+    row-gap: 0.1rem;
+  }
+
+  .pms-val {
+    grid-column: 2;
+  }
+
+  /* A phone stacks each table into cards, so the body scrolls rather than a frame in it. */
+  .pms-scroll {
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    background: none;
+  }
+
+  .pms-scroll .jv-table {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+
+  .pms-scroll thead th,
+  .pms-scroll tfoot td {
+    position: static;
+    box-shadow: none;
+  }
+}

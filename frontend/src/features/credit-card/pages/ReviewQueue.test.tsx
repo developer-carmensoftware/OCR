@@ -15,6 +15,12 @@ vi.mock('@/features/credit-card/api/emailReview', async importOriginal => ({
 }))
 // The chrome needs AuthProvider and pulls credits over the network. Neither has anything
 // to do with which of its states this page picks, which is what these tests are about.
+// A PMS day opens its own dialog (CA-119); held loading here, the routing is the point.
+vi.mock('@/features/credit-card/api/pmsReview', () => ({
+  getPmsDay: vi.fn(() => new Promise(() => {})),
+  approvePmsDay: vi.fn(),
+  rejectPmsDay: vi.fn(),
+}))
 vi.mock('@/shared/components/common/UsageIndicator', () => ({ default: () => null }))
 vi.mock('@/shared/components/common/AppHeader', () => ({
   default: ({ children }: { children?: React.ReactNode }) => <header>{children}</header>,
@@ -971,5 +977,27 @@ describe('the dot the whole business unit shares', () => {
     await waitFor(() => expect(api.markChipSeen).toHaveBeenCalled())
     expect(screen.queryByText('Could not load the queue')).not.toBeInTheDocument()
     expect(await screen.findByText('KTC')).toBeInTheDocument()
+  })
+})
+
+describe('a PMS day in the queue (CA-119)', () => {
+  it('reads like a document and opens its own dialog', async () => {
+    mount([
+      doc({
+        id: 'p1',
+        source: 'pms',
+        bank_code: 'PMS',
+        doc_no: '05/09/2024',
+        attachment: 'Comanche · Daily',
+        flags: ['mapping_guessed'],
+        guessed: ['103', '729'],
+      }),
+    ])
+    expect(await screen.findByText('05/09/2024')).toBeInTheDocument()
+    expect(screen.getByText('Comanche · Daily')).toBeInTheDocument()
+    expect(screen.getByText(/103, 729/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }))
+    expect(window.location.hash).toBe('#/CreditCardOCR/review?pms=p1')
+    window.location.hash = '#/CreditCardOCR'
   })
 })
