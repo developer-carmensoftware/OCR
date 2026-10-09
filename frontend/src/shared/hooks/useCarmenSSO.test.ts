@@ -27,6 +27,11 @@ describe('posting token from the SSO link', () => {
     expect(sessionStorage.getItem(CARMEN_POSTING_TOKEN_KEY)).toBe('P1')
   })
 
+  it('uses `token` on the #/pms link too (one credential, decision #42)', () => {
+    open('#/pms?token=T2&bu=b&uri=https://h')
+    expect(sessionStorage.getItem(CARMEN_POSTING_TOKEN_KEY)).toBe('T2')
+  })
+
   it("leaves the stored credential alone on the queue's link", () => {
     open('#/CreditCardOCR?token=T1&bu=b')
     expect(sessionStorage.getItem(CARMEN_POSTING_TOKEN_KEY)).toBeNull()

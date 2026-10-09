@@ -6,8 +6,9 @@ Three audiences under one prefix:
   which BU this is. Storing the day starts its processing (`services/pms/process.py`).
 - `/keys`: the BU's own key screen, `#/pms`, opened from Carmen's menu (decision-log #40).
   Our session JWT; the session's tenant is the only BU these routes can see or touch.
-- `/days/{id}` (+ approve, reject) and `/settings`: a parked day's review, opened from the
-  AI JV Automation queue, and how the BU's days post. Session JWT, the session's BU only.
+- `/days/{id}` (+ approve, reject), `/settings` and `/credential`: a parked day's review,
+  opened from the AI JV Automation queue, how the BU's days post, and the Carmen credential
+  they post with. Session JWT, the session's BU only.
 - `POST /process/run`: the retry sweep pg_cron calls with the internal job token.
 Contract: docs/PMS_INTEGRATION.md.
 """
@@ -29,10 +30,12 @@ from app.context import current_tenant_id
 from app.database import get_db
 from app.exceptions import FileTooLargeError
 from app.models.admin import APIKey
+from app.models.identity import Tenant
 from app.models.pms import PmsEvent
 from app.models.schemas.pms import (
     PmsApproveIn,
     PmsApproveOut,
+    PmsCredentialIn,
     PmsDayOut,
     PmsEventIn,
     PmsEventOut,
@@ -42,6 +45,8 @@ from app.models.schemas.pms import (
     PmsSettingsOut,
 )
 from app.routers.admin.deps import require_maintenance_auth
+from app.routers.email_automation.settings_api import _safe_carmen_uri
+from app.services.email_automation import credential
 from app.services.pms import process
 from app.services.pms import review as pms_review
 from app.services.shared import api_keys as keys
@@ -304,3 +309,45 @@ async def put_settings(
     )
     await db.commit()
     return out
+
+
+@router.put("/credential", response_model=PmsSettingsOut)
+async def put_credential(
+    body: PmsCredentialIn,
+    session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Store the Carmen token #/pms was opened with as this BU's credential (decision #42).
+
+    Carmen's menu opens #/pms with the SSO link, whose token is the one credential a BU
+    has (decision #35, shared with email automation): `set_token` proves it against Carmen
+    before storing it, at the origin the session's tenant was validated for. The days that
+    were waiting for exactly this are read again at once.
+    """
+    tenant = await db.get(Tenant, UUID(session.tenant_id))
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Business unit not found")
+    origin = await _safe_carmen_uri(tenant)
+    await credential.set_token(
+        db, tenant, body.token.get_secret_value(), origin, f"user:{session.carmen_user_id}"
+    )
+    waiting = (
+        (
+            await db.execute(
+                update(PmsEvent)
+                .where(
+                    PmsEvent.tenant_id == tenant.id,
+                    PmsEvent.status.in_(("received", "failed")),
+                    PmsEvent.reason_code.in_(("no_credential", "carmen_unauthorized")),
+                )
+                .values(status="received", attempts=0, processed_at=None)
+                .returning(PmsEvent.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    await db.commit()
+    for day_id in waiting:
+        process.kick(day_id)
+    return await pms_review.get_settings(db, tenant.id)

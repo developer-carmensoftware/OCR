@@ -91,6 +91,20 @@ export const en = {
   'apiKeys.pms.loading': 'Loading keys…',
   'apiKeys.pms.loadFailed': "Couldn't load your keys.",
   'apiKeys.pms.retry': 'Try again',
+  // How the BU's PMS days post (CA-119).
+  'apiKeys.pms.postingTitle': 'Posting',
+  'apiKeys.pms.postingDescription':
+    'Each PMS day becomes one JV. It waits in AI JV Automation for review unless auto-post is on.',
+  'apiKeys.pms.prefix': 'JV prefix',
+  'apiKeys.pms.prefixHint': 'Nothing posts until a prefix is chosen.',
+  'apiKeys.pms.prefixPlaceholder': 'Choose a prefix',
+  'apiKeys.pms.autoPost': 'Post clean days automatically',
+  'apiKeys.pms.autoPostHint':
+    'A day that balances and whose codes all have saved accounts posts without review. A new code or a balance off still waits.',
+  'apiKeys.pms.saved': 'Saved',
+  'apiKeys.pms.noAccess':
+    "No Carmen access is stored for this business unit, so PMS days cannot be read. Reopen this page from Carmen's menu.",
+  'apiKeys.pms.accessFailed': "Couldn't store the Carmen access: {msg}",
 } as const
 
 export const th: Record<keyof typeof en, string> = {
@@ -186,4 +200,17 @@ export const th: Record<keyof typeof en, string> = {
   'apiKeys.pms.loading': 'กำลังโหลด key…',
   'apiKeys.pms.loadFailed': 'โหลด key ไม่สำเร็จ',
   'apiKeys.pms.retry': 'ลองอีกครั้ง',
+  'apiKeys.pms.postingTitle': 'การโพสต์',
+  'apiKeys.pms.postingDescription':
+    'ข้อมูล PMS แต่ละวันจะกลายเป็น JV หนึ่งรายการ และจะรอตรวจใน AI JV Automation เว้นแต่เปิดโพสต์อัตโนมัติไว้',
+  'apiKeys.pms.prefix': 'JV prefix',
+  'apiKeys.pms.prefixHint': 'จะยังไม่มีการโพสต์จนกว่าจะเลือก prefix',
+  'apiKeys.pms.prefixPlaceholder': 'เลือก prefix',
+  'apiKeys.pms.autoPost': 'โพสต์วันที่ไม่มีปัญหาอัตโนมัติ',
+  'apiKeys.pms.autoPostHint':
+    'วันที่ยอดตรงกันและ code ทุกตัวมีบัญชีที่บันทึกไว้แล้วจะโพสต์โดยไม่ต้องตรวจ วันที่มี code ใหม่หรือยอดไม่ตรงยังต้องรอตรวจ',
+  'apiKeys.pms.saved': 'บันทึกแล้ว',
+  'apiKeys.pms.noAccess':
+    'ยังไม่มีสิทธิ์เข้า Carmen สำหรับ business unit นี้ จึงอ่านข้อมูล PMS ไม่ได้ ให้เปิดหน้านี้ใหม่จากเมนูของ Carmen',
+  'apiKeys.pms.accessFailed': 'เก็บสิทธิ์เข้า Carmen ไม่สำเร็จ: {msg}',
 }

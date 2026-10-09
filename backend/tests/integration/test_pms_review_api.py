@@ -105,3 +105,60 @@ def test_settings_get_and_put():
     assert res.status_code == 200
     assert save.await_args.kwargs == {"jv_prefix": "JV", "auto_post": False}
     db.commit.assert_awaited_once()
+
+
+def test_credential_is_proven_stored_and_wakes_the_days_waiting_for_it():
+    from types import SimpleNamespace
+
+    tenant = SimpleNamespace(id=TENANT, host="dev.carmen4.com", bu_code="test1")
+    waiting = [uuid4(), uuid4()]
+    db = MagicMock(
+        get=AsyncMock(return_value=tenant),
+        execute=AsyncMock(
+            return_value=MagicMock(
+                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=waiting)))
+            )
+        ),
+        commit=AsyncMock(),
+    )
+    out = {"jv_prefix": None, "auto_post": False, "has_credential": True}
+    with (
+        patch(
+            "app.routers.pms._safe_carmen_uri", AsyncMock(return_value="https://dev.carmen4.com")
+        ),
+        patch("app.routers.pms.credential.set_token", AsyncMock()) as set_token,
+        patch("app.routers.pms.pms_review.get_settings", AsyncMock(return_value=out)),
+        patch("app.routers.pms.process.kick") as kick,
+        _client(db) as c,
+    ):
+        res = c.put("/api/v1/pms/credential", json={"token": "hash|user"})
+    assert res.status_code == 200
+    assert res.json()["has_credential"] is True
+    args = set_token.await_args.args
+    assert args[1] is tenant and args[2] == "hash|user" and args[3] == "https://dev.carmen4.com"
+    assert [c.args[0] for c in kick.call_args_list] == waiting
+
+
+def test_a_token_carmen_refuses_is_not_stored():
+    from types import SimpleNamespace
+
+    from app.exceptions import FieldValidationError
+
+    tenant = SimpleNamespace(id=TENANT, host="dev.carmen4.com", bu_code="test1")
+    db = MagicMock(get=AsyncMock(return_value=tenant), commit=AsyncMock())
+    refuse = AsyncMock(
+        side_effect=FieldValidationError(
+            [{"field": "token", "code": "token_rejected", "message": "Carmen rejected this token"}]
+        )
+    )
+    with (
+        patch(
+            "app.routers.pms._safe_carmen_uri", AsyncMock(return_value="https://dev.carmen4.com")
+        ),
+        patch("app.routers.pms.credential.set_token", refuse),
+        patch("app.routers.pms.process.kick") as kick,
+        _client(db) as c,
+    ):
+        res = c.put("/api/v1/pms/credential", json={"token": "dead"})
+    assert res.status_code == 422
+    kick.assert_not_called()

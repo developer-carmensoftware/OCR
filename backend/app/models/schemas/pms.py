@@ -8,7 +8,7 @@ from datetime import date
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 _HOOK_FIELDS = {f.lower(): f for f in ("InterfaceType", "InterfaceName", "DocType", "DocDate")}
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ].*)?")
@@ -153,3 +153,9 @@ class PmsSettingsOut(BaseModel):
     auto_post: bool
     # Whether this BU has a Carmen credential stored; nothing can be read or posted without.
     has_credential: bool
+
+
+class PmsCredentialIn(BaseModel):
+    """The Carmen token #/pms was opened with — stored as this BU's posting credential."""
+
+    token: SecretStr = Field(..., min_length=1, max_length=4096)

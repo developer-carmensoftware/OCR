@@ -24,6 +24,20 @@ vi.mock('@/features/pms/api/pmsKeys', () => ({
   revokePmsKey: (...a: unknown[]) => revokePmsKey(...a),
 }))
 
+// The posting section (CA-119): its own calls, mocked here so the key tests stay about keys.
+const getPmsSettings = vi.fn()
+const putPmsSettings = vi.fn()
+const putPmsCredential = vi.fn()
+vi.mock('@/features/pms/api/pmsSettings', () => ({
+  getPmsSettings: (...a: unknown[]) => getPmsSettings(...a),
+  putPmsSettings: (...a: unknown[]) => putPmsSettings(...a),
+  putPmsCredential: (...a: unknown[]) => putPmsCredential(...a),
+}))
+vi.mock('@/shared/api/carmen', () => ({
+  fetchGLPrefixes: () => Promise.resolve([{ PrefixName: 'JV', Description: 'General journal' }]),
+}))
+const SETTINGS = { jv_prefix: 'JV', auto_post: false, has_credential: true }
+
 const { default: PmsPage } = await import('./PmsPage')
 
 const row = (over: Record<string, unknown> = {}) => ({
@@ -105,5 +119,50 @@ describe('PmsPage', () => {
     localStorage.setItem('lang', 'th')
     renderPage()
     expect(await screen.findByRole('heading', { name: 'PMS connection' })).toBeInTheDocument()
+  })
+})
+
+describe('posting settings (CA-119)', () => {
+  beforeEach(() => {
+    serve([])
+    sessionStorage.clear()
+    getPmsSettings.mockResolvedValue(SETTINGS)
+    putPmsSettings.mockImplementation(async (body: object) => ({ ...SETTINGS, ...body }))
+    putPmsCredential.mockResolvedValue(SETTINGS)
+  })
+
+  it('stores the token Carmen opened the page with, then reads the settings', async () => {
+    sessionStorage.setItem('carmen_posting_token', 'fresh-token')
+    renderPage()
+    await waitFor(() => expect(putPmsCredential).toHaveBeenCalledWith('fresh-token'))
+    await waitFor(() => expect(getPmsSettings).toHaveBeenCalled())
+    expect(sessionStorage.getItem('carmen_posting_token')).toBeNull()
+    expect(putPmsCredential.mock.invocationCallOrder[0]).toBeLessThan(
+      getPmsSettings.mock.invocationCallOrder[0]
+    )
+  })
+
+  it('keeps a token Carmen refused and says so', async () => {
+    sessionStorage.setItem('carmen_posting_token', 'dead')
+    putPmsCredential.mockRejectedValue(new Error('Carmen rejected this token (HTTP 401)'))
+    renderPage()
+    expect(await screen.findByText(/Couldn't store the Carmen access/)).toBeInTheDocument()
+    expect(sessionStorage.getItem('carmen_posting_token')).toBe('dead')
+  })
+
+  it('says when no Carmen access is stored', async () => {
+    getPmsSettings.mockResolvedValue({ ...SETTINGS, has_credential: false })
+    renderPage()
+    expect(await screen.findByText(/No Carmen access is stored/)).toBeInTheDocument()
+  })
+
+  it('saves auto-post the moment it is switched', async () => {
+    renderPage()
+    const sw = await screen.findByRole('switch', { name: 'Post clean days automatically' })
+    await waitFor(() => expect(sw).not.toBeDisabled())
+    fireEvent.click(sw)
+    await waitFor(() =>
+      expect(putPmsSettings).toHaveBeenCalledWith({ jv_prefix: 'JV', auto_post: true })
+    )
   })
 })

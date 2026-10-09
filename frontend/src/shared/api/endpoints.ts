@@ -143,6 +143,8 @@ export const API = {
     reject: (id: string) => `${V1}/pms/days/${id}/reject`,
     // The JV prefix and auto-post switch, set on #/pms.
     settings: `${V1}/pms/settings`,
+    // The token #/pms was opened with, stored as the BU's Carmen credential.
+    credential: `${V1}/pms/credential`,
   },
 
   admin: {
