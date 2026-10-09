@@ -294,16 +294,43 @@ async def _requeue_ready_days() -> int:
     return len(ready)
 
 
+async def _wake_for_new_credential() -> int:
+    """Send back the days a missing or dead credential stopped, once a newer one is proven.
+
+    `PUT /pms/credential` wakes them at once, but it is not the only writer of the BU's one
+    credential (decision-log #42): opening the email settings from Carmen's menu stores a
+    fresh token too, and the daily token check re-proves one after a passing outage. Each
+    moves `carmen_token_verified_at` past the day's last attempt, which is the whole test.
+    Without it a day that spent its attempts on an expired token stayed `failed` for good.
+    """
+    async with async_session() as db:
+        result = await db.execute(
+            update(PmsEvent)
+            .where(
+                PmsEvent.status.in_(("received", "failed")),
+                PmsEvent.reason_code.in_(("no_credential", "carmen_unauthorized")),
+                EmailIngestSettings.tenant_id == PmsEvent.tenant_id,
+                EmailIngestSettings.carmen_token_verified_at > PmsEvent.processed_at,
+            )
+            .values(status="received", attempts=0, processed_at=None)
+            .returning(PmsEvent.id)
+        )
+        woken = result.scalars().all()
+        await db.commit()
+    return len(woken)
+
+
 async def run_pms_processing(limit: int = 50) -> dict:
     """One sweep: every day waiting at `received`, oldest first. Serialised against itself."""
     if _sweep_lock.locked():
         return {"status": "busy"}
     async with _sweep_lock:
         started = datetime.now(UTC)
-        summary: dict = {"status": "ok", "requeued": 0}
+        summary: dict = {"status": "ok", "requeued": 0, "woken": 0}
         error = None
         try:
             summary["requeued"] = await _requeue_ready_days()
+            summary["woken"] = await _wake_for_new_credential()
             now = datetime.now(UTC)
             async with async_session() as db:
                 result = await db.execute(
@@ -324,7 +351,9 @@ async def run_pms_processing(limit: int = 50) -> dict:
             logger.exception("[pms] Sweep failed")
             error = str(exc)
             summary["status"] = "error"
-        worked = sum(v for k, v in summary.items() if k not in ("status", "requeued", "skipped"))
+        worked = sum(
+            v for k, v in summary.items() if k not in ("status", "requeued", "woken", "skipped")
+        )
         await _record_run(started, worked, error)
         return summary
 
