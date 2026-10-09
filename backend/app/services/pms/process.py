@@ -216,6 +216,8 @@ async def _process(claimed) -> str:
             "rows": rows,
             "guessed": guessed,
             "flags": pms_day.flags(rows, rules, guessed),
+            # Which codes those flags are about, for the queue row (`activity._pms_row`).
+            **pms_day.open_keys(rows, rules, guessed),
             "databank_id": databank.get("Id"),
             "last_modified": databank.get("LastModified"),
         }

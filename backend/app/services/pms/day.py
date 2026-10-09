@@ -117,15 +117,25 @@ def flags(rows: list[dict], saved: dict[str, dict], guessed: dict[str, dict]) ->
     rule and no usable AI pick is `mapping_missing`, one only the AI has picked is
     `mapping_guessed`, a day that does not balance is `unbalanced`.
     """
+    still = open_keys(rows, saved, guessed)
     out = []
-    unsaved = [k for k in keys(rows) if k not in saved]
-    if any(not usable(guessed.get(k)) for k in unsaved):
+    if still["missing"]:
         out.append("mapping_missing")
     if off_by(rows):
         out.append("unbalanced")
-    if any(usable(guessed.get(k)) for k in unsaved):
+    if still["ai"]:
         out.append("mapping_guessed")
     return out
+
+
+def open_keys(rows: list[dict], saved: dict[str, dict], guessed: dict[str, dict]) -> dict:
+    """The keys still waiting on a person: `missing` (no account anywhere) and `ai` (only
+    the AI's). The queue row names their codes, so the reviewer knows which before opening."""
+    unsaved = [k for k in keys(rows) if k not in saved]
+    return {
+        "missing": [k for k in unsaved if not usable(guessed.get(k))],
+        "ai": [k for k in unsaved if usable(guessed.get(k))],
+    }
 
 
 def usable(pick: dict | None) -> bool:

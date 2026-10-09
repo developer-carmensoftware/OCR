@@ -15,8 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.business import CreditCard, OCRTask
 from app.models.email_automation import EmailDocument, EmailQueueSeen
+from app.models.pms import PmsEvent
 from app.models.schemas.email_automation import ActivityPage, ActivityRow
 from app.services.email_automation.review import to_review_row
+from app.services.pms.day import code_label
 from app.services.shared.tenant_lookup import username_map
 
 # The three status chips, and the reader's question is what splits them — not the pipeline's
@@ -511,6 +513,102 @@ def _manual_counts_stmt(tenant_id: uuid.UUID, day_start: datetime):
     ).where(*_manual_where(tenant_id))
 
 
+# ── PMS days (CA-119): the third source ───────────────────────────────────────
+#
+# One row per BU × Data Bank day, the JV a PMS night audit makes. Same chips, by status:
+# a parked day is `review`, a posted one `success`, a rejected or failed one `unposted`.
+# `received` is a day being read right now — seconds — and is in no view, the same way a
+# document mid-extraction would not be if it had no `received` row of its own.
+_PMS_VISIBLE = (PENDING, "posted", "rejected", "failed")
+
+
+def _pms_chip_expr():
+    return case(
+        (PmsEvent.status == PENDING, "review"),
+        (PmsEvent.status == "posted", "success"),
+        else_="unposted",
+    )
+
+
+def _pms_counts_stmt(tenant_id: uuid.UUID, day_start: datetime):
+    """Every chip's PMS count and its anomalies, in one round trip."""
+    return select(
+        func.count().filter(PmsEvent.status == PENDING).label("review"),
+        func.count().filter(PmsEvent.status == "posted").label("success"),
+        func.count().filter(PmsEvent.status.in_(("rejected", "failed"))).label("unposted"),
+        func.count().filter(PmsEvent.created_at >= day_start).label("today"),
+        # What `_attention` would count for an email document: a day that gave up, and a
+        # parked one the pipeline stopped (Carmen refused it) rather than parked for review.
+        func.count().filter(PmsEvent.status == "failed").label("failed"),
+        func.count()
+        .filter(and_(PmsEvent.status == PENDING, PmsEvent.reason_code.is_not(None)))
+        .label("stopped"),
+    ).where(PmsEvent.tenant_id == tenant_id, PmsEvent.status.in_(_PMS_VISIBLE))
+
+
+def _pms_stmt(tenant_id: uuid.UUID, chip: str | None, since: datetime | None = None):
+    stmt = select(PmsEvent).where(
+        PmsEvent.tenant_id == tenant_id, PmsEvent.status.in_(_PMS_VISIBLE)
+    )
+    if chip is not None:
+        stmt = stmt.where(_pms_chip_expr() == chip)
+    if since is not None:
+        stmt = stmt.where(PmsEvent.created_at >= since)
+    return stmt.order_by(PmsEvent.created_at.desc())
+
+
+async def _pms_counts(db: AsyncSession, tenant_id: uuid.UUID, day_start: datetime):
+    return (await db.execute(_pms_counts_stmt(tenant_id, day_start))).one()
+
+
+def _pms_attention(c) -> dict[str, int]:
+    return {"review": c.stopped, "success": 0, "unposted": c.failed, NOISE: 0}
+
+
+def _dmy(iso: str) -> str:
+    """`2024-09-05` → `05/09/2024`, the API's date convention for a document's date."""
+    y, m, d = (iso.split("-") + ["", ""])[:3]
+    return f"{d}/{m}/{y}" if y and m and d else iso
+
+
+def _pms_row(e: PmsEvent) -> ActivityRow:
+    """A PMS day, as a row of the shape an email document produces.
+
+    `bank_code` is `PMS` and `doc_no` the day, so the Document column reads `PMS 05/09/2024`
+    over `Comanche · Daily`. While parked, `unmapped`/`guessed` name the codes the flags are
+    about, which `QueueRow.reasonFor` prints ("AI suggested mapping: 103, 729").
+    """
+    hook = e.payload or {}
+    p = (e.review_payload or {}) if e.status == PENDING else {}
+    day = _dmy(str(hook.get("DocDate") or "")[:10])
+    return ActivityRow(
+        id=str(e.id),
+        source="pms",
+        created_at=e.created_at,
+        attachment=f"{hook.get('InterfaceName') or ''} · {hook.get('DocType') or ''}",
+        status=e.status,
+        bank_code="PMS",
+        doc_no=day,
+        doc_date=day if p else None,
+        line_count=len(p.get("rows") or []),
+        flags=p.get("flags") or [],
+        unmapped=[code_label(k) for k in p.get("missing") or []],
+        guessed=[code_label(k) for k in p.get("ai") or []],
+        jv_no=e.jv_no,
+        reason_code=e.reason_code,
+        error_message=e.error_message,
+        reviewed_by_name=e.reviewed_by_name,
+        reviewed_at=e.reviewed_at,
+    )
+
+
+async def _pms_rows(
+    db: AsyncSession, tenant_id: uuid.UUID, chip: str | None, since: datetime | None, window: int
+) -> list[ActivityRow]:
+    days = (await db.execute(_pms_stmt(tenant_id, chip, since).limit(window))).scalars().all()
+    return [_pms_row(d) for d in days]
+
+
 async def list_activity(
     db: AsyncSession, tenant_id: uuid.UUID, filter: str, limit: int, offset: int
 ) -> ActivityPage:
@@ -532,15 +630,18 @@ async def list_activity(
     # because `_attention` needs the reason — same single round trip.
     groups = await _groups(db, tenant_id)
     manual = (await db.execute(_manual_counts_stmt(tenant_id, day_start))).one()
+    pms = await _pms_counts(db, tenant_id, day_start)
     counts = dict.fromkeys(LEDGER_BUCKETS, 0)
     for g in groups:
         counts[g.chip] += g.n
     counts["success"] += manual.posted
     counts["unposted"] += manual.unposted
+    for bucket in STATUS_CHIPS:
+        counts[bucket] += getattr(pms, bucket)
     counts["all"] = sum(counts.values())
     # After `all`, deliberately — see the docstring. Today is a window over the three chips
     # above it, not a fourth pile beside them.
-    counts[TODAY] = sum(g.today for g in groups) + manual.today
+    counts[TODAY] = sum(g.today for g in groups) + manual.today + pms.today
 
     # How many rows under each chip are wrong in some way — see `_attention` for what that
     # covers, and why it is neither "what a person can fix" nor "how much work is here".
@@ -550,6 +651,8 @@ async def list_activity(
     # No `today` key, and therefore no dot on it — see `_anomalies`. Today's rows are all
     # counted under one of the three below, so anything wrong with them is already lit.
     attention = _anomalies(groups)
+    for bucket, n in _pms_attention(pms).items():
+        attention[bucket] += n
     attention["all"] = sum(attention.values())
 
     # …and which of those chips is holding something this BU has not looked at. The count
@@ -589,7 +692,8 @@ async def list_activity(
             _manual_row(card, task, names.get(str(card.carmen_user_id or "")))
             for card, task in manuals
         ]
-        rows.sort(key=lambda r: r.created_at or _EPOCH, reverse=True)
+    rows += await _pms_rows(db, tenant_id, chip, since, window)
+    rows.sort(key=lambda r: r.created_at or _EPOCH, reverse=True)
 
     return ActivityPage(
         total=total,
@@ -605,7 +709,10 @@ async def list_activity(
 async def mark_chip_seen(db: AsyncSession, tenant_id: uuid.UUID, chip: str) -> int:
     """`POST /api/v1/credit-card/activity/seen` for an already-validated `chip`. Returns the
     anomaly count now stored as seen — computed here, never taken from the caller."""
-    total = _anomalies(await _groups(db, tenant_id))[chip]
+    total = (
+        _anomalies(await _groups(db, tenant_id))[chip]
+        + _pms_attention(await _pms_counts(db, tenant_id, _day_start()))[chip]
+    )
 
     row = await db.get(EmailQueueSeen, tenant_id)
     if row is None:

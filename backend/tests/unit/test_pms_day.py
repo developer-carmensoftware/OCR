@@ -136,3 +136,13 @@ def test_flags(rows):
     ]
     rows[0]["amount"] = "1120.00"
     assert day.flags(rows, RULES, {}) == ["unbalanced"]
+
+
+def test_open_keys_name_the_codes_still_waiting(rows):
+    partial = {k: v for k, v in RULES.items() if k not in ("Revenue|729", "Payment|900")}
+    guess = {"Revenue|729": {"dept": "304", "acc": "4240011"}}
+    assert day.open_keys(rows, partial, guess) == {
+        "missing": ["Payment|900"],
+        "ai": ["Revenue|729"],
+    }
+    assert day.open_keys(rows, RULES, {}) == {"missing": [], "ai": []}

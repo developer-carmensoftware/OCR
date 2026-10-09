@@ -311,12 +311,14 @@ async def recheck(tenant_id: uuid.UUID, interface: str) -> int:
                 payload = dict(row.review_payload or {})
                 if payload.get("interface") != interface:
                     continue
-                flags = pms_day.flags(
-                    payload.get("rows") or [], rules, payload.get("guessed") or {}
-                )
-                if flags != payload.get("flags"):
-                    payload["flags"] = flags
-                    row.review_payload = payload
+                rows, guessed = payload.get("rows") or [], payload.get("guessed") or {}
+                fresh = {
+                    "flags": pms_day.flags(rows, rules, guessed),
+                    **pms_day.open_keys(rows, rules, guessed),
+                }
+                if any(payload.get(k) != v for k, v in fresh.items()):
+                    # Replaced, not mutated: SQLAlchemy does not see in-place JSON edits.
+                    row.review_payload = {**payload, **fresh}
                     changed += 1
             await db.commit()
             return changed
