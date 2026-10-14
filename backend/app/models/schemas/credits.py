@@ -3,6 +3,7 @@
 import re
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -23,6 +24,12 @@ class CreditPackResponse(BaseModel):
     price_annual_thb: float | None = None
     description: str | None = None
     sort_order: int = 0
+
+
+class AiStatusOut(BaseModel):
+    """Which AI sales popup Carmen shows a BU. `paid` shows none."""
+
+    stage: Literal["never_used", "trial", "near_limit", "exhausted", "paid"]
 
 
 class CreditOrderResponse(BaseModel):

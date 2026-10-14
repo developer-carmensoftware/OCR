@@ -24,6 +24,7 @@ from app.models.schemas.config import (
 from app.models.schemas.consent import ConsentRequest, ConsentStatusResponse
 from app.models.schemas.credits import (
     AdjustRequest,
+    AiStatusOut,
     ArCustomerProfileResponse,
     ArCustomerProfileUpdate,
     BillingDocumentResponse,
@@ -125,6 +126,7 @@ __all__ = [
     "ConsentRequest",
     "ConsentStatusResponse",
     # credits
+    "AiStatusOut",
     "CreditPackResponse",
     "CreateOrderRequest",
     "CreateOrderResponse",

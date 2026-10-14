@@ -3,6 +3,7 @@ Carmen Proxy Router — thin HTTP layer for Carmen Cloud API calls.
 
 All business logic and HTTP construction lives in `services/carmen_service.py`.
 Session injection (get_current_session) supplies the per-user Carmen token.
+The one exception is `GET /ai-status`, which Carmen calls with no auth at all.
 """
 
 import logging
@@ -10,8 +11,9 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +21,8 @@ from app.auth import SessionInfo, get_current_session
 from app.constants import Module
 from app.database import get_db
 from app.exceptions import DuplicateDocumentError
-from app.models.orm import CreditCard
+from app.models.orm import CreditCard, Tenant, TenantCredit
+from app.models.schemas import AiStatusOut
 from app.services.ap_invoice.service import mark_invoice_submitted
 from app.services.shared import audit as audit_service
 from app.services.shared.audit import AuditAction
@@ -37,12 +40,18 @@ from app.services.shared.carmen import (
     put_gljv,
     put_input_tax,
 )
+from app.services.shared.credits import active_subscription, ai_stage
+from app.services.shared.rate_limit import InMemoryRateLimiter
 from app.utils.client_ip import get_client_ip
 from app.utils.db_helpers import has_submitted_doc
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/carmen", tags=["Carmen"])
+
+# /ai-status is public, so RateLimitMiddleware's per-IP bucket alone would let many IPs
+# share out the DB between them. This caps the endpoint as a whole.
+_ai_status_ceiling = InMemoryRateLimiter(max_calls=300, window_seconds=60.0)
 
 
 @asynccontextmanager
@@ -286,3 +295,37 @@ async def proxy_create_invoice(
                 ip_address=get_client_ip(request),
             )
         return res
+
+
+@router.get("/ai-status", response_model=AiStatusOut)
+async def ai_status(
+    request: Request,
+    response: Response,
+    uri: str = Query(..., max_length=255),
+    bu: str = Query(..., min_length=1, max_length=64),
+    db: AsyncSession = Depends(get_db),
+):
+    """Which AI sales popup Carmen shows this BU — public by request, no auth.
+
+    Only the stage goes out, and an unknown (host, bu) reads `never_used` like a BU that
+    exists but never scanned, so this endpoint cannot be used to learn which BUs exist.
+    Read-only: unlike /auth/exchange it creates no tenant, grant or session.
+    """
+    _ai_status_ceiling.check(request, key="_global_ai_status")
+    host = (urlparse(uri).hostname or "").lower()  # the host /auth/exchange stores
+    row = (
+        await db.execute(
+            select(Tenant.id, TenantCredit.balance, TenantCredit.credits_purchased)
+            .outerjoin(TenantCredit, TenantCredit.tenant_id == Tenant.id)
+            .where(
+                Tenant.host == host,
+                Tenant.bu_code == bu.strip().lower(),
+                Tenant.deleted_at.is_(None),
+            )
+        )
+    ).first()
+    response.headers["Cache-Control"] = "max-age=300"
+    if row is None:
+        return AiStatusOut(stage="never_used")
+    has_sub = await active_subscription(db, str(row.id)) is not None
+    return AiStatusOut(stage=ai_stage(row.balance, row.credits_purchased or 0, has_sub))
