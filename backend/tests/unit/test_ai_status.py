@@ -82,10 +82,10 @@ def test_unknown_bu_reads_never_used_and_writes_nothing():
 
 def test_known_bu_reads_its_balance_and_modules():
     row = SimpleNamespace(id="t-1", balance=3, credits_purchased=0)
-    used = ["ap_invoice", "credit_card_ocr"]
+    used = ["credit_card_ocr", "cc_ar_reconcile", "ap_invoice"]  # both Credit Card ids → jv
     with _client(row=row, modules=used) as (client, db):
         resp = client.get("/api/v1/carmen/ai-status", params=_PARAMS)
-    assert resp.json() == {"stage": "near_limit", "modules": used}
+    assert resp.json() == {"stage": "near_limit", "modules": ["ap_invoice", "jv"]}
     modules_sql = str(db.execute.call_args.args[0].compile())
     assert "ocr_tasks" in modules_sql and "sum(ocr_tasks.charged_docs) >" in modules_sql
 

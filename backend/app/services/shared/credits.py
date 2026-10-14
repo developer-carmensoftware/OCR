@@ -39,6 +39,7 @@ from app.models.orm import (
     TenantSubscription,
 )
 from app.models.schemas import CreditPackResponse
+from app.models.schemas.credits import AiStage
 from app.utils.list_query import ListQuery, apply_list_query
 from app.utils.pagination import paginate
 
@@ -56,7 +57,7 @@ SIGNUP_GRANT_CREDITS = 30
 NEAR_LIMIT_USED = 25
 
 
-def ai_stage(balance: int | None, purchased: int, has_subscription: bool) -> str:
+def ai_stage(balance: int | None, purchased: int, has_subscription: bool) -> AiStage:
     """Which AI sales popup Carmen shows a BU (GET /api/v1/carmen/ai-status).
 
     `balance` None = no tenant row: the BU never opened AI. Anyone who has paid, by plan
