@@ -1001,10 +1001,13 @@ def _pms_day(**overrides):
         },
         status="pending_review",
         review_payload={
-            "rows": [{"type": "Revenue", "code": "103", "desc": "Extra Bed", "amount": "1.00"}],
+            "rows": [
+                {"key": '["103","Extra Bed"]', "values": {}, "amount": "1.00"},
+                {"key": '["103","Extra Bed - VAT"]', "values": {}, "amount": "0.07"},
+            ],
             "flags": ["mapping_guessed"],
             "missing": [],
-            "ai": ["Revenue|103", "VAT|*"],
+            "ai": ['["103","Extra Bed"]', '["103","Extra Bed - VAT"]', '["729","Rebate"]'],
         },
         jv_no=None,
         reason_code=None,
@@ -1021,16 +1024,16 @@ def test_a_parked_pms_day_reads_like_a_document():
     assert row.source == "pms"
     assert (row.bank_code, row.doc_no, row.attachment) == ("PMS", "05/09/2024", "Comanche · Daily")
     assert row.flags == ["mapping_guessed"]
-    assert row.guessed == ["103", "- VAT"]
-    assert row.line_count == 1
+    # One name per PMS code: the two rows of code 103 read as one "103".
+    assert row.guessed == ["103", "729"]
+    assert row.line_count == 2
 
 
 def test_a_resolved_pms_day_carries_only_the_ledger_columns():
-    row = _pms_row(
-        _pms_day(status="posted", review_payload=None, jv_no="JV2409-0066", reviewed_by_name="Nok")
-    )
+    row = _pms_row(_pms_day(status="posted", review_payload=None, reviewed_by_name="Nok"))
     assert row.status == "posted"
-    assert row.jv_no == "JV2409-0066"
+    # Carmen's engine answers without the JV's number (CA-116).
+    assert row.jv_no is None
     assert row.flags == [] and row.guessed == [] and row.doc_date is None
 
 

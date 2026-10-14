@@ -18,7 +18,7 @@ from app.models.email_automation import EmailDocument, EmailQueueSeen
 from app.models.pms import PmsEvent
 from app.models.schemas.email_automation import ActivityPage, ActivityRow
 from app.services.email_automation.review import to_review_row
-from app.services.pms.day import code_label
+from app.services.pms.carmen_config import short_labels
 from app.services.shared.tenant_lookup import username_map
 
 # The three status chips, and the reader's question is what splits them — not the pipeline's
@@ -575,8 +575,9 @@ def _pms_row(e: PmsEvent) -> ActivityRow:
     """A PMS day, as a row of the shape an email document produces.
 
     `bank_code` is `PMS` and `doc_no` the day, so the Document column reads `PMS 05/09/2024`
-    over `Comanche · Daily`. While parked, `unmapped`/`guessed` name the codes the flags are
-    about, which `QueueRow.reasonFor` prints ("AI suggested mapping: 103, 729").
+    over `Comanche · Daily`. While parked, `unmapped`/`guessed` name the PMS codes of the rows
+    the flags are about, once each, which `QueueRow.reasonFor` prints ("AI suggested mapping:
+    103, 729").
     """
     hook = e.payload or {}
     p = (e.review_payload or {}) if e.status == PENDING else {}
@@ -592,8 +593,8 @@ def _pms_row(e: PmsEvent) -> ActivityRow:
         doc_date=day if p else None,
         line_count=len(p.get("rows") or []),
         flags=p.get("flags") or [],
-        unmapped=[code_label(k) for k in p.get("missing") or []],
-        guessed=[code_label(k) for k in p.get("ai") or []],
+        unmapped=short_labels(p.get("missing") or []),
+        guessed=short_labels(p.get("ai") or []),
         jv_no=e.jv_no,
         reason_code=e.reason_code,
         error_message=e.error_message,

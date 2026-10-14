@@ -1,7 +1,8 @@
-"""CA-119 — reviewing a parked PMS day (services/pms/review.py).
+"""CA-119 / decision-log #43 — reviewing a parked PMS day (services/pms/review.py).
 
 The DB sessions, the credential and Carmen are patched; what is pinned is what the review
-shows, what Approve saves and posts, and every refusal leaving the day parked.
+shows, what Approve writes into Carmen's mapping table (whole — Carmen's PUT replaces it)
+before asking Carmen's engine to post, and every refusal leaving the day parked.
 """
 
 from contextlib import asynccontextmanager
@@ -12,27 +13,47 @@ from uuid import uuid4
 import pytest
 
 from app.exceptions import CarmenServiceError, ConflictError, NotFoundError, ValidationError
-from app.services.pms import day as pms_day
-from app.services.pms import posting, review
+from app.services.pms import carmen_config as cfg
+from app.services.pms import review
+from app.services.pms.process import PostRefused
 from app.services.shared.carmen import CarmenAPIError
-from tests.unit.test_pms_day import FILE_DATA, RULES
+from tests.unit.test_pms_carmen_config import COMANCHE_INI, DAY, TABLE
 
-ROWS = pms_day.rows_of(FILE_DATA)
-SAVED = {k: v for k, v in RULES.items() if k != "Revenue|729"}
-GUESS = {"Revenue|729": {"dept": "304", "acc": "4240011", "confidence": "medium", "why": "rebate"}}
+SPEC = cfg.spec_of(cfg.parse_ini(COMANCHE_INI))
+ROWS = cfg.rows_of(DAY, SPEC)
+KEY = {r["values"]["Description"]: r["key"] for r in ROWS}
+MAPPED = cfg.table_of(TABLE, SPEC.columns)
+GUESS = {
+    KEY["Room Charge - VAT"]: {"dept": "GEN", "acc": "2012003", "confidence": "high", "why": "tax"}
+}
 PAYLOAD = {
     "interface": "Comanche",
     "doc_type": "Daily",
-    "doc_date": "2024-09-05",
+    "doc_date": "2025-10-20",
+    "setting_code": "Comanche.PMS",
+    "post_type": "REVENUE",
+    "counter": {"dept": "GEN", "acc": "1021001", "name": "A/R - Guest Ledger"},
+    "key_columns": SPEC.columns,
     "rows": ROWS,
+    "mapped": {k: v for k, v in MAPPED.items() if k in {r["key"] for r in ROWS}},
     "guessed": GUESS,
-    "flags": ["mapping_guessed"],
+    "flags": ["mapping_missing", "mapping_guessed"],
+    "databank_id": 148,
 }
-ACCOUNTS = [{"code": c, "name": c, "type": "income"} for c in ("4240011", "4240001", "4010001")]
-DEPTS = [
-    {"code": "304", "name": "Other", "allowed_accounts": ["4240011", "4240001"]},
-    {"code": "101", "name": "Rooms", "allowed_accounts": []},
+ACCOUNTS = [
+    {"code": c, "name": c, "type": "balancesheet"}
+    for c in ("2012003", "1010001", "1021001", "4010001")
 ]
+DEPTS = [
+    {"code": "GEN", "name": "General", "allowed_accounts": []},
+    {"code": "103", "name": "Rooms", "allowed_accounts": ["4010001"]},
+]
+PICKS = {
+    KEY["Room Charge - VAT"]: {"dept": "GEN", "acc": "2012003"},
+    KEY["Cash - Advance Payment"]: {"dept": "GEN", "acc": "1010001"},
+    KEY["Guest Ledger"]: {"dept": "GEN", "acc": "1021001"},
+}
+POSTED = "posted"
 
 
 class _Approve:
@@ -40,19 +61,24 @@ class _Approve:
         self,
         *,
         payload=PAYLOAD,
-        settings=SimpleNamespace(jv_prefix="JV"),
         target=("tok", "https://dev.carmen4.com"),
-        post="JV2409-0066",
-        saved=SAVED,
+        table=TABLE,
+        put=None,
+        post=POSTED,
     ):
         self.tenant, self.pk = uuid4(), uuid4()
-        self.db = MagicMock(
-            execute=AsyncMock(), commit=AsyncMock(), get=AsyncMock(return_value=settings)
-        )
+        self.db = MagicMock(execute=AsyncMock(), commit=AsyncMock())
 
         @asynccontextmanager
         async def session():
             yield self.db
+
+        def mock(value):
+            return (
+                AsyncMock(side_effect=value)
+                if isinstance(value, Exception)
+                else AsyncMock(return_value=value)
+            )
 
         self.patches = {
             "session": patch.object(review, "async_session", session),
@@ -63,18 +89,12 @@ class _Approve:
             ),
             "release": patch.object(review, "_release", AsyncMock()),
             "target": patch.object(review, "_target", AsyncMock(return_value=target)),
-            "saved": patch.object(review.mapping, "saved", AsyncMock(return_value=saved)),
-            "save": patch.object(review.mapping, "save", AsyncMock()),
+            "read": patch.object(review.carmen, "get_pms_mapping", mock(table)),
+            "put": patch.object(review.carmen, "put_pms_mapping", mock(put or {"Code": 0})),
             "masters": patch.object(
                 review.mapping, "masters", AsyncMock(return_value=(ACCOUNTS, DEPTS))
             ),
-            "post": patch.object(
-                review.posting,
-                "post_day",
-                AsyncMock(side_effect=post)
-                if isinstance(post, Exception)
-                else AsyncMock(return_value=post),
-            ),
+            "post": patch.object(review, "post_day", mock(post)),
             "recheck": patch.object(review, "recheck", AsyncMock(return_value=1)),
         }
 
@@ -89,75 +109,139 @@ class _Approve:
                 p.stop()
 
 
-KEEP_AI = {"Revenue|729": {"dept": "304", "acc": "4240011"}}
-
-
 @pytest.mark.asyncio
-async def test_approve_saves_the_new_code_and_posts_a_balanced_jv():
+async def test_approve_writes_the_whole_table_then_has_carmen_post_the_day():
     run = _Approve()
-    assert await run(KEEP_AI) == {"jv_no": "JV2409-0066"}
-    tenant, interface, chosen = run.m["save"].await_args.args[1:]
-    assert interface == "Comanche"
-    assert chosen == {"Revenue|729": {"dept": "304", "acc": "4240011", "source": "ai"}}
-    body = run.m["post"].await_args.args[0]
-    assert body["Prefix"] == "JV"
-    accs = [d["AccCode"] for d in body["Detail"]]
-    assert "4240011" in accs
-    assert sum(d["CrAmount"] for d in body["Detail"]) == sum(d["DrAmount"] for d in body["Detail"])
+    assert await run(PICKS) == {"jv_no": None, "already_posted": False}
+    code, post_type, rows, token = run.m["put"].await_args.args
+    assert (code, post_type, token) == ("Comanche.PMS", "REVENUE", "tok")
+    # Every row Carmen had goes back (the PUT replaces the table), the blank one filled in.
+    assert rows == [
+        {"Code": "100", "Description": "Room Charge", "DeptCode": "103", "AccCode": "4010001"},
+        {"Code": "900", "Description": "Cash", "DeptCode": "GEN", "AccCode": "1010001"},
+        {
+            "Code": "Guest Ledger",
+            "Description": "Guest Ledger",
+            "DeptCode": "GEN",
+            "AccCode": "1021001",
+        },
+        {
+            "Code": "100",
+            "Description": "Room Charge - VAT",
+            "DeptCode": "GEN",
+            "AccCode": "2012003",
+        },
+        {
+            "Code": "900",
+            "Description": "Cash - Advance Payment",
+            "DeptCode": "GEN",
+            "AccCode": "1010001",
+        },
+    ]
+    assert run.m["post"].await_args.args == (PAYLOAD, "2025-10-20", 148, "tok")
     run.m["recheck"].assert_awaited_once()
     run.m["release"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_a_changed_pick_is_saved_as_the_users():
-    run = _Approve()
-    await run({"Revenue|729": {"dept": "304", "acc": "4240001"}})
-    assert run.m["save"].await_args.args[3]["Revenue|729"]["source"] == "user"
+async def test_a_day_carmen_had_already_posted_is_done():
+    run = _Approve(post="already_posted")
+    assert await run(PICKS) == {"jv_no": None, "already_posted": True}
+
+
+@pytest.mark.asyncio
+async def test_a_row_carmen_has_meanwhile_mapped_keeps_carmens_account():
+    vat = {
+        "Code": "100",
+        "Description": "Room Charge - VAT",
+        "DeptCode": "GEN",
+        "AccCode": "2012009",
+        "AccDesc": "x",
+    }
+    run = _Approve(table=[*TABLE, vat])
+    picks = {k: v for k, v in PICKS.items() if k != KEY["Room Charge - VAT"]}
+    await run(picks)
+    rows = run.m["put"].await_args.args[2]
+    assert {
+        "Code": "100",
+        "Description": "Room Charge - VAT",
+        "DeptCode": "GEN",
+        "AccCode": "2012009",
+    } in rows
+
+
+@pytest.mark.asyncio
+async def test_a_fully_mapped_day_posts_without_writing_the_table():
+    full = [*TABLE[:2], {**TABLE[2], "AccCode": "1021001"}]
+    full += [
+        {
+            "Code": "100",
+            "Description": "Room Charge - VAT",
+            "DeptCode": "GEN",
+            "AccCode": "2012003",
+        },
+        {
+            "Code": "900",
+            "Description": "Cash - Advance Payment",
+            "DeptCode": "GEN",
+            "AccCode": "1010001",
+        },
+    ]
+    run = _Approve(table=full)
+    await run({})
+    run.m["put"].assert_not_awaited()
+    run.m["post"].assert_awaited_once()
+    run.m["recheck"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "kwargs, picks, words",
     [
-        ({}, {}, "Pick an account for every new code"),
-        ({"settings": None}, KEEP_AI, "JV prefix"),
-        ({"settings": SimpleNamespace(jv_prefix=None)}, KEEP_AI, "JV prefix"),
-        ({"target": ("", "")}, KEEP_AI, "No Carmen access"),
-        ({}, {"Revenue|729": {"dept": "304", "acc": "4010001"}}, "does not allow"),
-        ({}, {"Revenue|729": {"dept": "999", "acc": "4240011"}}, "not a department"),
-        ({}, {"Revenue|729": {"dept": "304", "acc": "9999999"}}, "not an account"),
+        ({}, {}, "Pick an account for every new row"),
+        ({"target": ("", "")}, PICKS, "No Carmen access"),
+        ({}, {**PICKS, KEY["Guest Ledger"]: {"dept": "103", "acc": "1021001"}}, "does not allow"),
+        ({}, {**PICKS, KEY["Guest Ledger"]: {"dept": "999", "acc": "1021001"}}, "not a department"),
+        ({}, {**PICKS, KEY["Guest Ledger"]: {"dept": "GEN", "acc": "9999999"}}, "not an account"),
     ],
-    ids=["no-pick", "no-settings", "no-prefix", "no-credential", "pair", "dept", "acc"],
+    ids=["no-pick", "no-credential", "pair", "dept", "acc"],
 )
-async def test_refusals_leave_the_day_parked(kwargs, picks, words):
+async def test_refusals_leave_the_day_parked_and_carmen_untouched(kwargs, picks, words):
     run = _Approve(**kwargs)
     with pytest.raises(ValidationError, match=words):
         await run(picks)
+    run.m["put"].assert_not_awaited()
     run.m["post"].assert_not_awaited()
     run.m["release"].assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_an_unbalanced_day_never_posts():
-    rows = [dict(r) for r in ROWS]
-    rows[0]["amount"] = "1120.00"
-    run = _Approve(payload={**PAYLOAD, "rows": rows})
-    with pytest.raises(ValidationError, match="doesn't balance"):
-        await run(KEEP_AI)
-    run.m["save"].assert_not_awaited()
+async def test_carmens_table_unreadable_means_nothing_is_written():
+    run = _Approve(table=CarmenAPIError(405, "HTTP 405: method"))
+    with pytest.raises(CarmenServiceError, match="Couldn't read Carmen's Comanche mapping"):
+        await run(PICKS)
+    run.m["put"].assert_not_awaited()
     run.m["post"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_write_never_posts():
+    run = _Approve(put=CarmenAPIError(500, "HTTP 500: boom"))
+    with pytest.raises(CarmenServiceError, match="didn't save the accounts"):
+        await run(PICKS)
+    run.m["post"].assert_not_awaited()
+    run.m["release"].assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_carmen_saying_no_is_a_400_and_carmen_unreachable_a_503():
-    run = _Approve(post=posting.PostRefused("Period is closed"))
+    run = _Approve(post=PostRefused("Period is closed"))
     with pytest.raises(ValidationError, match="Period is closed"):
-        await run(KEEP_AI)
+        await run(PICKS)
     run.m["release"].assert_awaited_once()
-
     run = _Approve(post=CarmenAPIError(504, "Carmen Server request timed out."))
-    with pytest.raises(CarmenServiceError, match="whether the JV posted"):
-        await run(KEEP_AI)
+    with pytest.raises(CarmenServiceError, match="Approving again is safe"):
+        await run(PICKS)
 
 
 @pytest.mark.asyncio
@@ -177,31 +261,26 @@ async def test_claim_conflicts():
 
 
 @pytest.mark.asyncio
-async def test_get_day_lists_only_the_new_codes():
+async def test_get_day_lists_the_rows_carmen_cannot_place_and_what_the_others_map_to():
     row = SimpleNamespace(id=uuid4(), review_payload=PAYLOAD, reason_code=None, error_message=None)
     db = MagicMock(scalar=AsyncMock(return_value=row))
-    with patch.object(review.mapping, "saved", AsyncMock(return_value=SAVED)):
-        day = await review.get_day(db, uuid4(), row.id)
-    assert [c["code"] for c in day["new_codes"]] == ["729"]
-    assert day["new_codes"][0] | {} == {
-        "key": "Revenue|729",
-        "code": "729",
-        "description": "Rebate - Misc. (VAT)",
-        "type": "Revenue",
-        "amount": "-50.00",
-        "dept": "304",
-        "acc": "4240011",
-        "confidence": "medium",
-        "why": "rebate",
-    }
-    assert day["terms"] == [
-        {"type": "Revenue", "amount": "1127.00"},
-        {"type": "Payment", "amount": "-500.00"},
-        {"type": "Guest Ledger", "amount": "-627.00"},
+    day = await review.get_day(db, uuid4(), row.id)
+    assert [c["label"] for c in day["new_codes"]] == [
+        "100 · Room Charge - VAT",
+        "900 · Cash - Advance Payment",
+        "Guest Ledger · Guest Ledger",
     ]
-    assert day["off"] == "0.00"
-    assert day["codes"] == 4
-    assert set(day["accounts"]) == set(SAVED)
+    vat = day["new_codes"][0]
+    assert (vat["amount"], vat["dept"], vat["acc"], vat["confidence"]) == (
+        "11525.06",
+        "GEN",
+        "2012003",
+        "high",
+    )
+    assert day["mapped_count"] == 1
+    assert day["rows"][0] == {**ROWS[0], "dept": "103", "acc": "4010001", "name": "Room Revenue"}
+    assert (day["setting_code"], day["post_type"]) == ("Comanche.PMS", "REVENUE")
+    assert day["counter"]["acc"] == "1021001"
 
 
 @pytest.mark.asyncio
@@ -211,8 +290,8 @@ async def test_get_day_of_a_day_not_waiting_is_none():
 
 
 @pytest.mark.asyncio
-async def test_recheck_clears_the_ai_flag_once_the_code_is_saved():
-    other = SimpleNamespace(review_payload=dict(PAYLOAD))
+async def test_recheck_clears_the_flags_once_carmens_table_has_the_rows():
+    other = SimpleNamespace(review_payload={**PAYLOAD, "guessed": {}, "flags": ["mapping_missing"]})
     unrelated = SimpleNamespace(review_payload={**PAYLOAD, "interface": "Opera"})
     db = MagicMock(
         execute=AsyncMock(
@@ -229,13 +308,12 @@ async def test_recheck_clears_the_ai_flag_once_the_code_is_saved():
     async def session():
         yield db
 
-    with (
-        patch.object(review, "async_session", session),
-        patch.object(review.mapping, "saved", AsyncMock(return_value=RULES)),
-    ):
-        assert await review.recheck(uuid4(), "Comanche") == 1
+    table = {**MAPPED, **{k: {**v, "name": ""} for k, v in PICKS.items()}}
+    with patch.object(review, "async_session", session):
+        assert await review.recheck(uuid4(), "Comanche", table) == 1
     assert other.review_payload["flags"] == []
-    assert unrelated.review_payload["flags"] == ["mapping_guessed"]
+    assert len(other.review_payload["mapped"]) == 4
+    assert unrelated.review_payload["flags"] == ["mapping_missing", "mapping_guessed"]
 
 
 @pytest.mark.asyncio
@@ -249,5 +327,7 @@ async def test_settings_round_trip():
 
     db = MagicMock(get=AsyncMock(side_effect=get), flush=AsyncMock())
     db.add = lambda row: stored.update(row=row)
-    out = await review.save_settings(db, uuid4(), jv_prefix=" JV ", auto_post=True)
-    assert out == {"jv_prefix": "JV", "auto_post": True, "has_credential": True}
+    assert await review.save_settings(db, uuid4(), auto_post=True) == {
+        "auto_post": True,
+        "has_credential": True,
+    }
