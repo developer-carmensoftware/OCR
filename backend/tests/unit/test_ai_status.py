@@ -30,7 +30,7 @@ def test_ai_stage(balance, purchased, has_sub, stage):
 
 
 @contextmanager
-def _client(row, subscription=None, ceiling=None):
+def _client(row, subscription=None, modules=(), ceiling=None):
     from starlette.testclient import TestClient
 
     from app.database import get_db
@@ -39,6 +39,7 @@ def _client(row, subscription=None, ceiling=None):
     db = make_mock_db()
     db.execute.return_value.first.return_value = row
     db.execute.return_value.scalar_one_or_none.return_value = subscription
+    db.execute.return_value.scalars.return_value.all.return_value = list(modules)
 
     async def _db():
         yield db
@@ -71,7 +72,7 @@ def test_unknown_bu_reads_never_used_and_writes_nothing():
     with _client(row=None) as (client, db):
         resp = client.get("/api/v1/carmen/ai-status", params=_PARAMS)
     assert resp.status_code == 200
-    assert resp.json() == {"stage": "never_used"}
+    assert resp.json() == {"stage": "never_used", "modules": []}
     assert resp.headers["cache-control"] == "max-age=300"
     params = db.execute.call_args.args[0].compile().params.values()
     assert "dev.carmen.example" in params and "carmencloud" in params  # the /exchange key
@@ -79,11 +80,14 @@ def test_unknown_bu_reads_never_used_and_writes_nothing():
     db.commit.assert_not_called()
 
 
-def test_known_bu_reads_its_balance():
+def test_known_bu_reads_its_balance_and_modules():
     row = SimpleNamespace(id="t-1", balance=3, credits_purchased=0)
-    with _client(row=row) as (client, _db):
+    used = ["ap_invoice", "credit_card_ocr"]
+    with _client(row=row, modules=used) as (client, db):
         resp = client.get("/api/v1/carmen/ai-status", params=_PARAMS)
-    assert resp.json() == {"stage": "near_limit"}
+    assert resp.json() == {"stage": "near_limit", "modules": used}
+    modules_sql = str(db.execute.call_args.args[0].compile())
+    assert "ocr_tasks" in modules_sql and "sum(ocr_tasks.charged_docs) >" in modules_sql
 
 
 def test_endpoint_ceiling_answers_429():

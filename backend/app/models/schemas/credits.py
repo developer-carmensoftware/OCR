@@ -30,6 +30,8 @@ class AiStatusOut(BaseModel):
     """Which AI sales popup Carmen shows a BU. `paid` shows none."""
 
     stage: Literal["never_used", "trial", "near_limit", "exhausted", "paid"]
+    # Modules the BU has spent documents on (`modules.id`, sorted); [] when never used.
+    modules: list[str] = []
 
 
 class CreditOrderResponse(BaseModel):

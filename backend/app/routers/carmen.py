@@ -14,14 +14,14 @@ from decimal import Decimal
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import SessionInfo, get_current_session
 from app.constants import Module
 from app.database import get_db
 from app.exceptions import DuplicateDocumentError
-from app.models.orm import CreditCard, Tenant, TenantCredit
+from app.models.orm import CreditCard, OCRTask, Tenant, TenantCredit
 from app.models.schemas import AiStatusOut
 from app.services.ap_invoice.service import mark_invoice_submitted
 from app.services.shared import audit as audit_service
@@ -307,8 +307,9 @@ async def ai_status(
 ):
     """Which AI sales popup Carmen shows this BU — public by request, no auth.
 
-    Only the stage goes out, and an unknown (host, bu) reads `never_used` like a BU that
-    exists but never scanned, so this endpoint cannot be used to learn which BUs exist.
+    Only the stage and the modules the BU has spent documents on go out, and an unknown
+    (host, bu) reads `never_used` with no modules like a BU that exists but never scanned,
+    so this endpoint cannot be used to learn which BUs exist.
     Read-only: unlike /auth/exchange it creates no tenant, grant or session.
     """
     _ai_status_ceiling.check(request, key="_global_ai_status")
@@ -328,4 +329,21 @@ async def ai_status(
     if row is None:
         return AiStatusOut(stage="never_used")
     has_sub = await active_subscription(db, str(row.id)) is not None
-    return AiStatusOut(stage=ai_stage(row.balance, row.credits_purchased or 0, has_sub))
+    # SUM(charged_docs), as the admin summary counts a module's documents: a task the
+    # charge failed open on cost nothing. PMS writes no ocr_tasks (it is free).
+    modules = (
+        (
+            await db.execute(
+                select(OCRTask.module_id)
+                .where(OCRTask.tenant_id == row.id, OCRTask.deleted_at.is_(None))
+                .group_by(OCRTask.module_id)
+                .having(func.sum(OCRTask.charged_docs) > 0)
+                .order_by(OCRTask.module_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return AiStatusOut(
+        stage=ai_stage(row.balance, row.credits_purchased or 0, has_sub), modules=list(modules)
+    )
