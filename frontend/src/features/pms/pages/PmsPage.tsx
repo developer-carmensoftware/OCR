@@ -7,9 +7,7 @@ import CreateKeyDialog from '@/shared/components/apiKeys/CreateKeyDialog'
 import RevokeKeyDialog from '@/shared/components/apiKeys/RevokeKeyDialog'
 import StatusLine from '@/shared/components/apiKeys/StatusLine'
 import Switch from '@/shared/components/ui/Switch'
-import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
 import { CARMEN_POSTING_TOKEN_KEY } from '@/shared/api/client'
-import { fetchGLPrefixes } from '@/shared/api/carmen'
 import { pmsEventsUrl, type ApiKeyRow, type FeedStatus } from '@/shared/lib/apiKeys'
 import { timeAgo } from '@/shared/lib/orderHelpers'
 import { fmtDateTime, formatDate } from '@/shared/lib/date'
@@ -252,8 +250,9 @@ function KeyTable({ rows, onRevoke }: { rows: ApiKeyRow[]; onRevoke: (row: ApiKe
 }
 
 /**
- * The JV prefix and the auto-post switch. Each saves the moment it changes — two settings,
- * neither a record, and nothing else on the page they could be half-saved with.
+ * The auto-post switch. It saves the moment it changes. How a day posts — its prefix, its
+ * sides, the counter line — is the BU's PMS setting in Carmen, which Carmen's engine posts
+ * by (decision-log #43), so it is not set here.
  *
  * Opening this page from Carmen's menu stores the link's token first (as email-settings
  * does): it is the credential PMS days are read and posted with, and the days that were
@@ -262,7 +261,6 @@ function KeyTable({ rows, onRevoke }: { rows: ApiKeyRow[]; onRevoke: (row: ApiKe
 function PostingSettings() {
   const { t } = useT()
   const [settings, setSettings] = useState<PmsSettings | null>(null)
-  const [prefixes, setPrefixes] = useState<{ code: string; name: string }[]>([])
   const [accessError, setAccessError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -286,29 +284,16 @@ function PostingSettings() {
         if (alive) toast.error((err as Error).message)
       }
     })()
-    fetchGLPrefixes()
-      .then(list => {
-        if (!alive) return
-        setPrefixes(
-          list
-            .filter(x => x.PrefixName)
-            .map(x => ({ code: x.PrefixName as string, name: (x.Description as string) || '' }))
-        )
-      })
-      .catch(() => {})
     return () => {
       alive = false
     }
   }, [])
 
-  const save = async (patch: Partial<Pick<PmsSettings, 'jv_prefix' | 'auto_post'>>) => {
+  const save = async (autoPost: boolean) => {
     if (!settings) return
     setSaving(true)
     try {
-      const next = await putPmsSettings({
-        jv_prefix: patch.jv_prefix !== undefined ? patch.jv_prefix : settings.jv_prefix,
-        auto_post: patch.auto_post !== undefined ? patch.auto_post : settings.auto_post,
-      })
+      const next = await putPmsSettings({ auto_post: autoPost })
       setSettings(next)
       toast.success(t('apiKeys.pms.saved'))
     } catch (err) {
@@ -339,29 +324,13 @@ function PostingSettings() {
       <div className="ui-card pms-posting__card">
         <div className="pms-posting__row">
           <div className="pms-posting__text">
-            <span className="pms-posting__label">{t('apiKeys.pms.prefix')}</span>
-            <p className="pms-posting__hint">{t('apiKeys.pms.prefixHint')}</p>
-          </div>
-          <div className="pms-posting__control">
-            <CustomSearchSelect
-              value={settings?.jv_prefix ?? null}
-              onChange={code => void save({ jv_prefix: code })}
-              options={prefixes}
-              placeholder={t('apiKeys.pms.prefixPlaceholder')}
-              hasError={!!settings && !settings.jv_prefix}
-              aria-label={t('apiKeys.pms.prefix')}
-            />
-          </div>
-        </div>
-        <div className="pms-posting__row">
-          <div className="pms-posting__text">
             <span className="pms-posting__label">{t('apiKeys.pms.autoPost')}</span>
             <p className="pms-posting__hint">{t('apiKeys.pms.autoPostHint')}</p>
           </div>
           <div className="pms-posting__control pms-posting__control--switch">
             <Switch
               checked={settings?.auto_post ?? false}
-              onChange={v => void save({ auto_post: v })}
+              onChange={v => void save(v)}
               disabled={!settings || saving}
               ariaLabel={t('apiKeys.pms.autoPost')}
             />

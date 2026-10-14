@@ -42,12 +42,18 @@ export const REASON_KEY: Record<string, TKey> = {
   // has none: there is nothing here for a reviewer to press.
   covered_by_settlement_jv: 'review.rcCoveredBySettlement',
   // A PMS day (CA-119) that never became a JV. `carmen_unauthorized` and `carmen_rejected`
-  // above serve PMS days too — one Carmen, the same words.
+  // above serve PMS days too — one Carmen, the same words. The four after `processing_error`
+  // are about Carmen's own PMS setting, which Carmen's engine posts by (decision-log #43):
+  // each is fixed in Carmen, so none has a FIX button below.
   no_credential: 'pms.rcNoCredential',
   day_not_found: 'pms.rcDayNotFound',
   databank_unreachable: 'pms.rcDatabankUnreachable',
   unreadable_day: 'pms.rcUnreadableDay',
   processing_error: 'pms.rcProcessingError',
+  pms_setting_missing: 'pms.rcSettingMissing',
+  unsupported_pms_format: 'pms.rcUnsupportedFormat',
+  carmen_config_unreadable: 'pms.rcConfigUnreadable',
+  carmen_forbidden: 'pms.rcForbidden',
 }
 
 /**

@@ -1,13 +1,13 @@
 /**
- * How a BU's PMS days post (CA-119), and the Carmen credential they post with — #/pms, on
- * the session JWT. The session's tenant is the only BU these calls can see or touch.
+ * Whether a BU's PMS days post by themselves (CA-119), and the Carmen credential they are
+ * read and posted with — #/pms, on the session JWT. The session's tenant is the only BU these
+ * calls can see or touch. How a day posts (prefix, sides) is the BU's PMS setting in Carmen.
  */
 
 import { apiFetch } from '@/shared/api/client'
 import { API } from '@/shared/api/endpoints'
 
 export interface PmsSettings {
-  jv_prefix: string | null
   auto_post: boolean
   /** Whether a Carmen credential is stored: nothing can be read or posted without one. */
   has_credential: boolean
@@ -29,10 +29,7 @@ export async function getPmsSettings(): Promise<PmsSettings> {
   return res.json()
 }
 
-export async function putPmsSettings(body: {
-  jv_prefix: string | null
-  auto_post: boolean
-}): Promise<PmsSettings> {
+export async function putPmsSettings(body: { auto_post: boolean }): Promise<PmsSettings> {
   const res = await apiFetch(API.pms.settings, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

@@ -1702,9 +1702,26 @@
 }
 
 /* ── A parked PMS day (CA-119) ─────────────────────────────────────────────────
-   The email review's shell with a body that only reads: four short sections, each opening
-   on the same one-line header — a state icon, the title, one readout — and a detail frame
-   whose head and total stay put while its rows scroll. Mock-up: CA-119 comment 11864. */
+   The email review's shell with a body that only reads: a note naming the Carmen setting
+   that posts the day (decision-log #43 — the sides are Carmen's, so there is no balance
+   here), then two sections opening on the same one-line header — a state icon, the title,
+   one readout — and a detail frame whose head stays put while its rows scroll. */
+
+.pms-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.pms-note > svg {
+  flex: none;
+  margin-top: 0.15rem;
+  color: var(--primary);
+}
 
 .pms-sec {
   display: flex;
@@ -1725,10 +1742,6 @@
 
 .pms-head--warn > svg {
   color: var(--amber-text);
-}
-
-.pms-head--bad > svg {
-  color: var(--rose-text);
 }
 
 .pms-title {
@@ -1753,12 +1766,6 @@
   font-weight: 600;
 }
 
-.pms-off,
-.pms-off .text-mono {
-  color: var(--rose-text);
-  font-weight: 600;
-}
-
 .pms-sep {
   margin: 0 0.4rem;
   color: var(--text-3);
@@ -1768,13 +1775,8 @@
   width: 9rem;
 }
 
-.pms-w-type,
 .pms-w-dept {
   width: 8rem;
-}
-
-.pms-w-code {
-  width: 9.5rem;
 }
 
 .pms-w-acc {
@@ -1796,7 +1798,7 @@
   color: var(--text);
 }
 
-/* The account a new code will post to, by name — the pickers only show its number. */
+/* The account a new row will post to, by name — the pickers only show its number. */
 .pms-to {
   display: block;
   overflow: hidden;
@@ -1806,54 +1808,10 @@
   color: var(--text-3);
 }
 
-/* Dr / Cr beside a single signed amount, instead of two half-empty columns of dashes. */
-.pms-dir {
-  margin-left: 0.3rem;
-  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
-  font-size: 0.7rem;
-  color: var(--text-3);
-}
-
 .pms-nowrap {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.pms-chips {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.pms-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-height: 2rem;
-  padding: 0.25rem 0.8rem;
-  border: 1px solid var(--border-raised, var(--border));
-  border-radius: var(--radius-pill, 100px);
-  background: var(--card-bg);
-  color: var(--text-2);
-  font: inherit;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    color 150ms var(--ease),
-    background-color 150ms var(--ease),
-    border-color 150ms var(--ease);
-}
-
-.pms-chip:hover {
-  border-color: var(--primary-mid);
-  color: var(--primary);
-}
-
-.pms-chip[aria-selected='true'] {
-  border-color: var(--primary-mid);
-  background: var(--primary-light);
-  color: var(--primary);
 }
 
 .pms-n {
@@ -1862,8 +1820,11 @@
   color: var(--text-3);
 }
 
-.pms-chip[aria-selected='true'] .pms-n {
-  color: var(--primary);
+/* A row Carmen's mapping table has no account for yet: the Accounts section above picks it. */
+.pms-tag-new {
+  margin-left: 0.4rem;
+  background: var(--amber-light);
+  color: var(--amber-text);
 }
 
 /* The frame scrolls, not the table: `.jv-table` clips with overflow hidden, which would
@@ -1887,17 +1848,6 @@
   position: sticky;
   top: 0;
   z-index: 2;
-}
-
-.pms-scroll tfoot td {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  box-shadow: 0 -1px 0 var(--border);
-}
-
-.rd-blocked--bad {
-  color: var(--rose-text);
 }
 
 .rd-blocked--note {
@@ -1938,9 +1888,7 @@
     border-radius: var(--radius-md);
   }
 
-  .pms-scroll thead th,
-  .pms-scroll tfoot td {
+  .pms-scroll thead th {
     position: static;
-    box-shadow: none;
   }
 }

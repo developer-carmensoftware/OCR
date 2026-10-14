@@ -330,6 +330,8 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
         {row.error_message ? ` · ${row.error_message}` : ''}
         {/* A manual scan's own version of that note, in the reader's language. */}
         {row.input_tax_owed ? ` · ${t('review.inputTaxOwed')}` : ''}
+        {/* A PMS day Carmen had posted before we asked (its own Post button, say). */}
+        {row.reason_code === 'already_posted' ? ` · ${t('pms.alreadyPosted')}` : ''}
       </span>
     )
   }

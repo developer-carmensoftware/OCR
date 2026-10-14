@@ -94,13 +94,10 @@ export const en = {
   // How the BU's PMS days post (CA-119).
   'apiKeys.pms.postingTitle': 'Posting',
   'apiKeys.pms.postingDescription':
-    'Each PMS day becomes one JV. It waits in AI JV Automation for review unless auto-post is on.',
-  'apiKeys.pms.prefix': 'JV prefix',
-  'apiKeys.pms.prefixHint': 'Nothing posts until a prefix is chosen.',
-  'apiKeys.pms.prefixPlaceholder': 'Choose a prefix',
+    "Each PMS day becomes one JV, posted by Carmen with this business unit's PMS setting in Carmen. It waits in AI JV Automation for review unless auto-post is on.",
   'apiKeys.pms.autoPost': 'Post clean days automatically',
   'apiKeys.pms.autoPostHint':
-    'A day that balances and whose codes all have saved accounts posts without review. A new code or a balance off still waits.',
+    "A day whose rows Carmen's mapping already covers goes to Carmen without review. A new row still waits.",
   'apiKeys.pms.saved': 'Saved',
   'apiKeys.pms.noAccess':
     "No Carmen access is stored for this business unit, so PMS days cannot be read. Reopen this page from Carmen's menu.",
@@ -202,13 +199,10 @@ export const th: Record<keyof typeof en, string> = {
   'apiKeys.pms.retry': 'ลองอีกครั้ง',
   'apiKeys.pms.postingTitle': 'การโพสต์',
   'apiKeys.pms.postingDescription':
-    'ข้อมูล PMS แต่ละวันจะกลายเป็น JV หนึ่งรายการ และจะรอตรวจใน AI JV Automation เว้นแต่เปิดโพสต์อัตโนมัติไว้',
-  'apiKeys.pms.prefix': 'JV prefix',
-  'apiKeys.pms.prefixHint': 'จะยังไม่มีการโพสต์จนกว่าจะเลือก prefix',
-  'apiKeys.pms.prefixPlaceholder': 'เลือก prefix',
+    'ข้อมูล PMS แต่ละวันจะกลายเป็น JV หนึ่งรายการ ซึ่ง Carmen โพสต์ด้วย setting PMS ของ business unit นี้ใน Carmen และจะรอตรวจใน AI JV Automation เว้นแต่เปิดโพสต์อัตโนมัติไว้',
   'apiKeys.pms.autoPost': 'โพสต์วันที่ไม่มีปัญหาอัตโนมัติ',
   'apiKeys.pms.autoPostHint':
-    'วันที่ยอดตรงกันและ code ทุกตัวมีบัญชีที่บันทึกไว้แล้วจะโพสต์โดยไม่ต้องตรวจ วันที่มี code ใหม่หรือยอดไม่ตรงยังต้องรอตรวจ',
+    'วันที่ทุกแถวมีบัญชีใน mapping ของ Carmen แล้วจะส่งให้ Carmen โพสต์โดยไม่ต้องตรวจ วันที่มีแถวใหม่ยังต้องรอตรวจ',
   'apiKeys.pms.saved': 'บันทึกแล้ว',
   'apiKeys.pms.noAccess':
     'ยังไม่มีสิทธิ์เข้า Carmen สำหรับ business unit นี้ จึงอ่านข้อมูล PMS ไม่ได้ ให้เปิดหน้านี้ใหม่จากเมนูของ Carmen',

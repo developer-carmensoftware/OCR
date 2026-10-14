@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useT } from '@/i18n/LanguageContext'
 import { showToast } from '@/shared/lib/toast'
 import { isAccountAllowed } from '@/shared/lib/deptAccounts'
@@ -9,16 +9,14 @@ import {
   rejectPmsDay,
   type PmsDay,
 } from '@/features/credit-card/api/pmsReview'
-import { jvLines, toCents } from '@/features/credit-card/lib/pmsDay'
-
-export type PmsDetail = 'jv' | 'rows'
 type Pick = { dept: string; acc: string }
 
 /**
  * One parked PMS day in the review modal: what it holds, the reviewer's accounts for its new
- * codes, and Approve / Reject. The email review's `useReviewDocument`, for a document that
+ * rows, and Approve / Reject. The email review's `useReviewDocument`, for a document that
  * needs far less: there are no header fields to correct and no amounts to edit — a day is
- * read, not re-keyed — so the only input is an account for each code the BU has never seen.
+ * read, not re-keyed, and Carmen's engine decides its sides (decision-log #43) — so the only
+ * input is an account for each row Carmen's mapping table cannot place yet.
  */
 export function usePmsReview(id: string, onClose: () => void, onDone: () => void) {
   const { t } = useT()
@@ -32,9 +30,6 @@ export function usePmsReview(id: string, onClose: () => void, onDone: () => void
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
   const [discarding, setDiscarding] = useState(false)
-  // JV lines first: it is what will post, and it is open from the start so the detail is on
-  // screen without a click.
-  const [detail, setDetail] = useState<PmsDetail>('jv')
 
   useEffect(() => {
     let alive = true
@@ -94,17 +89,10 @@ export function usePmsReview(id: string, onClose: () => void, onDone: () => void
     [aiPick]
   )
 
-  const accounts = useMemo(() => ({ ...(day?.accounts ?? {}), ...picks }), [day, picks])
-  const lines = useMemo(() => (day ? jvLines(day.rows, accounts) : []), [day, accounts])
-  const balanced = !day || toCents(day.off) === 0
   const unpicked = (day?.new_codes ?? []).filter(c => !(picks[c.key]?.dept && picks[c.key]?.acc))
-  // The one reason Approve cannot be pressed: a balance off outranks a missing account,
-  // because no account fixes it.
-  const blockReason = !balanced
-    ? t('pms.blockedOff')
-    : unpicked.length
-      ? t('pms.blockedPick')
-      : null
+  // The one reason Approve cannot be pressed. A balance is not one: Carmen's engine decides
+  // the sides and refuses a day it cannot post, in its own words (`postError`).
+  const blockReason = unpicked.length ? t('pms.blockedPick') : null
   const dirty = (day?.new_codes ?? []).some(c => {
     const p = picks[c.key]
     return p?.dept !== (c.dept ?? '') || p?.acc !== (c.acc ?? '')
@@ -125,7 +113,7 @@ export function usePmsReview(id: string, onClose: () => void, onDone: () => void
         day.id,
         Object.fromEntries(day.new_codes.map(c => [c.key, picks[c.key]]))
       )
-      showToast(t('pms.postedOk', { jv: res.jv_no }), 'success')
+      showToast(t(res.already_posted ? 'pms.alreadyPostedOk' : 'pms.postedOk'), 'success')
       onDone()
     } catch (e) {
       const err = e as Error & { status?: number }
@@ -165,8 +153,6 @@ export function usePmsReview(id: string, onClose: () => void, onDone: () => void
     setPick,
     undo,
     isAiPick,
-    lines,
-    balanced,
     blockReason,
     busy,
     postError,
@@ -176,8 +162,6 @@ export function usePmsReview(id: string, onClose: () => void, onDone: () => void
     setReason,
     discarding,
     setDiscarding,
-    detail,
-    setDetail,
     requestClose,
     approve,
     reject,

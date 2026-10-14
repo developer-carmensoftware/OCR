@@ -18,7 +18,7 @@ vi.mock('@/features/credit-card/hooks/mapping/useGlMasters', () => ({
     ],
     departments: [
       { code: '304', name: 'Other' },
-      { code: '101', name: 'Rooms' },
+      { code: '103', name: 'Rooms' },
     ],
     prefixes: [],
     loading: false,
@@ -27,6 +27,7 @@ vi.mock('@/features/credit-card/hooks/mapping/useGlMasters', () => ({
 
 const api = await import('@/features/credit-card/api/pmsReview')
 
+const REBATE = '["729","Rebate - Misc. (VAT)"]'
 const DAY: PmsDay = {
   id: 'day-1',
   interface: 'Comanche',
@@ -34,40 +35,41 @@ const DAY: PmsDay = {
   doc_date: '2024-09-05',
   reason_code: null,
   error_message: null,
-  terms: [
-    { type: 'Revenue', amount: '1127.00' },
-    { type: 'Payment', amount: '-500.00' },
-    { type: 'Guest Ledger', amount: '-627.00' },
+  setting_code: 'Comanche.PMS',
+  post_type: 'REVENUE',
+  counter: { dept: 'GEN', acc: '1021001', name: 'A/R - Guest Ledger' },
+  key_columns: ['Code', 'Description'],
+  rows: [
+    {
+      key: '["100","Room Charge"]',
+      values: { Code: '100', Description: 'Room Charge' },
+      amount: '1000.00',
+      dept: '103',
+      acc: '4010001',
+      name: 'Room Revenue',
+    },
+    { key: REBATE, values: { Code: '729', Description: 'Rebate - Misc. (VAT)' }, amount: '-50.00' },
+    {
+      key: '["900","Cash"]',
+      values: { Code: '900', Description: 'Cash' },
+      amount: '-500.00',
+      dept: 'GEN',
+      acc: '1010001',
+      name: 'Cash on hand',
+    },
   ],
-  off: '0.00',
-  codes: 4,
-  accounts: {
-    'Revenue|100': { dept: '101', acc: '4010001' },
-    'VAT|*': { dept: 'GEN', acc: '2012002' },
-    'SVC|*': { dept: 'GEN', acc: '2013002' },
-    'Payment|900': { dept: '101', acc: '1010001' },
-    'Ledger|Guest Ledger': { dept: '101', acc: '1021001' },
-  },
+  mapped_count: 2,
   new_codes: [
     {
-      key: 'Revenue|729',
-      code: '729',
-      description: 'Rebate - Misc. (VAT)',
-      type: 'Revenue',
+      key: REBATE,
+      label: '729 · Rebate - Misc. (VAT)',
+      values: { Code: '729', Description: 'Rebate - Misc. (VAT)' },
       amount: '-50.00',
       dept: '304',
       acc: '4240011',
       confidence: 'medium',
       why: 'rebate',
     },
-  ],
-  rows: [
-    { type: 'Revenue', code: '100', desc: 'Room Charge', amount: '1000.00' },
-    { type: 'Revenue', code: '100', desc: 'Room Charge - SERVICE', amount: '100.00' },
-    { type: 'Revenue', code: '100', desc: 'Room Charge - VAT', amount: '77.00' },
-    { type: 'Revenue', code: '729', desc: 'Rebate - Misc. (VAT)', amount: '-50.00' },
-    { type: 'Payment', code: '900', desc: 'Cash', amount: '-500.00' },
-    { type: 'Guest Ledger', code: 'Guest Ledger', desc: 'Guest Ledger', amount: '627.00' },
   ],
 }
 
@@ -91,55 +93,74 @@ beforeEach(() => {
 })
 
 describe('a parked PMS day', () => {
-  it('reads as the day it is: balance by PMS type, then only the new code', async () => {
+  it('says Carmen posts it with its own setting, and asks only about the new row', async () => {
     open()
     expect(await screen.findByText('Comanche · Daily ·', { exact: false })).toBeInTheDocument()
-    const balance = screen.getByRole('region', { name: 'Balance' })
-    expect(within(balance).getAllByText('1,127.00').length).toBeGreaterThan(0)
-    expect(within(balance).getByText('Guest Ledger (reversed)')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Carmen posts this day with its Comanche.PMS setting (REVENUE): it decides debit and credit, and posts the remainder to GEN/1021001 A/R - Guest Ledger.'
+      )
+    ).toBeInTheDocument()
+    // No balance of our own: the sides are Carmen's.
+    expect(screen.queryByText(/balance/i)).not.toBeInTheDocument()
     const accounts = screen.getByRole('region', { name: 'Accounts' })
     expect(within(accounts).getByText('1 new, mapped by AI')).toBeInTheDocument()
+    expect(within(accounts).getByText('2 mapped in Carmen')).toBeInTheDocument()
     expect(within(accounts).getByText('729')).toBeInTheDocument()
     expect(within(accounts).getByText('AI')).toBeInTheDocument()
-    // Carmen's name and name2 are the same words; the code says them once.
+    // Carmen's name and name2 are the same words; the row says them once.
     expect(within(accounts).getByText('→ OT : Rebate Other Revenue')).toBeInTheDocument()
   })
 
-  it('posts with the account the reviewer kept', async () => {
-    vi.mocked(api.approvePmsDay).mockResolvedValue({ jv_no: 'JV2409-0066' })
+  it('lists every PMS row as sent, with what Carmen maps it to', async () => {
+    open()
+    const rows = await screen.findByRole('region', { name: 'PMS rows' })
+    expect(within(rows).getByText('Room Revenue')).toBeInTheDocument()
+    expect(within(rows).getByText('-500.00')).toBeInTheDocument()
+    expect(within(rows).getAllByText('New')).toHaveLength(1)
+  })
+
+  it("posts with the account the reviewer kept, and says it goes into Carmen's mapping", async () => {
+    vi.mocked(api.approvePmsDay).mockResolvedValue({ jv_no: null, already_posted: false })
     const { onDone } = open()
-    await screen.findByText('729')
-    expect(screen.getByText(/Also saves the new codes/)).toBeInTheDocument()
+    await screen.findAllByText('729')
+    expect(
+      screen.getByText(
+        "Saves the new accounts to Carmen's Comanche mapping, then Carmen posts the day."
+      )
+    ).toBeInTheDocument()
     fireEvent.click(approveButton())
     await waitFor(() => expect(onDone).toHaveBeenCalled())
     expect(api.approvePmsDay).toHaveBeenCalledWith('day-1', {
-      'Revenue|729': { dept: '304', acc: '4240011' },
+      [REBATE]: { dept: '304', acc: '4240011' },
     })
   })
 
-  it('cannot approve a new code with no account, and says why', async () => {
+  it('cannot approve a new row with no account, and says why', async () => {
     open({ ...DAY, new_codes: [{ ...DAY.new_codes[0], dept: null, acc: null }] })
-    await screen.findByText('729')
+    await screen.findAllByText('729')
     expect(approveButton()).toBeDisabled()
-    expect(screen.getByText('Pick an account for every new code.')).toBeInTheDocument()
+    expect(screen.getByText('Pick an account for every new row.')).toBeInTheDocument()
   })
 
-  it('cannot approve a day that does not balance', async () => {
-    open({ ...DAY, off: '120.00', terms: [{ type: 'Revenue', amount: '1247.00' }] })
-    await screen.findByText('729')
-    expect(approveButton()).toBeDisabled()
-    expect(screen.getByText(/Doesn't balance\. Fix it in Comanche/)).toBeInTheDocument()
-    expect(screen.getByText('Off by 120.00')).toBeInTheDocument()
+  it('a fully mapped day only needs Approve', async () => {
+    open({ ...DAY, new_codes: [], mapped_count: 3 })
+    await screen.findByText('All 3 mapped in Carmen')
+    expect(approveButton()).toBeEnabled()
+    expect(screen.getByText('Carmen posts the day with its Comanche setting.')).toBeInTheDocument()
   })
 
-  it('shows the JV first and the PMS rows on their chip', async () => {
+  it("keeps Carmen's refusal on screen in Carmen's words", async () => {
+    vi.mocked(api.approvePmsDay).mockRejectedValue(
+      Object.assign(new Error("Carmen didn't post the day: Mapping is incomplete."), {
+        status: 400,
+      })
+    )
     open()
-    await screen.findByText('729')
-    const panel = screen.getByRole('tabpanel')
-    expect(within(panel).getByText('Balanced')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: /PMS rows/ }))
+    await screen.findAllByText('729')
+    fireEvent.click(approveButton())
     expect(
-      within(screen.getByRole('tabpanel')).getByText('Net, Guest Ledger reversed')
+      await screen.findByText("Carmen didn't post the day: Mapping is incomplete.")
     ).toBeInTheDocument()
   })
 
