@@ -1783,6 +1783,15 @@
   width: 12rem;
 }
 
+/* The rows table: a code is a few characters, an account name is the line's answer. */
+.pms-w-code {
+  width: 7rem;
+}
+
+.pms-w-name {
+  width: 24rem;
+}
+
 .pms-codecell {
   flex: 1;
   min-width: 0;

@@ -36,13 +36,16 @@ const dmy = (iso: string) => iso.split('-').reverse().join('/')
 const weekday = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short' })
 
-/** "-2542.9" → "-2,542.90": the amount as the PMS wrote it, grouped. Its sign is the PMS's;
- *  which side it posts to is Carmen's engine's (decision-log #43). */
+/** "-2542.9" → "−2,542.90": the amount as the PMS wrote it, grouped, with a true minus. Its
+ *  sign is the PMS's; which side it posts to is Carmen's engine's (decision-log #43). */
 const fmtAmount = (amount: string) => {
   const n = Number(amount)
-  return amount !== '' && Number.isFinite(n)
-    ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : amount
+  if (amount === '' || !Number.isFinite(n)) return amount
+  const s = Math.abs(n).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  return n < 0 ? `−${s}` : s
 }
 
 /** A section's one-line header: a state icon (or nothing), the title, one readout. */
@@ -92,6 +95,8 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
   })
 
   const accName = (code?: string | null) => nameOf(masters.accounts.find(a => a.code === code))
+  // The rows table names an account the way Carmen's mapping table does: one short name.
+  const accShort = (code?: string | null) => masters.accounts.find(a => a.code === code)?.name ?? ''
   const deptOptions = masters.departments.map(d => ({ code: d.code, name: d.name, name2: d.name2 }))
   const anyUnpickedByAi = day?.new_codes.some(c => !c.acc)
   const counter = day
@@ -102,15 +107,17 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
     <table className="jv-table">
       <thead>
         <tr>
-          {day.key_columns.map(col => (
-            <th scope="col" key={col}>
+          {day.key_columns.map((col, c) => (
+            <th scope="col" key={col} className={c === 0 ? 'pms-w-code' : undefined}>
               {col}
             </th>
           ))}
           <th scope="col" className="jv-num pms-w-amt">
             {t('pms.colAmount')}
           </th>
-          <th scope="col">{t('pms.colAccount')}</th>
+          <th scope="col" className="pms-w-name">
+            {t('pms.colAccount')}
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -136,14 +143,16 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
               <td className="jv-num text-mono" data-label={t('pms.colAmount')}>
                 {fmtAmount(row.amount)}
               </td>
-              <td className="jv-desc" data-label={t('pms.colAccount')}>
+              {/* Not `jv-desc`: on a phone that class makes a cell the card's unlabelled
+                  title, and the row's title is its description, not its account. */}
+              <td data-label={t('pms.colAccount')}>
                 <span className="jv-desc-in">
                   {acc ? (
                     <>
                       <span className="text-mono">
                         {dept}/{acc}
                       </span>{' '}
-                      {row.name || accName(acc)}
+                      {row.name || accShort(acc)}
                     </>
                   ) : (
                     '—'

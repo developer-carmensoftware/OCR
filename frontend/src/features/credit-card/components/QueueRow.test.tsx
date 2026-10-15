@@ -81,3 +81,19 @@ describe('QueueRow — input tax still owed', () => {
     expect(screen.getByRole('link', { name: /Open JV/ })).toBeInTheDocument()
   })
 })
+
+describe('QueueRow — a PMS day Carmen had already posted', () => {
+  it('names the reviewer without claiming the post', () => {
+    mount(
+      owed({
+        source: 'pms',
+        jv_no: null,
+        input_tax_owed: false,
+        reason_code: 'already_posted',
+        reviewed_by_name: 'Noi',
+      } as Partial<ReviewDocument>)
+    )
+    expect(screen.getByText('Reviewed by Noi · Carmen had already posted it')).toBeInTheDocument()
+    expect(screen.queryByText(/posted by/)).not.toBeInTheDocument()
+  })
+})

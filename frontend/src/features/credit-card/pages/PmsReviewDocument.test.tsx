@@ -116,7 +116,8 @@ describe('a parked PMS day', () => {
     open()
     const rows = await screen.findByRole('region', { name: 'PMS rows' })
     expect(within(rows).getByText('Room Revenue')).toBeInTheDocument()
-    expect(within(rows).getByText('-500.00')).toBeInTheDocument()
+    // The PMS's own sign, with a true minus.
+    expect(within(rows).getByText('−500.00')).toBeInTheDocument()
     expect(within(rows).getAllByText('New')).toHaveLength(1)
   })
 
