@@ -242,6 +242,7 @@ export default function CustomSearchSelect({
         data-open={isOpen || undefined}
         data-suggested={isAISuggested || undefined}
         data-error={hasError || undefined}
+        aria-invalid={hasError || undefined}
         // Escape closes the list, and stops there. Without this the key reaches whatever
         // is behind — inside the review modal that closed the whole dialog and threw away
         // the reviewer's edits, because a dropdown that ignores Escape is indistinguishable
