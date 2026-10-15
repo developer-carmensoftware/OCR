@@ -1209,3 +1209,58 @@ documents and the manual scans, and opens its own review modal in the email revi
 - **Durable without a worker.** The webhook starts processing at once (`process.kick`). A
   pg_cron sweep every ten minutes (`/api/v1/pms/process/run`) picks up what a restart or a
   Carmen outage left. A failing read is tried three times before the day shows as failed.
+
+## 43. Carmen's engine posts a PMS day, by Carmen's own config (2026-10-14)
+
+**Decided:** 2026-10-14 (CA-119, path B), with the user. It replaces the posting half of #42.
+Carmen told us each PMS interface's post API handles its own +/−. The user's rule: **no
+rules of our own**. Everything follows Carmen's PMS config, so a future change in Carmen
+cannot drift from a copy of ours.
+
+**Evidence** (dev, 2026-10-14):
+- **The sides live in Carmen's per-PMS config.** It is an INI file, base64 in the BU's GL
+  interface setting (`interfacePost/Setting/GL` → `Configuration.Revenue.ConfigBase64`).
+  - Comanche reads the sign of `Amount` (`-` = Dr, `+` = Cr).
+  - Custom and Hotelogix read it the other way round.
+  - GuestLine carries a D/C column (CSV, satang); HotelTime has an `AccountNature` field;
+    Opera is fixed-width.
+- **The side cannot come from the account.** Accounts have a `Nature`, but taking the side
+  from it balances 0/74 days. Our sign rule balanced 73/74, but only because it is
+  Comanche's.
+- **Carmen's engine makes the same JV in net.** JV 36 (2024-09-01, made by Carmen's engine)
+  equals our rule line for line. A fresh post (JV 1141, the sandbox) adds a gross 2×Guest
+  Ledger Summary line to the counter account, so the gross differs but the nets per account
+  are still equal.
+
+**Decision.**
+- **Carmen posts:** `POST /api/interface/interfacePostGL/REVENUE`
+  `{Code: <setting>, DateFrom, DateTo, DeptCode/AccCode: the section's counter, id: [Data Bank Id]}`.
+  - Success is 200 `Result:true` (`Code 1`), **with no JV number** (CA-116).
+  - `Code -500 "Mapping is incomplete."` (303): nothing posts.
+  - `Code -200 "Already Posted."` (303): the day is done.
+- **We map, in Carmen's table.** Carmen's `interfacePost/mapping/{setting}/REVENUE/GL` is the
+  BU's mapping, keyed as the config's `Mapping_MapCode` says (`[Code][Description]` for
+  Comanche, so a tax row is its own key). Carmen's own screen edits it.
+  - Processing finds the day's rows the table cannot place.
+  - The AI suggests accounts for them, shown the BU's own rows as examples.
+  - Approve writes the table back **whole**: Carmen's PUT replaces it, so it is never written
+    without a fresh read.
+- **REVENUE only.** One day is one JV. Statistic and MarketSegment wait until a BU uses them.
+- **Only a JSON-object layout is read** (Comanche, HotelTime). Any other PMS file fails as
+  `unsupported_pms_format`, never guessed.
+- **Gone:**
+  - our sign rule and balance check (`day.py`), so the review shows no balance;
+  - our JV builder and `/gljv` post (`posting.py`);
+  - `pms_code_mappings`;
+  - `pms_settings.jv_prefix` (the prefix is the config's `JvType`).
+  - Migration `20261015000000` drops them and sends every unposted day back to be read again.
+
+**Open with Carmen (CA-116).**
+1. **The setting and the mapping have no GET on `/api/interface`.** The menu token
+   (`<hash>|<uuid>`) opens nothing else, and the web JWT opens only the other routes, so today
+   an unattended day parks as `carmen_config_unreadable`. The reads sit behind
+   `carmen._PMS_CONFIG_PATH`, which is a one-line change once Carmen adds them. The PR stays
+   open until then.
+2. The JV number in the post's answer.
+3. The token's lifetime, and `Inf.PMS.DataBank` View for menu users.
+4. Whether the gross Summary line is intended.

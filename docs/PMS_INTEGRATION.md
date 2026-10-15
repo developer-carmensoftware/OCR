@@ -1,9 +1,14 @@
 # PMS Integration — Carmen → AI (CA-93)
 
 **Audience:** the Carmen developers wiring PMS data into the AI module.
-**Status:** phase 2 (CA-119). We accept the hook and process the day it names: read it from
-Carmen's Data Bank, map its codes to the BU's GL, check it balances, and post it or park it
-for the BU to review. Nothing changes for the sender. The posting path is still open (§6).
+**Status:** phase 2 (CA-119). We accept the hook and process the day it names:
+1. read it from Carmen's Data Bank;
+2. find the rows the BU's mapping in Carmen has no account for, and suggest them;
+3. have **Carmen's own PMS engine** post it (`interfacePostGL`), or park it for the BU to
+   review.
+
+Debit, credit and the counter line are Carmen's config, never ours (decision-log #43). Nothing
+changes for the sender. What we still need from Carmen is in §6.
 
 When a day of PMS data lands in Carmen's Data Bank, Carmen sends us a short hook that names
 that day. It carries no PMS data: we read the day back from the Data Bank ourselves
@@ -155,14 +160,21 @@ Then send from **your own code** (not curl) for one real day, and check step 1 a
 
 Tracked in CA-116, with what we found on the dev Data Bank:
 
-1. **What the AI does with the day,** and through which path it posts:
-   - `/gljv`;
-   - Carmen's `interfacePostGL`;
-   - `interfacePostAR/CarmenAI`.
-2. **The token we use to read the Data Bank and post,** per BU, with no user session.
-3. **What a repeat hook means.** Is the hook sent on Add *and* on AddOrUpdate? Is a second
+1. **Settled (2026-10-14):** the AI maps, Carmen posts. The day goes through
+   `interfacePostGL/REVENUE`, by the BU's PMS setting and its mapping table in Carmen.
+2. **A GET for the setting and the mapping on `/api/interface`** (blocker). The menu's token
+   opens only `/api/interface/*`, and `interfacePost/Setting` and `interfacePost/mapping`
+   have no GET there. Without one, an unattended day cannot know what to map or which
+   setting posts it.
+3. **The token we use to read the Data Bank and post,** per BU, with no user session. It
+   needs to last longer than a few hours, and to hold `Inf.PMS.DataBank` View (a menu user
+   without it gets 403).
+4. **The JV number** in `interfacePostGL`'s answer. Today it says "Posting complete." without
+   it.
+5. **What a repeat hook means.** Is the hook sent on Add *and* on AddOrUpdate? Is a second
    hook for the same day a changed day that we should process again?
-4. **Which `InterfaceType`/`DocType`** will hook us first.
+6. **Is the gross Summary line intended?** For Comanche it is 2 × Guest Ledger to the
+   counter account, against the Guest Ledger row's credit.
 
 ---
 
@@ -171,8 +183,16 @@ Tracked in CA-116, with what we found on the dev Data Bank:
 `pms_events`, unique on `(tenant_id, event_id)`. There `event_id` holds the day's key
 (`PMS/Comanche/Daily/2026-10-07`), `payload` holds the hook as sent, and a repeat moves
 `updated_at`. Code:
-`backend/app/routers/pms.py`, `services/shared/api_keys.py`. Processing (CA-119):
-`services/pms/` (`day` the arithmetic, `mapping` the per-BU code rules and the AI's picks,
-`process` the job, `posting` the one Carmen call, `review` approve/reject). It reads with the
-BU's stored Carmen credential (#42), stored from the `#/pms` SSO link. Decisions:
-[email-automation decision log #39 to #42](email-automation/06-decision-log.md).
+`backend/app/routers/pms.py`, `services/shared/api_keys.py`. Processing (CA-119) lives in
+`services/pms/`:
+- `carmen_config` reads Carmen's PMS setting (the INI in `ConfigBase64`, the mapping key, the
+  file layout);
+- `mapping` holds the AI's picks for rows Carmen's table cannot place;
+- `process` is the job, and posts through Carmen's engine;
+- `review` handles approve/reject. Approve writes the mapping table back whole, because
+  Carmen's PUT replaces it.
+
+The Carmen calls are in `services/shared/carmen.py` (`get_pms_settings`, `get_pms_mapping`,
+`put_pms_mapping`, `post_pms_gl`). Every call uses the BU's stored Carmen credential (#42),
+stored from the `#/pms` SSO link. Decisions:
+[email-automation decision log #39 to #43](email-automation/06-decision-log.md).

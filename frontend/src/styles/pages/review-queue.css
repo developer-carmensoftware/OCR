@@ -1353,17 +1353,20 @@
   }
 
   /* The line names itself, above the fields that describe it — a label here would only
-     repeat the column header it replaced. */
-  /* No display here: the row is a flex column at this width, so the cell only needs its
-     place in the order. The flex that lays the line out lives on `.jv-desc-in`. */
+     repeat the column header it replaced. Block, not the label|value grid every other cell
+     gets: with no label its one child fell into the 5rem label track. The flex that lays
+     the line out lives on `.jv-desc-in`. */
   .jv-table td.jv-desc {
+    display: block;
     order: -1;
     padding-bottom: 0.2rem;
     font-weight: 500;
     color: var(--text);
   }
 
-  .jv-desc::before {
+  /* `td.jv-desc`, not `.jv-desc`: the label rule above is `.jv-table td::before`, which
+     outranked the bare class, so the empty label kept its 5rem column open as a gutter. */
+  .jv-table td.jv-desc::before {
     content: none;
   }
 
@@ -1702,9 +1705,26 @@
 }
 
 /* ── A parked PMS day (CA-119) ─────────────────────────────────────────────────
-   The email review's shell with a body that only reads: four short sections, each opening
-   on the same one-line header — a state icon, the title, one readout — and a detail frame
-   whose head and total stay put while its rows scroll. Mock-up: CA-119 comment 11864. */
+   The email review's shell with a body that only reads: a note naming the Carmen setting
+   that posts the day (decision-log #43 — the sides are Carmen's, so there is no balance
+   here), then Accounts — the new rows, the only thing decided here — and, folded under it,
+   the rows Carmen's mapping already places. */
+
+.pms-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.pms-note > svg {
+  flex: none;
+  margin-top: 0.15rem;
+  color: var(--primary);
+}
 
 .pms-sec {
   display: flex;
@@ -1725,10 +1745,6 @@
 
 .pms-head--warn > svg {
   color: var(--amber-text);
-}
-
-.pms-head--bad > svg {
-  color: var(--rose-text);
 }
 
 .pms-title {
@@ -1753,12 +1769,6 @@
   font-weight: 600;
 }
 
-.pms-off,
-.pms-off .text-mono {
-  color: var(--rose-text);
-  font-weight: 600;
-}
-
 .pms-sep {
   margin: 0 0.4rem;
   color: var(--text-3);
@@ -1768,17 +1778,21 @@
   width: 9rem;
 }
 
-.pms-w-type,
 .pms-w-dept {
   width: 8rem;
 }
 
-.pms-w-code {
-  width: 9.5rem;
-}
-
 .pms-w-acc {
   width: 12rem;
+}
+
+/* The rows table: a code is a few characters, an account name is the line's answer. */
+.pms-w-code {
+  width: 7rem;
+}
+
+.pms-w-name {
+  width: 24rem;
 }
 
 .pms-codecell {
@@ -1796,22 +1810,58 @@
   color: var(--text);
 }
 
-/* The account a new code will post to, by name — the pickers only show its number. */
-.pms-to {
+/* The account a new row will post to, by name — the pickers only show its number. It wraps:
+   a long Thai account name cut to "…" was only readable on hover. */
+.pms-to,
+.pms-why {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 0.75rem;
+  line-height: 1.4;
+  text-wrap: pretty;
   color: var(--text-3);
 }
 
-/* Dr / Cr beside a single signed amount, instead of two half-empty columns of dashes. */
-.pms-dir {
-  margin-left: 0.3rem;
-  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
+/* The AI tag explains nothing on hover any more: its reason is the `.pms-why` line. */
+.pms-tag-ai {
+  cursor: default;
+}
+
+/* An AI pick the model itself was unsure of: where to look first. */
+.pms-tag-unsure {
+  background: var(--amber-light);
+  color: var(--amber-text);
+}
+
+/* "Checked": a person's tick on the AI's account, required before Approve. A chip with a
+   real checkbox in it, so the whole word is the hit area; emerald once ticked. */
+.pms-check {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem 0.15rem 0.35rem;
+  border: 1px solid var(--border-raised, var(--border));
+  border-radius: var(--radius-pill);
+  background: var(--card-bg);
+  color: var(--text-2);
   font-size: 0.7rem;
-  color: var(--text-3);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pms-check input {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin: 0;
+  accent-color: var(--emerald-text);
+  cursor: pointer;
+}
+
+.pms-check:has(input:checked) {
+  border-color: var(--emerald-mid);
+  background: var(--emerald-light);
+  color: var(--emerald-text);
 }
 
 .pms-nowrap {
@@ -1820,84 +1870,38 @@
   white-space: nowrap;
 }
 
-.pms-chips {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.pms-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-height: 2rem;
-  padding: 0.25rem 0.8rem;
-  border: 1px solid var(--border-raised, var(--border));
-  border-radius: var(--radius-pill, 100px);
-  background: var(--card-bg);
-  color: var(--text-2);
-  font: inherit;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    color 150ms var(--ease),
-    background-color 150ms var(--ease),
-    border-color 150ms var(--ease);
-}
-
-.pms-chip:hover {
-  border-color: var(--primary-mid);
-  color: var(--primary);
-}
-
-.pms-chip[aria-selected='true'] {
-  border-color: var(--primary-mid);
-  background: var(--primary-light);
-  color: var(--primary);
-}
-
 .pms-n {
   font-family: var(--font-mono);
   font-weight: 500;
   color: var(--text-3);
 }
 
-.pms-chip[aria-selected='true'] .pms-n {
-  color: var(--primary);
+/* The rows Carmen already maps, folded under Accounts. It grows in the body's own scroll:
+   no frame of its own, so the dialog never has two scrollbars. */
+.pms-fold > summary {
+  display: grid;
+  grid-template-columns: 1rem auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0 0.6rem;
+  list-style: none;
+  cursor: pointer;
 }
 
-/* The frame scrolls, not the table: `.jv-table` clips with overflow hidden, which would
-   make the table — not this frame — the scroller its sticky cells pin to. */
-.pms-scroll {
-  max-height: min(24rem, 50vh);
-  overflow: auto;
-  overscroll-behavior: contain;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--card-bg);
+.pms-fold > summary::-webkit-details-marker {
+  display: none;
 }
 
-.pms-scroll .jv-table {
-  overflow: visible;
-  border: 0;
-  border-radius: 0;
+.pms-fold-icon {
+  color: var(--text-3);
+  transition: transform 160ms var(--ease, ease-out);
 }
 
-.pms-scroll thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+.pms-fold[open] .pms-fold-icon {
+  transform: rotate(90deg);
 }
 
-.pms-scroll tfoot td {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  box-shadow: 0 -1px 0 var(--border);
-}
-
-.rd-blocked--bad {
-  color: var(--rose-text);
+.pms-fold[open] > summary {
+  margin-bottom: 0.6rem;
 }
 
 .rd-blocked--note {
@@ -1925,22 +1929,9 @@
     grid-column: 2;
   }
 
-  /* A phone stacks each table into cards, so the body scrolls rather than a frame in it. */
-  .pms-scroll {
-    max-height: none;
-    overflow: visible;
-    border: 0;
-    background: none;
-  }
-
-  .pms-scroll .jv-table {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-  }
-
-  .pms-scroll thead th,
-  .pms-scroll tfoot td {
-    position: static;
-    box-shadow: none;
+  /* A thumb's target: the whole chip is the label. */
+  .pms-check {
+    min-height: 2.75rem;
+    padding-inline: 0.75rem;
   }
 }

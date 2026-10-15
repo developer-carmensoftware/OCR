@@ -1,21 +1,26 @@
-"""Process the PMS days Carmen's hook announced: read back, map, check, park or post.
+"""Process the PMS days Carmen's hook announced: read back, find what is unmapped, park or post.
 
 Two ways in, one function. The webhook starts `process_event` the moment it stores a day
 (`kick`), and `run_pms_processing` — pg_cron every 10 minutes — picks up whatever a
 restart, a Carmen outage or a missing credential left at `received`. A claim on
 `processed_at` keeps the two from working the same day at once.
 
-A day with anything a person should look at — a code only the AI has mapped, a code
-nobody has mapped, a balance off — parks at `pending_review` with what the review needs in
-`review_payload`. So does every day of a BU with auto-post off (the default). Only a clean
-day of an auto-post BU posts unattended: the email rule (decision-log #24), applied here.
+**Carmen posts; we map** (decision-log #43). The BU's PMS setting in Carmen says where a
+day's rows are, what keys its mapping table, and how debit and credit are told apart — each
+PMS differently — and Carmen's engine (`interfacePostGL`) posts the day by it. This module
+decides nothing about sides or totals. It finds the day's rows Carmen's mapping table has no
+account for, lets the AI suggest one, and asks the engine to post once nothing is missing.
+
+A day with a row the table cannot place parks at `pending_review` with what the review
+needs in `review_payload`. So does every day of a BU with auto-post off (the default). Only
+a fully mapped day of an auto-post BU posts unattended: the email rule (decision-log #24).
 """
 
 import asyncio
 import json
 import logging
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import or_, select, update
@@ -27,8 +32,8 @@ from app.models.enums import JobStatus
 from app.models.observability import JobRun
 from app.models.pms import PmsEvent, PmsSettings
 from app.services.email_automation import credential
-from app.services.pms import day as pms_day
-from app.services.pms import mapping, posting
+from app.services.pms import carmen_config as cfg
+from app.services.pms import mapping
 from app.services.shared import carmen
 
 logger = logging.getLogger(__name__)
@@ -41,10 +46,24 @@ REVIEW_CLAIM_TTL = timedelta(minutes=5)
 # Reads that failed for a reason that may pass (Carmen down, no credential yet, the day not
 # in the Data Bank yet) are tried this often in all before the day shows as failed.
 MAX_ATTEMPTS = 3
+# The reasons a fresher credential can cure: a token that was missing, dead, short of a
+# permission, or unable to read the BU's PMS setting. Storing or re-proving one wakes them.
+WAKE_REASONS = (
+    "no_credential",
+    "carmen_unauthorized",
+    "carmen_forbidden",
+    "carmen_config_unreadable",
+)
+# `interfacePostGL` answers a day it has already posted with this code (and HTTP 303).
+_ALREADY_POSTED = -200
 
 _sweep_lock = asyncio.Lock()
 # asyncio keeps only a weak reference to a task; these are held until they finish.
 _running: set[asyncio.Task] = set()
+
+
+class PostRefused(Exception):
+    """Carmen's engine answered, and the answer was no. Its own words are the message."""
 
 
 def kick(event_pk: uuid.UUID) -> None:
@@ -62,6 +81,68 @@ async def _target(db, tenant_id: uuid.UUID) -> tuple[str, str]:
     """
     row = await db.get(EmailIngestSettings, tenant_id) or EmailIngestSettings(tenant_id=tenant_id)
     return await credential.posting_target(db, row)
+
+
+def carmen_words(exc: carmen.CarmenAPIError) -> str:
+    """Carmen's own sentence out of an error body (`Access Denied. Permission Name = …`).
+
+    Carmen answers `{"Code", "UserMessage", "InternalMessage", …}`; the raw `HTTP 403: {…}`
+    is what support needs, the sentence is what a reviewer can act on.
+    """
+    _, _, body = exc.detail.partition(": ")
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return exc.detail[:500]
+    if not isinstance(data, dict):
+        return exc.detail[:500]
+    words = " ".join(
+        str(data[k]).strip()
+        for k in ("UserMessage", "InternalMessage", "Message")
+        if data.get(k) and str(data[k]).strip()
+    )
+    return (words or exc.detail)[:500]
+
+
+def _refusal(exc: carmen.CarmenAPIError, other: str) -> str:
+    """The reason code for a Carmen error: the credential's, or `other`."""
+    return {401: "carmen_unauthorized", 403: "carmen_forbidden"}.get(exc.status_code, other)
+
+
+async def post_day(section: dict, doc_date: str, databank_id: Any, carmen_token: str) -> str:
+    """Ask Carmen's engine to post one Data Bank day. Returns `posted` or `already_posted`.
+
+    `section` is the payload's `{"setting_code", "post_type", "counter": {"dept", "acc"}}`.
+    Raises `PostRefused` with Carmen's words (`Mapping is incomplete.`, a closed period, …),
+    or `carmen.CarmenAPIError` when Carmen could not be reached or refused the credential.
+    Asking again is safe: the engine refuses a day it has already posted.
+    """
+    counter = section.get("counter") or {}
+    result = await carmen.post_pms_gl(
+        section["post_type"],
+        {
+            "Code": section["setting_code"],
+            "DateFrom": doc_date,
+            "DateTo": doc_date,
+            "DeptCode": counter.get("dept") or "",
+            "AccCode": counter.get("acc") or "",
+            "id": [databank_id],
+        },
+        carmen_token,
+    )
+    if isinstance(result, dict) and result.get("Result") is True:
+        return "posted"
+    if isinstance(result, dict) and result.get("Code") == _ALREADY_POSTED:
+        return "already_posted"
+    verdict = None
+    if isinstance(result, dict):
+        verdict = (
+            result.get("UserMessage") or result.get("InternalMessage") or result.get("Message")
+        )
+        errors = result.get("ErrorList")
+        if errors:
+            verdict = f"{verdict or 'Carmen refused the day'}: {errors}"
+    raise PostRefused(str(verdict or f"Carmen answered {result!r}")[:500])
 
 
 async def _claim(event_pk: uuid.UUID) -> Any:
@@ -113,25 +194,6 @@ async def _retry_or_fail(event_pk, attempts: int, reason: str, error: str) -> st
     return "retry"
 
 
-def _newest_day(found: list[dict]) -> dict | None:
-    """The Data Bank row to read: the newest with a readable `FileData`.
-
-    Carmen may hold more than one row for a day (a re-run night audit); `LastModified`
-    names the current one.
-    """
-    days = []
-    for row in found:
-        data = row.get("FileData")
-        if isinstance(data, str):
-            try:
-                data = json.loads(data)
-            except ValueError:
-                continue
-        if isinstance(data, dict) and data.get("Transaction"):
-            days.append({**row, "FileData": data})
-    return max(days, key=lambda r: str(r.get("LastModified") or ""), default=None)
-
-
 async def process_event(event_pk: uuid.UUID) -> str:
     """Take one day from `received` to `pending_review`, `posted` or `failed`.
 
@@ -160,7 +222,6 @@ async def _process(claimed) -> str:
     async with async_session() as db:
         token, uri = await _target(db, tenant_id)
         settings_row = await db.get(PmsSettings, tenant_id)
-        rules = await mapping.saved(db, tenant_id, name)
     if not token or not uri:
         return await _retry_or_fail(
             pk,
@@ -172,14 +233,33 @@ async def _process(claimed) -> str:
     uri_ctx = current_carmen_uri.set(uri)
     try:
         try:
+            section = cfg.find_section(await carmen.get_pms_settings(token), name)
+        except carmen.CarmenAPIError as exc:
+            return await _retry_or_fail(pk, attempts, "carmen_config_unreadable", exc.detail)
+        if section is None:
+            return await _retry_or_fail(
+                pk,
+                attempts,
+                "pms_setting_missing",
+                f"Carmen has no active PMS posting setting for {name} with a Revenue section.",
+            )
+        try:
+            spec = cfg.spec_of(section.config)
+        except cfg.UnsupportedFormat as exc:
+            await _write(
+                pk,
+                status="failed",
+                reason_code="unsupported_pms_format",
+                error_message=f"{section.setting_code} describes {exc}; only a JSON object is read.",
+            )
+            return "failed"
+
+        try:
             found = await carmen.get_databank_day(itype, name, doc_type, doc_date, token)
         except carmen.CarmenAPIError as exc:
-            reason = (
-                "carmen_unauthorized" if exc.status_code in (401, 403) else "databank_unreachable"
-            )
-            return await _retry_or_fail(pk, attempts, reason, exc.detail)
-
-        databank = _newest_day(found)
+            reason = _refusal(exc, "databank_unreachable")
+            return await _retry_or_fail(pk, attempts, reason, carmen_words(exc))
+        databank = cfg.newest_day(found, spec.json_keys)
         if databank is None:
             return await _retry_or_fail(
                 pk,
@@ -188,24 +268,29 @@ async def _process(claimed) -> str:
                 f"Carmen's Data Bank has no {name} {doc_type} for {doc_date} yet.",
             )
         try:
-            rows = pms_day.rows_of(databank["FileData"])
-        except pms_day.UnreadableDay as exc:
+            rows = cfg.rows_of(databank["FileData"], spec)
+        except cfg.UnreadableDay as exc:
             await _write(
                 pk, status="failed", reason_code="unreadable_day", error_message=str(exc)[:500]
             )
             return "failed"
 
-        new_keys = [k for k in pms_day.keys(rows) if k not in rules]
+        try:
+            current = await carmen.get_pms_mapping(section.setting_code, section.post_type, token)
+        except carmen.CarmenAPIError as exc:
+            return await _retry_or_fail(pk, attempts, "carmen_config_unreadable", exc.detail)
+        table = cfg.table_of(current, spec.columns)
+        new = cfg.new_keys(rows, table, spec.use_mapping)
         guessed: dict[str, dict] = {}
-        if new_keys:
+        if new:
             try:
                 accounts, departments = await mapping.masters(token)
-                guessed = await mapping.suggest(new_keys, rows, accounts, departments)
+                guessed = await mapping.suggest(new, rows, table, accounts, departments)
             except carmen.CarmenAPIError as exc:
-                # No suggestion is not a reason to stop: the day parks with the codes
+                # No suggestion is not a reason to stop: the day parks with the rows
                 # unmapped and the reviewer picks them. A dead credential still is.
                 if exc.status_code in (401, 403):
-                    return await _retry_or_fail(pk, attempts, "carmen_unauthorized", exc.detail)
+                    return await _retry_or_fail(pk, attempts, _refusal(exc, ""), carmen_words(exc))
                 logger.warning("[pms] Could not read Carmen's GL for suggestions: %s", exc.detail)
 
         payload = {
@@ -213,77 +298,67 @@ async def _process(claimed) -> str:
             "interface": name,
             "doc_type": doc_type,
             "doc_date": doc_date,
+            "setting_code": section.setting_code,
+            "post_type": section.post_type,
+            "counter": {
+                "dept": section.counter_dept,
+                "acc": section.counter_acc,
+                "name": section.counter_name,
+            },
+            "key_columns": spec.columns,
             "rows": rows,
+            # Carmen's accounts for the keys this day uses, as they were when it was read.
+            "mapped": {k: table[k] for k in dict.fromkeys(r["key"] for r in rows) if k in table},
             "guessed": guessed,
-            "flags": pms_day.flags(rows, rules, guessed),
-            # Which codes those flags are about, for the queue row (`activity._pms_row`).
-            **pms_day.open_keys(rows, rules, guessed),
+            "flags": mapping.flags(new, guessed),
+            # Which keys those flags are about, for the queue row (`activity._pms_row`).
+            **mapping.open_keys(new, guessed),
             "databank_id": databank.get("Id"),
             "last_modified": databank.get("LastModified"),
         }
-        auto = bool(settings_row and settings_row.auto_post and settings_row.jv_prefix)
-        if payload["flags"] or not auto:
+        if payload["flags"] or not (settings_row and settings_row.auto_post):
             return await _park(pk, payload)
 
-        body = posting.build_payload(
-            pms_day.jv_lines(rows, rules),
-            doc_date=date.fromisoformat(doc_date),
-            prefix=settings_row.jv_prefix,
-            text=posting.description(name, doc_type, date.fromisoformat(doc_date)),
-        )
         try:
-            jv_no = await posting.post_day(body, token)
-        except posting.PostRefused as exc:
+            outcome = await post_day(payload, doc_date, payload["databank_id"], token)
+        except PostRefused as exc:
             return await _park(pk, payload, "carmen_rejected", str(exc))
         except carmen.CarmenAPIError as exc:
-            reason = "carmen_unauthorized" if exc.status_code in (401, 403) else "carmen_rejected"
-            # A transport error after the request left may still have posted it.
-            return await _park(
-                pk, payload, reason, f"{exc.detail} Check Carmen before posting again."
-            )
+            return await _park(pk, payload, _refusal(exc, "carmen_rejected"), carmen_words(exc))
         await _write(
             pk,
             status="posted",
-            jv_no=jv_no,
+            jv_no=None,
             review_payload=None,
-            reason_code=None,
+            reason_code="already_posted" if outcome == "already_posted" else None,
             error_message=None,
             processed_at=datetime.now(UTC),
         )
-        logger.info("[pms] Posted %s %s %s as %s", name, doc_type, doc_date, jv_no)
+        logger.info("[pms] %s %s %s %s by Carmen", name, doc_type, doc_date, outcome)
         return "posted"
     finally:
         current_carmen_uri.reset(uri_ctx)
 
 
 async def _requeue_ready_days() -> int:
-    """Send back for posting the parked days of auto-post BUs that are clean now.
+    """Send back for posting the parked days of auto-post BUs that have nothing left to map.
 
-    A day parks with `mapping_guessed` until somebody approves the code on *some* day; after
-    that its stored rows map cleanly. Recomputing from those rows costs no Carmen call, and
-    the day is then read again from the Data Bank before it posts.
+    A day parks with `mapping_guessed` until somebody approves the row on *some* day, which
+    clears it on the BU's other parked days (`review.recheck`); a BU can also switch
+    auto-post on with days already waiting. The day is then read again — setting, Data
+    Bank, Carmen's table — before it posts.
     """
     async with async_session() as db:
         result = await db.execute(
-            select(PmsEvent.id, PmsEvent.tenant_id, PmsEvent.review_payload)
+            select(PmsEvent.id, PmsEvent.review_payload)
             .join(PmsSettings, PmsSettings.tenant_id == PmsEvent.tenant_id)
             .where(
                 PmsEvent.status == "pending_review",
                 PmsEvent.reason_code.is_(None),
                 PmsSettings.auto_post.is_(True),
-                PmsSettings.jv_prefix.is_not(None),
             )
         )
-        parked = result.all()
-        ready = []
-        rules_by: dict[tuple, dict] = {}
-        for pk, tenant_id, payload in parked:
-            payload = payload or {}
-            key = (tenant_id, payload.get("interface"))
-            if key not in rules_by:
-                rules_by[key] = await mapping.saved(db, tenant_id, payload.get("interface") or "")
-            if not pms_day.flags(payload.get("rows") or [], rules_by[key], {}):
-                ready.append(pk)
+        ready = [pk for pk, payload in result.all() if not (payload or {}).get("flags")]
         if ready:
             await db.execute(
                 update(PmsEvent)
@@ -295,7 +370,7 @@ async def _requeue_ready_days() -> int:
 
 
 async def _wake_for_new_credential() -> int:
-    """Send back the days a missing or dead credential stopped, once a newer one is proven.
+    """Send back the days a credential stopped, once a newer one is proven.
 
     `PUT /pms/credential` wakes them at once, but it is not the only writer of the BU's one
     credential (decision-log #42): opening the email settings from Carmen's menu stores a
@@ -308,7 +383,7 @@ async def _wake_for_new_credential() -> int:
             update(PmsEvent)
             .where(
                 PmsEvent.status.in_(("received", "failed")),
-                PmsEvent.reason_code.in_(("no_credential", "carmen_unauthorized")),
+                PmsEvent.reason_code.in_(WAKE_REASONS),
                 EmailIngestSettings.tenant_id == PmsEvent.tenant_id,
                 EmailIngestSettings.carmen_token_verified_at > PmsEvent.processed_at,
             )

@@ -2,25 +2,30 @@
  * A parked PMS day (CA-119) — the review modal's API. A day is one JV: Carmen's hook named
  * it, the server read it back from Carmen's Data Bank and parked it here.
  *
- * Amounts are exact decimal strings, signed the way the JV posts them: + credit, − debit.
+ * Carmen's engine posts it, by the BU's PMS setting in Carmen (decision-log #43): debit,
+ * credit and totals are never computed here. Amounts are as the PMS wrote them.
  */
 
 import { apiFetch } from '@/shared/api/client'
 import { API } from '@/shared/api/endpoints'
 
+/** One row as Carmen keys it, with the account Carmen's mapping table gives it (if any). */
 export interface PmsRow {
-  type: string
-  code: string
-  desc: string
+  /** The mapping key: the key columns' values as a JSON array. Opaque to the screen. */
+  key: string
+  values: Record<string, string>
   amount: string
+  dept?: string | null
+  acc?: string | null
+  name?: string | null
 }
 
-/** A code this BU has never approved an account for, with the AI's pick when it made one. */
+/** A row Carmen's mapping table has no account for, with the AI's pick when it made one. */
 export interface PmsNewCode {
   key: string
-  code: string
-  description: string
-  type: string
+  /** "100 · Room Charge - VAT" */
+  label: string
+  values: Record<string, string>
   amount: string
   dept: string | null
   acc: string | null
@@ -35,15 +40,24 @@ export interface PmsDay {
   doc_date: string
   reason_code: string | null
   error_message: string | null
-  terms: { type: string; amount: string }[]
-  /** How far the day is from balancing; "0.00" when debit equals credit. */
-  off: string
-  /** How many PMS codes the day uses, the two VAT/service rules not counted. */
-  codes: number
-  /** The BU's saved account for each key the day uses. */
-  accounts: Record<string, { dept: string; acc: string }>
-  new_codes: PmsNewCode[]
+  /** The Carmen interface setting the engine posts with (`Comanche.PMS`) and its section. */
+  setting_code: string
+  post_type: string
+  /** Where that setting posts the day's remainder (its Summary line). */
+  counter: { dept: string; acc: string; name: string }
+  /** The mapping key's columns, in order (`Code`, `Description` for Comanche). */
+  key_columns: string[]
   rows: PmsRow[]
+  /** How many of the day's keys Carmen's table already maps. */
+  mapped_count: number
+  new_codes: PmsNewCode[]
+}
+
+export interface PmsApproveResult {
+  /** Carmen's engine does not return the JV's number yet (CA-116). */
+  jv_no: string | null
+  /** Carmen had already posted this day — by its own Post button, or an earlier approve. */
+  already_posted: boolean
 }
 
 async function failure(res: Response, fallback: string): Promise<Error> {
@@ -62,19 +76,20 @@ export async function getPmsDay(id: string): Promise<PmsDay> {
   return res.json() as Promise<PmsDay>
 }
 
-/** Save the new codes' accounts and post the day. 400 carries why it cannot post, 409 that
- *  someone else got there first — both are things the reviewer needs to read. */
+/** Write the new rows' accounts into Carmen's mapping and have Carmen post the day. 400
+ *  carries why it cannot post, 409 that someone else got there first — both are things the
+ *  reviewer needs to read. */
 export async function approvePmsDay(
   id: string,
   mappings: Record<string, { dept: string; acc: string }>
-): Promise<{ jv_no: string }> {
+): Promise<PmsApproveResult> {
   const res = await apiFetch(API.pms.approve(id), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mappings }),
   })
   if (!res.ok) throw await failure(res, 'Approve failed')
-  return res.json() as Promise<{ jv_no: string }>
+  return res.json() as Promise<PmsApproveResult>
 }
 
 export async function rejectPmsDay(id: string, reason?: string): Promise<void> {

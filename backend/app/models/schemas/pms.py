@@ -87,17 +87,20 @@ class ApiKeyCreateIn(BaseModel):
 
 
 class PmsPick(BaseModel):
-    """The account a reviewer gave one of the day's new codes."""
+    """The account a reviewer gave one of the day's new rows."""
 
     dept: str = Field(..., min_length=1, max_length=20)
     acc: str = Field(..., min_length=1, max_length=20)
 
 
 class PmsNewCode(BaseModel):
+    """A row Carmen's mapping table has no account for. `key` is the mapping key the BU's
+    PMS setting names (`["100","Room Charge - VAT"]` for Comanche), opaque to the client."""
+
     key: str
-    code: str
-    description: str
-    type: str
+    label: str
+    values: dict[str, str]
+    # As the PMS wrote it; Carmen's engine decides which side it posts to.
     amount: str
     # The AI's pick, when it made a usable one.
     dept: str | None = None
@@ -106,14 +109,28 @@ class PmsNewCode(BaseModel):
     why: str | None = None
 
 
-class PmsTerm(BaseModel):
-    type: str
+class PmsCounter(BaseModel):
+    """The account Carmen's setting posts the day's remainder to (its Summary line)."""
+
+    dept: str = ""
+    acc: str = ""
+    name: str = ""
+
+
+class PmsRow(BaseModel):
+    """One row of the day as Carmen keys it, with the account Carmen's table gives it."""
+
+    key: str
+    values: dict[str, str]
     amount: str
+    dept: str | None = None
+    acc: str | None = None
+    name: str | None = None
 
 
 class PmsDayOut(BaseModel):
-    """One parked day, as the review modal reads it. Amounts are exact decimal strings,
-    signed the way the JV posts them: + credit, − debit."""
+    """One parked day, as the review modal reads it (decision-log #43): what the PMS sent and
+    what each row maps to. No side or total — those are Carmen's engine's."""
 
     id: UUID
     interface: str
@@ -121,22 +138,25 @@ class PmsDayOut(BaseModel):
     doc_date: str
     reason_code: str | None = None
     error_message: str | None = None
-    terms: list[PmsTerm]
-    off: str
-    codes: int
-    # The BU's saved rules for the keys this day uses: key → {"dept", "acc"}.
-    accounts: dict[str, dict[str, str]]
+    setting_code: str
+    post_type: str
+    counter: PmsCounter
+    key_columns: list[str]
+    rows: list[PmsRow]
+    mapped_count: int
     new_codes: list[PmsNewCode]
-    rows: list[dict[str, str]]
 
 
 class PmsApproveIn(BaseModel):
-    # key → the account for each of the day's new codes.
+    # key → the account for each of the day's new rows.
     mappings: dict[str, PmsPick] = Field(default_factory=dict)
 
 
 class PmsApproveOut(BaseModel):
-    jv_no: str
+    # Carmen's engine answers "Posting complete." without the JV's number (CA-116).
+    jv_no: str | None = None
+    # Carmen had already posted this day (by its own Post button, or an earlier approve).
+    already_posted: bool = False
 
 
 class PmsRejectIn(BaseModel):
@@ -144,12 +164,10 @@ class PmsRejectIn(BaseModel):
 
 
 class PmsSettingsIn(BaseModel):
-    jv_prefix: str | None = Field(None, max_length=20)
     auto_post: bool = False
 
 
 class PmsSettingsOut(BaseModel):
-    jv_prefix: str | None
     auto_post: bool
     # Whether this BU has a Carmen credential stored; nothing can be read or posted without.
     has_credential: bool
