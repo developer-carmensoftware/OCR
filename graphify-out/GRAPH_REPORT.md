@@ -1,16 +1,16 @@
 # Graph Report - OCR  (2026-10-15)
 
 ## Corpus Check
-- 425 files · ~311,254 words
+- 425 files · ~311,809 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2272 nodes · 6365 edges · 161 communities (101 shown, 60 thin omitted)
+- 2272 nodes · 6365 edges · 162 communities (102 shown, 60 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 66 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `3e6cf3e1`
+- Built from commit: `9c2c30c7`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -60,7 +60,7 @@
 - ReviewDocument.test.tsx
 - QuotaModulesPage.tsx
 - EmailSettings.tsx
-- PeriodPicker.tsx
+- routes.tsx
 - QueueRow.tsx
 - useAPSubmission.ts
 - ReviewQueue.tsx
@@ -125,10 +125,11 @@
 - i18n/usage.ts
 - userUsage.ts
 - review.ts
-- buildQs
+- PeriodPicker.tsx
 - dict/maintenance.ts
 - main.tsx
 - eslint
+- buildQs
 - cc.ts
 - dict/apiKeys.ts
 - useMapping.ts
@@ -199,7 +200,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (161 total, 60 thin omitted)
+## Communities (162 total, 60 thin omitted)
 
 ### Community 0 - "APLineItem"
 Cohesion: 0.30
@@ -214,8 +215,8 @@ Cohesion: 0.11
 Nodes (14): en, th, en, th, DICT, en, th, translate() (+6 more)
 
 ### Community 3 - "DataTable.tsx"
-Cohesion: 0.09
-Nodes (26): fetchLLMLogs(), Column, DataTable(), DataTableProps, ExpandedRowWrapperProps, getCell(), ServerTable, SKELETON_WIDTHS (+18 more)
+Cohesion: 0.14
+Nodes (12): DataTable(), DataTableProps, ExpandedRowWrapperProps, getCell(), SKELETON_WIDTHS, Pager(), Props, SIZE_OPTIONS (+4 more)
 
 ### Community 4 - "payment-mapping/types.ts"
 Cohesion: 0.23
@@ -342,8 +343,8 @@ Cohesion: 0.29
 Nodes (3): PendingOrderBanner(), SLIP, ActiveSubscription
 
 ### Community 36 - "CreditsPage.tsx"
-Cohesion: 0.36
-Nodes (10): adjustCredits(), CreditBalance, CreditLedgerEntry, fetchCreditBalance(), fetchCreditLedger(), fetchCreditPacks(), topupCredits(), CompanyPanel() (+2 more)
+Cohesion: 0.17
+Nodes (16): adjustCredits(), CreditBalance, CreditLedgerEntry, fetchCreditBalance(), fetchCreditLedger(), fetchCreditPacks(), topupCredits(), CompanyPanel() (+8 more)
 
 ### Community 37 - "FeatureFlows.tsx"
 Cohesion: 0.14
@@ -370,16 +371,16 @@ Cohesion: 0.11
 Nodes (14): AR_JV, AR_LINES, arDetail(), BENT, configBanks, configWaits, DEBIT_ROWS, detail() (+6 more)
 
 ### Community 43 - "QuotaModulesPage.tsx"
-Cohesion: 0.13
-Nodes (19): fetchQuotaOverview(), ModuleCatalogEntry, ModuleUsageRow, QuotaOverviewResponse, TenantQuotaOverviewRow, toggleTenantModule(), Tab, Tabs() (+11 more)
+Cohesion: 0.15
+Nodes (16): fetchQuotaOverview(), ModuleCatalogEntry, TenantQuotaOverviewRow, toggleTenantModule(), EmptyState(), EmptyStateProps, getTabs(), monthStartStr() (+8 more)
 
 ### Community 44 - "EmailSettings.tsx"
 Cohesion: 0.06
 Nodes (53): ApiFieldError, BankCode, call(), deleteToken(), EmailApiError, EmailDocType, EmailRule, EmailRulePayload (+45 more)
 
-### Community 45 - "PeriodPicker.tsx"
+### Community 45 - "routes.tsx"
 Cohesion: 0.10
-Nodes (44): fetchJobs(), fetchSessions(), resolveAlert(), revokeSession(), fetchPerformanceLogs(), fetchUserUsage(), daysAgo(), endOfDay() (+36 more)
+Nodes (35): fetchJobs(), fetchSessions(), resolveAlert(), revokeSession(), fetchLLMLogs(), fetchPerformanceLogs(), fetchUserUsage(), ServerTable (+27 more)
 
 ### Community 46 - "QueueRow.tsx"
 Cohesion: 0.22
@@ -466,8 +467,8 @@ Cohesion: 0.25
 Nodes (8): 1. Layered Architecture, 2. Naming Conventions (Python), 3. Singleton & Centralized Modules, 4. Error Handling, 5. Documentation & Type Hinting, 6. Database, 7. Security, 🏗️ Backend Principles (Python / FastAPI)
 
 ### Community 72 - "ExtractionsPage.tsx"
-Cohesion: 0.17
-Nodes (16): ExtractionFailureRow, fetchExtractionFailures(), DateRangePicker(), DateRangePickerProps, EmptyState(), EmptyStateProps, causeLabel(), classify() (+8 more)
+Cohesion: 0.16
+Nodes (17): ExtractionFailureRow, fetchExtractionFailures(), DateRangePicker(), DateRangePickerProps, Tab, Tabs(), TabsProps, causeLabel() (+9 more)
 
 ### Community 73 - "PDFPageSelector"
 Cohesion: 0.22
@@ -542,8 +543,8 @@ Cohesion: 0.18
 Nodes (16): exchangeSSOToken(), UsageData, API_BASE, ApiClientOptions, CARMEN_POSTING_TOKEN_KEY, CARMEN_RAW_TOKEN_KEY, createApiClient(), fetchTimeout() (+8 more)
 
 ### Community 106 - "TenantsPage.tsx"
-Cohesion: 0.11
-Nodes (20): TenantSubscriptionSummary, fetchTenantDetail(), fetchTenants(), TenantDetail, TenantModuleRow, TenantRow, TenantSessionRow, KPICard() (+12 more)
+Cohesion: 0.22
+Nodes (10): fetchTenantDetail(), TenantRow, Column, KPICard(), KPICardProps, funnel(), median(), quotaTier() (+2 more)
 
 ### Community 109 - "adminAuth.ts"
 Cohesion: 0.39
@@ -553,21 +554,25 @@ Nodes (9): adminLogout(), adminMe(), AdminUser, clearAdminToken(), getAdminToken
 Cohesion: 0.13
 Nodes (14): APSuccessStep(), VendorSearch(), AppHeader(), Props, NOTE: the "closed popover must stay hidden" invariant is NOT covered here., NotificationDetailModal(), REASON_KEY, COPY (+6 more)
 
-### Community 115 - "buildQs"
-Cohesion: 0.21
-Nodes (15): buildQs(), QueryParams, fetchAlerts(), fetchErrorBreakdown(), fetchTenantRanking(), fetchUsageSummary(), fetchUsageTotals(), MetricChart() (+7 more)
+### Community 115 - "PeriodPicker.tsx"
+Cohesion: 0.12
+Nodes (33): fetchAlerts(), fetchUsageSummary(), fetchUsageTotals(), MetricChart(), daysAgo(), granularityFor(), lastDays(), matchPreset() (+25 more)
 
 ### Community 117 - "main.tsx"
 Cohesion: 0.11
 Nodes (19): AdminRouter(), getRoute(), ADMIN_ROUTES, registerDict(), AdminRouter, APInvoice, container, EmailSettings (+11 more)
+
+### Community 119 - "buildQs"
+Cohesion: 0.26
+Nodes (10): buildQs(), QueryParams, ModuleUsageRow, QuotaOverviewResponse, TenantSubscriptionSummary, TenantDetail, TenantModuleRow, TenantSessionRow (+2 more)
 
 ### Community 122 - "useMapping.ts"
 Cohesion: 0.08
 Nodes (31): PostType, saveARSettings(), CompanyInfoSection(), PLACEHOLDER_KEYS, Props, Props, buildMappingSets(), bankCodeFromHash() (+23 more)
 
 ### Community 125 - "adminFetch"
-Cohesion: 0.25
-Nodes (20): unwrapDetail(), endMaintenanceNow(), fetchMaintenance(), MaintenanceStatus, setMaintenanceSchedule(), setTenantMaintenance(), AdminUserRow, createAdminUser() (+12 more)
+Cohesion: 0.24
+Nodes (21): unwrapDetail(), endMaintenanceNow(), fetchMaintenance(), MaintenanceStatus, setMaintenanceSchedule(), setTenantMaintenance(), fetchTenants(), AdminUserRow (+13 more)
 
 ### Community 130 - "LanguageProvider"
 Cohesion: 0.12
@@ -593,7 +598,7 @@ Nodes (26): DEFAULT_MAPPINGS, EMPTY_HEADER, EXTRACTION_STAGES, _fetchExtract(), 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `useT()` connect `useT` to `APLineItem`, `ap-invoice/constants.ts`, `DataTable.tsx`, `payment-mapping/types.ts`, `usePmsReview.ts`, `parseNum`, `TutorialModal.tsx`, `screens.tsx`, `InputTaxReconciliation.tsx`, `AccountingReview.tsx`, `orders.ts`, `APAccountMappingStep.tsx`, `useAPExtraction.ts`, `useSettlementMapping.ts`, `EmailAutomationPage.tsx`, `MainMappingTable.tsx`, `OrderWorkspace.tsx`, `PmsPage.tsx`, `MaintenanceGate.tsx`, `AdminLogin.tsx`, `apiFetch`, `OrderActions.tsx`, `useOcrExtraction`, `OrderTable.tsx`, `DocumentPreview.tsx`, `PendingOrderBanner.test.tsx`, `CreditsPage.tsx`, `FeatureFlows.tsx`, `PendingOrderBanner.tsx`, `NotificationBell.tsx`, `OrderDrawer.tsx`, `QuotaModulesPage.tsx`, `PeriodPicker.tsx`, `QueueRow.tsx`, `useAPSubmission.ts`, `ReviewQueue.tsx`, `ArCustomerProfiles.tsx`, `useReviewDocument.ts`, `SlipViewer.tsx`, `CheckoutFlow.tsx`, `MetricChartImpl.tsx`, `api.ts`, `LanguageContext.tsx`, `DetailTable.tsx`, `ExtractionsPage.tsx`, `OrderHistory.tsx`, `PmsReviewDocument.tsx`, `Pricing.tsx`, `TenantsPage.tsx`, `AppHeader.tsx`, `buildQs`, `useMapping.ts`, `adminFetch`?**
+- **Why does `useT()` connect `useT` to `APLineItem`, `ap-invoice/constants.ts`, `DataTable.tsx`, `payment-mapping/types.ts`, `usePmsReview.ts`, `parseNum`, `TutorialModal.tsx`, `screens.tsx`, `InputTaxReconciliation.tsx`, `AccountingReview.tsx`, `orders.ts`, `APAccountMappingStep.tsx`, `useAPExtraction.ts`, `useSettlementMapping.ts`, `EmailAutomationPage.tsx`, `MainMappingTable.tsx`, `OrderWorkspace.tsx`, `PmsPage.tsx`, `MaintenanceGate.tsx`, `AdminLogin.tsx`, `apiFetch`, `OrderActions.tsx`, `useOcrExtraction`, `OrderTable.tsx`, `DocumentPreview.tsx`, `PendingOrderBanner.test.tsx`, `CreditsPage.tsx`, `FeatureFlows.tsx`, `PendingOrderBanner.tsx`, `NotificationBell.tsx`, `OrderDrawer.tsx`, `QuotaModulesPage.tsx`, `routes.tsx`, `QueueRow.tsx`, `useAPSubmission.ts`, `ReviewQueue.tsx`, `ArCustomerProfiles.tsx`, `useReviewDocument.ts`, `SlipViewer.tsx`, `CheckoutFlow.tsx`, `MetricChartImpl.tsx`, `api.ts`, `LanguageContext.tsx`, `DetailTable.tsx`, `ExtractionsPage.tsx`, `OrderHistory.tsx`, `PmsReviewDocument.tsx`, `Pricing.tsx`, `TenantsPage.tsx`, `AppHeader.tsx`, `PeriodPicker.tsx`, `useMapping.ts`, `adminFetch`?**
   _High betweenness centrality (0.232) - this node is a cross-community bridge._
 - **Why does `apiFetch` connect `apiFetch` to `usePmsReview.ts`, `parseNum`, `InputTaxReconciliation.tsx`, `showToast`, `useSettlementMapping.ts`, `useAPExtraction.ts`, `appKey`, `PmsPage.tsx`, `deptAccounts.ts`, `useOcrExtraction`, `PendingOrderBanner.tsx`, `NotificationBell.tsx`, `QueueRow.tsx`, `useAPSubmission.ts`, `ReviewQueue.tsx`, `useReviewDocument.ts`, `endpoints.ts`, `api.ts`, `useUserConsent.ts`, `useAPExtraction.test.ts`, `OrderHistory.tsx`, `ocr.ts`, `client.ts`, `useMapping.ts`?**
   _High betweenness centrality (0.019) - this node is a cross-community bridge._
@@ -606,4 +611,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `dict/index.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.11052631578947368 - nodes in this community are weakly interconnected._
 - **Should `DataTable.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.09103840682788052 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.14210526315789473 - nodes in this community are weakly interconnected._
