@@ -1353,17 +1353,20 @@
   }
 
   /* The line names itself, above the fields that describe it — a label here would only
-     repeat the column header it replaced. */
-  /* No display here: the row is a flex column at this width, so the cell only needs its
-     place in the order. The flex that lays the line out lives on `.jv-desc-in`. */
+     repeat the column header it replaced. Block, not the label|value grid every other cell
+     gets: with no label its one child fell into the 5rem label track. The flex that lays
+     the line out lives on `.jv-desc-in`. */
   .jv-table td.jv-desc {
+    display: block;
     order: -1;
     padding-bottom: 0.2rem;
     font-weight: 500;
     color: var(--text);
   }
 
-  .jv-desc::before {
+  /* `td.jv-desc`, not `.jv-desc`: the label rule above is `.jv-table td::before`, which
+     outranked the bare class, so the empty label kept its 5rem column open as a gutter. */
+  .jv-table td.jv-desc::before {
     content: none;
   }
 
