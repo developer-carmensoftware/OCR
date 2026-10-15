@@ -210,7 +210,8 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
 #/CreditCardOCR (the AI JV Automation queue) lists PMS days beside email + manual rows
   services/credit_card/activity.py `_pms_*`: one row per BU × day, source "pms"
   #/CreditCardOCR/review?pms=<id> → pages/PmsReviewDocument.tsx (the email modal's shell):
-      which Carmen setting posts it, Accounts (new rows only, AI tag/Undo), PMS rows — no balance
+      which Carmen setting posts it, Accounts (new rows only, AI tag + reason/Undo; Approve
+      waits until a person ticks or replaces every AI account), Carmen's mapped rows folded — no balance
   Approve reads Carmen's table fresh, PUTs it back WHOLE (the PUT replaces it) + the new
       rows, then has Carmen's engine post the day
 
