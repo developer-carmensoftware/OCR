@@ -90,6 +90,11 @@ export function usePmsReview(id: string, onClose: () => void, onDone: () => void
   )
 
   const unpicked = (day?.new_codes ?? []).filter(c => !(picks[c.key]?.dept && picks[c.key]?.acc))
+  // The AI's own unsure answers, still standing: asked to be looked at, never a block. A
+  // reviewer who changes one has looked, so it drops out of the count.
+  const toCheck = (day?.new_codes ?? []).filter(
+    c => c.confidence === 'low' && isAiPick(c.key)
+  ).length
   // The one reason Approve cannot be pressed. A balance is not one: Carmen's engine decides
   // the sides and refuses a day it cannot post, in its own words (`postError`).
   const blockReason = unpicked.length ? t('pms.blockedPick') : null
@@ -153,6 +158,8 @@ export function usePmsReview(id: string, onClose: () => void, onDone: () => void
     setPick,
     undo,
     isAiPick,
+    unpickedCount: unpicked.length,
+    toCheck,
     blockReason,
     busy,
     postError,

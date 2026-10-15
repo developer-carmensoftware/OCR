@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
   AlertCircle,
@@ -94,11 +94,29 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
     onEscape: r.busy || r.rejecting || r.discarding ? null : r.requestClose,
   })
 
+  // Ctrl/⌘+Enter approves, as a mail client sends. On the document, like useDialogFocus's
+  // keys: a picker that just closed leaves focus on <body>. A key a picker already used
+  // (Enter on an option) is not ours, and nothing approves behind a confirmation.
+  const canApprove = !!day && !r.busy && !r.blockReason && !r.rejecting && !r.discarding
+  const approveByKey = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    approveByKey.current = canApprove ? r.approve : null
+  })
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.defaultPrevented) return
+      if (!approveByKey.current) return
+      e.preventDefault()
+      approveByKey.current()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
   const accName = (code?: string | null) => nameOf(masters.accounts.find(a => a.code === code))
   // The rows table names an account the way Carmen's mapping table does: one short name.
   const accShort = (code?: string | null) => masters.accounts.find(a => a.code === code)?.name ?? ''
   const deptOptions = masters.departments.map(d => ({ code: d.code, name: d.name, name2: d.name2 }))
-  const anyUnpickedByAi = day?.new_codes.some(c => !c.acc)
   const counter = day
     ? [`${day.counter.dept}/${day.counter.acc}`, day.counter.name].filter(Boolean).join(' ')
     : ''
@@ -292,15 +310,20 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
                 <Head
                   id="pms-acc"
                   title={t('pms.accounts')}
-                  state={day.new_codes.length ? 'warn' : 'ok'}
+                  state={r.unpickedCount || r.toCheck ? 'warn' : 'ok'}
                 >
+                  {/* Live from the picks: what is still open, then what Carmen already has. */}
                   {day.new_codes.length ? (
                     <>
-                      <strong>
-                        {t(anyUnpickedByAi ? 'pms.newUnmapped' : 'pms.newMappedByAi', {
-                          n: day.new_codes.length,
-                        })}
-                      </strong>
+                      <strong>{t('pms.newCount', { n: day.new_codes.length })}</strong>
+                      <span className="pms-sep">·</span>
+                      <span>
+                        {r.unpickedCount
+                          ? t('pms.needAccount', { n: r.unpickedCount })
+                          : r.toCheck
+                            ? t('pms.toCheck', { n: r.toCheck })
+                            : t('pms.allHaveAccounts')}
+                      </span>
                       <span className="pms-sep">·</span>
                       {t('pms.mappedInCarmen', { n: day.mapped_count })}
                     </>
@@ -309,7 +332,7 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
                   )}
                 </Head>
                 {day.new_codes.length > 0 && (
-                  <table className="jv-table" aria-label={t('pms.colNewRow')}>
+                  <table className="jv-table" aria-label={t('pms.newRows')}>
                     <thead>
                       <tr>
                         <th scope="col">{t('pms.colNewRow')}</th>
@@ -341,24 +364,32 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
                                 <span className="pms-codecell">
                                   <span className="text-mono pms-code">{code}</span>
                                   <span className="pms-desc">{rest.join(' · ')}</span>
-                                  <span className="pms-to" title={accName(p.acc)}>
+                                  <span className="pms-to">
                                     {p.acc && accName(p.acc) ? `→ ${accName(p.acc)}` : ' '}
                                   </span>
+                                  {/* The AI's reason, as text: a hover title reached no
+                                      keyboard, touch or screen reader. */}
+                                  {ai && c.why && (
+                                    <span className="pms-why">
+                                      {t('pms.aiWhy', { why: c.why })}
+                                    </span>
+                                  )}
                                 </span>
                                 {ai && (
-                                  <span
-                                    className="jv-tag jv-tag--ai"
-                                    title={[t('pms.aiHint'), c.why].filter(Boolean).join(' ')}
-                                  >
+                                  <span className="jv-tag jv-tag--ai pms-tag-ai">
                                     <Sparkles size={11} strokeWidth={2.25} aria-hidden="true" />
                                     {t('pms.aiTag')}
                                   </span>
+                                )}
+                                {ai && c.confidence === 'low' && (
+                                  <span className="jv-tag pms-tag-check">{t('pms.checkTag')}</span>
                                 )}
                                 {changed && c.acc && (
                                   <button
                                     type="button"
                                     className="jv-tag jv-tag--undo"
                                     onClick={() => r.undo(c.key)}
+                                    aria-label={t('pms.undoFor', { code: c.label })}
                                   >
                                     <Undo2 size={11} strokeWidth={2.25} aria-hidden="true" />
                                     {t('pms.undo')}
@@ -406,8 +437,9 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
                   <span className="pms-n">{day.rows.length}</span>
                 </Head>
                 {/* A frame of its own, so the head stays put while the rows scroll under it
-                    (sticky thead, review-queue.css). */}
-                <div className="pms-scroll" tabIndex={0} aria-labelledby="pms-rows">
+                    (sticky thead, review-queue.css). Focusable to scroll by keyboard, so it
+                    needs a role to carry its name: a group, since the section is the region. */}
+                <div className="pms-scroll" role="group" tabIndex={0} aria-labelledby="pms-rows">
                   {rowsTable}
                 </div>
               </section>
@@ -430,8 +462,12 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
                   <p className="rd-blocked rd-blocked--note" role="status">
                     <Info size={14} aria-hidden="true" />
                     {day.new_codes.length > 0
-                      ? t('pms.saves', { interface: day.interface })
-                      : t('pms.postsAsIs', { interface: day.interface })}
+                      ? t('pms.saves', {
+                          n: day.new_codes.length,
+                          interface: day.interface,
+                          date: dmy(day.doc_date),
+                        })
+                      : t('pms.postsAsIs', { interface: day.interface, date: dmy(day.doc_date) })}
                   </p>
                 )
               )}
@@ -450,6 +486,8 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
                   onClick={r.approve}
                   disabled={r.busy || !!r.blockReason}
                   aria-describedby={r.blockReason && !r.postError ? 'pms-blocked' : undefined}
+                  aria-keyshortcuts="Control+Enter"
+                  title="Ctrl+Enter"
                 >
                   {r.busy ? (
                     <Loader2 size={14} className="animate-spin" />

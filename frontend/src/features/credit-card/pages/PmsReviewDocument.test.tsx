@@ -104,10 +104,15 @@ describe('a parked PMS day', () => {
     // No balance of our own: the sides are Carmen's.
     expect(screen.queryByText(/balance/i)).not.toBeInTheDocument()
     const accounts = screen.getByRole('region', { name: 'Accounts' })
-    expect(within(accounts).getByText('1 new, mapped by AI')).toBeInTheDocument()
+    // Live from the picks: the AI's medium-confidence pick leaves nothing open.
+    expect(within(accounts).getByText('1 new')).toBeInTheDocument()
+    expect(within(accounts).getByText('all have accounts')).toBeInTheDocument()
     expect(within(accounts).getByText('2 mapped in Carmen')).toBeInTheDocument()
     expect(within(accounts).getByText('729')).toBeInTheDocument()
     expect(within(accounts).getByText('AI')).toBeInTheDocument()
+    // The AI's reason is text on the row, not a hover title; a medium pick is not flagged.
+    expect(within(accounts).getByText('AI: rebate')).toBeInTheDocument()
+    expect(within(accounts).queryByText('Check')).not.toBeInTheDocument()
     // Carmen's name and name2 are the same words; the row says them once.
     expect(within(accounts).getByText('→ OT : Rebate Other Revenue')).toBeInTheDocument()
   })
@@ -127,7 +132,7 @@ describe('a parked PMS day', () => {
     await screen.findAllByText('729')
     expect(
       screen.getByText(
-        "Saves the new accounts to Carmen's Comanche mapping, then Carmen posts the day."
+        "Adds the new rows (1) to Carmen's Comanche mapping, which every later day uses. Then Carmen posts 05/09/2024."
       )
     ).toBeInTheDocument()
     fireEvent.click(approveButton())
@@ -142,13 +147,60 @@ describe('a parked PMS day', () => {
     await screen.findAllByText('729')
     expect(approveButton()).toBeDisabled()
     expect(screen.getByText('Pick an account for every new row.')).toBeInTheDocument()
+    expect(screen.getByText('1 need an account')).toBeInTheDocument()
+    expect(screen.getByLabelText('Account for 729 · Rebate - Misc. (VAT)')).toHaveAttribute(
+      'aria-invalid',
+      'true'
+    )
+  })
+
+  it('flags an AI pick the model was unsure of, until the reviewer changes it', async () => {
+    open({ ...DAY, new_codes: [{ ...DAY.new_codes[0], confidence: 'low' }] })
+    const accounts = await screen.findByRole('region', { name: 'Accounts' })
+    expect(within(accounts).getByText('Check')).toBeInTheDocument()
+    expect(within(accounts).getByText('1 to check')).toBeInTheDocument()
+    // A flag, not a block.
+    expect(approveButton()).toBeEnabled()
+    fireEvent.click(screen.getByLabelText('Account for 729 · Rebate - Misc. (VAT)'))
+    fireEvent.mouseDown(screen.getByRole('button', { name: /4010001/ }))
+    expect(within(accounts).queryByText('Check')).not.toBeInTheDocument()
+    expect(within(accounts).getByText('all have accounts')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Undo 729 · Rebate - Misc. (VAT)' })
+    ).toBeInTheDocument()
+  })
+
+  it('Ctrl+Enter approves', async () => {
+    vi.mocked(api.approvePmsDay).mockResolvedValue({ jv_no: null, already_posted: false })
+    const { onDone } = open()
+    await screen.findAllByText('729')
+    expect(approveButton()).toHaveAttribute('aria-keyshortcuts', 'Control+Enter')
+    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true })
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+  })
+
+  it('Ctrl+Enter does nothing while a row has no account', async () => {
+    open({ ...DAY, new_codes: [{ ...DAY.new_codes[0], dept: null, acc: null }] })
+    await screen.findAllByText('729')
+    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true })
+    expect(api.approvePmsDay).not.toHaveBeenCalled()
+  })
+
+  it('Ctrl+Enter does nothing behind the reject question', async () => {
+    open()
+    await screen.findAllByText('729')
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true })
+    expect(api.approvePmsDay).not.toHaveBeenCalled()
   })
 
   it('a fully mapped day only needs Approve', async () => {
     open({ ...DAY, new_codes: [], mapped_count: 3 })
     await screen.findByText('All 3 mapped in Carmen')
     expect(approveButton()).toBeEnabled()
-    expect(screen.getByText('Carmen posts the day with its Comanche setting.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Carmen posts 05/09/2024 with its Comanche setting.')
+    ).toBeInTheDocument()
   })
 
   it("keeps Carmen's refusal on screen in Carmen's words", async () => {

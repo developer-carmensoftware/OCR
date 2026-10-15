@@ -1807,14 +1807,26 @@
   color: var(--text);
 }
 
-/* The account a new row will post to, by name — the pickers only show its number. */
-.pms-to {
+/* The account a new row will post to, by name — the pickers only show its number. It wraps:
+   a long Thai account name cut to "…" was only readable on hover. */
+.pms-to,
+.pms-why {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 0.75rem;
+  line-height: 1.4;
+  text-wrap: pretty;
   color: var(--text-3);
+}
+
+/* The AI tag explains nothing on hover any more: its reason is the `.pms-why` line. */
+.pms-tag-ai {
+  cursor: default;
+}
+
+/* An AI pick the model was unsure of. Amber like New: look at this, it does not block. */
+.pms-tag-check {
+  background: var(--amber-light);
+  color: var(--amber-text);
 }
 
 .pms-nowrap {
