@@ -1707,8 +1707,8 @@
 /* ── A parked PMS day (CA-119) ─────────────────────────────────────────────────
    The email review's shell with a body that only reads: a note naming the Carmen setting
    that posts the day (decision-log #43 — the sides are Carmen's, so there is no balance
-   here), then two sections opening on the same one-line header — a state icon, the title,
-   one readout — and a detail frame whose head stays put while its rows scroll. */
+   here), then Accounts — the new rows, the only thing decided here — and, folded under it,
+   the rows Carmen's mapping already places. */
 
 .pms-note {
   display: flex;
@@ -1826,10 +1826,42 @@
   cursor: default;
 }
 
-/* An AI pick the model was unsure of. Amber like New: look at this, it does not block. */
-.pms-tag-check {
+/* An AI pick the model itself was unsure of: where to look first. */
+.pms-tag-unsure {
   background: var(--amber-light);
   color: var(--amber-text);
+}
+
+/* "Checked": a person's tick on the AI's account, required before Approve. A chip with a
+   real checkbox in it, so the whole word is the hit area; emerald once ticked. */
+.pms-check {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem 0.15rem 0.35rem;
+  border: 1px solid var(--border-raised, var(--border));
+  border-radius: var(--radius-pill);
+  background: var(--card-bg);
+  color: var(--text-2);
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pms-check input {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin: 0;
+  accent-color: var(--emerald-text);
+  cursor: pointer;
+}
+
+.pms-check:has(input:checked) {
+  border-color: var(--emerald-mid);
+  background: var(--emerald-light);
+  color: var(--emerald-text);
 }
 
 .pms-nowrap {
@@ -1844,34 +1876,32 @@
   color: var(--text-3);
 }
 
-/* A row Carmen's mapping table has no account for yet: the Accounts section above picks it. */
-.pms-tag-new {
-  margin-left: 0.4rem;
-  background: var(--amber-light);
-  color: var(--amber-text);
+/* The rows Carmen already maps, folded under Accounts. It grows in the body's own scroll:
+   no frame of its own, so the dialog never has two scrollbars. */
+.pms-fold > summary {
+  display: grid;
+  grid-template-columns: 1rem auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0 0.6rem;
+  list-style: none;
+  cursor: pointer;
 }
 
-/* The frame scrolls, not the table: `.jv-table` clips with overflow hidden, which would
-   make the table — not this frame — the scroller its sticky cells pin to. */
-.pms-scroll {
-  max-height: min(24rem, 50vh);
-  overflow: auto;
-  overscroll-behavior: contain;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--card-bg);
+.pms-fold > summary::-webkit-details-marker {
+  display: none;
 }
 
-.pms-scroll .jv-table {
-  overflow: visible;
-  border: 0;
-  border-radius: 0;
+.pms-fold-icon {
+  color: var(--text-3);
+  transition: transform 160ms var(--ease, ease-out);
 }
 
-.pms-scroll thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+.pms-fold[open] .pms-fold-icon {
+  transform: rotate(90deg);
+}
+
+.pms-fold[open] > summary {
+  margin-bottom: 0.6rem;
 }
 
 .rd-blocked--note {
@@ -1899,20 +1929,9 @@
     grid-column: 2;
   }
 
-  /* A phone stacks each table into cards, so the body scrolls rather than a frame in it. */
-  .pms-scroll {
-    max-height: none;
-    overflow: visible;
-    border: 0;
-    background: none;
-  }
-
-  .pms-scroll .jv-table {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-  }
-
-  .pms-scroll thead th {
-    position: static;
+  /* A thumb's target: the whole chip is the label. */
+  .pms-check {
+    min-height: 2.75rem;
+    padding-inline: 0.75rem;
   }
 }

@@ -4,6 +4,7 @@ import {
   AlertCircle,
   AlertTriangle,
   CheckCircle2,
+  ChevronRight,
   Info,
   Loader2,
   Sparkles,
@@ -121,8 +122,11 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
     ? [`${day.counter.dept}/${day.counter.acc}`, day.counter.name].filter(Boolean).join(' ')
     : ''
 
-  const rowsTable = day && (
-    <table className="jv-table">
+  // The rows Carmen's table already places, as Carmen maps them. The new ones are in
+  // Accounts above and only there: one place to read a row, one to decide it.
+  const mappedRows = day ? day.rows.filter(row => row.acc) : []
+  const mappedTable = day && (
+    <table className="jv-table" aria-labelledby="pms-rows">
       <thead>
         <tr>
           {day.key_columns.map((col, c) => (
@@ -139,48 +143,30 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
         </tr>
       </thead>
       <tbody>
-        {day.rows.map((row, i) => {
-          const pick = r.picks[row.key]
-          const dept = row.dept ?? pick?.dept
-          const acc = row.acc ?? pick?.acc
-          return (
-            <tr className="jv-row" key={i}>
-              {day.key_columns.map((col, c) => (
-                <td
-                  key={col}
-                  className={c === 0 ? 'text-mono pms-nowrap' : 'jv-desc'}
-                  data-label={col}
-                >
-                  {c === 0 ? (
-                    row.values[col]
-                  ) : (
-                    <span className="jv-desc-in">{row.values[col]}</span>
-                  )}
-                </td>
-              ))}
-              <td className="jv-num text-mono" data-label={t('pms.colAmount')}>
-                {fmtAmount(row.amount)}
+        {mappedRows.map((row, i) => (
+          <tr className="jv-row" key={i}>
+            {day.key_columns.map((col, c) => (
+              <td
+                key={col}
+                className={c === 0 ? 'text-mono pms-nowrap' : 'jv-desc'}
+                data-label={col}
+              >
+                {c === 0 ? row.values[col] : <span className="jv-desc-in">{row.values[col]}</span>}
               </td>
-              {/* Not `jv-desc`: on a phone that class makes a cell the card's unlabelled
-                  title, and the row's title is its description, not its account. */}
-              <td data-label={t('pms.colAccount')}>
-                <span className="jv-desc-in">
-                  {acc ? (
-                    <>
-                      <span className="text-mono">
-                        {dept}/{acc}
-                      </span>{' '}
-                      {row.name || accShort(acc)}
-                    </>
-                  ) : (
-                    '—'
-                  )}
-                  {row.acc ? null : <span className="jv-tag pms-tag-new">{t('pms.newTag')}</span>}
-                </span>
-              </td>
-            </tr>
-          )
-        })}
+            ))}
+            <td className="jv-num text-mono" data-label={t('pms.colAmount')}>
+              {fmtAmount(row.amount)}
+            </td>
+            {/* Not `jv-desc`: on a phone that class makes a cell the card's unlabelled
+                title, and the row's title is its description, not its account. */}
+            <td data-label={t('pms.colAccount')}>
+              <span className="text-mono">
+                {row.dept}/{row.acc}
+              </span>{' '}
+              {row.name || accShort(row.acc)}
+            </td>
+          </tr>
+        ))}
       </tbody>
     </table>
   )
@@ -307,11 +293,7 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
               </p>
 
               <section className="pms-sec" aria-labelledby="pms-acc">
-                <Head
-                  id="pms-acc"
-                  title={t('pms.accounts')}
-                  state={r.unpickedCount || r.toCheck ? 'warn' : 'ok'}
-                >
+                <Head id="pms-acc" title={t('pms.accounts')} state={r.blockReason ? 'warn' : 'ok'}>
                   {/* Live from the picks: what is still open, then what Carmen already has. */}
                   {day.new_codes.length ? (
                     <>
@@ -322,7 +304,7 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
                           ? t('pms.needAccount', { n: r.unpickedCount })
                           : r.toCheck
                             ? t('pms.toCheck', { n: r.toCheck })
-                            : t('pms.allHaveAccounts')}
+                            : t('pms.allChecked')}
                       </span>
                       <span className="pms-sep">·</span>
                       {t('pms.mappedInCarmen', { n: day.mapped_count })}
@@ -381,8 +363,23 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
                                     {t('pms.aiTag')}
                                   </span>
                                 )}
-                                {ai && c.confidence === 'low' && (
-                                  <span className="jv-tag pms-tag-check">{t('pms.checkTag')}</span>
+                                {ai && c.confidence === 'low' && !r.checked[c.key] && (
+                                  <span className="jv-tag pms-tag-unsure">
+                                    {t('pms.unsureTag')}
+                                  </span>
+                                )}
+                                {/* The AI's account goes into Carmen's mapping for every later
+                                    day, so a person ticks it first. Picking another one counts. */}
+                                {ai && (
+                                  <label className="pms-check">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!r.checked[c.key]}
+                                      onChange={() => r.toggleChecked(c.key)}
+                                      aria-label={t('pms.checkedFor', { code: c.label })}
+                                    />
+                                    {t('pms.checked')}
+                                  </label>
                                 )}
                                 {changed && c.acc && (
                                   <button
@@ -432,17 +429,20 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
                 )}
               </section>
 
-              <section className="pms-sec" aria-labelledby="pms-rows">
-                <Head id="pms-rows" title={t('pms.pmsRows')}>
-                  <span className="pms-n">{day.rows.length}</span>
-                </Head>
-                {/* A frame of its own, so the head stays put while the rows scroll under it
-                    (sticky thead, review-queue.css). Focusable to scroll by keyboard, so it
-                    needs a role to carry its name: a group, since the section is the region. */}
-                <div className="pms-scroll" role="group" tabIndex={0} aria-labelledby="pms-rows">
-                  {rowsTable}
-                </div>
-              </section>
+              {/* Folded: the decision is above. Open from the start when there is nothing
+                  to decide, so a clean day still shows what Carmen will post. */}
+              {mappedRows.length > 0 && (
+                <details className="pms-fold" open={day.new_codes.length === 0}>
+                  <summary className="pms-fold-head">
+                    <ChevronRight size={16} className="pms-fold-icon" aria-hidden="true" />
+                    <h3 className="pms-title" id="pms-rows">
+                      {t('pms.mappedRows')}
+                    </h3>
+                    <span className="pms-n">{mappedRows.length}</span>
+                  </summary>
+                  {mappedTable}
+                </details>
+              )}
             </div>
 
             <footer className="rd-modal-foot">

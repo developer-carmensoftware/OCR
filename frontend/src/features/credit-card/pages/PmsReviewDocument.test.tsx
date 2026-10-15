@@ -104,32 +104,44 @@ describe('a parked PMS day', () => {
     // No balance of our own: the sides are Carmen's.
     expect(screen.queryByText(/balance/i)).not.toBeInTheDocument()
     const accounts = screen.getByRole('region', { name: 'Accounts' })
-    // Live from the picks: the AI's medium-confidence pick leaves nothing open.
+    // The AI's account is still to be checked by a person.
     expect(within(accounts).getByText('1 new')).toBeInTheDocument()
-    expect(within(accounts).getByText('all have accounts')).toBeInTheDocument()
+    expect(within(accounts).getByText('1 to check')).toBeInTheDocument()
     expect(within(accounts).getByText('2 mapped in Carmen')).toBeInTheDocument()
     expect(within(accounts).getByText('729')).toBeInTheDocument()
     expect(within(accounts).getByText('AI')).toBeInTheDocument()
-    // The AI's reason is text on the row, not a hover title; a medium pick is not flagged.
+    // The AI's reason is text on the row, not a hover title; a medium pick is not "Unsure".
     expect(within(accounts).getByText('AI: rebate')).toBeInTheDocument()
-    expect(within(accounts).queryByText('Check')).not.toBeInTheDocument()
+    expect(within(accounts).queryByText('Unsure')).not.toBeInTheDocument()
     // Carmen's name and name2 are the same words; the row says them once.
     expect(within(accounts).getByText('→ OT : Rebate Other Revenue')).toBeInTheDocument()
   })
 
-  it('lists every PMS row as sent, with what Carmen maps it to', async () => {
+  it('folds the rows Carmen already maps, and lists only those there', async () => {
     open()
-    const rows = await screen.findByRole('region', { name: 'PMS rows' })
-    expect(within(rows).getByText('Room Revenue')).toBeInTheDocument()
+    await screen.findAllByText('729')
+    const fold = screen.getByText('Mapped in Carmen').closest('details') as HTMLElement
+    // Something to decide above, so the reference starts closed.
+    expect(fold).not.toHaveAttribute('open')
+    expect(within(fold).getByText('Room Revenue')).toBeInTheDocument()
     // The PMS's own sign, with a true minus.
-    expect(within(rows).getByText('−500.00')).toBeInTheDocument()
-    expect(within(rows).getAllByText('New')).toHaveLength(1)
+    expect(within(fold).getByText('−500.00')).toBeInTheDocument()
+    // The new row is decided in Accounts, and shown only there.
+    expect(within(fold).queryByText('Rebate - Misc. (VAT)')).not.toBeInTheDocument()
+    expect(within(fold).getByText('2')).toBeInTheDocument()
   })
 
-  it("posts with the account the reviewer kept, and says it goes into Carmen's mapping", async () => {
+  it('cannot approve an AI account nobody has checked', async () => {
     vi.mocked(api.approvePmsDay).mockResolvedValue({ jv_no: null, already_posted: false })
     const { onDone } = open()
     await screen.findAllByText('729')
+    expect(approveButton()).toBeDisabled()
+    expect(screen.getByText('Check each account the AI picked (1 left).')).toBeInTheDocument()
+    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true })
+    expect(api.approvePmsDay).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Checked 729 · Rebate - Misc. (VAT)' }))
+    expect(screen.getByText('all checked')).toBeInTheDocument()
     expect(
       screen.getByText(
         "Adds the new rows (1) to Carmen's Comanche mapping, which every later day uses. Then Carmen posts 05/09/2024."
@@ -152,52 +164,51 @@ describe('a parked PMS day', () => {
       'aria-invalid',
       'true'
     )
+    // No AI account, so nothing to tick: picking one is the check.
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
 
-  it('flags an AI pick the model was unsure of, until the reviewer changes it', async () => {
+  it('picking another account counts as checked; Undo puts the AI back unchecked', async () => {
     open({ ...DAY, new_codes: [{ ...DAY.new_codes[0], confidence: 'low' }] })
     const accounts = await screen.findByRole('region', { name: 'Accounts' })
-    expect(within(accounts).getByText('Check')).toBeInTheDocument()
-    expect(within(accounts).getByText('1 to check')).toBeInTheDocument()
-    // A flag, not a block.
-    expect(approveButton()).toBeEnabled()
+    expect(within(accounts).getByText('Unsure')).toBeInTheDocument()
+    expect(approveButton()).toBeDisabled()
     fireEvent.click(screen.getByLabelText('Account for 729 · Rebate - Misc. (VAT)'))
     fireEvent.mouseDown(screen.getByRole('button', { name: /4010001/ }))
-    expect(within(accounts).queryByText('Check')).not.toBeInTheDocument()
-    expect(within(accounts).getByText('all have accounts')).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Undo 729 · Rebate - Misc. (VAT)' })
-    ).toBeInTheDocument()
+    expect(within(accounts).queryByText('Unsure')).not.toBeInTheDocument()
+    expect(within(accounts).getByText('all checked')).toBeInTheDocument()
+    expect(approveButton()).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo 729 · Rebate - Misc. (VAT)' }))
+    expect(within(accounts).getByText('Unsure')).toBeInTheDocument()
+    expect(within(accounts).getByText('1 to check')).toBeInTheDocument()
+    expect(approveButton()).toBeDisabled()
   })
 
-  it('Ctrl+Enter approves', async () => {
+  it('Ctrl+Enter approves once everything is checked', async () => {
     vi.mocked(api.approvePmsDay).mockResolvedValue({ jv_no: null, already_posted: false })
     const { onDone } = open()
     await screen.findAllByText('729')
     expect(approveButton()).toHaveAttribute('aria-keyshortcuts', 'Control+Enter')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Checked 729 · Rebate - Misc. (VAT)' }))
     fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true })
     await waitFor(() => expect(onDone).toHaveBeenCalled())
-  })
-
-  it('Ctrl+Enter does nothing while a row has no account', async () => {
-    open({ ...DAY, new_codes: [{ ...DAY.new_codes[0], dept: null, acc: null }] })
-    await screen.findAllByText('729')
-    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true })
-    expect(api.approvePmsDay).not.toHaveBeenCalled()
   })
 
   it('Ctrl+Enter does nothing behind the reject question', async () => {
     open()
     await screen.findAllByText('729')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Checked 729 · Rebate - Misc. (VAT)' }))
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
     fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true })
     expect(api.approvePmsDay).not.toHaveBeenCalled()
   })
 
-  it('a fully mapped day only needs Approve', async () => {
+  it('a fully mapped day only needs Approve, and shows its rows open', async () => {
     open({ ...DAY, new_codes: [], mapped_count: 3 })
     await screen.findByText('All 3 mapped in Carmen')
     expect(approveButton()).toBeEnabled()
+    expect(screen.getByText('Mapped in Carmen').closest('details')).toHaveAttribute('open')
     expect(
       screen.getByText('Carmen posts 05/09/2024 with its Comanche setting.')
     ).toBeInTheDocument()
@@ -211,6 +222,7 @@ describe('a parked PMS day', () => {
     )
     open()
     await screen.findAllByText('729')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Checked 729 · Rebate - Misc. (VAT)' }))
     fireEvent.click(approveButton())
     expect(
       await screen.findByText("Carmen didn't post the day: Mapping is incomplete.")
