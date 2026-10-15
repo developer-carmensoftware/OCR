@@ -39,6 +39,7 @@ from app.models.orm import (
     TenantSubscription,
 )
 from app.models.schemas import CreditPackResponse
+from app.models.schemas.credits import AiStage
 from app.utils.list_query import ListQuery, apply_list_query
 from app.utils.pagination import paginate
 
@@ -52,6 +53,24 @@ ANNUAL_DISCOUNT = Decimal("0.10")
 # This is the free trial: 30 documents that never expire (was the LIFETIME/CALLS
 # quota rule until migration 20260813000100 folded it into the balance).
 SIGNUP_GRANT_CREDITS = 30
+# Trial documents used from which Carmen's popup turns into the "near limit" pitch.
+NEAR_LIMIT_USED = 25
+
+
+def ai_stage(balance: int | None, purchased: int, has_subscription: bool) -> AiStage:
+    """Which AI sales popup Carmen shows a BU (GET /api/v1/carmen/ai-status).
+
+    `balance` None = no tenant row: the BU never opened AI. Anyone who has paid, by plan
+    or top-up, is `paid` and sees no popup. Trial usage is read off the balance, not
+    `credits_consumed`, because a refund goes back into the balance.
+    """
+    if has_subscription or purchased > 0:
+        return "paid"
+    if balance is None or balance >= SIGNUP_GRANT_CREDITS:
+        return "never_used"
+    if balance <= 0:
+        return "exhausted"
+    return "near_limit" if SIGNUP_GRANT_CREDITS - balance >= NEAR_LIMIT_USED else "trial"
 
 
 def _ctx() -> str:
