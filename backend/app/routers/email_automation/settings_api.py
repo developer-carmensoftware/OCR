@@ -44,7 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.admin_session import AdminPrincipal
 from app.auth.session import extract_user_id_from_token
 from app.database import get_db
-from app.exceptions import FieldValidationError
+from app.exceptions import FieldValidationError, ValidationError
 from app.models.identity import Tenant
 from app.models.schemas.email_automation import URI_DOC, SettingsIn, TokenIn
 from app.routers.admin.deps import decode_admin_principal, require_maintenance_auth
@@ -53,7 +53,7 @@ from app.routers.admin.deps import decode_admin_principal, require_maintenance_a
 # HTTPException and the login path depends on those exact codes, so extracting them
 # into a shared module is a real refactor, not a move — do it when something else
 # needs them too.
-from app.routers.auth import validate_token, validate_uri
+from app.routers.auth import ensure_tenant, validate_token, validate_uri
 from app.services.email_automation import credential, ingest
 from app.services.email_automation import ingest_settings as es
 from app.services.shared import notification as notification_service
@@ -235,7 +235,9 @@ def _assert_in_scope(admin: AdminPrincipal | None, tenant: Tenant) -> None:
         raise HTTPException(status_code=403, detail="Outside this admin's tenant scope")
 
 
-async def _resolve(db: AsyncSession, caller: Caller, uri: str, bu: str) -> Tenant:
+async def _resolve(
+    db: AsyncSession, caller: Caller, uri: str, bu: str, *, create: bool = False
+) -> Tenant:
     """The BU this request may act on — proven, not asserted.
 
     The token is checked against the Carmen instance the payload names, so claiming
@@ -250,26 +252,55 @@ async def _resolve(db: AsyncSession, caller: Caller, uri: str, bu: str) -> Tenan
     The operator path proves nothing against Carmen — there is no customer token to
     prove — so its boundary is `tenant_scope` instead, checked here because this is
     the one place a request's `uri`/`bu` becomes a concrete tenant.
+
+    `create=True` (Carmen's PMS settings API) registers a BU that never opened the app,
+    on the Carmen path only: an operator has no Carmen to prove a new BU against.
     """
-    tenant = await es.resolve_tenant(db, _tenant_host(uri), bu)
+    try:
+        tenant = await es.resolve_tenant(db, _tenant_host(uri), bu)
+    except ValidationError:
+        if not (create and caller.carmen_token):
+            raise
+        return await _create_tenant(db, caller.carmen_token, uri, bu)
     if caller.carmen_token is None:
         _assert_in_scope(caller.admin, tenant)
         return tenant
 
-    origin = await _safe_carmen_uri(tenant)
-    key = _rejection_key(caller.carmen_token, origin)
+    await _prove(caller.carmen_token, await _safe_carmen_uri(tenant))
+    return tenant
+
+
+async def _prove(token: str, origin: str) -> None:
+    """Carmen at `origin` accepts this token, or the request ends here."""
+    key = _rejection_key(token, origin)
     if _recently_rejected(key):
         raise HTTPException(
             status_code=401, detail="Carmen token rejected — please re-login to Carmen"
         )
     try:
-        await validate_token(caller.carmen_token, origin)
+        await validate_token(token, origin)
     except HTTPException as exc:
         if exc.status_code == 401:
             # Only a definite "no" is remembered. A 502 means we could not ask.
             _remember_rejection(key)
         raise
-    return tenant
+
+
+async def _create_tenant(db: AsyncSession, token: str, uri: str, bu: str) -> Tenant:
+    """Prove the token as `/auth/exchange` proves a login, then create the BU's tenant.
+
+    `validate_uri` runs on the caller's `uri` here, DNS lookup included, which `_tenant_host`
+    avoids. `/auth/exchange` takes the same exposure for every login, and `_caller`'s limiters
+    run first. The caller commits.
+    """
+    try:
+        origin = await asyncio.to_thread(validate_uri, uri)
+    except HTTPException as exc:
+        raise FieldValidationError(
+            [{"field": "carmen_uri", "code": "invalid_uri", "message": str(exc.detail)}]
+        ) from exc
+    await _prove(token, origin)
+    return await ensure_tenant(db, urlparse(origin).hostname or "", bu.strip().lower())
 
 
 async def _safe_carmen_uri(tenant: Tenant) -> str:
