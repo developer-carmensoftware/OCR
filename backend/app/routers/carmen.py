@@ -23,7 +23,7 @@ from app.database import get_db
 from app.exceptions import DuplicateDocumentError
 from app.models.orm import CreditCard, OCRTask, Tenant, TenantCredit
 from app.models.schemas import AiStatusOut
-from app.models.schemas.credits import AiModule
+from app.models.schemas.credits import AI_STAGE_NO, AiModule
 from app.services.ap_invoice.service import mark_invoice_submitted
 from app.services.shared import audit as audit_service
 from app.services.shared.audit import AuditAction
@@ -328,7 +328,7 @@ async def ai_status(
     ).first()
     response.headers["Cache-Control"] = "max-age=300"
     if row is None:
-        return AiStatusOut(stage="never_used")
+        return AiStatusOut(stage_no=1, stage="never_used")
     has_sub = await active_subscription(db, str(row.id)) is not None
     # SUM(charged_docs), as the admin summary counts a module's documents: a task the
     # charge failed open on cost nothing. PMS writes no ocr_tasks (it is free).
@@ -348,6 +348,5 @@ async def ai_status(
     modules: list[AiModule] = sorted(
         {"ap_invoice" if m == Module.AP_INVOICE else "jv" for m in module_ids}
     )
-    return AiStatusOut(
-        stage=ai_stage(row.balance, row.credits_purchased or 0, has_sub), modules=modules
-    )
+    stage = ai_stage(row.balance, row.credits_purchased or 0, has_sub)
+    return AiStatusOut(stage_no=AI_STAGE_NO[stage], stage=stage, modules=modules)

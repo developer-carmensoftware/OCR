@@ -27,13 +27,22 @@ class CreditPackResponse(BaseModel):
 
 
 AiStage = Literal["never_used", "trial", "near_limit", "exhausted", "paid"]
+# The popup journey's own numbering (01 Never Used … 05 Active Subscription), which Carmen keys on.
+AI_STAGE_NO: dict[AiStage, int] = {
+    "never_used": 1,
+    "trial": 2,
+    "near_limit": 3,
+    "exhausted": 4,
+    "paid": 5,
+}
 # `jv` is every Credit Card (AI JV Automation) module: credit_card_ocr, cc_ar_reconcile.
 AiModule = Literal["ap_invoice", "jv"]
 
 
 class AiStatusOut(BaseModel):
-    """Which AI sales popup Carmen shows a BU. `paid` shows none."""
+    """Which AI sales popup Carmen shows a BU. `paid` (5) shows none."""
 
+    stage_no: int  # AI_STAGE_NO[stage]
     stage: AiStage
     # What the BU has spent documents on, sorted; [] when never used.
     modules: list[AiModule] = []
