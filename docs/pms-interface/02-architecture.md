@@ -18,8 +18,7 @@ flowchart LR
     Proc -->|"new rows only"| LLM["Text LLM\n(OpenRouter, deny)"]
     Proc -->|"post"| Engine["Carmen engine\ninterfacePostGL/REVENUE"]
 
-    Menu["Carmen menu item"] -->|"SSO link ?token=&bu=&user=&uri="| PmsPage["#/pms\nkeys · auto-post · credential"]
-    PmsPage -->|"/api/v1/pms/keys, /settings, /credential"| API
+    Screen["Carmen PMS setting screen\n(per BU × PMS)"] -->|"/api/v1/carmen/pms/settings · keys\nAuthorization: Carmen token"| API
     Queue["#/CreditCardOCR\nAI JV Automation queue"] -->|"review?pms=id"| Review["PmsReviewDocument"]
     Review -->|"/api/v1/pms/days/{id}/approve · reject"| API
     API --> Rev["services/pms/review.py"]
@@ -38,32 +37,29 @@ All Carmen calls go to `{uri}/Carmen.API/api/interface/…` with the BU's stored
 (`carmen._base_url()`). That token opens nothing outside `/api/interface`, and that is why the
 setting read is still blocked. See [Not built](#not-built) and [07-status.md](07-status.md).
 
-## Diagram 2 — onboarding
+## Diagram 2 — onboarding (Carmen's PMS setting screen, decision-log #44)
 
 ```mermaid
 sequenceDiagram
     participant User as BU user
-    participant Carmen as Carmen (menu, PMS settings)
-    participant Page as OCR #/pms
-    participant API as OCR API
+    participant Carmen as Carmen PMS setting
+    participant API as OCR API (routers/pms_carmen.py)
 
-    User->>Carmen: open the AI → PMS menu item
-    Carmen->>Page: #/pms?token=&bu=&user=&uri=
-    Page->>API: POST /api/v1/auth/exchange (useCarmenSSO)
-    Note over API: creates or finds the (host, bu) tenant.<br/>A first visit also gets consent + 30 signup credits
-    Page->>API: PUT /api/v1/pms/credential {token}
-    API->>Carmen: verify_token (GET /department)
-    Note over API: stored Fernet-encrypted on email_ingest_settings.<br/>Days stopped for want of it go back to `received` and are kicked
-    User->>Page: Create key
-    Page->>API: POST /api/v1/pms/keys → 201 {key: "cpk_…"} (shown once)
-    User->>Carmen: paste the key into Carmen's PMS settings
-    User->>Page: auto-post on/off (default off)
-    Page->>API: PUT /api/v1/pms/settings {auto_post}
+    User->>Carmen: open the PMS setting (e.g. Comanche)
+    Carmen->>API: GET /api/v1/carmen/pms/settings?uri&bu&pms (Authorization: token)
+    Note over API: _resolve(create=True): prove the token against uri.<br/>A BU that never opened the app is created here, with 30 signup credits
+    API-->>Carmen: {pms, auto_post, key, has_credential}
+    User->>Carmen: Generate key
+    Carmen->>API: POST /api/v1/carmen/pms/keys {uri, bu, pms}
+    Note over API: credential.set_token (verify, Fernet, email_ingest_settings),<br/>wake_waiting + kick. issue(): revoke the old key, insert the new one
+    API-->>Carmen: 201 {…, api_key: "cpk_…"} (only here)
+    Carmen->>Carmen: store the key in this PMS setting
+    User->>Carmen: auto-post on/off (default off)
+    Carmen->>API: PUT /api/v1/carmen/pms/settings {uri, bu, pms, auto_post}
 ```
 
-`useCarmenSSO` keeps the link's token in `sessionStorage[CARMEN_POSTING_TOKEN_KEY]`.
-`PostingSettings` (`PmsPage.tsx`) PUTs it before it reads anything, and removes it only once
-the PUT succeeds. After a failure, a reload tries again: nothing else brings that token back.
+An operator's admin JWT (`configs:write`) can call the same routes. It never creates a BU and
+stores no credential: it has no Carmen token.
 
 ## Diagram 3 — the hook
 
@@ -78,6 +74,7 @@ sequenceDiagram
     R->>R: _pms_key: strip "bearer", sha256, live key + live tenant + scope pms:events
     Note over R: 401 on any miss (never says which).<br/>Stamps last_used_at / last_used_ip.
     R->>R: body ≤ 16 KB (413), strip BOM, PmsEventIn (422 names the field)
+    R->>R: InterfaceName = the key's PMS, without case (403 otherwise)
     R->>DB: INSERT … ON CONFLICT (tenant_id, event_id) DO NOTHING
     alt a new day
         DB-->>R: id
@@ -234,7 +231,7 @@ reviewer's claim on it is live (less than 5 minutes old).
 `run_pms_processing()`, called by pg_cron every 10 minutes and serialised by `_sweep_lock`,
 does three things in order:
 
-1. **`_requeue_ready_days`.** Some parked days belong to an `auto_post` BU, have no
+1. **`_requeue_ready_days`.** Some parked days belong to a BU × PMS with `auto_post` on, have no
    `reason_code` and have no `flags` left: an approve on another day mapped their last rows
    (`recheck`), or the BU turned auto-post on with days waiting. These go back to `received`
    and are **read again from scratch** before they post. A day parked *with* a reason
@@ -243,8 +240,9 @@ does three things in order:
    `WAKE_REASONS` (`no_credential`, `carmen_unauthorized`, `carmen_forbidden`,
    `carmen_config_unreadable`). These go back with their attempts reset, but only once the BU's
    `carmen_token_verified_at` is newer than the day's `processed_at`. Any writer of the shared
-   credential therefore wakes them: `#/pms`, the email settings, or the daily email
-   token-health check. (`PUT /pms/credential` also wakes them at once, without the time test.)
+   credential therefore wakes them: Carmen's PMS setting screen, the email settings, or the
+   daily email token-health check. (A PMS settings write also wakes them at once,
+   `process.wake_waiting`, without the time test.)
 3. **Process up to 50 `received` days**, oldest first, each through `process_event`, whose
    claim keeps the sweep and a `kick` from working one day twice.
 
@@ -303,11 +301,12 @@ a reason a day stops.
 
 | Screen | Files | What it does |
 |---|---|---|
-| `#/pms` | `features/pms/pages/PmsPage.tsx`, `features/pms/api/{pmsKeys,pmsSettings}.ts`, `shared/components/apiKeys/*` | Keys: list, create (shown once, Copy, closes only on Done), revoke with a "still in use" warning, create disabled at 2 active. A status line with the last call. The endpoint URL. **Posting**: the auto-post switch, which saves as it changes. A warning when no credential is stored. English only. Reached only from Carmen's menu (no Home tile, no in-app link) |
 | Queue `#/CreditCardOCR` | `features/credit-card/pages/ReviewQueue.tsx`, `components/QueueRow.tsx`; backend `activity._pms_row` | A PMS day reads `PMS 05/09/2024` over `Comanche · Daily`. The chips are by status: `pending_review` → Review, `posted` → Posted, `rejected`/`failed` → Not posted. `received` is in no view. The reason reads "AI suggested mapping: 103, 729". A day Carmen had posted before we asked reads "Carmen had already posted it" |
 | Review `#/CreditCardOCR/review?pms=<id>` | `features/credit-card/pages/PmsReviewDocument.tsx`, `hooks/usePmsReview.ts`, `api/pmsReview.ts` | The email review's shell. A note names the Carmen setting that posts the day. **Accounts** lists the new rows only: department and account selects, an **AI** tag, an amber **Unsure** tag for `confidence: low`, the AI's reason as a line of text, a **Checked** tick, and Undo. **Mapped in Carmen (N)** is folded underneath. The footer gives either the one blocking reason ("Pick an account for every new row." / "Check each account the AI picked (N left).") or what Approve writes. Ctrl/⌘+Enter approves. Reject takes an optional reason. Leaving with edits asks first. **No balance, no Dr/Cr, no JV lines** |
-| Reason → sentence | `shared/lib/reviewReasons.ts`, `i18n/dict/pms.ts` | One phrase per `reason_code`. `no_credential` has a fix button to `#/pms`. The Carmen-setting reasons have none: they are fixed in Carmen |
-| `#/admin/api-keys` | `features/admin/pages/ApiKeysPage.tsx` | Support view of every BU's keys: issue, revoke, last used |
+| Reason → sentence | `shared/lib/reviewReasons.ts`, `i18n/dict/pms.ts` | One phrase per `reason_code`. No PMS reason has a fix button: `no_credential` and the Carmen-setting reasons are fixed on Carmen's own screens, which we cannot link to |
+| `#/admin/api-keys` | `features/admin/pages/ApiKeysPage.tsx`, `features/admin/components/apiKeys/*` | Support view of every BU's keys: PMS, last used, revoke. No issuing: Carmen generates keys (decision-log #44) |
+
+There is no PMS settings screen of ours. Carmen's PMS setting screen is the only one.
 
 ## Not built
 

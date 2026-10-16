@@ -10,36 +10,54 @@ every Carmen route we call.
 
 | Method | Path | Auth | Purpose | Success |
 |---|---|---|---|---|
-| `POST` | `/events` | **API key** (`pms:events`) | Carmen's hook: one row per BU × day, then `kick` | `202` new · `200` repeat |
+| `POST` | `/events` | **API key** (`pms:events`) of that BU and PMS | Carmen's hook: one row per BU × day, then `kick` | `202` new · `200` repeat · `403` another PMS's key |
 | `POST` | `/process/run` | **internal job token** or an admin JWT with `configs:write` (`require_maintenance_auth`) | The retry sweep; pg_cron every 10 min | `200` summary |
-| `GET` | `/keys` | session JWT | This BU's keys, newest first, revoked ones included (≤ 50) | `200` `Page` |
-| `POST` | `/keys` | session JWT | Issue a key for the session's BU. **The plaintext is in this response only** | `201` |
-| `DELETE` | `/keys/{key_id}?reason=` | session JWT | Revoke one of this BU's live keys | `200` |
 | `GET` | `/days/{day_id}` | session JWT | One parked day, as the review modal reads it | `200` `PmsDayOut` |
 | `POST` | `/days/{day_id}/approve` | session JWT | Write the new rows' accounts into Carmen, then have Carmen post | `200` `PmsApproveOut` |
 | `POST` | `/days/{day_id}/reject` | session JWT | Retire the day without a JV | `204` |
-| `GET` | `/settings` | session JWT | `{auto_post, has_credential}` | `200` |
-| `PUT` | `/settings` | session JWT | Replace the auto-post switch | `200` |
-| `PUT` | `/credential` | session JWT | Prove and store the menu link's token; wake the days waiting for it | `200` settings |
 
-Every session route sees only the session's tenant. For a day or key of another BU, the answer
-is the same `404` as for one that does not exist.
+Every session route sees only the session's tenant. For a day of another BU, the answer is the
+same `404` as for one that does not exist.
+
+### `/api/v1/carmen/pms` — `backend/app/routers/pms_carmen.py` (decision-log #44)
+
+Carmen's PMS setting screen, one per BU and PMS. The contract for Carmen is
+[`PMS_INTEGRATION.md` §6](../PMS_INTEGRATION.md#6-settings-api--your-pms-setting-screen).
+
+| Method | Path | Body / query | Purpose | Success |
+|---|---|---|---|---|
+| `GET` | `/settings` | `?uri&bu&pms` | This PMS's settings. Registers a BU that never opened the app | `200` |
+| `PUT` | `/settings` | `{uri, bu, pms, auto_post}` | Replace this PMS's auto-post switch | `200` |
+| `POST` | `/keys` | `{uri, bu, pms}` | A new hook key; the previous one is revoked. **`api_key` is in this response only** | `201` |
+| `DELETE` | `/keys` | `?uri&bu&pms` | Revoke this PMS's live key (the off switch) | `204` · `404` none |
+
+All four answer `{pms, auto_post, key: {prefix, created_at, last_used_at} | null, has_credential}`
+(`PmsCarmenSettingsOut`), except `DELETE`. `pms` is lower-cased on the way in.
+
+- **Auth** is the email Settings API's `_caller`: `Authorization: <Carmen token>` (no scheme),
+  proven against `uri` by `_resolve`, or `Bearer <admin JWT>` with `configs:write`. The same
+  rate limits apply (20/min per IP, 300/min overall, before any outbound call).
+- **`_resolve(create=True)`** on GET, PUT and POST: a (host, bu) with no tenant is created by
+  `auth.ensure_tenant` after `validate_uri` + `validate_token`, with the signup credits.
+  Never on the admin path, and never on DELETE.
+- **Every Carmen write** (PUT, POST) runs `credential.set_token` with the caller's token, then
+  `process.wake_waiting` and `kick` for each day it wakes. The admin path stores nothing.
 
 ### Elsewhere
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `GET` | `/api/v1/credit-card/activity` | session JWT | The queue. PMS days come as rows with `source: "pms"` (`activity._pms_row`) |
-| `GET` · `POST` · `DELETE` | `/api/v1/admin/api-keys[/{key_id}]` | admin JWT, `api_keys` read / write | Support's view: every BU's keys, issue for a tenant, revoke |
-| `POST` | `/api/v1/auth/exchange` | Carmen token | The SSO login `#/pms` runs first. It creates or finds the (host, bu) tenant |
+| `GET` · `DELETE` | `/api/v1/admin/api-keys[/{key_id}]` | admin JWT, `api_keys` read / revoke | Support's view: every BU's keys and their PMS, revoke. No issuing (#44) |
 
 ## Auth model
 
 | Caller | Credential | Resolves to |
 |---|---|---|
-| Carmen's hook | `Authorization: Bearer cpk_…`. `bearer` in any case, or the bare key | `sha256(key)` → a live `api_keys` row with scope `pms:events`, on a live, active tenant → `tenant_id`. Any miss is `401 Invalid API key`, which never says which check failed. Stamps `last_used_at` and `last_used_ip` |
+| Carmen's hook | `Authorization: Bearer cpk_…`. `bearer` in any case, or the bare key | `sha256(key)` → a live `api_keys` row with scope `pms:events`, on a live, active tenant → `tenant_id`. Any miss is `401 Invalid API key`, which never says which check failed. Stamps `last_used_at` and `last_used_ip`. Then the body's `InterfaceName`, lower-cased, must equal the key's `interface_name`: else `403` |
+| Carmen's PMS setting screen | `Authorization: <Carmen token>` + `uri`, `bu`, `pms` | the (host, bu) tenant, after the token is proven against `uri`; created if missing |
 | pg_cron | `Bearer <INTERNAL_JOB_TOKEN>` | machine; constant-time compare |
-| The BU's user | our session JWT from `/auth/exchange` | `session.tenant_id`; `carmen_user_id` is recorded as `created_by`, `revoked_by` and `reviewed_by` |
+| The BU's user (review) | our session JWT from `/auth/exchange` | `session.tenant_id`; `carmen_user_id` is recorded as `reviewed_by` |
 | **We → Carmen** | the BU's stored menu token, as a raw `Authorization` header | Carmen's `/api/interface/*` only |
 
 `_pms_key` also sets `request.state.tenant_id`. `PerformanceMiddleware` decodes only our JWTs,
@@ -54,13 +72,16 @@ checks:
    through a Pydantic parameter, because FastAPI reads those before any dependency runs.
 2. **Body size ≤ 16 KB** (`413`).
 3. **A leading UTF-8 BOM is stripped**, and then `PmsEventIn` runs (`422`, naming the field).
-4. **Insert, or touch the existing row.**
+4. **The PMS**: `InterfaceName`, lower-cased, must be the key's `interface_name` (`403`,
+   naming the key's PMS). Nothing is stored.
+5. **Insert, or touch the existing row.**
 
 | Status | Body |
 |---|---|
 | `202` | `{"id": "<uuid>", "duplicate": false}` |
 | `200` | `{"id": "<same uuid>", "duplicate": true}`. When the day is not posted and no reviewer holds it, it is also reset to `received` and processed again |
 | `401` | `{"detail": "Invalid API key"}` + `WWW-Authenticate: Bearer` |
+| `403` | `{"detail": "This key is for PMS 'comanche'"}` |
 | `413` | `{"detail": "Event body exceeds 16 KB"}` |
 | `422` | `{"detail": [{"loc": ["DocDate"], …}]}` (FastAPI's standard shape) |
 | `429` | rate limit, 120/min per source IP, `Retry-After: 60` |
@@ -116,13 +137,6 @@ complete." without a number (CA-116).
 `{"reason": "optional, ≤ 500"}` → `204`. The day becomes `rejected` / `rejected_by_reviewer`,
 and its payload is cleared. `404` and `409` work as for approve. If Carmen re-sends the day,
 it is read again.
-
-## `PUT /credential`
-
-`{"token": "<the menu link's token>"}`. `credential.set_token` proves the token against Carmen
-at the origin the tenant was validated for (`_safe_carmen_uri`), encrypts it and stores it on
-`email_ingest_settings`. It then resets every `received`/`failed` day of the BU whose
-`reason_code` is in `WAKE_REASONS`, kicks each one, and answers with the settings.
 
 ## Carmen endpoints we call
 
