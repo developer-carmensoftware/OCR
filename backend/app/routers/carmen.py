@@ -23,7 +23,7 @@ from app.database import get_db
 from app.exceptions import DuplicateDocumentError
 from app.models.orm import CreditCard, OCRTask, Tenant, TenantCredit
 from app.models.schemas import AiStatusOut
-from app.models.schemas.credits import AiModule
+from app.models.schemas.credits import AI_STAGE_NO, AiModule
 from app.services.ap_invoice.service import mark_invoice_submitted
 from app.services.shared import audit as audit_service
 from app.services.shared.audit import AuditAction
@@ -41,7 +41,11 @@ from app.services.shared.carmen import (
     put_gljv,
     put_input_tax,
 )
-from app.services.shared.credits import active_subscription, ai_stage
+from app.services.shared.credits import (
+    SIGNUP_GRANT_CREDITS,
+    active_subscription_map,
+    ai_stage,
+)
 from app.services.shared.rate_limit import InMemoryRateLimiter
 from app.utils.client_ip import get_client_ip
 from app.utils.db_helpers import has_submitted_doc
@@ -308,9 +312,10 @@ async def ai_status(
 ):
     """Which AI sales popup Carmen shows this BU — public by request, no auth.
 
-    Only the stage and the modules the BU has spent documents on go out, and an unknown
-    (host, bu) reads `never_used` with no modules like a BU that exists but never scanned,
-    so this endpoint cannot be used to learn which BUs exist.
+    The stage, its document counts and the modules the BU has spent documents on go out,
+    and an unknown (host, bu) reads exactly like a BU that exists but never scanned
+    (`never_used`, 0 used, 30 remaining, no modules), so this endpoint cannot be used to
+    learn which BUs exist.
     Read-only: unlike /auth/exchange it creates no tenant, grant or session.
     """
     _ai_status_ceiling.check(request, key="_global_ai_status")
@@ -328,26 +333,28 @@ async def ai_status(
     ).first()
     response.headers["Cache-Control"] = "max-age=300"
     if row is None:
-        return AiStatusOut(stage="never_used")
-    has_sub = await active_subscription(db, str(row.id)) is not None
+        return AiStatusOut(stage_no=1, stage="never_used", docs_remaining=SIGNUP_GRANT_CREDITS)
+    # The plan's used count as this month's cycle counts it (0 once the cycle rolled).
+    sub = (await active_subscription_map(db, [row.id])).get(str(row.id))
     # SUM(charged_docs), as the admin summary counts a module's documents: a task the
     # charge failed open on cost nothing. PMS writes no ocr_tasks (it is free).
-    module_ids = (
-        (
-            await db.execute(
-                select(OCRTask.module_id)
-                .where(OCRTask.tenant_id == row.id, OCRTask.deleted_at.is_(None))
-                .group_by(OCRTask.module_id)
-                .having(func.sum(OCRTask.charged_docs) > 0)
-            )
+    per_module = (
+        await db.execute(
+            select(OCRTask.module_id, func.sum(OCRTask.charged_docs))
+            .where(OCRTask.tenant_id == row.id, OCRTask.deleted_at.is_(None))
+            .group_by(OCRTask.module_id)
         )
-        .scalars()
-        .all()
-    )
+    ).all()
     # Carmen sells two things: AP Invoice, and JV (every other module is Credit Card's).
     modules: list[AiModule] = sorted(
-        {"ap_invoice" if m == Module.AP_INVOICE else "jv" for m in module_ids}
+        {"ap_invoice" if m == Module.AP_INVOICE else "jv" for m, n in per_module if n}
     )
+    credits = SIGNUP_GRANT_CREDITS if row.balance is None else row.balance
+    stage = ai_stage(row.balance, row.credits_purchased or 0, sub is not None)
     return AiStatusOut(
-        stage=ai_stage(row.balance, row.credits_purchased or 0, has_sub), modules=modules
+        stage_no=AI_STAGE_NO[stage],
+        stage=stage,
+        docs_used=sum(n or 0 for _, n in per_module),
+        docs_remaining=credits + (max(0, sub["allowance"] - sub["used"]) if sub else 0),
+        modules=modules,
     )
