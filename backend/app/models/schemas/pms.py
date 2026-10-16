@@ -1,14 +1,16 @@
-"""PMS interface (CA-93) — the webhook Carmen sends, and the admin key payloads.
+"""PMS interface (CA-93) — the webhook Carmen sends, and Carmen's PMS settings API.
 
 Contract: docs/PMS_INTEGRATION.md.
 """
 
 import re
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.models.schemas.email_automation import URI_DOC
 
 _HOOK_FIELDS = {f.lower(): f for f in ("InterfaceType", "InterfaceName", "DocType", "DocDate")}
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ].*)?")
@@ -72,15 +74,54 @@ class PmsEventOut(BaseModel):
     duplicate: bool
 
 
-class PmsKeyCreateIn(BaseModel):
-    """A BU creating its own key on `#/pms`: the business unit comes from the session."""
-
-    name: str = Field("PMS webhook", min_length=1, max_length=100)
+# ── Carmen's PMS setting screen (decision-log #44) ────────────────────────────────
 
 
-class ApiKeyCreateIn(BaseModel):
-    tenant_id: UUID
-    name: str = Field("PMS webhook", min_length=1, max_length=100)
+class PmsCarmenRef(BaseModel):
+    """Which BU and which PMS a call from Carmen's PMS setting screen is about."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    uri: str = Field(description=URI_DOC)
+    bu: str
+    # The same rule as the hook's InterfaceName, which a key for this PMS must match.
+    pms: str = Field(
+        min_length=1,
+        max_length=40,
+        pattern=r"^[^/]+$",
+        description="The PMS: the InterfaceName this BU's hook sends, e.g. Comanche",
+    )
+
+    @field_validator("pms")
+    @classmethod
+    def _lower(cls, v: str) -> str:
+        return v.lower()
+
+
+class PmsCarmenSettingsIn(PmsCarmenRef):
+    auto_post: bool
+
+
+class PmsKeyStatus(BaseModel):
+    """The live hook key of one BU and PMS, as Carmen's screen shows it. Never the key."""
+
+    prefix: str
+    created_at: datetime | None = None
+    # When Carmen's hook last used it: "is Carmen calling?".
+    last_used_at: datetime | None = None
+
+
+class PmsCarmenSettingsOut(BaseModel):
+    pms: str
+    auto_post: bool
+    key: PmsKeyStatus | None = None
+    # Whether this BU has a Carmen credential stored; nothing can be read or posted without.
+    has_credential: bool
+
+
+class PmsCarmenKeyOut(PmsCarmenSettingsOut):
+    # The new key itself. This response is the only place it ever appears.
+    api_key: str
 
 
 # ── Processing and review (CA-119) ─────────────────────────────────────────────────
@@ -161,19 +202,3 @@ class PmsApproveOut(BaseModel):
 
 class PmsRejectIn(BaseModel):
     reason: str | None = Field(None, max_length=500)
-
-
-class PmsSettingsIn(BaseModel):
-    auto_post: bool = False
-
-
-class PmsSettingsOut(BaseModel):
-    auto_post: bool
-    # Whether this BU has a Carmen credential stored; nothing can be read or posted without.
-    has_credential: bool
-
-
-class PmsCredentialIn(BaseModel):
-    """The Carmen token #/pms was opened with — stored as this BU's posting credential."""
-
-    token: SecretStr = Field(..., min_length=1, max_length=4096)

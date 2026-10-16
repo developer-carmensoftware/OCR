@@ -72,6 +72,7 @@ class _Run:
         self.claimed = claimed or _claimed()
         self.writes: list[dict] = []
         db = MagicMock(get=AsyncMock(return_value=settings))
+        self.db = db
 
         @asynccontextmanager
         async def session():
@@ -128,6 +129,8 @@ async def test_auto_post_off_parks_even_a_fully_mapped_day():
 async def test_a_fully_mapped_day_of_an_auto_post_bu_goes_to_carmens_engine():
     run = _Run(settings=AUTO)
     assert await run() == "posted"
+    # Auto-post is the BU's for this PMS (decision-log #44), looked up by the hook's name.
+    assert run.db.get.await_args.args[1] == (run.claimed.tenant_id, "comanche")
     assert run.last["status"] == "posted"
     assert run.last["review_payload"] is None
     assert (run.last["jv_no"], run.last["reason_code"]) == (None, None)
@@ -185,7 +188,7 @@ async def test_no_credential_is_retried_then_fails():
     run = _Run(target=("", ""))
     assert await run() == "retry"
     assert run.last["reason_code"] == "no_credential"
-    assert "PMS settings" in run.last["error_message"]
+    assert "PMS's setting in Carmen" in run.last["error_message"]
     last_try = _Run(target=("", ""), claimed=_claimed(attempts=process.MAX_ATTEMPTS))
     assert await last_try() == "failed"
     assert last_try.last["status"] == "failed"
@@ -309,12 +312,18 @@ async def test_the_sweep_wakes_those_days_before_it_picks():
 
 
 @pytest.mark.asyncio
-async def test_ready_days_of_an_auto_post_bu_are_sent_back_flagged_ones_stay():
-    ready, flagged = uuid4(), uuid4()
-    result = MagicMock(
-        all=lambda: [(ready, {"flags": []}), (flagged, {"flags": ["mapping_guessed"]})]
+async def test_ready_days_of_an_auto_post_pms_are_sent_back_others_stay():
+    bu = uuid4()
+    ready, flagged, other_pms = uuid4(), uuid4(), uuid4()
+    on = MagicMock(all=lambda: [(bu, "comanche")])  # auto-post is on for Comanche only
+    parked = MagicMock(
+        all=lambda: [
+            (ready, bu, {"InterfaceName": "Comanche"}, {"flags": []}),
+            (flagged, bu, {"InterfaceName": "Comanche"}, {"flags": ["mapping_guessed"]}),
+            (other_pms, bu, {"InterfaceName": "Opera"}, {"flags": []}),
+        ]
     )
-    db = MagicMock(execute=AsyncMock(return_value=result), commit=AsyncMock())
+    db = MagicMock(execute=AsyncMock(side_effect=[on, parked, MagicMock()]), commit=AsyncMock())
 
     @asynccontextmanager
     async def session():
@@ -322,5 +331,7 @@ async def test_ready_days_of_an_auto_post_bu_are_sent_back_flagged_ones_stay():
 
     with patch.object(process, "async_session", session):
         assert await process._requeue_ready_days() == 1
-    sql = str(db.execute.await_args_list[1].args[0].compile(dialect=postgresql.dialect()))
+    update_stmt = db.execute.await_args_list[2].args[0]
+    sql = str(update_stmt.compile(dialect=postgresql.dialect()))
     assert "UPDATE pms_events" in sql
+    assert update_stmt.compile().params["id_1"] == [ready]

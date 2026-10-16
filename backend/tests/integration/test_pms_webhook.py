@@ -38,8 +38,14 @@ def kick():
         yield mock
 
 
-def _key():
-    return SimpleNamespace(id=uuid4(), tenant_id=uuid4(), scopes=[PMS_SCOPE], expires_at=None)
+def _key(interface_name="comanche"):
+    return SimpleNamespace(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        scopes=[PMS_SCOPE],
+        expires_at=None,
+        interface_name=interface_name,
+    )
 
 
 def _db(*scalars):
@@ -85,6 +91,15 @@ def test_no_or_unknown_key_is_401_and_writes_nothing(header):
     assert res.status_code == 401
     assert res.json() == {"detail": "Invalid API key"}
     assert res.headers["WWW-Authenticate"] == "Bearer"
+    db.scalar.assert_not_awaited()
+
+
+def test_a_key_for_another_pms_is_403_and_writes_nothing():
+    # A key is for one PMS (decision-log #44); EVENT names Comanche.
+    db = _db()
+    res, _ = _post(db, _key(interface_name="opera"))
+    assert res.status_code == 403
+    assert res.json() == {"detail": "This key is for PMS 'opera'"}
     db.scalar.assert_not_awaited()
 
 

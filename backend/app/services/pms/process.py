@@ -12,8 +12,9 @@ decides nothing about sides or totals. It finds the day's rows Carmen's mapping 
 account for, lets the AI suggest one, and asks the engine to post once nothing is missing.
 
 A day with a row the table cannot place parks at `pending_review` with what the review
-needs in `review_payload`. So does every day of a BU with auto-post off (the default). Only
-a fully mapped day of an auto-post BU posts unattended: the email rule (decision-log #24).
+needs in `review_payload`. So does every day of a PMS whose auto-post is off (the default;
+Carmen's PMS setting screen sets it per BU and PMS, decision-log #44). Only a fully mapped
+day of an auto-post PMS posts unattended: the email rule (decision-log #24).
 """
 
 import asyncio
@@ -221,13 +222,14 @@ async def _process(claimed) -> str:
 
     async with async_session() as db:
         token, uri = await _target(db, tenant_id)
-        settings_row = await db.get(PmsSettings, tenant_id)
+        settings_row = await db.get(PmsSettings, (tenant_id, name.lower()))
     if not token or not uri:
         return await _retry_or_fail(
             pk,
             attempts,
             "no_credential",
-            "No Carmen access is stored for this business unit. Open PMS settings from Carmen's menu.",
+            "No Carmen access is stored for this business unit. "
+            "Open this PMS's setting in Carmen and save it.",
         )
 
     uri_ctx = current_carmen_uri.set(uri)
@@ -341,24 +343,43 @@ async def _process(claimed) -> str:
 
 
 async def _requeue_ready_days() -> int:
-    """Send back for posting the parked days of auto-post BUs that have nothing left to map.
+    """Send back for posting the parked days of auto-post PMSs that have nothing left to map.
 
     A day parks with `mapping_guessed` until somebody approves the row on *some* day, which
-    clears it on the BU's other parked days (`review.recheck`); a BU can also switch
+    clears it on the BU's other parked days (`review.recheck`); Carmen can also switch
     auto-post on with days already waiting. The day is then read again — setting, Data
     Bank, Carmen's table — before it posts.
     """
     async with async_session() as db:
+        on = {
+            (t, name)
+            for t, name in (
+                await db.execute(
+                    select(PmsSettings.tenant_id, PmsSettings.interface_name).where(
+                        PmsSettings.auto_post.is_(True)
+                    )
+                )
+            ).all()
+        }
+        if not on:
+            return 0
         result = await db.execute(
-            select(PmsEvent.id, PmsEvent.review_payload)
-            .join(PmsSettings, PmsSettings.tenant_id == PmsEvent.tenant_id)
-            .where(
+            select(
+                PmsEvent.id, PmsEvent.tenant_id, PmsEvent.payload, PmsEvent.review_payload
+            ).where(
                 PmsEvent.status == "pending_review",
                 PmsEvent.reason_code.is_(None),
-                PmsSettings.auto_post.is_(True),
+                PmsEvent.tenant_id.in_({t for t, _ in on}),
             )
         )
-        ready = [pk for pk, payload in result.all() if not (payload or {}).get("flags")]
+        # The PMS is matched here, not in SQL: it lives in the hook's JSON, and the unit
+        # tests' SQLite has no JSONB path. A BU parks a handful of days.
+        ready = [
+            pk
+            for pk, tenant_id, hook, payload in result.all()
+            if (tenant_id, str((hook or {}).get("InterfaceName", "")).lower()) in on
+            and not (payload or {}).get("flags")
+        ]
         if ready:
             await db.execute(
                 update(PmsEvent)
@@ -369,13 +390,32 @@ async def _requeue_ready_days() -> int:
     return len(ready)
 
 
+async def wake_waiting(db, tenant_id: uuid.UUID) -> list[uuid.UUID]:
+    """Put back to `received` this BU's days a credential stopped, after a new one is stored.
+
+    Returns their ids; the caller commits, then `kick`s each.
+    """
+    result = await db.execute(
+        update(PmsEvent)
+        .where(
+            PmsEvent.tenant_id == tenant_id,
+            PmsEvent.status.in_(("received", "failed")),
+            PmsEvent.reason_code.in_(WAKE_REASONS),
+        )
+        .values(status="received", attempts=0, processed_at=None)
+        .returning(PmsEvent.id)
+    )
+    return list(result.scalars().all())
+
+
 async def _wake_for_new_credential() -> int:
     """Send back the days a credential stopped, once a newer one is proven.
 
-    `PUT /pms/credential` wakes them at once, but it is not the only writer of the BU's one
-    credential (decision-log #42): opening the email settings from Carmen's menu stores a
-    fresh token too, and the daily token check re-proves one after a passing outage. Each
-    moves `carmen_token_verified_at` past the day's last attempt, which is the whole test.
+    A save on Carmen's PMS setting screen wakes them at once (`wake_waiting`), but it is not
+    the only writer of the BU's one credential (decision-log #42): opening the email
+    settings from Carmen's menu stores a fresh token too, and the daily token check
+    re-proves one after a passing outage. Each moves `carmen_token_verified_at` past the
+    day's last attempt, which is the whole test.
     Without it a day that spent its attempts on an expired token stayed `failed` for good.
     """
     async with async_session() as db:

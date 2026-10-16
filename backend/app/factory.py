@@ -50,6 +50,7 @@ from app.routers.files import router as files_router
 from app.routers.maintenance import router as maintenance_router
 from app.routers.notifications import router as notifications_router
 from app.routers.pms import router as pms_router
+from app.routers.pms_carmen import router as pms_carmen_router
 from app.sentry import capture
 
 logger = logging.getLogger(__name__)
@@ -198,5 +199,6 @@ def create_app(lifespan=None) -> FastAPI:
     app.include_router(credit_card_activity_router)
     app.include_router(ar_reconcile_router)
     app.include_router(pms_router)
+    app.include_router(pms_carmen_router)
 
     return app

@@ -1,12 +1,12 @@
 """CA-93 — the per-tenant API key Carmen's PMS webhook authenticates with.
 
-What is pinned: a key only works for its own scope and not after it expires, and the
-plaintext the admin sees hashes to the stored row. Revoked keys and dead tenants are
-filtered in the SQL, which a mock DB cannot exercise — run against the dev DB instead.
+What is pinned: a key only works for its own scope and not after it expires, a new key
+for a BU and PMS replaces the old one, and the plaintext hashes to the stored row. Revoked
+keys and dead tenants are filtered in the SQL, which a mock DB cannot exercise — run
+against the dev DB instead.
 """
 
 import hashlib
-import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -14,10 +14,10 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 
 from app.auth.admin_session import AdminPrincipal
 from app.exceptions import ConflictError
-from app.models.schemas.pms import ApiKeyCreateIn
 from app.services.shared import api_keys
 
 
@@ -71,7 +71,42 @@ async def test_authenticate_with_no_token_never_queries():
     db.scalar.assert_not_awaited()
 
 
-# ── admin: issue and revoke ───────────────────────────────────────────────────
+# ── issue: one live key per BU and PMS (decision-log #44) ──────────────────────
+
+
+@pytest.mark.asyncio
+async def test_issue_revokes_the_previous_key_and_stores_only_the_new_hash():
+    tenant_id = uuid4()
+    db = MagicMock(
+        scalar=AsyncMock(return_value=tenant_id),
+        execute=AsyncMock(return_value=MagicMock(rowcount=1)),
+        flush=AsyncMock(),
+    )
+    key, plaintext = await api_keys.issue(
+        db, tenant_id, "comanche hook", "comanche", actor="user:u-1"
+    )
+    revoke = db.execute.await_args.args[0]  # the UPDATE that revokes the key it replaces
+    params = revoke.compile().params
+    assert revoke.table.name == "api_keys"
+    assert (params["tenant_id_1"], params["interface_name_1"]) == (tenant_id, "comanche")
+    stored = db.add.call_args.args[0]
+    assert stored is key
+    assert (stored.interface_name, stored.scopes) == ("comanche", [api_keys.PMS_SCOPE])
+    assert stored.key_hash == api_keys.hash_key(plaintext)
+
+
+@pytest.mark.asyncio
+async def test_two_generates_at_once_is_a_conflict():
+    db = MagicMock(
+        scalar=AsyncMock(return_value=uuid4()),
+        execute=AsyncMock(return_value=MagicMock(rowcount=0)),
+        flush=AsyncMock(side_effect=IntegrityError("insert", {}, Exception("unique"))),
+    )
+    with pytest.raises(ConflictError):
+        await api_keys.issue(db, uuid4(), "comanche hook", "comanche", actor="user:u-1")
+
+
+# ── admin: revoke ─────────────────────────────────────────────────────────────
 
 
 def _admin(tenant_scope=""):
@@ -79,56 +114,12 @@ def _admin(tenant_scope=""):
         admin_id="a-1",
         username="alice",
         roles=["admin"],
-        perms={"api_keys:read", "api_keys:write", "api_keys:revoke"},
+        perms={"api_keys:read", "api_keys:revoke"},
         tenant_scope=tenant_scope,
     )
 
 
 _REQUEST = SimpleNamespace(client=SimpleNamespace(host="203.0.113.9"), headers={})
-
-
-@pytest.mark.asyncio
-async def test_create_returns_the_plaintext_once_and_stores_only_its_hash():
-    from app.routers.admin.api_keys import create_api_key
-
-    tenant_id = uuid4()
-    db = MagicMock(
-        scalar=AsyncMock(side_effect=[tenant_id, 0]),  # the tenant, then its active keys
-        flush=AsyncMock(),
-        commit=AsyncMock(),
-        execute=AsyncMock(return_value=MagicMock()),
-    )
-    out = await create_api_key(ApiKeyCreateIn(tenant_id=tenant_id), _REQUEST, db, _admin())
-    stored = db.add.call_args.args[0]
-    assert stored.key_hash == api_keys.hash_key(out["key"])
-    assert stored.scopes == [api_keys.PMS_SCOPE]
-    assert out["key"] not in json.dumps({k: v for k, v in out.items() if k != "key"})
-
-
-@pytest.mark.asyncio
-async def test_a_third_active_key_is_refused():
-    db = MagicMock(scalar=AsyncMock(side_effect=[uuid4(), api_keys.MAX_ACTIVE_PER_TENANT]))
-    with pytest.raises(ConflictError, match="Revoke one"):
-        await api_keys.issue(db, uuid4(), "PMS webhook", actor="admin:a-1")
-    db.add.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_a_second_key_is_allowed_for_a_rotation():
-    db = MagicMock(scalar=AsyncMock(side_effect=[uuid4(), 1]), flush=AsyncMock())
-    _, plaintext = await api_keys.issue(db, uuid4(), "PMS webhook (new)", actor="admin:a-1")
-    assert plaintext.startswith("cpk_")
-
-
-@pytest.mark.asyncio
-async def test_scoped_admin_cannot_issue_for_another_tenant():
-    from app.routers.admin.api_keys import create_api_key
-
-    with pytest.raises(HTTPException) as exc:
-        await create_api_key(
-            ApiKeyCreateIn(tenant_id=uuid4()), _REQUEST, MagicMock(), _admin(str(uuid4()))
-        )
-    assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -147,7 +138,8 @@ def test_a_row_names_its_business_unit_by_code_and_host():
     key = SimpleNamespace(
         id=uuid4(),
         tenant_id=tenant_id,
-        name="PMS webhook",
+        name="comanche hook",
+        interface_name="comanche",
         key_prefix="cpk_abcdefgh",
         scopes=[api_keys.PMS_SCOPE],
         created_at=None,
