@@ -69,13 +69,16 @@ class PmsEvent(Base, TenantFKMixin, TimestampMixin):
 
 
 class PmsSettings(Base, TimestampMixin, WriterMixin):
-    """Whether a clean day of this BU posts by itself, set on #/pms (default: it waits).
+    """Whether a clean day of this BU and PMS posts by itself (default: it waits).
 
-    Everything else about how a day posts — prefix, sides, the counter account — is the BU's
-    PMS setting in Carmen (decision-log #43).
+    Set by Carmen's PMS setting screen through `/api/v1/carmen/pms/settings` (decision-log
+    #44). Everything else about how a day posts — prefix, sides, the counter account — is
+    the BU's PMS setting in Carmen (decision-log #43).
     """
 
     __tablename__ = "pms_settings"
 
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
+    # The hook's InterfaceName, lower-case.
+    interface_name = Column(String(40), primary_key=True)
     auto_post = Column(Boolean, nullable=False, default=False, server_default="false")

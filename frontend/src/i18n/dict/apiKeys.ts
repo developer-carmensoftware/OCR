@@ -1,8 +1,7 @@
 export const en = {
   'apiKeys.title': 'API keys',
   'apiKeys.description':
-    'Keys Carmen uses to push PMS data to us — one per business unit, sent as a Bearer token.',
-  'apiKeys.create': 'Create key',
+    'Keys Carmen uses to push PMS data to us — one per business unit and PMS, sent as a Bearer token. Carmen generates them from each PMS setting.',
 
   'apiKeys.status.aria': 'Carmen PMS webhook status',
   'apiKeys.status.loading': 'Checking keys…',
@@ -18,10 +17,11 @@ export const en = {
 
   'apiKeys.filter.active': 'Active',
   'apiKeys.filter.all': 'All',
-  'apiKeys.searchPlaceholder': 'Search name or prefix…',
+  'apiKeys.searchPlaceholder': 'Search name, prefix or PMS…',
 
   'apiKeys.col.name': 'Name',
   'apiKeys.col.bu': 'Business unit',
+  'apiKeys.col.pms': 'PMS',
   'apiKeys.col.status': 'Status',
   'apiKeys.col.lastUsed': 'Last used',
   'apiKeys.col.created': 'Created',
@@ -35,36 +35,7 @@ export const en = {
   'apiKeys.empty': 'No keys match these filters',
   'apiKeys.emptyTitle': 'No active API keys',
   'apiKeys.emptyDescription':
-    'Create one key for each business unit that sends PMS data. Carmen sends it with every event.',
-
-  'apiKeys.createDialog.title': 'Create API key',
-  'apiKeys.createDialog.lede':
-    'One key for one business unit. You will see the key once, right after it is created.',
-  'apiKeys.createDialog.bu': 'Business unit',
-  'apiKeys.createDialog.buPlaceholder': 'Search business units…',
-  'apiKeys.createDialog.name': 'Name',
-  'apiKeys.createDialog.permission': 'Permission',
-  'apiKeys.createDialog.permissionText': 'Send PMS events for this business unit',
-  'apiKeys.createDialog.cancel': 'Cancel',
-  'apiKeys.createDialog.submit': 'Create key',
-  'apiKeys.createDialog.submitting': 'Creating…',
-  'apiKeys.createDialog.discard': 'Discard what you entered?',
-
-  'apiKeys.reveal.title': 'Save your API key',
-  'apiKeys.reveal.once':
-    'This is the only time this key is shown. We keep only its hash — if it is lost, create a new key and revoke this one.',
-  'apiKeys.reveal.key': 'API key',
-  'apiKeys.reveal.copyKey': 'Copy key',
-  'apiKeys.reveal.handoff': 'Send to Carmen',
-  'apiKeys.reveal.endpoint': 'Endpoint',
-  'apiKeys.reveal.header': 'Header',
-  'apiKeys.reveal.body': 'Body',
-  'apiKeys.reveal.copyEndpoint': 'Copy endpoint URL',
-  'apiKeys.reveal.copyHeader': 'Copy header with key',
-  'apiKeys.reveal.copySetup': 'Copy setup for Carmen',
-  'apiKeys.reveal.pasteHint':
-    'Paste the key into the PMS settings in Carmen. Carmen sends it with every event to:',
-  'apiKeys.reveal.done': 'Done',
+    'Carmen generates a key when a business unit sets up a PMS in Carmen, and sends it with every event.',
 
   'apiKeys.revokeDialog.title': 'Revoke API key',
   'apiKeys.revokeDialog.lede': "Calls with this key are refused immediately. This can't be undone.",
@@ -80,35 +51,12 @@ export const en = {
 
   'apiKeys.toast.revoked': 'Key revoked',
   'apiKeys.toast.loadFailed': 'API keys: {error}',
-
-  'apiKeys.pms.title': 'PMS connection',
-  'apiKeys.pms.description':
-    "Carmen sends this business unit's PMS data to the AI with an API key. Create the key here, then paste it into the PMS settings in Carmen.",
-  'apiKeys.pms.context': 'Business unit',
-  'apiKeys.pms.keysTitle': 'API keys',
-  'apiKeys.pms.capHint': 'At most 2 active keys. Revoke one to create another.',
-  'apiKeys.pms.empty': 'No keys yet. Create one, then paste it into the PMS settings in Carmen.',
-  'apiKeys.pms.loading': 'Loading keys…',
-  'apiKeys.pms.loadFailed': "Couldn't load your keys.",
-  'apiKeys.pms.retry': 'Try again',
-  // How the BU's PMS days post (CA-119).
-  'apiKeys.pms.postingTitle': 'Posting',
-  'apiKeys.pms.postingDescription':
-    "Each PMS day becomes one JV, posted by Carmen with this business unit's PMS setting in Carmen. It waits in AI JV Automation for review unless auto-post is on.",
-  'apiKeys.pms.autoPost': 'Post clean days automatically',
-  'apiKeys.pms.autoPostHint':
-    "A day whose rows Carmen's mapping already covers goes to Carmen without review. A new row still waits.",
-  'apiKeys.pms.saved': 'Saved',
-  'apiKeys.pms.noAccess':
-    "No Carmen access is stored for this business unit, so PMS days cannot be read. Reopen this page from Carmen's menu.",
-  'apiKeys.pms.accessFailed': "Couldn't store the Carmen access: {msg}",
 } as const
 
 export const th: Record<keyof typeof en, string> = {
   'apiKeys.title': 'API key',
   'apiKeys.description':
-    'Key ที่ Carmen ใช้ส่งข้อมูล PMS เข้ามา — หนึ่ง key ต่อหนึ่ง business unit ส่งมาแบบ Bearer token',
-  'apiKeys.create': 'สร้าง key',
+    'Key ที่ Carmen ใช้ส่งข้อมูล PMS เข้ามา — หนึ่ง key ต่อ business unit ต่อ PMS ส่งมาแบบ Bearer token โดย Carmen เป็นผู้สร้างจากหน้าตั้งค่า PMS แต่ละตัว',
 
   'apiKeys.status.aria': 'สถานะ PMS webhook ของ Carmen',
   'apiKeys.status.loading': 'กำลังตรวจสอบ key…',
@@ -124,10 +72,11 @@ export const th: Record<keyof typeof en, string> = {
 
   'apiKeys.filter.active': 'ใช้งานอยู่',
   'apiKeys.filter.all': 'ทั้งหมด',
-  'apiKeys.searchPlaceholder': 'ค้นหาชื่อหรือ prefix…',
+  'apiKeys.searchPlaceholder': 'ค้นหาชื่อ prefix หรือ PMS…',
 
   'apiKeys.col.name': 'ชื่อ',
   'apiKeys.col.bu': 'Business unit',
+  'apiKeys.col.pms': 'PMS',
   'apiKeys.col.status': 'สถานะ',
   'apiKeys.col.lastUsed': 'ใช้งานล่าสุด',
   'apiKeys.col.created': 'สร้างเมื่อ',
@@ -141,36 +90,7 @@ export const th: Record<keyof typeof en, string> = {
   'apiKeys.empty': 'ไม่มี key ที่ตรงกับตัวกรองนี้',
   'apiKeys.emptyTitle': 'ยังไม่มี API key ที่ใช้งานอยู่',
   'apiKeys.emptyDescription':
-    'สร้าง key ให้ทุก business unit ที่ส่งข้อมูล PMS โดย Carmen จะแนบ key นี้มากับทุก event',
-
-  'apiKeys.createDialog.title': 'สร้าง API key',
-  'apiKeys.createDialog.lede':
-    'หนึ่ง key สำหรับหนึ่ง business unit และจะเห็น key ได้ครั้งเดียวทันทีหลังสร้าง',
-  'apiKeys.createDialog.bu': 'Business unit',
-  'apiKeys.createDialog.buPlaceholder': 'ค้นหา business unit…',
-  'apiKeys.createDialog.name': 'ชื่อ',
-  'apiKeys.createDialog.permission': 'สิทธิ์',
-  'apiKeys.createDialog.permissionText': 'ส่ง PMS event ของ business unit นี้',
-  'apiKeys.createDialog.cancel': 'ยกเลิก',
-  'apiKeys.createDialog.submit': 'สร้าง key',
-  'apiKeys.createDialog.submitting': 'กำลังสร้าง…',
-  'apiKeys.createDialog.discard': 'ทิ้งข้อมูลที่กรอกไว้?',
-
-  'apiKeys.reveal.title': 'บันทึก API key ของคุณ',
-  'apiKeys.reveal.once':
-    'นี่เป็นครั้งเดียวที่จะเห็น key นี้ ระบบเก็บไว้แค่ hash ถ้าหายต้องสร้าง key ใหม่แล้วเพิกถอนตัวนี้',
-  'apiKeys.reveal.key': 'API key',
-  'apiKeys.reveal.copyKey': 'คัดลอก key',
-  'apiKeys.reveal.handoff': 'ส่งให้ Carmen',
-  'apiKeys.reveal.endpoint': 'Endpoint',
-  'apiKeys.reveal.header': 'Header',
-  'apiKeys.reveal.body': 'Body',
-  'apiKeys.reveal.copyEndpoint': 'คัดลอก endpoint URL',
-  'apiKeys.reveal.copyHeader': 'คัดลอก header พร้อม key',
-  'apiKeys.reveal.copySetup': 'คัดลอกชุดตั้งค่าให้ Carmen',
-  'apiKeys.reveal.pasteHint':
-    'วาง key นี้ในหน้าตั้งค่า PMS ของ Carmen โดย Carmen จะส่ง key นี้มากับทุก event ไปที่:',
-  'apiKeys.reveal.done': 'เสร็จสิ้น',
+    'Carmen จะสร้าง key ให้เมื่อ business unit ตั้งค่า PMS ใน Carmen และแนบ key นี้มากับทุก event',
 
   'apiKeys.revokeDialog.title': 'เพิกถอน API key',
   'apiKeys.revokeDialog.lede': 'การเรียกด้วย key นี้จะถูกปฏิเสธทันที และย้อนกลับไม่ได้',
@@ -186,25 +106,4 @@ export const th: Record<keyof typeof en, string> = {
 
   'apiKeys.toast.revoked': 'เพิกถอน key แล้ว',
   'apiKeys.toast.loadFailed': 'API key: {error}',
-
-  'apiKeys.pms.title': 'การเชื่อมต่อ PMS',
-  'apiKeys.pms.description':
-    'Carmen ส่งข้อมูล PMS ของ business unit นี้ให้ AI โดยใช้ API key สร้าง key ที่นี่ แล้วนำไปวางในหน้าตั้งค่า PMS ของ Carmen',
-  'apiKeys.pms.context': 'Business unit',
-  'apiKeys.pms.keysTitle': 'API key',
-  'apiKeys.pms.capHint': 'ใช้งานได้พร้อมกันสูงสุด 2 key เพิกถอน key หนึ่งก่อนจึงจะสร้างใหม่ได้',
-  'apiKeys.pms.empty': 'ยังไม่มี key สร้าง key แล้วนำไปวางในหน้าตั้งค่า PMS ของ Carmen',
-  'apiKeys.pms.loading': 'กำลังโหลด key…',
-  'apiKeys.pms.loadFailed': 'โหลด key ไม่สำเร็จ',
-  'apiKeys.pms.retry': 'ลองอีกครั้ง',
-  'apiKeys.pms.postingTitle': 'การโพสต์',
-  'apiKeys.pms.postingDescription':
-    'ข้อมูล PMS แต่ละวันจะกลายเป็น JV หนึ่งรายการ ซึ่ง Carmen โพสต์ด้วย setting PMS ของ business unit นี้ใน Carmen และจะรอตรวจใน AI JV Automation เว้นแต่เปิดโพสต์อัตโนมัติไว้',
-  'apiKeys.pms.autoPost': 'โพสต์วันที่ไม่มีปัญหาอัตโนมัติ',
-  'apiKeys.pms.autoPostHint':
-    'วันที่ทุกแถวมีบัญชีใน mapping ของ Carmen แล้วจะส่งให้ Carmen โพสต์โดยไม่ต้องตรวจ วันที่มีแถวใหม่ยังต้องรอตรวจ',
-  'apiKeys.pms.saved': 'บันทึกแล้ว',
-  'apiKeys.pms.noAccess':
-    'ยังไม่มีสิทธิ์เข้า Carmen สำหรับ business unit นี้ จึงอ่านข้อมูล PMS ไม่ได้ ให้เปิดหน้านี้ใหม่จากเมนูของ Carmen',
-  'apiKeys.pms.accessFailed': 'เก็บสิทธิ์เข้า Carmen ไม่สำเร็จ: {msg}',
 }

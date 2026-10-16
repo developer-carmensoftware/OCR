@@ -1264,3 +1264,39 @@ cannot drift from a copy of ours.
 2. The JV number in the post's answer.
 3. The token's lifetime, and `Inf.PMS.DataBank` View for menu users.
 4. Whether the gross Summary line is intended.
+
+## 44. Carmen's PMS setting screen owns the PMS settings, per BU and PMS (2026-10-16)
+
+**Decided:** 2026-10-16, with the user. It replaces #40 (the BU's own `#/pms` page) and amends
+#39 (a key is now per BU **and** PMS).
+
+**Decision.** Carmen's PMS setting screen, one per BU and PMS, sets the two PMS settings by
+calling `/api/v1/carmen/pms` (`routers/pms_carmen.py`). `pms` is the hook's `InterfaceName`,
+compared without case and stored lower-case.
+- `GET/PUT /settings {uri, bu, pms, auto_post}`: auto-post for that PMS. Default off; a day with
+  anything to check still waits (#24).
+- `POST /keys {uri, bu, pms}`: a new hook key, returned once as `api_key`. The previous key
+  for that BU and PMS is revoked in the same transaction: Carmen stores what we return itself,
+  so there is no copy-paste window that needed two live keys. `DELETE /keys` is the off switch.
+- **Auth is the email Settings API's** (`_caller`/`_resolve`): the user's Carmen token, proven
+  against the Carmen the payload names, or an operator's admin JWT with `configs:write`.
+  Carmen decides who sees the screen; we check nothing twice (as #34).
+- **Every Carmen write stores the proven token as the BU's credential** (#42: one per BU,
+  shared with email) and wakes the days waiting for one. That is how a BU gets its credential
+  now that `#/pms` is gone. Carmen sends the non-expiring token, the same kind as the menu link's.
+- **A BU that never opened the app is created by its first call**, after the token is proven,
+  with the 30 signup credits a first login would have given (`auth.ensure_tenant`). PMS itself
+  charges nothing; the credits are the OCR trial, and `/exchange` grants only to the request
+  that inserts the tenant row, so withholding them here would lose them for good. An operator
+  call never creates a BU.
+- **A hook naming another PMS than its key's is a 403**, and nothing is stored.
+
+**Gone.** `#/pms` and its session routes (`/api/v1/pms/keys`, `/settings`, `/credential`); the
+2-active-key cap (`uq_api_keys_live_interface` allows one per BU and PMS); key issuing on
+`#/admin/api-keys` (support lists and revokes); `FixedLanguage`; the queue's "Open PMS settings"
+button. Migration `20261016000000` revokes every BU-wide key and drops the BU-wide auto-post
+rows, so each PMS starts at "wait for a person".
+
+**Not in this decision.** PMSs that Carmen's own post API fetches (no Data Bank, no hook): Carmen
+will list the PMS kinds, which are the same for every BU, and that flow gets its own decision.
+Blocker A (the setting GET) is unchanged.
