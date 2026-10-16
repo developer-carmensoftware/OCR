@@ -1,25 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { KeyRound, Plus } from 'lucide-react'
+import { KeyRound } from 'lucide-react'
 import { toast } from 'sonner'
 import DataTable, { type Column } from '@/features/admin/components/DataTable'
 import TenantSearch from '@/features/admin/components/apiKeys/TenantSearch'
 import Tabs from '@/features/admin/components/ui/Tabs'
 import EmptyState from '@/features/admin/components/ui/EmptyState'
-import {
-  createApiKey,
-  fetchApiKeys,
-  revokeApiKey,
-  type ApiKeyRow,
-} from '@/features/admin/api/apiKeys'
+import { fetchApiKeys, revokeApiKey, type ApiKeyRow } from '@/features/admin/api/apiKeys'
 import { useTableQuery } from '@/features/admin/hooks/useTableQuery'
 import { useTableData } from '@/features/admin/hooks/useTableData'
-import CreateKeyDialog from '@/shared/components/apiKeys/CreateKeyDialog'
-import RevokeKeyDialog from '@/shared/components/apiKeys/RevokeKeyDialog'
-import StatusLine from '@/shared/components/apiKeys/StatusLine'
-import { pmsEventsUrl, type FeedStatus } from '@/shared/lib/apiKeys'
+import RevokeKeyDialog from '@/features/admin/components/apiKeys/RevokeKeyDialog'
+import StatusLine from '@/features/admin/components/apiKeys/StatusLine'
+import { pmsEventsUrl, type FeedStatus } from '@/features/admin/lib/apiKeys'
 import { timeAgo } from '@/shared/lib/orderHelpers'
 import PageHeader from '@/shared/components/ui/PageHeader'
-import Button from '@/shared/components/ui/Button'
 import { useT } from '@/i18n/LanguageContext'
 import { fmtDateTime, formatDate } from '@/shared/lib/date'
 
@@ -28,8 +21,8 @@ const cell = (r: ApiKeyRow) => (r.revoked_at ? 'apikeys-cell is-revoked' : 'apik
 
 /**
  * Keys Carmen's PMS webhook authenticates with (CA-93). The status line answers "is it
- * live" before the list does; creating and revoking happen in dialogs, so the one-time
- * secret never sits on the page.
+ * live" before the list does. Support lists and revokes here; Carmen's PMS setting screen
+ * is the only place a key is generated, one per BU and PMS (decision-log #44).
  */
 export default function ApiKeysPage() {
   const { t } = useT()
@@ -63,7 +56,6 @@ export default function ApiKeysPage() {
   }, [])
   useEffect(loadStatus, [loadStatus])
 
-  const [creating, setCreating] = useState(false)
   const [revoking, setRevoking] = useState<ApiKeyRow | null>(null)
   const tableRef = useRef<HTMLDivElement>(null)
   // A successful revoke removes the row's Revoke button, so focus returns to the table.
@@ -78,7 +70,7 @@ export default function ApiKeysPage() {
       key: 'name',
       label: t('apiKeys.col.name'),
       sortable: true,
-      width: '30%',
+      width: '24%',
       render: r => (
         <div className={cell(r)}>
           <div className="apikeys-name">{r.name}</div>
@@ -89,7 +81,7 @@ export default function ApiKeysPage() {
     {
       key: 'bu',
       label: t('apiKeys.col.bu'),
-      width: '26%',
+      width: '22%',
       render: r =>
         r.bu_code ? (
           <div className={cell(r)}>
@@ -99,6 +91,12 @@ export default function ApiKeysPage() {
         ) : (
           <span className="apikeys-muted">{t('apiKeys.noBu')}</span>
         ),
+    },
+    {
+      key: 'interface_name',
+      label: t('apiKeys.col.pms'),
+      width: '10%',
+      render: r => <span className={cell(r)}>{r.interface_name ?? '—'}</span>,
     },
     {
       key: 'revoked_at',
@@ -191,18 +189,9 @@ export default function ApiKeysPage() {
 
   return (
     <div className="admin-page apikeys-page">
-      <PageHeader
-        title={t('apiKeys.title')}
-        description={t('apiKeys.description')}
-        actions={
-          <Button variant="primary" onClick={() => setCreating(true)}>
-            <Plus size={16} strokeWidth={2.25} aria-hidden="true" />
-            {t('apiKeys.create')}
-          </Button>
-        }
-      />
+      <PageHeader title={t('apiKeys.title')} description={t('apiKeys.description')} />
 
-      <StatusLine status={status} endpoint={endpoint} onCreate={() => setCreating(true)} />
+      <StatusLine status={status} endpoint={endpoint} />
 
       {/* Focusable so a revoke, which removes the row's own button, has somewhere to leave
           the keyboard other than <body>. */}
@@ -233,30 +222,6 @@ export default function ApiKeysPage() {
         )}
       </div>
 
-      {creating && (
-        <CreateKeyDialog
-          endpoint={endpoint}
-          handoff="full"
-          create={(name, tenantId) => createApiKey({ tenant_id: tenantId ?? '', name })}
-          renderTenantField={f => (
-            <TenantSearch
-              id={f.id}
-              value={f.value}
-              onChange={f.onChange}
-              ariaLabel={f.label}
-              placeholder={f.placeholder}
-            />
-          )}
-          onClose={() => {
-            setCreating(false)
-            // Carmen may have called while the key was on screen: the row's Last used and
-            // the status line must agree, so both reload.
-            refresh()
-          }}
-          // The reveal step is the confirmation; a toast would only repeat it.
-          onCreated={refresh}
-        />
-      )}
       {revoking && (
         <RevokeKeyDialog
           row={revoking}

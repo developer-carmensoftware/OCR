@@ -1,6 +1,6 @@
-/* ── API keys (shared/components/apiKeys, #/admin/api-keys, #/pms) ───────────────
-   The PMS webhook key surfaces: status line, key list, create/reveal and revoke dialogs,
-   and the copy button they share. Loaded app-wide from index.css. */
+/* ── API keys (features/admin/components/apiKeys, #/admin/api-keys) ─────────────
+   The PMS webhook key surface: status line, key list, revoke dialog, and the copy
+   button. Loaded app-wide from index.css. */
 
 /* ─── COPY BUTTON (shared/components/ui/CopyButton.tsx) ──────────────────── */
 
@@ -94,29 +94,6 @@
   align-items: center;
   gap: var(--space-2) var(--space-4);
   min-width: 0;
-}
-/* The next step, as DESIGN.md §5's amber pill: pressable, but not the brand blue. */
-.apikeys-step {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--amber-mid);
-  border-radius: var(--radius-pill);
-  background: var(--card-bg);
-  color: var(--amber-text);
-  font: inherit;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease);
-}
-.apikeys-step:hover {
-  border-color: var(--amber);
-}
-.apikeys-step:focus-visible {
-  outline: 2.5px solid var(--primary);
-  outline-offset: 2px;
 }
 .apikeys-status[data-tone='ok'] .apikeys-status__dot {
   background: var(--emerald);
@@ -309,24 +286,6 @@
   color: var(--text-2);
   text-wrap: pretty;
 }
-.apikeys-perm {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  font-size: 0.8125rem;
-  color: var(--text-2);
-}
-.apikeys-chip {
-  padding: 0.15rem 0.45rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  background: var(--gray-50);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--text);
-}
 /* Full border + tint, no side stripe (DESIGN.md §6). */
 .apikeys-callout {
   display: flex;
@@ -348,56 +307,6 @@
   font-size: 0.8125rem;
   line-height: 1.5;
   text-wrap: pretty;
-}
-.apikeys-reveal {
-  animation: ui-dialog-rise 260ms var(--ease) both;
-}
-.apikeys-secret {
-  display: flex;
-  gap: var(--space-2);
-  min-width: 0;
-}
-.apikeys-secret__value {
-  flex: 1;
-  min-width: 0;
-  padding: 0.5rem 0.7rem;
-  border: 1px solid var(--border-input);
-  border-radius: var(--radius-sm);
-  background: var(--gray-50);
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  color: var(--text);
-}
-.apikeys-secret__value::selection {
-  background: color-mix(in oklch, var(--primary) 24%, transparent);
-  color: var(--text);
-}
-.apikeys-secret__value:focus-visible {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-light);
-}
-.apikeys-handoff {
-  margin-top: var(--space-5);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border);
-}
-.apikeys-handoff__title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-3);
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--text);
-}
-.apikeys-handoff__bu {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-2);
 }
 /* Label column + value column; a value's copy button sits at the end of its line. */
 .apikeys-pairs {
@@ -500,165 +409,5 @@
   .apikeys-pairs > div {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-1);
-  }
-  .apikeys-secret {
-    flex-direction: column;
-  }
-}
-
-/* ─── #/pms (features/pms/pages/PmsPage.tsx) ──────────────────────────────────
-   The BU's own keys. Same frame as the other settings screen Carmen's menu opens
-   (email-settings): 1040px, status line first, one section of rows. */
-
-.pms-page {
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: var(--space-6) var(--space-4) var(--space-7);
-}
-.pms-context {
-  margin: calc(-1 * var(--space-3)) 0 var(--space-5);
-  font-size: 0.8125rem;
-  color: var(--text-2);
-}
-.pms-context strong {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--text);
-}
-/* How the BU's PMS days post (CA-119): two settings rows, each saved on change. The
-   settings-page switch row of DESIGN.md §5 — title and hint on the left, the control on
-   the right, hairlines between rows. */
-.pms-posting {
-  margin-bottom: var(--space-6);
-}
-.pms-posting__alert {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--amber-mid);
-  border-radius: var(--radius-md);
-  background: var(--amber-light);
-  color: var(--amber-text);
-  font-size: 0.8125rem;
-}
-.pms-posting__alert svg {
-  flex: none;
-  margin-top: 0.1rem;
-}
-.pms-posting__card {
-  padding: 0;
-}
-.pms-posting__row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem);
-  align-items: center;
-  gap: var(--space-2) var(--space-5);
-  min-height: 56px;
-  padding: var(--space-3) var(--space-4);
-}
-.pms-posting__row + .pms-posting__row {
-  border-top: 1px solid var(--border);
-}
-.pms-posting__label {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text);
-}
-.pms-posting__hint {
-  margin: 0.15rem 0 0;
-  font-size: 0.8125rem;
-  color: var(--text-2);
-  text-wrap: pretty;
-}
-.pms-posting__control--switch {
-  justify-self: end;
-}
-@media (max-width: 640px) {
-  .pms-posting__row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .pms-posting__control--switch {
-    justify-self: start;
-  }
-}
-.pms-keys__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2) var(--space-4);
-  margin-bottom: var(--space-3);
-}
-.pms-keys__title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--text);
-}
-.pms-keys__hint {
-  margin: 0;
-  font-size: 0.8125rem;
-  color: var(--text-2);
-}
-.pms-keys__card {
-  overflow-x: auto;
-}
-.pms-keys__card:focus {
-  outline: none;
-}
-.pms-keys__card > .ui-card-body,
-.pms-keys__card {
-  padding: 0;
-}
-.pms-keys__note {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  margin: 0;
-  padding: var(--space-5);
-  font-size: 0.875rem;
-  color: var(--text-2);
-}
-.pms-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-.pms-table th {
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border);
-  background: var(--gray-50);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-align: left;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-.pms-table td {
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border);
-  vertical-align: middle;
-  color: var(--text);
-}
-.pms-table tbody tr:last-child td {
-  border-bottom: 0;
-}
-.pms-table__action {
-  width: 1%;
-  text-align: right;
-  white-space: nowrap;
-}
-@media (max-width: 640px) {
-  .pms-page {
-    padding-top: var(--space-5);
-  }
-  .pms-table th,
-  .pms-table td {
-    padding-inline: var(--space-3);
   }
 }
