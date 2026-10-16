@@ -38,8 +38,10 @@ def _client(row, subscription=None, modules=(), ceiling=None):
 
     db = make_mock_db()
     db.execute.return_value.first.return_value = row
-    db.execute.return_value.scalar_one_or_none.return_value = subscription
-    db.execute.return_value.scalars.return_value.all.return_value = list(modules)
+    db.execute.return_value.mappings.return_value.all.return_value = (
+        [subscription] if subscription else []
+    )
+    db.execute.return_value.all.return_value = list(modules)  # (module_id, SUM(charged_docs))
 
     async def _db():
         yield db
@@ -72,7 +74,13 @@ def test_unknown_bu_reads_never_used_and_writes_nothing():
     with _client(row=None) as (client, db):
         resp = client.get("/api/v1/carmen/ai-status", params=_PARAMS)
     assert resp.status_code == 200
-    assert resp.json() == {"stage_no": 1, "stage": "never_used", "modules": []}
+    assert resp.json() == {
+        "stage_no": 1,
+        "stage": "never_used",
+        "docs_used": 0,
+        "docs_remaining": 30,
+        "modules": [],
+    }
     assert resp.headers["cache-control"] == "max-age=300"
     params = db.execute.call_args.args[0].compile().params.values()
     assert "dev.carmen.example" in params and "carmencloud" in params  # the /exchange key
@@ -82,16 +90,34 @@ def test_unknown_bu_reads_never_used_and_writes_nothing():
 
 def test_known_bu_reads_its_balance_and_modules():
     row = SimpleNamespace(id="t-1", balance=3, credits_purchased=0)
-    used = ["credit_card_ocr", "cc_ar_reconcile", "ap_invoice"]  # both Credit Card ids → jv
+    # both Credit Card ids → jv
+    used = [("credit_card_ocr", 20), ("cc_ar_reconcile", 5), ("ap_invoice", 2)]
     with _client(row=row, modules=used) as (client, db):
         resp = client.get("/api/v1/carmen/ai-status", params=_PARAMS)
     assert resp.json() == {
         "stage_no": 3,
         "stage": "near_limit",
+        "docs_used": 27,
+        "docs_remaining": 3,
         "modules": ["ap_invoice", "jv"],
     }
     modules_sql = str(db.execute.call_args.args[0].compile())
-    assert "ocr_tasks" in modules_sql and "sum(ocr_tasks.charged_docs) >" in modules_sql
+    assert "ocr_tasks" in modules_sql and "sum(ocr_tasks.charged_docs)" in modules_sql
+
+
+def test_paid_bu_adds_its_plan_left_and_skips_unspent_modules():
+    row = SimpleNamespace(id="t-1", balance=0, credits_purchased=0)
+    plan = {"tid": "t-1", "allowance": 100, "used": 40, "period_end": None}
+    used = [("ap_invoice", 40), ("credit_card_ocr", 0)]  # 0 = charge failed open
+    with _client(row=row, subscription=plan, modules=used) as (client, _db):
+        resp = client.get("/api/v1/carmen/ai-status", params=_PARAMS)
+    assert resp.json() == {
+        "stage_no": 5,
+        "stage": "paid",
+        "docs_used": 40,
+        "docs_remaining": 60,
+        "modules": ["ap_invoice"],
+    }
 
 
 def test_endpoint_ceiling_answers_429():

@@ -44,6 +44,11 @@ class AiStatusOut(BaseModel):
 
     stage_no: int  # AI_STAGE_NO[stage]
     stage: AiStage
+    # Documents scanned with AI, all time: SUM(ocr_tasks.charged_docs), as #/admin counts them.
+    docs_used: int = 0
+    # Documents it can scan now: credits (the 30-document trial lives here) + the plan's
+    # allowance left this month.
+    docs_remaining: int
     # What the BU has spent documents on, sorted; [] when never used.
     modules: list[AiModule] = []
 
