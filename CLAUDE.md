@@ -231,7 +231,8 @@ by hand. `#/admin/api-keys` stays as a support tool. Keys are shown once and cap
 active per BU** (`api_keys.issue()`, both paths). Revoking is how a BU is switched off (no
 `modules` row yet). The key dialogs, status line and copy button live in
 `shared/components/apiKeys/` and are used by both pages.
-Contract for Carmen: [`docs/PMS_INTEGRATION.md`](docs/PMS_INTEGRATION.md).
+Contract for Carmen: [`docs/PMS_INTEGRATION.md`](docs/PMS_INTEGRATION.md). **Full docs: [`docs/pms-interface/`](docs/pms-interface/)**
+(requirements → architecture → API → data model → operations → decisions → status/Jira).
 
 ### Admin dashboard (`#/admin/*`) — check here before writing SQL
 

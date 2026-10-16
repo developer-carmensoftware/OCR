@@ -195,4 +195,5 @@ Tracked in CA-116, with what we found on the dev Data Bank:
 The Carmen calls are in `services/shared/carmen.py` (`get_pms_settings`, `get_pms_mapping`,
 `put_pms_mapping`, `post_pms_gl`). Every call uses the BU's stored Carmen credential (#42),
 stored from the `#/pms` SSO link. Decisions:
-[email-automation decision log #39 to #43](email-automation/06-decision-log.md).
+[email-automation decision log #39 to #43](email-automation/06-decision-log.md). Our side in full:
+[`pms-interface/`](pms-interface/README.md).
