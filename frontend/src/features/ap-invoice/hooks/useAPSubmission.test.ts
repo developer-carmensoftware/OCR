@@ -65,6 +65,7 @@ interface CarmenDetailLine {
 interface CarmenPayload {
   Detail: CarmenDetailLine[]
   TaxPeriod: string
+  TaxStatus: string
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -576,6 +577,29 @@ describe('useAPSubmission', () => {
       expect(line.TaxProfileCode1).toBe('VAT07')
       expect(line.InvdT1Dr).toBe('1100')
       expect(line.InvdT1DrDeptCode).toBe('ACC')
+    })
+
+    // CA-122: the header TaxStatus follows the invoice's total tax, not a constant.
+    const submittedTaxStatus = async (items: APLineItem[]) => {
+      submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
+      const { result } = renderHook(() => useAPSubmission(makeProps({ lineItems: items })))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      return (submitAPInvoiceToCarmen.mock.calls[0][0] as CarmenPayload).TaxStatus
+    }
+
+    it('sends TaxStatus "None" when no line carries tax', async () => {
+      expect(await submittedTaxStatus(makeItems('None', 'None'))).toBe('None')
+    })
+
+    it('sends TaxStatus "Pending" when any line carries tax', async () => {
+      expect(await submittedTaxStatus(makeItems('Exclude', 'None'))).toBe('Pending')
+    })
+
+    it('sends TaxStatus "None" for a taxable-type line whose tax amount is 0', async () => {
+      const items = makeItems('Exclude').map(i => ({ ...i, taxAmt: '0.00', lineTotal: '100.00' }))
+      expect(await submittedTaxStatus(items)).toBe('None')
     })
   })
 
