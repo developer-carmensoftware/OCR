@@ -176,5 +176,6 @@ The real end to end is **CA-120**: a real Carmen menu click and real hooks. It n
 | Approve: a Carmen error while reading the chart (`mapping.masters`) is not wrapped | `500` instead of `503`. The claim is still released, and nothing is written (it comes before the PUT) | Wrap it like the mapping read |
 | The 403 Data Bank refusal retries 3× a day via the wake rule | Noise in the row's attempts while the permission is missing | Accept; it stops once the permission is granted |
 | Only JSON-object layouts, only REVENUE | Opera, GuestLine, Hotelogix and Custom fail `unsupported_pms_format` | A reader per layout in `carmen_config.rows_of` |
+| `event_id` keeps `InterfaceName`'s casing | `Comanche` and `COMANCHE` are two rows for one day; the engine refuses the second post (`-200`) | Accepted (decision-log #44): Carmen sends one casing. Lower-casing it would split the days already stored |
 | PMSs that Carmen's own post API fetches (no Data Bank, no hook) | Such a PMS never reaches us: nothing calls it, and its key would never be used | Carmen lists the PMS kinds (the same for every BU); then a plan of its own (decision-log #44) |
 | `carmen.py`'s comment says neither config read has an `/api/interface` twin | Stale since 2026-10-15: the mapping GET has one | Update the comment on the next code change there |

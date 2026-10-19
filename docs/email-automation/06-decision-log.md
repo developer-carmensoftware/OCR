@@ -1284,12 +1284,23 @@ compared without case and stored lower-case.
 - **Every Carmen write stores the proven token as the BU's credential** (#42: one per BU,
   shared with email) and wakes the days waiting for one. That is how a BU gets its credential
   now that `#/pms` is gone. Carmen sends the non-expiring token, the same kind as the menu link's.
-- **A BU that never opened the app is created by its first call**, after the token is proven,
-  with the 30 signup credits a first login would have given (`auth.ensure_tenant`). PMS itself
+- **A BU that never opened the app is created by its first write** (`PUT /settings` or
+  `POST /keys`), after the token is proven, with the 30 signup credits a first login would
+  have given (`auth.ensure_tenant`). **A read never creates one:** `GET /settings` of such a
+  BU proves the token and answers the defaults (`_resolve_for_read`, 2026-10-19). PMS itself
   charges nothing; the credits are the OCR trial, and `/exchange` grants only to the request
   that inserts the tenant row, so withholding them here would lose them for good. An operator
   call never creates a BU.
 - **A hook naming another PMS than its key's is a 403**, and nothing is stored.
+- **No consent popup for a PMS-only BU** (accepted 2026-10-19). `#/pms` was where its user
+  met the AI consent popup; nothing replaces it. What reaches the LLM is the day's rows by
+  code and amount (no guest data), every call sends `data_collection: deny`, and the backend
+  never gated on `consent_logs` anyway. Carmen is asked to say on its PMS setting screen that
+  the AI suggests accounts from the day's figures.
+- **`InterfaceName` casing still splits a day** (pre-existing, accepted 2026-10-19). Keys and
+  auto-post compare it without case, but `event_id` keeps the name as sent, so `Comanche` and
+  `COMANCHE` are two rows for one day. Carmen sends one casing; lower-casing `event_id` would
+  split every day already stored.
 
 **Gone.** `#/pms` and its session routes (`/api/v1/pms/keys`, `/settings`, `/credential`); the
 2-active-key cap (`uq_api_keys_live_interface` allows one per BU and PMS); key issuing on

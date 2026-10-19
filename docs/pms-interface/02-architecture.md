@@ -47,11 +47,11 @@ sequenceDiagram
 
     User->>Carmen: open the PMS setting (e.g. Comanche)
     Carmen->>API: GET /api/v1/carmen/pms/settings?uri&bu&pms (Authorization: token)
-    Note over API: _resolve(create=True): prove the token against uri.<br/>A BU that never opened the app is created here, with 30 signup credits
+    Note over API: _resolve_for_read: prove the token against uri.<br/>A BU never seen gets the defaults; nothing is created
     API-->>Carmen: {pms, auto_post, key, has_credential}
     User->>Carmen: Generate key
     Carmen->>API: POST /api/v1/carmen/pms/keys {uri, bu, pms}
-    Note over API: credential.set_token (verify, Fernet, email_ingest_settings),<br/>wake_waiting + kick. issue(): revoke the old key, insert the new one
+    Note over API: _resolve(create=True): a BU never seen is created here, with 30 signup credits.<br/>credential.set_token (verify, Fernet, email_ingest_settings),<br/>wake_waiting + kick. issue(): revoke the old key, insert the new one
     API-->>Carmen: 201 {…, api_key: "cpk_…"} (only here)
     Carmen->>Carmen: store the key in this PMS setting
     User->>Carmen: auto-post on/off (default off)

@@ -59,8 +59,9 @@ the day Carmen adds it, nothing changes here.
 | F | Is the gross Summary line intended? (2 × Guest Ledger to the counter) | Open. The nets per account equal the old rule |
 | G | The counter when not sent: "not sent" means omitted, or `""`? | Carmen plans to fill it from its config after 2026-10-19. Ask which form it takes |
 | — | Data Bank test row Id 146 (breaks `POST …/PMS/search/…` with a 500) | Asked 2026-10-08. Unknown whether it was deleted. We don't call search |
-| H | **The PMS setting screen calls our Settings API** (#44): auto-post and Generate key per BU × PMS, sending the non-expiring token, and `pms` exactly as the hook's `InterfaceName` | Open. Replaces CA-115's menu link. Contract: [`PMS_INTEGRATION.md` §6](../PMS_INTEGRATION.md#6-settings-api--your-pms-setting-screen) |
+| H | **The PMS setting screen calls our Settings API** (#44): auto-post and Generate key per BU × PMS, sending the non-expiring token, and `pms` exactly as the hook's `InterfaceName` | Open. Replaces CA-115's menu link. From Carmen's **server** (CORS admits only our app), within 20 calls a minute per source IP. Contract: [`PMS_INTEGRATION.md` §6](../PMS_INTEGRATION.md#6-settings-api--your-pms-setting-screen) |
 | I | **A list of the PMS kinds** (the same for every BU): which send a hook with a Data Bank day, and which Carmen's own post API fetches | Open (Carmen offered it, 2026-10-16). The second kind gets its own plan once it exists |
+| J | **Tell users on the PMS setting screen that the AI reads the day's figures** to suggest accounts | Open. A PMS-only BU never sees our consent popup any more (accepted, decision-log #44) |
 
 Questions from path A that path B made moot: which posting path (Carmen's engine),
 debit/credit by `TransactionType` (Carmen's config), and Draft vs Normal (the engine's own JVs

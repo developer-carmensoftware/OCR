@@ -93,6 +93,9 @@ belongs to exactly that (host, BU) and PMS (decision-log #44).
 The hook carries no PMS data, so no guest data travels through it; the figures stay in the
 Data Bank until we read them. The maximum body size is 16 KB.
 
+**Send `InterfaceName` in one casing.** The key accepts it in any case, but the day's row is
+keyed by the name as sent, so `Comanche` and `COMANCHE` would make two rows for one day.
+
 **One BU, one day, one row.** The four fields identify a Data Bank day. A second hook for the
 same BU and day lands on the same row: we answer `200` and record when we last heard of it.
 
@@ -163,6 +166,12 @@ key**. There is no settings page of ours to link to (decision-log #44).
 Authorization: <the user's Carmen token>
 ```
 
+**Call it from your server, not from the browser.** Our CORS policy admits only our own app's
+origin, so a request from a page on your Carmen host is refused by the browser. From your
+server, mind the limit: **20 requests a minute per source IP** (300 a minute overall), shared by
+every BU that server handles; a 21st answers `429` with `Retry-After: 60`. One screen visit is
+a GET, and a save is one PUT or POST, so this is room for about 20 screen actions a minute.
+
 The token is sent the way every Carmen call sends it, with no scheme. Send the **non-expiring**
 token, the same kind as in the menu link: every write stores it as the BU's credential, which
 is what we read the Data Bank and post with (decision-log #42: one per BU, shared with email
@@ -181,6 +190,9 @@ permission model allows; we check no roles of our own.
   it without case.
 - **Auto-post** defaults to off: every day waits for a person in AI JV Automation. On, a day
   whose rows your mapping already covers posts by itself; a day with a new row still waits.
+- **Please tell your users, on this screen,** that the AI reads the day's figures (rows by code
+  and amount, no guest data) to suggest accounts. A BU that uses only PMS never opens our app,
+  so it never sees our AI consent notice.
 
 ```jsonc
 // the settings
@@ -193,7 +205,8 @@ permission model allows; we check no roles of our own.
 ```
 
 `key.last_used_at` answers "is my hook arriving?". A BU that never opened the AI app is
-registered by its first call. Errors use the email Settings API's shapes: `401` with "please
+registered by its first write (`PUT /settings` or `POST /keys`); before that, `GET /settings`
+answers the defaults above with `has_credential: false`. Errors use the email Settings API's shapes: `401` with "please
 re-login to Carmen" for a token your Carmen refuses, `502` when we cannot reach it, `422`
 naming the field, `429` with `Retry-After`.
 

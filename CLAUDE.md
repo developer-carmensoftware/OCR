@@ -223,7 +223,8 @@ Carmen's PMS setting screen (one per BU × PMS) → /api/v1/carmen/pms   (decisi
   POST /keys {uri, bu, pms} → api_key once; revokes the old one (1 live key per BU × PMS,
       uq_api_keys_live_interface)   ·   DELETE /keys?uri&bu&pms = the off switch
   every Carmen write: credential.set_token(the caller's token) + wake_waiting → the BU's ONE
-      credential; _resolve(create=True): a BU never seen gets its tenant + signup credits
+      credential; a write's _resolve(create=True): a BU never seen gets its tenant +
+      signup credits; GET (_resolve_for_read) proves the token, answers defaults, creates nothing
 ```
 
 The first endpoint Carmen calls *into* (decision-log #39; the body is Carmen's 4-field hook

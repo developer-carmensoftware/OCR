@@ -46,8 +46,9 @@ nobody.
   key per BU × PMS**: a new one revokes the old. Revoking a key switches that PMS off.
 - **FR-4** Every write from that screen stores the user's Carmen token as the BU's one
   credential, after proving it against Carmen. It is the same credential email automation
-  posts with. Storing it wakes the days that were waiting for one. The first call for a BU
-  that never opened the app creates its tenant, with the signup credits.
+  posts with. Storing it wakes the days that were waiting for one. The first write for a BU
+  that never opened the app creates its tenant, with the signup credits. A read of such a BU
+  answers the defaults and creates nothing.
 
 **Processing a day**
 - **FR-5** Read the BU's PMS setting for the hook's `InterfaceName`, its active `REVENUE`
@@ -92,6 +93,7 @@ nobody.
 | Privacy | The day's rows go to the LLM only as aggregates, under the no-training rule | The hook carries no data; the Data Bank holds aggregates by code; every LLM call sends `data_collection: deny` |
 | Abuse | A bad sender cannot flood us | 16 KB body cap; 120 requests a minute per source IP |
 | Secrets | A leaked database row cannot be used as a key | Only `sha256(key)` is stored; the Carmen token is Fernet-encrypted |
+| Consent | No AI consent popup for a PMS-only BU (accepted, decision-log #44) | The rows sent are aggregates by code, every call is `data_collection: deny`, and nothing gates on `consent_logs`. Carmen is asked to state the AI use on its PMS setting screen (07-status ask J) |
 
 ## Business rules
 

@@ -26,7 +26,7 @@ Carmen's PMS setting screen, one per BU and PMS. The contract for Carmen is
 
 | Method | Path | Body / query | Purpose | Success |
 |---|---|---|---|---|
-| `GET` | `/settings` | `?uri&bu&pms` | This PMS's settings. Registers a BU that never opened the app | `200` |
+| `GET` | `/settings` | `?uri&bu&pms` | This PMS's settings. A BU that never opened the app reads the defaults; nothing is created | `200` |
 | `PUT` | `/settings` | `{uri, bu, pms, auto_post}` | Replace this PMS's auto-post switch | `200` |
 | `POST` | `/keys` | `{uri, bu, pms}` | A new hook key; the previous one is revoked. **`api_key` is in this response only** | `201` |
 | `DELETE` | `/keys` | `?uri&bu&pms` | Revoke this PMS's live key (the off switch) | `204` · `404` none |
@@ -37,9 +37,12 @@ All four answer `{pms, auto_post, key: {prefix, created_at, last_used_at} | null
 - **Auth** is the email Settings API's `_caller`: `Authorization: <Carmen token>` (no scheme),
   proven against `uri` by `_resolve`, or `Bearer <admin JWT>` with `configs:write`. The same
   rate limits apply (20/min per IP, 300/min overall, before any outbound call).
-- **`_resolve(create=True)`** on GET, PUT and POST: a (host, bu) with no tenant is created by
+- **`_resolve(create=True)`** on PUT and POST: a (host, bu) with no tenant is created by
   `auth.ensure_tenant` after `validate_uri` + `validate_token`, with the signup credits.
   Never on the admin path, and never on DELETE.
+- **`_resolve_for_read`** on GET: an unknown (host, bu) on the Carmen path is proven with
+  `validate_uri` + `validate_token` and answers
+  `{pms, auto_post: false, key: null, has_credential: false}`. Nothing is written.
 - **Every Carmen write** (PUT, POST) runs `credential.set_token` with the caller's token, then
   `process.wake_waiting` and `kick` for each day it wakes. The admin path stores nothing.
 
