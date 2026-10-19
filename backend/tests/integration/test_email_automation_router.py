@@ -680,6 +680,70 @@ async def test_no_bu_is_created_for_an_operator_or_without_create(operator):
 
 
 @pytest.mark.asyncio
+async def test_a_read_proves_the_token_for_a_bu_never_seen_and_creates_nothing():
+    """GET of Carmen's PMS settings: a read never registers a BU, the first write does."""
+    from app.routers.email_automation import settings_api as mod
+    from app.routers.email_automation.settings_api import _resolve_for_read
+
+    unknown = AsyncMock(side_effect=ValidationError("Unknown business unit: h / b"))
+    with (
+        patch.object(mod.es, "resolve_tenant", unknown),
+        patch.object(mod, "validate_uri", return_value="https://hotel.carmen4.com"),
+        patch.object(mod, "validate_token", AsyncMock()) as prove,
+        patch.object(mod, "ensure_tenant", AsyncMock()) as ensure,
+    ):
+        got = await _resolve_for_read(
+            AsyncMock(), Caller("user:x", CARMEN_TOKEN), "https://hotel.carmen4.com", "gh01"
+        )
+    assert got is None
+    assert prove.await_args.args == (CARMEN_TOKEN, "https://hotel.carmen4.com")
+    ensure.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_read_refuses_a_bad_token_for_a_bu_never_seen():
+    from fastapi import HTTPException as _HTTPException
+
+    from app.routers.email_automation import settings_api as mod
+    from app.routers.email_automation.settings_api import _resolve_for_read
+
+    refuse = AsyncMock(side_effect=_HTTPException(401, "Carmen token rejected"))
+    with (
+        patch.object(mod.es, "resolve_tenant", AsyncMock(side_effect=ValidationError("x"))),
+        patch.object(mod, "validate_uri", return_value="https://hotel.carmen4.com"),
+        patch.object(mod, "validate_token", refuse),
+        pytest.raises(_HTTPException) as exc,
+    ):
+        await _resolve_for_read(
+            AsyncMock(), Caller("user:x", "bad|token"), "https://hotel.carmen4.com", "gh01"
+        )
+    assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_a_read_of_a_known_bu_or_by_an_operator_is_resolve_itself():
+    from app.routers.email_automation import settings_api as mod
+    from app.routers.email_automation.settings_api import _resolve_for_read
+
+    with (
+        patch.object(mod.es, "resolve_tenant", AsyncMock(return_value=PMS_TENANT)),
+        patch.object(mod, "_resolve", AsyncMock(return_value=PMS_TENANT)) as resolve,
+    ):
+        got = await _resolve_for_read(
+            AsyncMock(), Caller("user:x", CARMEN_TOKEN), "https://hotel.carmen4.com", "gh01"
+        )
+    assert got is PMS_TENANT
+    resolve.assert_awaited_once()
+
+    # An operator meets an unknown BU exactly as in `_resolve`: the 400.
+    with (
+        patch.object(mod.es, "resolve_tenant", AsyncMock(side_effect=ValidationError("x"))),
+        pytest.raises(ValidationError),
+    ):
+        await _resolve_for_read(AsyncMock(), _admin_caller(), "https://hotel.carmen4.com", "gh01")
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("created", [True, False])
 async def test_the_trial_is_granted_only_with_the_tenant_row(created):
     from app.routers import auth

@@ -253,21 +253,39 @@ async def _resolve(
     prove — so its boundary is `tenant_scope` instead, checked here because this is
     the one place a request's `uri`/`bu` becomes a concrete tenant.
 
-    `create=True` (Carmen's PMS settings API) registers a BU that never opened the app,
-    on the Carmen path only: an operator has no Carmen to prove a new BU against.
+    `create=True` (the writes of Carmen's PMS settings API) registers a BU that never
+    opened the app, on the Carmen path only: an operator has no Carmen to prove a new BU
+    against. The caller commits.
     """
     try:
         tenant = await es.resolve_tenant(db, _tenant_host(uri), bu)
     except ValidationError:
         if not (create and caller.carmen_token):
             raise
-        return await _create_tenant(db, caller.carmen_token, uri, bu)
+        host = await _prove_new(caller.carmen_token, uri)
+        return await ensure_tenant(db, host, bu.strip().lower())
     if caller.carmen_token is None:
         _assert_in_scope(caller.admin, tenant)
         return tenant
 
     await _prove(caller.carmen_token, await _safe_carmen_uri(tenant))
     return tenant
+
+
+async def _resolve_for_read(db: AsyncSession, caller: Caller, uri: str, bu: str) -> Tenant | None:
+    """`_resolve` for a read that may meet a BU that never opened the app.
+
+    On the Carmen path such a BU answers None once the token is proven: a read never
+    creates a tenant (decision-log #44), the first write does. An operator still gets the
+    400, as from `_resolve`.
+    """
+    if caller.carmen_token:
+        try:
+            await es.resolve_tenant(db, _tenant_host(uri), bu)
+        except ValidationError:
+            await _prove_new(caller.carmen_token, uri)
+            return None
+    return await _resolve(db, caller, uri, bu)
 
 
 async def _prove(token: str, origin: str) -> None:
@@ -286,12 +304,12 @@ async def _prove(token: str, origin: str) -> None:
         raise
 
 
-async def _create_tenant(db: AsyncSession, token: str, uri: str, bu: str) -> Tenant:
-    """Prove the token as `/auth/exchange` proves a login, then create the BU's tenant.
+async def _prove_new(token: str, uri: str) -> str:
+    """Prove the token for a BU with no tenant, as `/auth/exchange` proves a login. Its host.
 
     `validate_uri` runs on the caller's `uri` here, DNS lookup included, which `_tenant_host`
     avoids. `/auth/exchange` takes the same exposure for every login, and `_caller`'s limiters
-    run first. The caller commits.
+    run first.
     """
     try:
         origin = await asyncio.to_thread(validate_uri, uri)
@@ -300,7 +318,7 @@ async def _create_tenant(db: AsyncSession, token: str, uri: str, bu: str) -> Ten
             [{"field": "carmen_uri", "code": "invalid_uri", "message": str(exc.detail)}]
         ) from exc
     await _prove(token, origin)
-    return await ensure_tenant(db, urlparse(origin).hostname or "", bu.strip().lower())
+    return urlparse(origin).hostname or ""
 
 
 async def _safe_carmen_uri(tenant: Tenant) -> str:

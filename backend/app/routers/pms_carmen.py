@@ -11,8 +11,8 @@ JWT with `configs:write`. Carmen decides who sees the screen; we check nothing t
 Every write on the Carmen path stores the proven token as the BU's Carmen credential (one per
 BU, shared with email, decision-log #42) and wakes the days that were waiting for one: that
 is how a BU gets its credential now that #/pms is gone. A BU that never opened the app is
-registered by its first call, with the free trial a first login would have given it. PMS
-itself charges nothing.
+registered by its first write, with the free trial a first login would have given it; a
+read of it answers the defaults and creates nothing. PMS itself charges nothing.
 """
 
 import logging
@@ -30,7 +30,13 @@ from app.models.schemas.pms import (
     PmsCarmenSettingsIn,
     PmsCarmenSettingsOut,
 )
-from app.routers.email_automation.settings_api import Caller, _caller, _resolve, _safe_carmen_uri
+from app.routers.email_automation.settings_api import (
+    Caller,
+    _caller,
+    _resolve,
+    _resolve_for_read,
+    _safe_carmen_uri,
+)
 from app.services.email_automation import credential
 from app.services.pms import process
 from app.services.pms import review as pms_review
@@ -105,8 +111,11 @@ async def read_settings(
     db: AsyncSession = Depends(get_db),
     caller: Caller = Depends(_caller),
 ):
-    tenant = await _resolve(db, caller, ref.uri, ref.bu, create=True)
-    await db.commit()  # a BU registered by this first call
+    """This PMS's settings. A BU that never opened the app reads the defaults: a read creates
+    nothing, the first write registers it."""
+    tenant = await _resolve_for_read(db, caller, ref.uri, ref.bu)
+    if tenant is None:
+        return PmsCarmenSettingsOut(pms=ref.pms, auto_post=False, key=None, has_credential=False)
     return await pms_review.get_settings(db, tenant.id, ref.pms)
 
 

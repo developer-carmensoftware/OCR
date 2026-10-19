@@ -33,7 +33,7 @@ REF = {"uri": "https://hotel.carmen4.com", "bu": "gh01", "pms": "Comanche"}
 OUT = {"pms": "comanche", "auto_post": True, "key": None, "has_credential": True}
 
 
-def _call(method, path, caller=CARMEN, waiting=(), **kw):
+def _call(method, path, caller=CARMEN, waiting=(), read_tenant=TENANT, **kw):
     """One request with `_caller` overridden and everything past `_resolve` observable."""
     from app.main import app
 
@@ -41,6 +41,9 @@ def _call(method, path, caller=CARMEN, waiting=(), **kw):
     db = MagicMock(commit=AsyncMock())
     m = {
         "resolve": patch("app.routers.pms_carmen._resolve", AsyncMock(return_value=TENANT)),
+        "read": patch(
+            "app.routers.pms_carmen._resolve_for_read", AsyncMock(return_value=read_tenant)
+        ),
         "origin": patch(
             "app.routers.pms_carmen._safe_carmen_uri",
             AsyncMock(return_value="https://hotel.carmen4.com"),
@@ -68,12 +71,35 @@ def _call(method, path, caller=CARMEN, waiting=(), **kw):
 # ── settings ───────────────────────────────────────────────────────────────────────
 
 
-def test_get_registers_the_bu_and_reads_this_pms():
+def test_get_reads_this_pms_and_writes_nothing():
     res, m = _call("GET", "/settings", params=REF)
     assert res.status_code == 200 and res.json() == OUT
-    assert m["resolve"].await_args.kwargs == {"create": True}
+    m["resolve"].assert_not_awaited()  # the read path, which never creates a BU
     assert m["get"].await_args.args[1:] == (TENANT.id, "comanche")
     m["set_token"].assert_not_awaited()  # a read stores nothing
+
+
+def test_get_for_a_bu_never_seen_answers_the_defaults():
+    res, m = _call("GET", "/settings", read_tenant=None, params=REF)
+    assert res.status_code == 200
+    assert res.json() == {
+        "pms": "comanche",
+        "auto_post": False,
+        "key": None,
+        "has_credential": False,
+    }
+    m["get"].assert_not_awaited()
+
+
+@pytest.mark.parametrize(("method", "body"), [("PUT", {**REF, "auto_post": True}), ("POST", REF)])
+def test_the_writes_register_a_bu_never_seen(method, body):
+    with patch(
+        "app.routers.pms_carmen.api_keys.issue",
+        AsyncMock(return_value=(SimpleNamespace(id=uuid4()), "cpk_x")),
+    ):
+        res, m = _call(method, "/settings" if method == "PUT" else "/keys", json=body)
+    assert res.status_code in (200, 201)
+    assert m["resolve"].await_args.kwargs == {"create": True}
 
 
 def test_put_stores_the_credential_wakes_the_waiting_days_and_saves_this_pms():
