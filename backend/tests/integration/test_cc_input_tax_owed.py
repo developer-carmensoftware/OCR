@@ -237,3 +237,30 @@ def test_step_4_refuses_a_record_already_filed():
     resp, post = _proxy(card, {"Code": 0})
     assert resp.status_code == 409
     post.assert_not_called()
+
+
+def test_step_4_refuses_a_card_that_no_longer_exists():
+    """A real card id that no longer resolves (deleted, or another BU's) is not the legacy
+    no-guard path: filing it would claim VAT for a document that is gone (2026-10-20)."""
+    post = AsyncMock(return_value={"Code": 0})
+    with (
+        patch("app.routers.carmen.post_input_tax", new=post),
+        make_test_client(_db(None), session=SESSION) as client,
+    ):
+        resp = client.post(
+            f"/api/v1/carmen/input-tax?credit_card_id={uuid.uuid4()}", json={"x": 1}, headers=AUTH
+        )
+    assert resp.status_code == 404
+    post.assert_not_called()
+
+
+@pytest.mark.parametrize("query", ["", "?credit_card_id=DOC-123"], ids=["no-id", "not-a-uuid"])
+def test_step_4_without_a_card_id_is_still_the_plain_proxy(query):
+    post = AsyncMock(return_value={"Code": 0})
+    with (
+        patch("app.routers.carmen.post_input_tax", new=post),
+        make_test_client(_db(None), session=SESSION) as client,
+    ):
+        resp = client.post(f"/api/v1/carmen/input-tax{query}", json={"x": 1}, headers=AUTH)
+    assert resp.status_code == 200
+    post.assert_awaited_once()

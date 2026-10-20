@@ -21,7 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import SessionInfo, get_current_session
 from app.constants import Module
 from app.database import get_db
-from app.exceptions import DuplicateDocumentError, FieldValidationError, ValidationError
+from app.exceptions import (
+    DuplicateDocumentError,
+    FieldValidationError,
+    NotFoundError,
+    ValidationError,
+)
 from app.models.orm import CreditCard, OCRTask, TenantCredit
 from app.models.schemas import AiStatusOut
 from app.models.schemas.credits import AiModule, AiTrial
@@ -82,6 +87,14 @@ async def proxy_gl_prefix(session: SessionInfo = Depends(get_current_session)):
         return await get_gl_prefix(session.carmen_token)
     except CarmenAPIError as e:
         return {"Data": [], "Status": f"upstream_{e.status_code}"}
+
+
+def _is_uuid(value: str | None) -> bool:
+    try:
+        uuid.UUID(str(value))
+    except (ValueError, TypeError):
+        return False
+    return bool(value)
 
 
 async def _lock_card(
@@ -248,6 +261,12 @@ async def proxy_create_input_tax(
     # plain proxy it always was; with one, a second filing is refused before it reaches
     # Carmen — a restored draft and the activity table's button can both reach this record.
     card = await _lock_card(db, session, credit_card_id)
+    if card is None and _is_uuid(credit_card_id):
+        # A real card id that no longer resolves: the card was deleted (or is another BU's).
+        # The legacy no-guard path is for callers that send no id, not for this — filing
+        # here would claim VAT for a document that is gone, its JV likely voided. A restored
+        # wizard draft is the way in (2026-10-20).
+        raise NotFoundError("This document no longer exists, so its input tax cannot be filed.")
     if card is not None and card.input_tax_at is not None:
         raise DuplicateDocumentError(
             f"The input tax for document {card.doc_no or ''} has already been recorded in Carmen."
