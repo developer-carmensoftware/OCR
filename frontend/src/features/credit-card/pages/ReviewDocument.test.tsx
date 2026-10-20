@@ -997,11 +997,13 @@ describe('approving', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalled())
   })
 
-  it("keeps a duplicate's refusal on screen instead of saying someone else handled it", async () => {
+  it("keeps a duplicate's refusal on screen, whatever the row was parked for", async () => {
     const err = Object.assign(new Error('Document D-1 has already been posted to Carmen'), {
       status: 409,
+      code: 'duplicate_document',
     })
-    vi.mocked(api.getPending).mockResolvedValue(detail({ reason_code: 'duplicate_document' }))
+    // Parked for a missing mapping; the copy only surfaced at approve time.
+    vi.mocked(api.getPending).mockResolvedValue(detail({ reason_code: null }))
     vi.mocked(api.approveDocument).mockRejectedValue(err)
     mount()
     await clickApprove()
@@ -1009,6 +1011,17 @@ describe('approving', () => {
       'Document D-1 has already been posted to Carmen'
     )
     expect(onDone).not.toHaveBeenCalled()
+  })
+
+  it('sends a duplicate row back to the queue when someone else already handled it', async () => {
+    const err = Object.assign(new Error('Someone else has already handled this document'), {
+      status: 409,
+    })
+    vi.mocked(api.getPending).mockResolvedValue(detail({ reason_code: 'duplicate_document' }))
+    vi.mocked(api.approveDocument).mockRejectedValue(err)
+    mount()
+    await clickApprove()
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
   })
 
   it('can decline the input-tax record without blocking the JV', async () => {

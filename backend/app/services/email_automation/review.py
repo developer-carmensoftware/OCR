@@ -22,7 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.constants import DocType
 from app.context import current_carmen_uri, current_tenant_id
 from app.database import async_session
-from app.exceptions import CarmenServiceError, ConflictError, NotFoundError, ValidationError
+from app.exceptions import (
+    CarmenServiceError,
+    ConflictError,
+    DuplicateDocumentError,
+    NotFoundError,
+    ValidationError,
+)
 from app.models.business import CreditCard
 from app.models.email_automation import EmailDocument, shown_attachment
 from app.models.identity import Tenant
@@ -254,7 +260,7 @@ async def approve_document(
                 doc_date=parse_doc_date(extracted.doc_date),
                 doc_type=doc_type,
             ):
-                raise ConflictError(f"Document {doc_no} has already been posted to Carmen")
+                raise DuplicateDocumentError(f"Document {doc_no} has already been posted to Carmen")
             config = await get_accounting_config(db, tenant_id, bank_code)
 
         description: str | None = None
