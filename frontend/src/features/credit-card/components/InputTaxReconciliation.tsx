@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { FileText, Scale, Flag, AlertCircle, X, PlusCircle } from 'lucide-react'
+import { Scale, Flag, AlertCircle, X, PlusCircle } from 'lucide-react'
 import { SkeletonRow } from '@/shared/components/common/Skeleton'
 import CustomModal from '@/shared/components/common/CustomModal'
 import { submitInputTax, fetchTaxProfiles } from '@/shared/api/carmen'
@@ -179,12 +179,6 @@ export default function InputTaxReconciliation({
 
   return (
     <div>
-      <div className="section-header">
-        <span className="cc-step-title">
-          <FileText size={16} /> {t('cc.step6Title')}
-        </span>
-      </div>
-
       <div className="data-card">
         <div className="card-title">
           <div className="card-title-left">

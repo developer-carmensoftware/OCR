@@ -37,12 +37,12 @@ const DRAFT_SAVE_DEBOUNCE_MS = 400
  * must not throw away someone's unfinished work.
  */
 export async function draftWorthOffering(
-  d: Pick<CcDraft, 'step' | 'carmenJvId' | 'cardId'>
+  posted: boolean,
+  cardId: string | null | undefined
 ): Promise<boolean> {
-  const posted = !!d.carmenJvId || d.step >= 4
-  if (!posted || !d.cardId) return true
+  if (!posted || !cardId) return true
   try {
-    return await inputTaxOwed(d.cardId)
+    return await inputTaxOwed(cardId)
   } catch {
     return true
   }
@@ -71,6 +71,10 @@ export function useOcrWizard() {
   const uploadBusyRef = useRef(false)
   // StrictMode double-mounts in dev; without this the restore prompt opens twice.
   const restorePromptedRef = useRef(false)
+  // Set once the user starts something new (a file, Start over). The restore check is a
+  // round trip — up to a minute while Render wakes — and its answer must not clear or cover
+  // the new work: by then the draft it was asked about is the past.
+  const movedOnRef = useRef(false)
 
   const { modal, showModal, closeModal } = useModal()
 
@@ -161,7 +165,8 @@ export function useOcrWizard() {
     // written before useOcrSubmission advanced on success can say step 3 here, and step 3's
     // submit is refused as a duplicate — so the id wins over the recorded step.
     const posted = !!draft.data.carmenJvId || draft.data.step >= 4
-    void draftWorthOffering(draft.data).then(worth => {
+    void draftWorthOffering(posted, draft.data.cardId).then(worth => {
+      if (movedOnRef.current) return
       if (!worth) {
         clearDraft('cc')
         return
@@ -198,6 +203,7 @@ export function useOcrWizard() {
     if (uploadBusyRef.current || extraction.loading) return
 
     fileUpload.handleFileChange(e as React.ChangeEvent<HTMLInputElement>, async fileArray => {
+      movedOnRef.current = true
       extraction.resetExtractionState()
       pwPrompt.reset()
       setStep(1)
@@ -293,6 +299,7 @@ export function useOcrWizard() {
   }
 
   function resetAll() {
+    movedOnRef.current = true
     setStep(1)
     fileUpload.clearFiles()
     extraction.resetExtractionState()

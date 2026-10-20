@@ -559,18 +559,20 @@ def _adopt_db(row):
 
 @pytest.mark.asyncio
 async def test_adopt_keeps_a_held_credential_that_still_works(monkeypatch):
-    """Decision-log #45: a Carmen write's token must not replace one that still posts."""
-    verify = AsyncMock(return_value=None)
+    """Decision-log #45: a Carmen write's token must not replace one that still posts. The
+    probe goes to the origin the caller validated, not to the one stored with the row."""
+    probe = AsyncMock(return_value=True)
     store = AsyncMock()
-    monkeypatch.setattr(credential, "verify_token", verify)
+    monkeypatch.setattr(credential, "_probe_held", probe)
     monkeypatch.setattr(credential, "set_token", store)
     row = _row_holding("held")
+    row.carmen_uri = "https://stale-origin"
     db = _adopt_db(row)
 
     kept = await credential.adopt_token(db, _tenant_with_host(), "short-lived", "https://h", "u")
 
     assert kept is row
-    assert verify.await_args.args == ("held", "https://h")
+    assert probe.await_args.args == ("held", "https://h")
     assert row.carmen_token_fp == credential.fingerprint("held")
     assert row.carmen_token_verified_at is not None
     store.assert_not_awaited()
@@ -578,13 +580,26 @@ async def test_adopt_keeps_a_held_credential_that_still_works(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_adopt_replaces_a_held_credential_carmen_refuses(monkeypatch):
-    async def _verify(token, _uri):
-        if token == "held":
-            raise FieldValidationError([{"field": "token", "code": "token_rejected"}])
-
+async def test_adopt_keeps_the_held_credential_when_carmen_gives_no_verdict(monkeypatch):
+    """A timeout or a 5xx says nothing about the token: kept, but not marked re-proven."""
     store = AsyncMock()
-    monkeypatch.setattr(credential, "verify_token", _verify)
+    monkeypatch.setattr(credential, "_probe_held", AsyncMock(return_value=None))
+    monkeypatch.setattr(credential, "set_token", store)
+    row = _row_holding("held")
+    db = _adopt_db(row)
+
+    kept = await credential.adopt_token(db, _tenant_with_host(), "short-lived", "https://h", "u")
+
+    assert kept is row
+    assert row.carmen_token_verified_at is None
+    store.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_adopt_replaces_a_held_credential_carmen_refuses(monkeypatch):
+    store = AsyncMock()
+    monkeypatch.setattr(credential, "_probe_held", AsyncMock(return_value=False))
     monkeypatch.setattr(credential, "set_token", store)
     tenant = _tenant_with_host()
 
@@ -597,9 +612,9 @@ async def test_adopt_replaces_a_held_credential_carmen_refuses(monkeypatch):
 @pytest.mark.parametrize("held", ["no-row", "no-token", "same-token"])
 async def test_adopt_stores_when_nothing_else_is_held(monkeypatch, held):
     """No row, no token, or the same token again: straight to `set_token`, which re-proves it."""
-    verify = AsyncMock()
+    probe = AsyncMock()
     store = AsyncMock()
-    monkeypatch.setattr(credential, "verify_token", verify)
+    monkeypatch.setattr(credential, "_probe_held", probe)
     monkeypatch.setattr(credential, "set_token", store)
     row = {"no-row": None, "no-token": _fake_row(carmen_token_enc=None)}.get(held)
     if held == "same-token":
@@ -607,8 +622,26 @@ async def test_adopt_stores_when_nothing_else_is_held(monkeypatch, held):
 
     await credential.adopt_token(_adopt_db(row), _tenant_with_host(), "new", "https://h", "u")
 
-    verify.assert_not_awaited()
+    probe.assert_not_awaited()
     store.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "verdict"),
+    [(None, True), (401, False), (403, False), (504, None), (503, None), (500, None), (429, None)],
+    ids=["accepted", "401", "403", "timeout", "unreachable", "5xx", "429"],
+)
+async def test_probe_held_only_a_refusal_means_dead(monkeypatch, status, verdict):
+    from app.services.shared.carmen import CarmenAPIError
+
+    async def _departments(_token):
+        if status is not None:
+            raise CarmenAPIError(status, "x")
+        return []
+
+    monkeypatch.setattr("app.services.shared.carmen.get_departments", _departments)
+    assert await credential._probe_held("held", "https://h") is verdict
 
 
 def test_token_status_never_contains_the_token_value():

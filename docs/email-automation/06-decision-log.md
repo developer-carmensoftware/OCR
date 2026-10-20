@@ -1342,3 +1342,17 @@ token saves (#35, #38).
 
 **Costs one Carmen GET per write**, the same `verify_token` probe the daily health check runs.
 Writes come from a setting screen, so that is a handful a day.
+
+**Refined after the post-merge review (2026-10-20):**
+- **Only a refusal counts as dead.** The probe (`_probe_held`) replaces the held token only on
+  401/403. A timeout, a 5xx or a 429 says nothing about the token, so it is kept, without
+  refreshing `verified_at`. Otherwise a Carmen blip during a save would repeat the incident
+  above.
+- **A day stuck at `carmen_forbidden` lets the new token in.** The held token has then proven
+  short of a Carmen permission, however live it is, and the runbook's fix is a save by a user
+  who has it (`process.stopped_by_permission`, then `set_token`).
+- **The probe goes to the origin the caller just validated**, never the one stored with the
+  row.
+- **Accepted trade-off:** the choice is "still works now", not "will last". A short-lived
+  held token beats a durable offered one until it dies, and the next write then replaces it.
+  Picking by lifetime needs Carmen to tell us how long its tokens live.

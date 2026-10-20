@@ -242,13 +242,14 @@ export async function approveDocument(
   })
   if (!res.ok) {
     // 400 carries Carmen's own rejection message, 409 means someone else got there
-    // first. Both are things the reviewer needs to read, so surface the detail.
-    const detail = await res
+    // first — or, with `code: duplicate_document`, that this is a copy of a document
+    // already posted. All are things the reviewer needs to read, so surface the detail.
+    const body = await res
       .json()
-      .then(d => (d as { detail?: string }).detail)
-      .catch(() => null)
-    const err = new Error(detail || `Approve failed (${res.status})`)
-    ;(err as Error & { status?: number }).status = res.status
+      .then(d => d as { detail?: string; code?: string })
+      .catch(() => ({}) as { detail?: string; code?: string })
+    const err = new Error(body.detail || `Approve failed (${res.status})`)
+    Object.assign(err, { status: res.status, code: body.code })
     throw err
   }
   return res.json() as Promise<ApproveResult>

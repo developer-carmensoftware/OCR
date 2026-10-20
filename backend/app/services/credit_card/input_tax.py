@@ -237,18 +237,24 @@ async def input_tax_owed(db: AsyncSession, tenant_id: uuid.UUID, card_id: uuid.U
     """Whether this BU's live card still owes its input-tax record. `NotFoundError` when the
     card is another BU's or has been deleted, which for a restore prompt means the same as
     "nothing owed"."""
-    card = (
-        await db.execute(
-            select(CreditCard).where(
-                CreditCard.id == card_id,
-                CreditCard.tenant_id == tenant_id,
-                CreditCard.deleted_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
+    return owes_input_tax(await _live_card(db, tenant_id, card_id))
+
+
+async def _live_card(
+    db: AsyncSession, tenant_id: uuid.UUID, card_id: uuid.UUID, *, lock: bool = False
+) -> Any:
+    """This BU's card unless deleted, else `NotFoundError`. One rule for which card a BU may
+    act on, shared by the GET that answers "owed" and the POST that files it, so the two can
+    never disagree. `lock` holds it FOR UPDATE until the session closes."""
+    stmt = select(CreditCard).where(
+        CreditCard.id == card_id,
+        CreditCard.tenant_id == tenant_id,
+        CreditCard.deleted_at.is_(None),
+    )
+    card = (await db.execute(stmt.with_for_update() if lock else stmt)).scalar_one_or_none()
     if card is None:
         raise NotFoundError("Document not found")
-    return owes_input_tax(card)
+    return card
 
 
 async def file_input_tax_for_card(
@@ -264,19 +270,7 @@ async def file_input_tax_for_card(
     exactly as the email job resolves them. A reason `build_input_tax_payload` refuses on is
     raised as it stands — it opens "Input tax not recorded" and names what is missing.
     """
-    card = (
-        await db.execute(
-            select(CreditCard)
-            .where(
-                CreditCard.id == card_id,
-                CreditCard.tenant_id == tenant_id,
-                CreditCard.deleted_at.is_(None),
-            )
-            .with_for_update()
-        )
-    ).scalar_one_or_none()
-    if card is None:
-        raise NotFoundError("Document not found")
+    card = await _live_card(db, tenant_id, card_id, lock=True)
     if card.submitted_at is None:
         raise ConflictError("This document's JV has not been posted to Carmen")
     if card.input_tax_at is not None:

@@ -56,7 +56,13 @@ class ExtractionError(RuntimeError):
 
 
 class DuplicateDocumentError(RuntimeError):
-    """Document number already exists and overwrite was not requested. → 409"""
+    """Document number already exists and overwrite was not requested. → 409
+
+    Its `code` rides in the error body, so a client can tell "this is a copy" from the other
+    409s (a lost race, a claim someone else holds) without reading the sentence.
+    """
+
+    code = "duplicate_document"
 
 
 class CarmenServiceError(RuntimeError):

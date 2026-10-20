@@ -424,10 +424,12 @@ export function useReviewDocument(
       )
       onDone()
     } catch (e) {
-      const err = e as Error & { status?: number }
-      if (err.status === 409 && doc?.reason_code === 'duplicate_document') {
+      const err = e as Error & { status?: number; code?: string }
+      if (err.status === 409 && err.code === 'duplicate_document') {
         // The server's own words ("… has already been posted to Carmen"): this copy stays
         // parked, and Reject is its way out, so the reason stays where the reviewer is.
+        // Read from the answer, not the row's parked reason: a copy can surface on a row
+        // parked for anything, and a duplicate row someone else already handled is a race.
         setPostError(err.message)
         return
       }

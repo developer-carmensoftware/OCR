@@ -71,14 +71,17 @@ def _who(caller: Caller) -> str:
 
 async def _store_credential(db: AsyncSession, caller: Caller, tenant: Tenant) -> None:
     """The proven token becomes the BU's credential unless a working one is held (#45), and
-    the days a credential unblocks run again.
+    the days a credential unblocks run again. A held one that a day proved short of a Carmen
+    permission is replaced however live it is: that is what the runbook's fix relies on.
 
     Commits. The operator path has no Carmen token to store.
     """
     if caller.carmen_token is None:
         return
     origin = await _safe_carmen_uri(tenant)
-    await credential.adopt_token(db, tenant, caller.carmen_token, origin, caller.actor)
+    replace = await process.stopped_by_permission(db, tenant.id)
+    store = credential.set_token if replace else credential.adopt_token
+    await store(db, tenant, caller.carmen_token, origin, caller.actor)
     woken = await process.wake_waiting(db, tenant.id)
     await db.commit()
     for day_id in woken:

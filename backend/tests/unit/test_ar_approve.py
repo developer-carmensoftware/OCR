@@ -185,6 +185,32 @@ async def test_approve_checks_the_same_duplicate_key_extraction_uses():
 
 
 @pytest.mark.asyncio
+async def test_a_copy_already_posted_is_refused_with_a_code_the_screen_can_read():
+    """The review screen keeps this refusal on screen; it tells it from the other 409s (a
+    lost race) by `code`, not by the row's parked reason — a copy can surface on any row."""
+    from app.exceptions import DuplicateDocumentError
+
+    row = _ar_row()
+    db = _ReviewDB(row)
+    with (
+        _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-9"}),
+        patch.object(review, "has_submitted_doc", AsyncMock(return_value=True)),
+        patch.object(review.ar_svc, "jv_for_document", AsyncMock(return_value=_built())),
+        patch.object(review, "build_gljv_payload", MagicMock(return_value={})),
+        pytest.raises(DuplicateDocumentError) as err,
+    ):
+        await review.approve_document(
+            row.id,
+            tenant_id=str(row.tenant_id),
+            reviewer="u",
+            extracted=_extracted(doc_date="21/07/2026"),
+            rows=[],
+        )
+    assert err.value.code == "duplicate_document"
+    assert "already been posted to Carmen" in str(err.value)
+
+
+@pytest.mark.asyncio
 async def test_a_settlement_report_files_its_own_input_tax_record():
     """Since decision #28 the fee invoice that used to file this is no longer processed
     once AR reconciliation covers a bank, so the settlement report claims the VAT itself —

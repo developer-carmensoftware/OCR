@@ -64,7 +64,6 @@ export const en = {
   'cc.effectiveRateNote':
     "The document's effective VAT rate differs from the selected tax profile — please verify the amounts before submitting.",
   // Input tax reconciliation
-  'cc.step6Title': 'Input Tax Reconciliation',
   'cc.inputTaxRecon': 'Input Tax Reconciliation',
   'cc.noTaxData': 'No Credit card commission / Input Tax data available',
   'cc.discard': 'Discard',
@@ -303,7 +302,6 @@ export const th: Record<keyof typeof en, string> = {
   'cc.effectiveRateNote':
     'อัตราภาษีที่แท้จริงของเอกสารต่างจากโปรไฟล์ภาษีที่เลือก — กรุณาตรวจสอบยอดเงินก่อนส่ง',
   // Input tax reconciliation
-  'cc.step6Title': 'กระทบยอดภาษีซื้อ',
   'cc.inputTaxRecon': 'กระทบยอดภาษีซื้อ',
   'cc.noTaxData': 'ไม่มีข้อมูลค่าธรรมเนียมบัตรเครดิต / ภาษีซื้อ',
   'cc.discard': 'ยกเลิก',

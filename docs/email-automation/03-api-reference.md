@@ -63,6 +63,7 @@ stuck mid-flight is still findable. An unknown value falls back to `review`.
 | GET | `/api/v1/credit-card/activity?filter=&limit=&offset=` | `ActivityPage` — email documents **and** manual scans, newest first, plus `counts`, `attention` and `unseen` per chip |
 | POST | `/api/v1/credit-card/activity/seen` | `{filter}` — somebody in this BU opened that chip, put its dot out |
 | POST | `/api/v1/credit-card/activity/{id}/input-tax` | File the ACTX a posted manual scan still owes (`input_tax_owed`), from the sums stamped with its JV. 204 / 404 / 409 nothing left to file / 400 with the reason |
+| GET | `/api/v1/credit-card/activity/{id}/input-tax` | `{owed}`: whether that card still owes its ACTX, by the same rule as `input_tax_owed`. 404 for a deleted or another BU's card. The manual wizard asks before it offers a posted draft back |
 
 What `#/CreditCardOCR` actually lists, and a strictly wider question than
 `GET /email/documents` (which still exists and is still email-only). Each row carries

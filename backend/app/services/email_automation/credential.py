@@ -164,26 +164,48 @@ async def adopt_token(
     first and kept if it answers. If Carmen did kill it by minting the new one (#35), the
     probe says so and the new one goes in, as before.
 
+    Only Carmen refusing the held token (401/403) replaces it. A timeout or a 5xx says nothing
+    about the token, and treating it as "dead" would let a passing outage do what the
+    2026-10-20 write did, so the held one is kept, unproven.
+
+    The probe goes to `carmen_uri`, the origin the caller just validated, never to the one
+    stored with the row: a credential is only ever sent to a URI that passed that check.
+
     A deliberate token save (`PUT /settings/token`, the menu link) still calls `set_token`.
     """
     row = await get_settings(db, tenant)
     held = _decrypt(row.carmen_token_enc) if row is not None else None
     if row is not None and held and held != token:
-        try:
-            await verify_token(held, str(row.carmen_uri or carmen_uri))
-        except FieldValidationError:
-            pass  # dead: replaced below
-        else:
-            row.carmen_token_verified_at = datetime.now(UTC)
-            await db.commit()
+        works = await _probe_held(held, carmen_uri)
+        if works is not False:
+            if works:
+                row.carmen_token_verified_at = datetime.now(UTC)
+                await db.commit()
             logger.info(
-                "[pms] Kept credential %s for tenant %s; did not replace it with %s",
+                "[pms] Kept credential %s for tenant %s (%s); did not replace it with %s",
                 row.carmen_token_fp,
                 tenant.id,
+                "re-proven" if works else "Carmen did not answer",
                 fingerprint(token),
             )
             return row
     return await set_token(db, tenant, token, carmen_uri, actor)
+
+
+async def _probe_held(token: str, carmen_uri: str) -> bool | None:
+    """True if Carmen accepts the token, False if it refuses it (401/403), None if Carmen gave
+    no verdict on the token: a timeout, a 5xx, a 429."""
+    from app.context import current_carmen_uri
+    from app.services.shared.carmen import CarmenAPIError, get_departments
+
+    ctx = current_carmen_uri.set(carmen_uri)
+    try:
+        await get_departments(token)
+    except CarmenAPIError as exc:
+        return False if exc.status_code in (401, 403) else None
+    finally:
+        current_carmen_uri.reset(ctx)
+    return True
 
 
 async def clear_token(db: AsyncSession, tenant: Tenant, actor: str) -> None:

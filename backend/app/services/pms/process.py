@@ -390,6 +390,27 @@ async def _requeue_ready_days() -> int:
     return len(ready)
 
 
+async def stopped_by_permission(db, tenant_id: uuid.UUID) -> bool:
+    """Whether a day of this BU is stuck because the held credential lacks a Carmen permission.
+
+    Then that credential has proven itself not good enough for PMS work, however live it is,
+    and the next token Carmen's PMS setting screen proves should replace it rather than be
+    turned away by `credential.adopt_token` (decision-log #45): the runbook's fix for
+    `carmen_forbidden` is a save from a user who has the permission.
+    """
+    return bool(
+        await db.scalar(
+            select(PmsEvent.id)
+            .where(
+                PmsEvent.tenant_id == tenant_id,
+                PmsEvent.status.in_(("received", "failed")),
+                PmsEvent.reason_code == "carmen_forbidden",
+            )
+            .limit(1)
+        )
+    )
+
+
 async def wake_waiting(db, tenant_id: uuid.UUID) -> list[uuid.UUID]:
     """Put back to `received` this BU's days a credential stopped, after a new one is stored.
 
