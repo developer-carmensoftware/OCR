@@ -48,7 +48,7 @@ def _call(method, path, caller=CARMEN, waiting=(), read_tenant=TENANT, **kw):
             "app.routers.pms_carmen._safe_carmen_uri",
             AsyncMock(return_value="https://hotel.carmen4.com"),
         ),
-        "set_token": patch("app.routers.pms_carmen.credential.set_token", AsyncMock()),
+        "adopt_token": patch("app.routers.pms_carmen.credential.adopt_token", AsyncMock()),
         "wake": patch(
             "app.routers.pms_carmen.process.wake_waiting", AsyncMock(return_value=list(waiting))
         ),
@@ -76,7 +76,7 @@ def test_get_reads_this_pms_and_writes_nothing():
     assert res.status_code == 200 and res.json() == OUT
     m["resolve"].assert_not_awaited()  # the read path, which never creates a BU
     assert m["get"].await_args.args[1:] == (TENANT.id, "comanche")
-    m["set_token"].assert_not_awaited()  # a read stores nothing
+    m["adopt_token"].assert_not_awaited()  # a read stores nothing
 
 
 def test_get_for_a_bu_never_seen_answers_the_defaults():
@@ -106,7 +106,7 @@ def test_put_stores_the_credential_wakes_the_waiting_days_and_saves_this_pms():
     waiting = [uuid4(), uuid4()]
     res, m = _call("PUT", "/settings", waiting=waiting, json={**REF, "auto_post": True})
     assert res.status_code == 200 and res.json() == OUT
-    assert m["set_token"].await_args.args[1:4] == (
+    assert m["adopt_token"].await_args.args[1:4] == (
         TENANT,
         CARMEN_TOKEN,
         "https://hotel.carmen4.com",
@@ -119,7 +119,7 @@ def test_put_stores_the_credential_wakes_the_waiting_days_and_saves_this_pms():
 def test_an_operator_write_stores_no_credential():
     res, m = _call("PUT", "/settings", caller=ADMIN, json={**REF, "auto_post": False})
     assert res.status_code == 200
-    m["set_token"].assert_not_awaited()
+    m["adopt_token"].assert_not_awaited()
     m["save"].assert_awaited_once()
 
 
@@ -142,7 +142,7 @@ def test_generate_returns_the_key_once_and_stores_the_credential():
     assert res.status_code == 201
     assert res.json() == {**OUT, "api_key": "cpk_secret"}
     assert issue.await_args.args[1:] == (TENANT.id, "comanche hook", "comanche")
-    m["set_token"].assert_awaited_once()
+    m["adopt_token"].assert_awaited_once()
     m["audit"].assert_awaited_once()
 
 

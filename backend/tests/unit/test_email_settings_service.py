@@ -539,6 +539,78 @@ async def test_set_token_stores_nothing_when_carmen_rejects_it(monkeypatch):
     db.commit.assert_not_awaited()
 
 
+def _row_holding(token):
+    from app.auth.session import encrypt_carmen_token
+    from app.config import settings as app_settings
+
+    return _fake_row(
+        carmen_token_enc=encrypt_carmen_token(token, app_settings.session_encryption_key),
+        carmen_uri="https://h",
+        carmen_token_fp=credential.fingerprint(token),
+        carmen_token_verified_at=None,
+    )
+
+
+def _adopt_db(row):
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=_exec(scalar_one_or_none=row))
+    return db
+
+
+@pytest.mark.asyncio
+async def test_adopt_keeps_a_held_credential_that_still_works(monkeypatch):
+    """Decision-log #45: a Carmen write's token must not replace one that still posts."""
+    verify = AsyncMock(return_value=None)
+    store = AsyncMock()
+    monkeypatch.setattr(credential, "verify_token", verify)
+    monkeypatch.setattr(credential, "set_token", store)
+    row = _row_holding("held")
+    db = _adopt_db(row)
+
+    kept = await credential.adopt_token(db, _tenant_with_host(), "short-lived", "https://h", "u")
+
+    assert kept is row
+    assert verify.await_args.args == ("held", "https://h")
+    assert row.carmen_token_fp == credential.fingerprint("held")
+    assert row.carmen_token_verified_at is not None
+    store.assert_not_awaited()
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_adopt_replaces_a_held_credential_carmen_refuses(monkeypatch):
+    async def _verify(token, _uri):
+        if token == "held":
+            raise FieldValidationError([{"field": "token", "code": "token_rejected"}])
+
+    store = AsyncMock()
+    monkeypatch.setattr(credential, "verify_token", _verify)
+    monkeypatch.setattr(credential, "set_token", store)
+    tenant = _tenant_with_host()
+
+    await credential.adopt_token(_adopt_db(_row_holding("held")), tenant, "new", "https://h", "u")
+
+    assert store.await_args.args[1:4] == (tenant, "new", "https://h")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("held", ["no-row", "no-token", "same-token"])
+async def test_adopt_stores_when_nothing_else_is_held(monkeypatch, held):
+    """No row, no token, or the same token again: straight to `set_token`, which re-proves it."""
+    verify = AsyncMock()
+    store = AsyncMock()
+    monkeypatch.setattr(credential, "verify_token", verify)
+    monkeypatch.setattr(credential, "set_token", store)
+    row = {"no-row": None, "no-token": _fake_row(carmen_token_enc=None)}.get(held)
+    if held == "same-token":
+        row = _row_holding("new")
+
+    await credential.adopt_token(_adopt_db(row), _tenant_with_host(), "new", "https://h", "u")
+
+    verify.assert_not_awaited()
+    store.assert_awaited_once()
+
+
 def test_token_status_never_contains_the_token_value():
     from app.auth.session import encrypt_carmen_token
     from app.config import settings as app_settings

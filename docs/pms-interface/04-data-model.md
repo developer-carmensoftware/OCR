@@ -121,7 +121,7 @@ creates it) with `enabled = false`. So the daily token-health sweep, which reads
 
 | Code | Set by | Status it leaves | Fixed by | Queue sentence |
 |---|---|---|---|---|
-| `no_credential` | process | `received` → `failed` at 3 | saving the PMS setting in Carmen (any write stores the token) | No Carmen access is stored. Save this PMS setting in Carmen |
+| `no_credential` | process | `received` → `failed` at 3 | saving the PMS setting in Carmen (a write stores the token when none is held, #45) | No Carmen access is stored. Save this PMS setting in Carmen |
 | `carmen_config_unreadable` | process | `received` → `failed` | **Carmen** exposing the setting GET under `/api/interface`. **Every day today** | Carmen doesn't let this access read its PMS settings yet |
 | `pms_setting_missing` | process | `received` → `failed` | an active PMS setting for this `InterfaceName`, with an active REVENUE section, in Carmen | Carmen has no PMS posting setting for this interface |
 | `unsupported_pms_format` | process | **`failed` at once** | Carmen's setting is not a JSON-object layout; needs code here | Carmen's PMS setting uses a file the AI can't read yet |

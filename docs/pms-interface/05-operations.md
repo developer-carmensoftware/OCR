@@ -120,7 +120,7 @@ select reason_code, status, count(*) from pms_events
 | Every day stops at `carmen_config_unreadable` | the menu token cannot read `interfacePost/Setting/GL` | **Expected until Carmen adds the GET.** Nothing to do per day: the wake rule retries once a credential is re-proven |
 | `carmen_forbidden` with "Permission Name = Inf.PMS.DataBank \| Action = View" | the menu user's role in Carmen lacks Data Bank View | The BU's Carmen admin grants it, then saves the PMS setting in Carmen |
 | `carmen_unauthorized` with "SecurityToken has Expired" | the stored token died | Save the PMS setting in Carmen (or open email settings from Carmen's menu). The days wake on their own |
-| `no_credential` | no write from Carmen's PMS setting yet (keys made before #44, or an admin-only setup) | Save the PMS setting in Carmen: any write stores the token |
+| `no_credential` | no write from Carmen's PMS setting yet (keys made before #44, or an admin-only setup) | Save the PMS setting in Carmen: a write stores the token when none is held (#45) |
 | `pms_setting_missing` | no **active** PMS setting whose `InterfaceName` matches the hook's, or its REVENUE section is inactive or has no config | Fix it in Carmen's interface settings, then have Carmen re-send the day |
 | `unsupported_pms_format` | the setting's file is CSV, fixed-width or another layout | Code change in `carmen_config.spec_of`; until then, post in Carmen |
 | `day_not_found` | the hook came before the Data Bank row had rows, or the day is empty | It retries 3 times, 10 minutes apart. After that, have Carmen re-send the hook |

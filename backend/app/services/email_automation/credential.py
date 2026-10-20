@@ -152,6 +152,40 @@ async def set_token(
     return row
 
 
+async def adopt_token(
+    db: AsyncSession, tenant: Tenant, token: str, carmen_uri: str, actor: str
+) -> EmailIngestSettings:
+    """`set_token`, unless the BU already holds a credential that still works (decision-log #45).
+
+    For writes that store a token as a side effect: Carmen's PMS setting screen proves the
+    caller with their token, and we used to keep it. On 2026-10-20 one such call replaced a
+    working credential with a token that died half an hour later, and every post for that
+    BU was refused until someone stored a good one again. So the held token is re-proven
+    first and kept if it answers. If Carmen did kill it by minting the new one (#35), the
+    probe says so and the new one goes in, as before.
+
+    A deliberate token save (`PUT /settings/token`, the menu link) still calls `set_token`.
+    """
+    row = await get_settings(db, tenant)
+    held = _decrypt(row.carmen_token_enc) if row is not None else None
+    if row is not None and held and held != token:
+        try:
+            await verify_token(held, str(row.carmen_uri or carmen_uri))
+        except FieldValidationError:
+            pass  # dead: replaced below
+        else:
+            row.carmen_token_verified_at = datetime.now(UTC)
+            await db.commit()
+            logger.info(
+                "[pms] Kept credential %s for tenant %s; did not replace it with %s",
+                row.carmen_token_fp,
+                tenant.id,
+                fingerprint(token),
+            )
+            return row
+    return await set_token(db, tenant, token, carmen_uri, actor)
+
+
 async def clear_token(db: AsyncSession, tenant: Tenant, actor: str) -> None:
     """Drop our copy. Carmen must invalidate its own — ours is not the authority."""
     row = await get_settings(db, tenant)

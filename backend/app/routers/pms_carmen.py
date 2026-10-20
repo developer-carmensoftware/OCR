@@ -8,9 +8,10 @@ It authenticates exactly as the email Settings API does (`email_automation/setti
 the user's Carmen token, proven against the Carmen the payload names, or an operator's admin
 JWT with `configs:write`. Carmen decides who sees the screen; we check nothing twice.
 
-Every write on the Carmen path stores the proven token as the BU's Carmen credential (one per
+Every write on the Carmen path offers the proven token as the BU's Carmen credential (one per
 BU, shared with email, decision-log #42) and wakes the days that were waiting for one: that
-is how a BU gets its credential now that #/pms is gone. A BU that never opened the app is
+is how a BU gets its credential now that #/pms is gone. A held credential that still works is
+kept (#45). A BU that never opened the app is
 registered by its first write, with the free trial a first login would have given it; a
 read of it answers the defaults and creates nothing. PMS itself charges nothing.
 """
@@ -69,14 +70,15 @@ def _who(caller: Caller) -> str:
 
 
 async def _store_credential(db: AsyncSession, caller: Caller, tenant: Tenant) -> None:
-    """The proven token becomes the BU's credential, and the days it unblocks run again.
+    """The proven token becomes the BU's credential unless a working one is held (#45), and
+    the days a credential unblocks run again.
 
     Commits. The operator path has no Carmen token to store.
     """
     if caller.carmen_token is None:
         return
     origin = await _safe_carmen_uri(tenant)
-    await credential.set_token(db, tenant, caller.carmen_token, origin, caller.actor)
+    await credential.adopt_token(db, tenant, caller.carmen_token, origin, caller.actor)
     woken = await process.wake_waiting(db, tenant.id)
     await db.commit()
     for day_id in woken:

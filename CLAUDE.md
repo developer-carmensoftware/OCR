@@ -222,8 +222,8 @@ Carmen's PMS setting screen (one per BU × PMS) → /api/v1/carmen/pms   (decisi
   GET/PUT /settings {uri, bu, pms, auto_post}   pms = the hook's InterfaceName, lower-cased
   POST /keys {uri, bu, pms} → api_key once; revokes the old one (1 live key per BU × PMS,
       uq_api_keys_live_interface)   ·   DELETE /keys?uri&bu&pms = the off switch
-  every Carmen write: credential.set_token(the caller's token) + wake_waiting → the BU's ONE
-      credential; a write's _resolve(create=True): a BU never seen gets its tenant +
+  every Carmen write: credential.adopt_token(the caller's token) + wake_waiting → the BU's ONE
+      credential, unless the held one still works (#45); a write's _resolve(create=True): a BU never seen gets its tenant +
       signup credits; GET (_resolve_for_read) proves the token, answers defaults, creates nothing
 ```
 
@@ -232,7 +232,8 @@ since #41). The key **is** the tenant: no
 host/bu in the body, so a key cannot write into another BU, and it names its PMS, so it cannot
 write another PMS's days. **Carmen's PMS setting screen owns the settings** (decision-log #44,
 replacing #40's `#/pms`, which is deleted): it generates the key and sets auto-post per BU ×
-PMS, and every write stores the token it was proven with as the BU's credential. There is no
+PMS, and a write stores the token it was proven with as the BU's credential unless the BU
+already holds one that works (decision-log #45). There is no
 PMS settings page of ours, and the queue's `no_credential` has no fix button: the fix is
 saving the PMS setting in Carmen. `#/admin/api-keys` stays as a support tool: list and
 revoke, **no issuing**. Revoking is how a PMS is switched off (no `modules` row yet).
