@@ -3,15 +3,16 @@ Carmen Proxy Router — thin HTTP layer for Carmen Cloud API calls.
 
 All business logic and HTTP construction lives in `services/carmen_service.py`.
 Session injection (get_current_session) supplies the per-user Carmen token.
-The one exception is `GET /ai-status`, which Carmen calls with no auth at all.
+The one exception is `GET /ai-status`, which Carmen's page calls with the logged-in
+user's Carmen token, the email Settings API way, since that user has no session here.
 """
 
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import func, select
@@ -20,10 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import SessionInfo, get_current_session
 from app.constants import Module
 from app.database import get_db
-from app.exceptions import DuplicateDocumentError
-from app.models.orm import CreditCard, OCRTask, Tenant, TenantCredit
+from app.exceptions import DuplicateDocumentError, FieldValidationError, ValidationError
+from app.models.orm import CreditCard, OCRTask, TenantCredit
 from app.models.schemas import AiStatusOut
-from app.models.schemas.credits import AiModule
+from app.models.schemas.credits import AiModule, AiTrial
+from app.routers.auth import validate_token, validate_uri
+from app.routers.email_automation.settings_api import Caller, _caller, _resolve
 from app.services.ap_invoice.service import mark_invoice_submitted
 from app.services.shared import audit as audit_service
 from app.services.shared.audit import AuditAction
@@ -41,18 +44,13 @@ from app.services.shared.carmen import (
     put_gljv,
     put_input_tax,
 )
-from app.services.shared.credits import active_subscription, ai_stage
-from app.services.shared.rate_limit import InMemoryRateLimiter
+from app.services.shared.credits import SIGNUP_GRANT_CREDITS, active_subscription, trial_used
 from app.utils.client_ip import get_client_ip
 from app.utils.db_helpers import has_submitted_doc
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/carmen", tags=["Carmen"])
-
-# /ai-status is public, so RateLimitMiddleware's per-IP bucket alone would let many IPs
-# share out the DB between them. This caps the endpoint as a whole.
-_ai_status_ceiling = InMemoryRateLimiter(max_calls=300, window_seconds=60.0)
 
 
 @asynccontextmanager
@@ -300,54 +298,60 @@ async def proxy_create_invoice(
 
 @router.get("/ai-status", response_model=AiStatusOut)
 async def ai_status(
-    request: Request,
     response: Response,
     uri: str = Query(..., max_length=255),
     bu: str = Query(..., min_length=1, max_length=64),
     db: AsyncSession = Depends(get_db),
+    caller: Caller = Depends(_caller),
 ):
-    """Which AI sales popup Carmen shows this BU — public by request, no auth.
+    """What Carmen needs to pick this BU's AI sales popup. Carmen owns the rule.
 
-    Only the stage and the modules the BU has spent documents on go out, and an unknown
-    (host, bu) reads `never_used` with no modules like a BU that exists but never scanned,
-    so this endpoint cannot be used to learn which BUs exist.
-    Read-only: unlike /auth/exchange it creates no tenant, grant or session.
+    Authenticated as the email Settings API is (`_caller`/`_resolve`, their limiters
+    included): the logged-in user's Carmen token, proven against the BU's Carmen, or our
+    admin JWT. A BU that never opened the app reads 0/30 with no modules once the token is
+    proven against the `uri` it names. Read-only: no tenant, grant or session is created.
     """
-    _ai_status_ceiling.check(request, key="_global_ai_status")
-    host = (urlparse(uri).hostname or "").lower()  # the host /auth/exchange stores
-    row = (
+    response.headers["Cache-Control"] = "private, max-age=300"
+    try:
+        tenant = await _resolve(db, caller, uri, bu)
+    except ValidationError as exc:
+        # FieldValidationError is a stored host failing the SSRF gate, not an unknown BU,
+        # and an operator asking about a BU that does not exist should hear so.
+        if isinstance(exc, FieldValidationError) or caller.carmen_token is None:
+            raise
+        # ponytail: no rejection cache on this path; switch to settings_api._prove() once
+        # PR #293 lands it.
+        origin = await asyncio.to_thread(validate_uri, uri)  # blocking DNS, as /auth/exchange
+        await validate_token(caller.carmen_token, origin)
+        return AiStatusOut(paid=False, trial=AiTrial(used=0, total=SIGNUP_GRANT_CREDITS))
+
+    credit = (
         await db.execute(
-            select(Tenant.id, TenantCredit.balance, TenantCredit.credits_purchased)
-            .outerjoin(TenantCredit, TenantCredit.tenant_id == Tenant.id)
-            .where(
-                Tenant.host == host,
-                Tenant.bu_code == bu.strip().lower(),
-                Tenant.deleted_at.is_(None),
+            select(TenantCredit.balance, TenantCredit.credits_purchased).where(
+                TenantCredit.tenant_id == tenant.id
             )
         )
     ).first()
-    response.headers["Cache-Control"] = "max-age=300"
-    if row is None:
-        return AiStatusOut(stage="never_used")
-    has_sub = await active_subscription(db, str(row.id)) is not None
     # SUM(charged_docs), as the admin summary counts a module's documents: a task the
     # charge failed open on cost nothing. PMS writes no ocr_tasks (it is free).
-    module_ids = (
-        (
-            await db.execute(
-                select(OCRTask.module_id)
-                .where(OCRTask.tenant_id == row.id, OCRTask.deleted_at.is_(None))
-                .group_by(OCRTask.module_id)
-                .having(func.sum(OCRTask.charged_docs) > 0)
-            )
+    per_module = (
+        await db.execute(
+            select(OCRTask.module_id, func.sum(OCRTask.charged_docs))
+            .where(OCRTask.tenant_id == tenant.id, OCRTask.deleted_at.is_(None))
+            .group_by(OCRTask.module_id)
         )
-        .scalars()
-        .all()
-    )
+    ).all()
     # Carmen sells two things: AP Invoice, and JV (every other module is Credit Card's).
-    modules: list[AiModule] = sorted(
-        {"ap_invoice" if m == Module.AP_INVOICE else "jv" for m in module_ids}
+    modules: dict[AiModule, int] = {}
+    for module_id, docs in per_module:
+        if docs:
+            product: AiModule = "ap_invoice" if module_id == Module.AP_INVOICE else "jv"
+            modules[product] = modules.get(product, 0) + int(docs)
+
+    paid = (credit is not None and credit.credits_purchased > 0) or (
+        await active_subscription(db, str(tenant.id)) is not None
     )
+    trial = AiTrial(used=trial_used(credit.balance if credit else None), total=SIGNUP_GRANT_CREDITS)
     return AiStatusOut(
-        stage=ai_stage(row.balance, row.credits_purchased or 0, has_sub), modules=modules
+        paid=paid, trial=None if paid else trial, modules=dict(sorted(modules.items()))
     )
