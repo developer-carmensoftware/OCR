@@ -118,7 +118,7 @@ select reason_code, status, count(*) from pms_events
 | Carmen gets `422` naming `DocDate` | a number or `dd/MM/yyyy` sent as the date | [`PMS_INTEGRATION.md` §3](../PMS_INTEGRATION.md#3-request-body) |
 | Carmen gets `429` | more than 120/min from one IP, or QA's shared bucket | Pace a backfill under 2/s; fix `TRUST_PROXY` on QA |
 | Every day stops at `carmen_config_unreadable` | the menu token cannot read `interfacePost/Setting/GL` | **Expected until Carmen adds the GET.** Nothing to do per day: the wake rule retries once a credential is re-proven |
-| `carmen_forbidden` with "Permission Name = Inf.PMS.DataBank \| Action = View" | the menu user's role in Carmen lacks Data Bank View | The BU's Carmen admin grants it, then saves the PMS setting in Carmen |
+| `carmen_forbidden` with "Permission Name = Inf.PMS.DataBank \| Action = View" | the menu user's role in Carmen lacks Data Bank View | The BU's Carmen admin grants it, then saves the PMS setting in Carmen. That save replaces the held token even if it still answers (#45) |
 | `carmen_unauthorized` with "SecurityToken has Expired" | the stored token died | Save the PMS setting in Carmen (or open email settings from Carmen's menu). The days wake on their own |
 | `no_credential` | no write from Carmen's PMS setting yet (keys made before #44, or an admin-only setup) | Save the PMS setting in Carmen: a write stores the token when none is held (#45) |
 | `pms_setting_missing` | no **active** PMS setting whose `InterfaceName` matches the hook's, or its REVENUE section is inactive or has no config | Fix it in Carmen's interface settings, then have Carmen re-send the day |

@@ -33,7 +33,7 @@ REF = {"uri": "https://hotel.carmen4.com", "bu": "gh01", "pms": "Comanche"}
 OUT = {"pms": "comanche", "auto_post": True, "key": None, "has_credential": True}
 
 
-def _call(method, path, caller=CARMEN, waiting=(), read_tenant=TENANT, **kw):
+def _call(method, path, caller=CARMEN, waiting=(), read_tenant=TENANT, forbidden=False, **kw):
     """One request with `_caller` overridden and everything past `_resolve` observable."""
     from app.main import app
 
@@ -49,6 +49,11 @@ def _call(method, path, caller=CARMEN, waiting=(), read_tenant=TENANT, **kw):
             AsyncMock(return_value="https://hotel.carmen4.com"),
         ),
         "adopt_token": patch("app.routers.pms_carmen.credential.adopt_token", AsyncMock()),
+        "set_token": patch("app.routers.pms_carmen.credential.set_token", AsyncMock()),
+        "forbidden": patch(
+            "app.routers.pms_carmen.process.stopped_by_permission",
+            AsyncMock(return_value=forbidden),
+        ),
         "wake": patch(
             "app.routers.pms_carmen.process.wake_waiting", AsyncMock(return_value=list(waiting))
         ),
@@ -112,8 +117,22 @@ def test_put_stores_the_credential_wakes_the_waiting_days_and_saves_this_pms():
         "https://hotel.carmen4.com",
     )
     assert [c.args[0] for c in m["kick"].call_args_list] == waiting
+    m["set_token"].assert_not_awaited()
     assert m["save"].await_args.args[1:] == (TENANT.id, "comanche")
     assert m["save"].await_args.kwargs["auto_post"] is True
+
+
+def test_a_held_credential_short_of_a_permission_is_replaced_not_kept():
+    """Decision-log #45: a day stuck at carmen_forbidden proved the held token not good
+    enough, so the runbook's fix (a save by a user who has the permission) must land."""
+    res, m = _call("PUT", "/settings", forbidden=True, json={**REF, "auto_post": False})
+    assert res.status_code == 200
+    assert m["set_token"].await_args.args[1:4] == (
+        TENANT,
+        CARMEN_TOKEN,
+        "https://hotel.carmen4.com",
+    )
+    m["adopt_token"].assert_not_awaited()
 
 
 def test_an_operator_write_stores_no_credential():
