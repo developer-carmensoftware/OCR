@@ -43,7 +43,7 @@ export const en = {
   // Header card
   'cc.headerInfo': 'Header Information',
   // Accounting review
-  'cc.step4Title': 'Step 4: Accounting Review (Journal Concept)',
+  'cc.step4Title': 'Accounting Review (Journal Concept)',
   'cc.missingMappingFor': 'Missing account mapping for:',
   'cc.editMapping': 'Edit Mapping',
   'cc.noMapping': 'No Account Mapping configured',
@@ -64,7 +64,7 @@ export const en = {
   'cc.effectiveRateNote':
     "The document's effective VAT rate differs from the selected tax profile — please verify the amounts before submitting.",
   // Input tax reconciliation
-  'cc.step6Title': 'Step 6: Input Tax Reconciliation',
+  'cc.step6Title': 'Input Tax Reconciliation',
   'cc.inputTaxRecon': 'Input Tax Reconciliation',
   'cc.noTaxData': 'No Credit card commission / Input Tax data available',
   'cc.discard': 'Discard',
@@ -282,7 +282,7 @@ export const th: Record<keyof typeof en, string> = {
   // Header card
   'cc.headerInfo': 'ข้อมูลส่วนหัว',
   // Accounting review
-  'cc.step4Title': 'ขั้นที่ 4: ตรวจสอบบัญชี (แนวคิดสมุดรายวัน)',
+  'cc.step4Title': 'ตรวจสอบบัญชี (แนวคิดสมุดรายวัน)',
   'cc.missingMappingFor': 'ยังไม่ได้จับคู่บัญชีสำหรับ:',
   'cc.editMapping': 'แก้ไขการจับคู่',
   'cc.noMapping': 'ยังไม่ได้ตั้งค่าการจับคู่บัญชี',
@@ -303,7 +303,7 @@ export const th: Record<keyof typeof en, string> = {
   'cc.effectiveRateNote':
     'อัตราภาษีที่แท้จริงของเอกสารต่างจากโปรไฟล์ภาษีที่เลือก — กรุณาตรวจสอบยอดเงินก่อนส่ง',
   // Input tax reconciliation
-  'cc.step6Title': 'ขั้นที่ 6: กระทบยอดภาษีซื้อ',
+  'cc.step6Title': 'กระทบยอดภาษีซื้อ',
   'cc.inputTaxRecon': 'กระทบยอดภาษีซื้อ',
   'cc.noTaxData': 'ไม่มีข้อมูลค่าธรรมเนียมบัตรเครดิต / ภาษีซื้อ',
   'cc.discard': 'ยกเลิก',
