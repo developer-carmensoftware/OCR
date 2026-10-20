@@ -17,6 +17,7 @@ from app.models.business import CreditCard, OCRTask
 from app.models.email_automation import EmailDocument, EmailQueueSeen
 from app.models.pms import PmsEvent
 from app.models.schemas.email_automation import ActivityPage, ActivityRow
+from app.services.credit_card.input_tax import owes_input_tax
 from app.services.email_automation.review import to_review_row
 from app.services.pms.carmen_config import short_labels
 from app.services.shared.tenant_lookup import username_map
@@ -339,7 +340,7 @@ def _manual_row(card: CreditCard, task: OCRTask, name: str | None) -> ActivityRo
         doc_no=card.doc_no,
         jv_no=card.jv_no,
         posted_by_name=name,
-        input_tax_owed=bool(posted and (card.tax_amt or 0) > 0 and card.input_tax_at is None),
+        input_tax_owed=owes_input_tax(card),
     )
 
 

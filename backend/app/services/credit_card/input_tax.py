@@ -221,6 +221,36 @@ def build_input_tax_payload(
     return payload, None
 
 
+def owes_input_tax(card: Any) -> bool:
+    """A posted JV that carried VAT and whose input-tax record never followed.
+
+    The queue's "input tax not recorded" note and the wizard's restore prompt both ask
+    this, so it is said once. A card posted before `tax_amt` was stamped owes nothing we
+    can name.
+    """
+    return bool(
+        card.submitted_at is not None and (card.tax_amt or 0) > 0 and card.input_tax_at is None
+    )
+
+
+async def input_tax_owed(db: AsyncSession, tenant_id: uuid.UUID, card_id: uuid.UUID) -> bool:
+    """Whether this BU's live card still owes its input-tax record. `NotFoundError` when the
+    card is another BU's or has been deleted, which for a restore prompt means the same as
+    "nothing owed"."""
+    card = (
+        await db.execute(
+            select(CreditCard).where(
+                CreditCard.id == card_id,
+                CreditCard.tenant_id == tenant_id,
+                CreditCard.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if card is None:
+        raise NotFoundError("Document not found")
+    return owes_input_tax(card)
+
+
 async def file_input_tax_for_card(
     db: AsyncSession, tenant_id: uuid.UUID, card_id: uuid.UUID, carmen_token: str
 ) -> None:

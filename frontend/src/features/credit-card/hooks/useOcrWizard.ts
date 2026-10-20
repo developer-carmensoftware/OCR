@@ -7,6 +7,7 @@ import { showToast } from '@/shared/lib/toast'
 import { getPdfInfo, PDF_PASSWORD_REQUIRED, type ApiError } from '@/shared/api/ocr'
 import { usePdfPasswordPrompt } from '@/shared/hooks/usePdfPasswordPrompt'
 import { saveDraft, loadDraft, clearDraft, draftPromptMessage } from '@/shared/lib/draft'
+import { inputTaxOwed } from '../api/emailReview'
 import type { OcrDraftState } from './useOcrExtraction'
 import type { JvRow } from './useOcrSubmission'
 import type React from 'react'
@@ -24,6 +25,28 @@ interface CcDraft extends OcrDraftState {
 // Collapses a burst of typing into one write. See the AP copy of this constant for the
 // reasoning — same tradeoff, smaller documents.
 const DRAFT_SAVE_DEBOUNCE_MS = 400
+
+/**
+ * Whether a saved draft is still worth offering back.
+ *
+ * A posted draft exists only to file its input tax (step 4), so it is offered only while the
+ * server says that is still owed. On 2026-10-20 the prompt offered a document that had been
+ * deleted, and its JV voided, hours before; Restore → Add Input Tax would then have filed
+ * VAT for it through the card-less proxy. Filed from the queue, deleted, or finished on
+ * another device all answer "not owed". A failed check offers it anyway: a network blip
+ * must not throw away someone's unfinished work.
+ */
+export async function draftWorthOffering(
+  d: Pick<CcDraft, 'step' | 'carmenJvId' | 'cardId'>
+): Promise<boolean> {
+  const posted = !!d.carmenJvId || d.step >= 4
+  if (!posted || !d.cardId) return true
+  try {
+    return await inputTaxOwed(d.cardId)
+  } catch {
+    return true
+  }
+}
 
 // pdf-info can fail transiently when the backend is busy with a prior /extract.
 // One retry turns most of those intermittent misses into a successful probe.
@@ -138,24 +161,30 @@ export function useOcrWizard() {
     // written before useOcrSubmission advanced on success can say step 3 here, and step 3's
     // submit is refused as a duplicate — so the id wins over the recorded step.
     const posted = !!draft.data.carmenJvId || draft.data.step >= 4
-    showModal({
-      title: 'Unfinished document found',
-      message: draftPromptMessage(draft.data.headerData?.DocNo, draft.at, posted),
-      type: 'info',
-      confirmText: 'Restore',
-      cancelText: 'Discard',
-      onConfirm: () => {
-        extraction.restoreDraft(draft.data)
-        setJvRows(draft.data.jvRows || [])
-        setCarmenJvId(draft.data.carmenJvId ?? null)
-        setStep(posted ? Math.max(draft.data.step, 4) : draft.data.step)
-        closeModal()
-        showToast('Restored your unfinished document', 'success')
-      },
-      onCancel: () => {
+    void draftWorthOffering(draft.data).then(worth => {
+      if (!worth) {
         clearDraft('cc')
-        closeModal()
-      },
+        return
+      }
+      showModal({
+        title: 'Unfinished document found',
+        message: draftPromptMessage(draft.data.headerData?.DocNo, draft.at, posted),
+        type: 'info',
+        confirmText: 'Restore',
+        cancelText: 'Discard',
+        onConfirm: () => {
+          extraction.restoreDraft(draft.data)
+          setJvRows(draft.data.jvRows || [])
+          setCarmenJvId(draft.data.carmenJvId ?? null)
+          setStep(posted ? Math.max(draft.data.step, 4) : draft.data.step)
+          closeModal()
+          showToast('Restored your unfinished document', 'success')
+        },
+        onCancel: () => {
+          clearDraft('cc')
+          closeModal()
+        },
+      })
     })
     // Mount-only: the prompt answers a question about the past, not about live state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
