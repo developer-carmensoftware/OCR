@@ -54,7 +54,7 @@ the day Carmen adds it, nothing changes here.
 | — | The mapping GET under `/api/interface` | **Done** 2026-10-15 |
 | B | A token that lasts for unattended calls | **Settled** 2026-10-15: the menu token does not expire. Still to confirm: minting a new token does not revoke the old one |
 | C | `Inf.PMS.DataBank` View for the menu user, per BU | Configuration, not code. `carmencloud`'s menu user got 403 (2026-10-14) |
-| D | The JV number in `interfacePostGL`'s answer | Open. It answers "Posting complete." / `Result:true` without one |
+| D | The JV number in `interfacePostGL`'s answer | **In progress (Carmen agreed 2026-10-20; we wait).** Today a post answers `{"Result":true,"Code":1,"RecordCount":1,"UserMessage":"Posting complete."}` with no number, so the queue has no Open JV (`/glJv/{seq}/show`), and the menu token gets 401 on `glJv/search`, so we cannot look it up. Asked for `JvhSeq` + `Prefix` + `JvhNo` on `Result:true`, and a list when one post makes several JVs (a `DateFrom`–`DateTo` range) |
 | E | What a repeat hook means: Add vs AddOrUpdate | Partly seen: Carmen fires the hook on a Data Bank **Add** (sandbox, 2026-10-14). AddOrUpdate unknown. We re-read any unposted day either way |
 | F | Is the gross Summary line intended? (2 × Guest Ledger to the counter) | Open. The nets per account equal the old rule |
 | G | The counter when not sent: "not sent" means omitted, or `""`? | Carmen plans to fill it from its config after 2026-10-19. Ask which form it takes |
@@ -74,6 +74,10 @@ are Normal).
   and bump `VERSION` (MINOR). `feat/pms-carmen-settings` (#44) is stacked on it and merges
   with it: its migration `20261016000000` revokes every key, so Carmen's screen (H) must be
   ready to generate new ones.
+- **The JV number, once Carmen ships D:** `post_day` (`services/pms/process.py`) returns the
+  answer's `JvhSeq`, and `_process` and `review.approve` write it to `pms_events.jv_no` instead
+  of `None`. The queue's Open JV already reads `jv_no`, so the UI needs no change. Add a
+  `test_pms_process.py` case for the new answer shape.
 - **The PMS kind that Carmen's post API fetches**, once Carmen's list (I) exists.
 - **CA-118:** decide the prod release scope; set `TRUST_PROXY=true` + `TRUSTED_PROXY_HOPS=1`
   on `-xntb`.

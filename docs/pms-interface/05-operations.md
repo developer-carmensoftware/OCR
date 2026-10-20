@@ -126,7 +126,7 @@ select reason_code, status, count(*) from pms_events
 | `day_not_found` | the hook came before the Data Bank row had rows, or the day is empty | It retries 3 times, 10 minutes apart. After that, have Carmen re-send the hook |
 | Approve → `503` "Couldn't read Carmen's … mapping" | Carmen down, or the token | Nothing was written. Try again |
 | Approve → `400` "Carmen didn't post the day: …" | Carmen's verdict: a closed period, "Mapping is incomplete.", "Account code is empty" (the counter) | Read Carmen's words. The accounts may already be in Carmen's table; approving again is safe |
-| A day posted but shows no JV number | the engine does not return one | Expected (CA-116). Find the JV in Carmen by date and source |
+| A day posted but shows no JV number | the engine does not return one | Expected until Carmen ships ask D (in progress since 2026-10-20). Find the JV in Carmen by date and source CMRV |
 | Re-run one day by hand | — | Prefer Carmen re-sending the hook. Otherwise run `update pms_events set status='received', attempts=0, processed_at=null, review_payload=null, reason_code=null, error_message=null where id = '…' and status <> 'posted';`, then the next sweep, or `POST /api/v1/pms/process/run` with the job token |
 
 **Never PUT Carmen's mapping table by hand with a partial list.** It replaces the whole table.
@@ -172,7 +172,7 @@ The real end to end is **CA-120**: a real Carmen menu click and real hooks. It n
 | **The setting GET under `/api/interface`** (Carmen) | Every day stops at `carmen_config_unreadable` | Carmen adds it. Our call already uses that path (`carmen._PMS_CONFIG_PATH`) |
 | Token health skips PMS-only BUs | A dead token is found only when a day fails | Extend `sweep_token_health` to BUs with a live PMS key |
 | No retention purge for `pms_events` | Rows accumulate, about 1 per BU per day, with no payload once done | Decide a period; a cron like email's retention |
-| No JV number | The queue cannot link to the JV | Carmen returns `JvhNo` in `interfacePostGL`'s answer (CA-116) |
+| No JV number | The queue cannot link to the JV | **Carmen is adding `JvhSeq` (+ `Prefix`, `JvhNo`) to `interfacePostGL`'s answer** (ask D, agreed 2026-10-20). Then `post_day` stores it in `jv_no` ([07-status.md](07-status.md#what-we-still-owe)) |
 | Approve: a Carmen error while reading the chart (`mapping.masters`) is not wrapped | `500` instead of `503`. The claim is still released, and nothing is written (it comes before the PUT) | Wrap it like the mapping read |
 | The 403 Data Bank refusal retries 3× a day via the wake rule | Noise in the row's attempts while the permission is missing | Accept; it stops once the permission is granted |
 | Only JSON-object layouts, only REVENUE | Opera, GuestLine, Hotelogix and Custom fail `unsupported_pms_format` | A reader per layout in `carmen_config.rows_of` |
