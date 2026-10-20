@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import type React from 'react'
 import { useAPSubmission } from './useAPSubmission'
 import type { APLineItem } from './useAPExtraction'
@@ -64,7 +64,9 @@ interface CarmenDetailLine {
 }
 interface CarmenPayload {
   Detail: CarmenDetailLine[]
+  InvhInvNo: string
   TaxPeriod: string
+  TaxStatus: string
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -576,6 +578,78 @@ describe('useAPSubmission', () => {
       expect(line.TaxProfileCode1).toBe('VAT07')
       expect(line.InvdT1Dr).toBe('1100')
       expect(line.InvdT1DrDeptCode).toBe('ACC')
+    })
+
+    // CA-122: the header TaxStatus follows the invoice's total tax, not a constant.
+    const submittedTaxStatus = async (
+      items: APLineItem[],
+      overrides: Record<string, unknown> = {}
+    ) => {
+      submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
+      const props = makeProps({ lineItems: items, ...overrides })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      return (submitAPInvoiceToCarmen.mock.calls[0][0] as CarmenPayload).TaxStatus
+    }
+
+    it('sends TaxStatus "None" when no line carries tax', async () => {
+      expect(await submittedTaxStatus(makeItems('None', 'None'))).toBe('None')
+    })
+
+    it('sends TaxStatus "Pending" when any line carries tax', async () => {
+      expect(await submittedTaxStatus(makeItems('Exclude', 'None'))).toBe('Pending')
+    })
+
+    it('sends TaxStatus "None" for a taxable-type line whose tax amount is 0', async () => {
+      const items = makeItems('Exclude').map(i => ({ ...i, taxAmt: '0.00', lineTotal: '100.00' }))
+      expect(await submittedTaxStatus(items)).toBe('None')
+    })
+
+    it('sends TaxStatus "Pending" for a VAT-inclusive (Include) line', async () => {
+      expect(await submittedTaxStatus(makeItems('Include'))).toBe('Pending')
+    })
+
+    it('treats one satang of tax as taxable', async () => {
+      const items = makeItems('Exclude').map(i => ({ ...i, taxAmt: '0.01' }))
+      expect(await submittedTaxStatus(items)).toBe('Pending')
+    })
+
+    it('reads thousands separators in the line tax amounts', async () => {
+      const items = makeItems('Exclude').map(i => ({ ...i, taxAmt: '1,234.56' }))
+      expect(await submittedTaxStatus(items)).toBe('Pending')
+    })
+
+    // The extracted footer is the document's claim; the lines are what Carmen books.
+    it('follows the line tax amounts, not the extracted footer taxAmount', async () => {
+      const header = { ...MOCK_HEADER, taxAmount: '7.00' }
+      expect(await submittedTaxStatus(makeItems('None'), { headerData: header })).toBe('None')
+    })
+
+    // The duplicate-number re-submit builds a second payload; it must carry the same status.
+    it('keeps TaxStatus "None" when re-submitting under a new invoice number', async () => {
+      submitAPInvoiceToCarmen
+        .mockResolvedValueOnce({
+          Code: -1,
+          UserMessage: 'InvhInvNo already exists [INV-001, VN001]',
+        })
+        .mockResolvedValueOnce({ Code: 0, InternalMessage: 'JV-2' })
+      const props = makeProps({ lineItems: makeItems('None') })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      props.setModal.mock.lastCall?.[0].onConfirm() // "Change Invoice Number"
+      const changeModal = props.setModal.mock.lastCall?.[0]
+      changeModal.onInputChange('INV-001-A')
+      await act(async () => {
+        changeModal.onConfirm()
+      })
+      await waitFor(() => expect(submitAPInvoiceToCarmen).toHaveBeenCalledTimes(2))
+      const resubmitted = submitAPInvoiceToCarmen.mock.calls[1][0] as CarmenPayload
+      expect(resubmitted.InvhInvNo).toBe('INV-001-A')
+      expect(resubmitted.TaxStatus).toBe('None')
     })
   })
 

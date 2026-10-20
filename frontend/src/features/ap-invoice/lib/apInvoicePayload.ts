@@ -23,6 +23,8 @@ export function buildInvoicePayload(
   const dueDate = creditTerm > 0 ? addDays(invDate, creditTerm) : invDate
   const parts = (headerData.documentDate || '').split('/')
   const taxPeriod = parts.length === 3 ? `${parts[1]}/${normalizeYearToCE(parts[2])}` : ''
+  // Summed off the lines (what Carmen totals into its header), not the extracted footer.
+  const totalTax = lineItems.reduce((sum, item) => sum + parseNum(item.taxAmt), 0)
 
   const detail = lineItems.map(item => {
     const netAmt = parseNum(item.lineSubTotal)
@@ -109,7 +111,8 @@ export function buildInvoicePayload(
     InvhTInvNo: headerData.documentNumber || '',
     InvhTInvDt: invDate,
     TaxPeriod: taxPeriod,
-    TaxStatus: 'Pending',
+    // CA-122: an invoice with no VAT has nothing pending to claim.
+    TaxStatus: Math.abs(totalTax) < 0.005 ? 'None' : 'Pending',
     InvhTotalAmt: parseNum(headerData.grandTotal),
     InvWht: {},
     DimHList: {},

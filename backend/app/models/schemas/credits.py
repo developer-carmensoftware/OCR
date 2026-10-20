@@ -26,17 +26,22 @@ class CreditPackResponse(BaseModel):
     sort_order: int = 0
 
 
-AiStage = Literal["never_used", "trial", "near_limit", "exhausted", "paid"]
 # `jv` is every Credit Card (AI JV Automation) module: credit_card_ocr, cc_ar_reconcile.
 AiModule = Literal["ap_invoice", "jv"]
 
 
-class AiStatusOut(BaseModel):
-    """Which AI sales popup Carmen shows a BU. `paid` shows none."""
+class AiTrial(BaseModel):
+    used: int  # of `total`, read off the credit balance (trial_used)
+    total: int  # SIGNUP_GRANT_CREDITS
 
-    stage: AiStage
-    # What the BU has spent documents on, sorted; [] when never used.
-    modules: list[AiModule] = []
+
+class AiStatusOut(BaseModel):
+    """What Carmen needs to pick a BU's AI sales popup. The rule is Carmen's, not ours."""
+
+    paid: bool  # an active plan, or any top-up ever bought
+    trial: AiTrial | None = None  # None once paid: bought credits make 30 − balance meaningless
+    # Documents per product, all time, as #/admin counts them; a product with none is absent.
+    modules: dict[AiModule, int] = {}
 
 
 class CreditOrderResponse(BaseModel):
