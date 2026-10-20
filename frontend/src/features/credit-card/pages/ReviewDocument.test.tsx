@@ -412,6 +412,23 @@ describe('the screen', () => {
     expect(screen.getByText(/150\.50.*160\.50.*10\.00/)).toBeInTheDocument()
   })
 
+  it('writes the KBank tax summary disagreement as a sentence, not its code', async () => {
+    // A code with no `warn.*` entry prints its own name — what the 2026-10-20 demo dry run
+    // showed for a settlement report whose CSV VAT did not match.
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({
+        extracted: {
+          ...EXTRACTED,
+          warnings: [{ code: 'csvVatMismatch', params: { csv: '54.85', report: '53.85' } }],
+        },
+      })
+    )
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getByText(/tax summary gives VAT 54\.85.*53\.85/)).toBeInTheDocument()
+    expect(screen.queryByText('csvVatMismatch')).not.toBeInTheDocument()
+  })
+
   it('previews the description of the bank on the row, not the BU-wide one', async () => {
     // `JvHeaderCard` was the one reader still taking the bare browser detection where its
     // siblings take the resolved code. `bank_name: 'KTC'` detects nothing — the keyword
