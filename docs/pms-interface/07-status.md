@@ -54,7 +54,7 @@ the day Carmen adds it, nothing changes here.
 | — | The mapping GET under `/api/interface` | **Done** 2026-10-15 |
 | B | A token that lasts for unattended calls | **Settled** 2026-10-15: the menu token does not expire. Still to confirm: minting a new token does not revoke the old one |
 | C | `Inf.PMS.DataBank` View for the menu user, per BU | Configuration, not code. `carmencloud`'s menu user got 403 (2026-10-14) |
-| D | The JV number in `interfacePostGL`'s answer | **In progress (Carmen agreed 2026-10-20; we wait).** Today a post answers `{"Result":true,"Code":1,"RecordCount":1,"UserMessage":"Posting complete."}` with no number, so the queue has no Open JV (`/glJv/{seq}/show`), and the menu token gets 401 on `glJv/search`, so we cannot look it up. Asked for **`JvhSeq`** on `Result:true`: the same number the email path stores from `/gljv`'s `InternalMessage`, and all Open JV needs. Not asked: `Prefix` + `JvhNo` (the voucher number, display only), and several JVs per post (we post one day at a time, `DateFrom` = `DateTo`) |
+| D | The JV number in `interfacePostGL`'s answer | **In progress (Carmen agreed 2026-10-20; we wait).** Today a post answers `{"Result":true,"Code":1,"RecordCount":1,"UserMessage":"Posting complete."}` with no number, so the queue has no Open JV (`/glJv/{seq}/show`), and the menu token gets 401 on `glJv/search`, so we cannot look it up. Asked for **`JvhSeq` and `JvhNo`** on `Result:true`. `JvhSeq` opens the JV: it is the same number the email path stores from `/gljv`'s `InternalMessage`. `JvhNo` is the voucher number an accountant sees in Carmen (e.g. `25100008`). Not asked: `Prefix`, and several JVs per post (we post one day at a time, `DateFrom` = `DateTo`) |
 | E | What a repeat hook means: Add vs AddOrUpdate | Partly seen: Carmen fires the hook on a Data Bank **Add** (sandbox, 2026-10-14). AddOrUpdate unknown. We re-read any unposted day either way |
 | F | Is the gross Summary line intended? (2 × Guest Ledger to the counter) | Open. The nets per account equal the old rule |
 | G | The counter when not sent: "not sent" means omitted, or `""`? | Carmen plans to fill it from its config after 2026-10-19. Ask which form it takes |
@@ -78,6 +78,9 @@ are Normal).
   answer's `JvhSeq`, and `_process` and `review.approve` write it to `pms_events.jv_no` instead
   of `None`. The queue's Open JV already reads `jv_no`, so the UI needs no change. Add a
   `test_pms_process.py` case for the new answer shape.
+  `JvhNo` is a second value with no column yet. Decide when it ships whether the JV NO. column
+  shows it rather than the seq (email shows the seq today). If so, store it too
+  (`pms_events.jv_voucher_no`, one migration) and keep `jv_no` = `JvhSeq` for the link.
 - **The PMS kind that Carmen's post API fetches**, once Carmen's list (I) exists.
 - **CA-118:** decide the prod release scope; set `TRUST_PROXY=true` + `TRUSTED_PROXY_HOPS=1`
   on `-xntb`.
