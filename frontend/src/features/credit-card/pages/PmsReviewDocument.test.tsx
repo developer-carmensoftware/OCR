@@ -18,7 +18,7 @@ vi.mock('@/features/credit-card/hooks/mapping/useGlMasters', () => ({
     ],
     departments: [
       { code: '304', name: 'Other' },
-      { code: '101', name: 'Rooms' },
+      { code: '103', name: 'Rooms' },
     ],
     prefixes: [],
     loading: false,
@@ -27,6 +27,7 @@ vi.mock('@/features/credit-card/hooks/mapping/useGlMasters', () => ({
 
 const api = await import('@/features/credit-card/api/pmsReview')
 
+const REBATE = '["729","Rebate - Misc. (VAT)"]'
 const DAY: PmsDay = {
   id: 'day-1',
   interface: 'Comanche',
@@ -34,40 +35,41 @@ const DAY: PmsDay = {
   doc_date: '2024-09-05',
   reason_code: null,
   error_message: null,
-  terms: [
-    { type: 'Revenue', amount: '1127.00' },
-    { type: 'Payment', amount: '-500.00' },
-    { type: 'Guest Ledger', amount: '-627.00' },
+  setting_code: 'Comanche.PMS',
+  post_type: 'REVENUE',
+  counter: { dept: 'GEN', acc: '1021001', name: 'A/R - Guest Ledger' },
+  key_columns: ['Code', 'Description'],
+  rows: [
+    {
+      key: '["100","Room Charge"]',
+      values: { Code: '100', Description: 'Room Charge' },
+      amount: '1000.00',
+      dept: '103',
+      acc: '4010001',
+      name: 'Room Revenue',
+    },
+    { key: REBATE, values: { Code: '729', Description: 'Rebate - Misc. (VAT)' }, amount: '-50.00' },
+    {
+      key: '["900","Cash"]',
+      values: { Code: '900', Description: 'Cash' },
+      amount: '-500.00',
+      dept: 'GEN',
+      acc: '1010001',
+      name: 'Cash on hand',
+    },
   ],
-  off: '0.00',
-  codes: 4,
-  accounts: {
-    'Revenue|100': { dept: '101', acc: '4010001' },
-    'VAT|*': { dept: 'GEN', acc: '2012002' },
-    'SVC|*': { dept: 'GEN', acc: '2013002' },
-    'Payment|900': { dept: '101', acc: '1010001' },
-    'Ledger|Guest Ledger': { dept: '101', acc: '1021001' },
-  },
+  mapped_count: 2,
   new_codes: [
     {
-      key: 'Revenue|729',
-      code: '729',
-      description: 'Rebate - Misc. (VAT)',
-      type: 'Revenue',
+      key: REBATE,
+      label: '729 · Rebate - Misc. (VAT)',
+      values: { Code: '729', Description: 'Rebate - Misc. (VAT)' },
       amount: '-50.00',
       dept: '304',
       acc: '4240011',
       confidence: 'medium',
       why: 'rebate',
     },
-  ],
-  rows: [
-    { type: 'Revenue', code: '100', desc: 'Room Charge', amount: '1000.00' },
-    { type: 'Revenue', code: '100', desc: 'Room Charge - SERVICE', amount: '100.00' },
-    { type: 'Revenue', code: '100', desc: 'Room Charge - VAT', amount: '77.00' },
-    { type: 'Revenue', code: '729', desc: 'Rebate - Misc. (VAT)', amount: '-50.00' },
-    { type: 'Payment', code: '900', desc: 'Cash', amount: '-500.00' },
-    { type: 'Guest Ledger', code: 'Guest Ledger', desc: 'Guest Ledger', amount: '627.00' },
   ],
 }
 
@@ -91,55 +93,139 @@ beforeEach(() => {
 })
 
 describe('a parked PMS day', () => {
-  it('reads as the day it is: balance by PMS type, then only the new code', async () => {
+  it('says Carmen posts it with its own setting, and asks only about the new row', async () => {
     open()
     expect(await screen.findByText('Comanche · Daily ·', { exact: false })).toBeInTheDocument()
-    const balance = screen.getByRole('region', { name: 'Balance' })
-    expect(within(balance).getAllByText('1,127.00').length).toBeGreaterThan(0)
-    expect(within(balance).getByText('Guest Ledger (reversed)')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Carmen posts this day with its Comanche.PMS setting (REVENUE): it decides debit and credit, and posts the remainder to GEN/1021001 A/R - Guest Ledger.'
+      )
+    ).toBeInTheDocument()
+    // No balance of our own: the sides are Carmen's.
+    expect(screen.queryByText(/balance/i)).not.toBeInTheDocument()
     const accounts = screen.getByRole('region', { name: 'Accounts' })
-    expect(within(accounts).getByText('1 new, mapped by AI')).toBeInTheDocument()
+    // The AI's account is still to be checked by a person.
+    expect(within(accounts).getByText('1 new')).toBeInTheDocument()
+    expect(within(accounts).getByText('1 to check')).toBeInTheDocument()
+    expect(within(accounts).getByText('2 mapped in Carmen')).toBeInTheDocument()
     expect(within(accounts).getByText('729')).toBeInTheDocument()
     expect(within(accounts).getByText('AI')).toBeInTheDocument()
-    // Carmen's name and name2 are the same words; the code says them once.
+    // The AI's reason is text on the row, not a hover title; a medium pick is not "Unsure".
+    expect(within(accounts).getByText('AI: rebate')).toBeInTheDocument()
+    expect(within(accounts).queryByText('Unsure')).not.toBeInTheDocument()
+    // Carmen's name and name2 are the same words; the row says them once.
     expect(within(accounts).getByText('→ OT : Rebate Other Revenue')).toBeInTheDocument()
   })
 
-  it('posts with the account the reviewer kept', async () => {
-    vi.mocked(api.approvePmsDay).mockResolvedValue({ jv_no: 'JV2409-0066' })
+  it('folds the rows Carmen already maps, and lists only those there', async () => {
+    open()
+    await screen.findAllByText('729')
+    const fold = screen.getByText('Mapped in Carmen').closest('details') as HTMLElement
+    // Something to decide above, so the reference starts closed.
+    expect(fold).not.toHaveAttribute('open')
+    expect(within(fold).getByText('Room Revenue')).toBeInTheDocument()
+    // The PMS's own sign, with a true minus.
+    expect(within(fold).getByText('−500.00')).toBeInTheDocument()
+    // The new row is decided in Accounts, and shown only there.
+    expect(within(fold).queryByText('Rebate - Misc. (VAT)')).not.toBeInTheDocument()
+    expect(within(fold).getByText('2')).toBeInTheDocument()
+  })
+
+  it('cannot approve an AI account nobody has checked', async () => {
+    vi.mocked(api.approvePmsDay).mockResolvedValue({ jv_no: null, already_posted: false })
     const { onDone } = open()
-    await screen.findByText('729')
-    expect(screen.getByText(/Also saves the new codes/)).toBeInTheDocument()
+    await screen.findAllByText('729')
+    expect(approveButton()).toBeDisabled()
+    expect(screen.getByText('Check each account the AI picked (1 left).')).toBeInTheDocument()
+    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true })
+    expect(api.approvePmsDay).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Checked 729 · Rebate - Misc. (VAT)' }))
+    expect(screen.getByText('all checked')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Adds the new rows (1) to Carmen's Comanche mapping, which every later day uses. Then Carmen posts 05/09/2024."
+      )
+    ).toBeInTheDocument()
     fireEvent.click(approveButton())
     await waitFor(() => expect(onDone).toHaveBeenCalled())
     expect(api.approvePmsDay).toHaveBeenCalledWith('day-1', {
-      'Revenue|729': { dept: '304', acc: '4240011' },
+      [REBATE]: { dept: '304', acc: '4240011' },
     })
   })
 
-  it('cannot approve a new code with no account, and says why', async () => {
+  it('cannot approve a new row with no account, and says why', async () => {
     open({ ...DAY, new_codes: [{ ...DAY.new_codes[0], dept: null, acc: null }] })
-    await screen.findByText('729')
+    await screen.findAllByText('729')
     expect(approveButton()).toBeDisabled()
-    expect(screen.getByText('Pick an account for every new code.')).toBeInTheDocument()
+    expect(screen.getByText('Pick an account for every new row.')).toBeInTheDocument()
+    expect(screen.getByText('1 need an account')).toBeInTheDocument()
+    expect(screen.getByLabelText('Account for 729 · Rebate - Misc. (VAT)')).toHaveAttribute(
+      'aria-invalid',
+      'true'
+    )
+    // No AI account, so nothing to tick: picking one is the check.
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
 
-  it('cannot approve a day that does not balance', async () => {
-    open({ ...DAY, off: '120.00', terms: [{ type: 'Revenue', amount: '1247.00' }] })
-    await screen.findByText('729')
+  it('picking another account counts as checked; Undo puts the AI back unchecked', async () => {
+    open({ ...DAY, new_codes: [{ ...DAY.new_codes[0], confidence: 'low' }] })
+    const accounts = await screen.findByRole('region', { name: 'Accounts' })
+    expect(within(accounts).getByText('Unsure')).toBeInTheDocument()
     expect(approveButton()).toBeDisabled()
-    expect(screen.getByText(/Doesn't balance\. Fix it in Comanche/)).toBeInTheDocument()
-    expect(screen.getByText('Off by 120.00')).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Account for 729 · Rebate - Misc. (VAT)'))
+    fireEvent.mouseDown(screen.getByRole('button', { name: /4010001/ }))
+    expect(within(accounts).queryByText('Unsure')).not.toBeInTheDocument()
+    expect(within(accounts).getByText('all checked')).toBeInTheDocument()
+    expect(approveButton()).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo 729 · Rebate - Misc. (VAT)' }))
+    expect(within(accounts).getByText('Unsure')).toBeInTheDocument()
+    expect(within(accounts).getByText('1 to check')).toBeInTheDocument()
+    expect(approveButton()).toBeDisabled()
   })
 
-  it('shows the JV first and the PMS rows on their chip', async () => {
+  it('Ctrl+Enter approves once everything is checked', async () => {
+    vi.mocked(api.approvePmsDay).mockResolvedValue({ jv_no: null, already_posted: false })
+    const { onDone } = open()
+    await screen.findAllByText('729')
+    expect(approveButton()).toHaveAttribute('aria-keyshortcuts', 'Control+Enter')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Checked 729 · Rebate - Misc. (VAT)' }))
+    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true })
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+  })
+
+  it('Ctrl+Enter does nothing behind the reject question', async () => {
     open()
-    await screen.findByText('729')
-    const panel = screen.getByRole('tabpanel')
-    expect(within(panel).getByText('Balanced')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: /PMS rows/ }))
+    await screen.findAllByText('729')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Checked 729 · Rebate - Misc. (VAT)' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true })
+    expect(api.approvePmsDay).not.toHaveBeenCalled()
+  })
+
+  it('a fully mapped day only needs Approve, and shows its rows open', async () => {
+    open({ ...DAY, new_codes: [], mapped_count: 3 })
+    await screen.findByText('All 3 mapped in Carmen')
+    expect(approveButton()).toBeEnabled()
+    expect(screen.getByText('Mapped in Carmen').closest('details')).toHaveAttribute('open')
     expect(
-      within(screen.getByRole('tabpanel')).getByText('Net, Guest Ledger reversed')
+      screen.getByText('Carmen posts 05/09/2024 with its Comanche setting.')
+    ).toBeInTheDocument()
+  })
+
+  it("keeps Carmen's refusal on screen in Carmen's words", async () => {
+    vi.mocked(api.approvePmsDay).mockRejectedValue(
+      Object.assign(new Error("Carmen didn't post the day: Mapping is incomplete."), {
+        status: 400,
+      })
+    )
+    open()
+    await screen.findAllByText('729')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Checked 729 · Rebate - Misc. (VAT)' }))
+    fireEvent.click(approveButton())
+    expect(
+      await screen.findByText("Carmen didn't post the day: Mapping is incomplete.")
     ).toBeInTheDocument()
   })
 

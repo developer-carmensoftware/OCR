@@ -303,10 +303,8 @@ async def put_settings(
     session: SessionInfo = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ):
-    """Replace this BU's PMS posting settings (the JV prefix and the auto-post switch)."""
-    out = await pms_review.save_settings(
-        db, UUID(session.tenant_id), jv_prefix=body.jv_prefix, auto_post=body.auto_post
-    )
+    """Replace this BU's PMS posting switch (auto-post). How a day posts is Carmen's setting."""
+    out = await pms_review.save_settings(db, UUID(session.tenant_id), auto_post=body.auto_post)
     await db.commit()
     return out
 
@@ -338,7 +336,7 @@ async def put_credential(
                 .where(
                     PmsEvent.tenant_id == tenant.id,
                     PmsEvent.status.in_(("received", "failed")),
-                    PmsEvent.reason_code.in_(("no_credential", "carmen_unauthorized")),
+                    PmsEvent.reason_code.in_(process.WAKE_REASONS),
                 )
                 .values(status="received", attempts=0, processed_at=None)
                 .returning(PmsEvent.id)

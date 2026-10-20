@@ -1,26 +1,20 @@
-"""What each PMS code posts to, for one BU: the saved rules and the AI's picks for new codes.
+"""What a PMS day's new rows should post to: the AI's pick, until a person approves it.
 
-Rules are written by the review's Approve and read by every later day, so the LLM runs
-only when a day brings a code this BU has never approved (CA-119 comment 11861). The pick
-travels in the day's `review_payload` until a person approves it — the same contract as
-the email review's GL rules, where pressing Approve is what makes the machine's guess the
-BU's rule.
+The BU's mapping lives in Carmen (decision-log #43): Carmen's engine posts a day by its own
+mapping table, keyed the way the BU's PMS setting says (`[Code][Description]` for Comanche),
+and Carmen's own screen edits it. The LLM runs only for the rows that table has no account
+for, and it is shown the rows the BU has already mapped, so a new code's tax and service
+rows follow the house pattern rather than a guess. The pick travels in the day's
+`review_payload` until a person approves it; Approve writes it into Carmen's table.
 """
 
 import json
 import logging
-import uuid
-from datetime import UTC, datetime
-from decimal import Decimal
-
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import Module
 from app.llm.client import call_text_llm
-from app.models.pms import PmsCodeMapping
 from app.services.credit_card.gl_suggestion import _dept_allowed_map, _validate_codes
-from app.services.pms import day as pms_day
+from app.services.pms import carmen_config as cfg
 from app.services.shared import carmen
 from app.utils.gl_filter import parse_default_account
 
@@ -29,53 +23,8 @@ logger = logging.getLogger(__name__)
 # What a suggestion may post to. Expense accounts are never a PMS line's home; when a
 # chart of accounts types nothing this way, every account is offered instead.
 _POSTABLE_TYPES = {"income", "balancesheet"}
-
-
-async def saved(db: AsyncSession, tenant_id: uuid.UUID, interface: str) -> dict[str, dict]:
-    """key → {"dept", "acc"} for every rule this BU has approved for this interface."""
-    result = await db.execute(
-        select(PmsCodeMapping).where(
-            PmsCodeMapping.tenant_id == tenant_id,
-            PmsCodeMapping.interface_name == interface,
-            PmsCodeMapping.deleted_at.is_(None),
-        )
-    )
-    return {m.code_key: {"dept": m.dept_code, "acc": m.acc_code} for m in result.scalars().all()}
-
-
-async def save(
-    db: AsyncSession, tenant_id: uuid.UUID, interface: str, picks: dict[str, dict]
-) -> None:
-    """Write approved picks (`{key: {"dept", "acc", "source"}}`), replacing any old rule.
-
-    The caller commits. A replaced rule is soft-deleted rather than edited in place, so the
-    unique key stays one live row per code and the old answer stays on record.
-    """
-    if not picks:
-        return
-    result = await db.execute(
-        select(PmsCodeMapping).where(
-            PmsCodeMapping.tenant_id == tenant_id,
-            PmsCodeMapping.interface_name == interface,
-            PmsCodeMapping.code_key.in_(list(picks)),
-            PmsCodeMapping.deleted_at.is_(None),
-        )
-    )
-    now = datetime.now(UTC)
-    for old in result.scalars().all():
-        old.deleted_at = now
-    await db.flush()
-    for key, p in picks.items():
-        db.add(
-            PmsCodeMapping(
-                tenant_id=tenant_id,
-                interface_name=interface,
-                code_key=key,
-                dept_code=p["dept"],
-                acc_code=p["acc"],
-                source=p.get("source") or "user",
-            )
-        )
+# Enough of the BU's own rows to show the pattern without crowding the prompt.
+_EXAMPLES = 120
 
 
 async def masters(carmen_token: str) -> tuple[list[dict], list[dict]]:
@@ -103,49 +52,59 @@ async def masters(carmen_token: str) -> tuple[list[dict], list[dict]]:
     return accounts, departments
 
 
-def _items(new_keys: list[str], rows: list[dict]) -> list[dict]:
-    """One prompt line per key: what kind of line it is and how it usually behaves."""
-    out = []
-    for i, key in enumerate(new_keys, 1):
-        if key == pms_day.VAT_RULE:
-            out.append(
-                {"id": f"L{i}", "type": "Tax", "description": "Output VAT on every revenue line"}
-            )
-            continue
-        if key == pms_day.SVC_RULE:
-            out.append(
-                {
-                    "id": f"L{i}",
-                    "type": "Service",
-                    "description": "Service charge on every revenue line",
-                }
-            )
-            continue
-        mine = [r for r in rows if pms_day.key_of(r) == key]
-        amounts = [Decimal(r["amount"]) for r in mine]
-        out.append(
-            {
-                "id": f"L{i}",
-                "type": key.split("|", 1)[0],
-                "code": pms_day.code_label(key),
-                "description": mine[0]["desc"] if mine else "",
-                "usually_negative": sum(1 for a in amounts if a < 0) > len(amounts) / 2,
-            }
-        )
-    return out
+def usable(pick: dict | None) -> bool:
+    """A pick Carmen's table can take: both a department and an account."""
+    return bool(pick and pick.get("dept") and pick.get("acc"))
+
+
+def open_keys(new: list[str], guessed: dict[str, dict]) -> dict:
+    """The new keys still waiting on a person: `missing` (no account anywhere) and `ai`
+    (only the AI's). The queue row names their codes, so the reviewer knows which before
+    opening."""
+    return {
+        "missing": [k for k in new if not usable(guessed.get(k))],
+        "ai": [k for k in new if usable(guessed.get(k))],
+    }
+
+
+def flags(new: list[str], guessed: dict[str, dict]) -> list[str]:
+    """Why a person must look before this day posts. Empty means it may post unattended.
+
+    The names are the email queue's (`QueueRow.reasonFor` reads them). A day's balance is
+    not among them: debit, credit and the counter line are Carmen's engine's to decide.
+    """
+    still = open_keys(new, guessed)
+    return (["mapping_missing"] if still["missing"] else []) + (
+        ["mapping_guessed"] if still["ai"] else []
+    )
 
 
 async def suggest(
-    new_keys: list[str], rows: list[dict], accounts: list[dict], departments: list[dict]
+    new: list[str],
+    rows: list[dict],
+    table: dict[str, dict],
+    accounts: list[dict],
+    departments: list[dict],
 ) -> dict[str, dict]:
-    """key → {"dept", "acc", "confidence", "why"} from one LLM call; {} when it fails.
+    """key → {"dept", "acc", "confidence", "why"} for each new key, from one LLM call;
+    {} when it fails.
 
     Only codes Carmen's chart of accounts actually has survive (`_validate_codes`), so a
     hallucinated account never reaches the review as if it were real.
     """
-    if not new_keys:
+    if not new:
         return {}
-    items = _items(new_keys, rows)
+    amounts: dict[str, list[str]] = {}
+    for r in rows:
+        amounts.setdefault(r["key"], []).append(r["amount"])
+    items = [
+        {"id": f"L{i}", "line": cfg.label(key), "amounts": amounts.get(key, [])}
+        for i, key in enumerate(new, 1)
+    ]
+    examples = "\n".join(
+        f"  {cfg.label(k)} -> {m['dept']}/{m['acc']} {m['name']}"
+        for k, m in list(table.items())[:_EXAMPLES]
+    )
     postable = [a for a in accounts if a["type"] in _POSTABLE_TYPES] or accounts
     dept_lines = "\n".join(
         f"  {d['code']} {d['name']}" for d in sorted(departments, key=lambda d: d["code"])
@@ -154,11 +113,15 @@ async def suggest(
         f"  {a['code']} [{a['type']}] {a['name']}"
         for a in sorted(postable, key=lambda a: a["code"])
     )
-    prompt = f"""You map a hotel's PMS night-audit lines (one JV per day) to the hotel's Carmen general ledger.
+    prompt = f"""You map a hotel's PMS night-audit lines to the hotel's Carmen general ledger.
 
-Pick, for every line, the GL department and account it should post to. Debit/credit is decided elsewhere.
-Line types: Revenue = income charged to guests; Payment = how guests settled (cash, cards, transfer, city ledger, refunds);
-Ledger = the guest-ledger and deposit-ledger control balances; Tax = output VAT; Service = service charge.
+Pick, for every new line, the GL department and account it posts to. Debit/credit is decided by
+Carmen, not by you. Each line is "<PMS code> · <description>"; lines ending " - VAT" and
+" - SERVICE" are the tax and service charge of the line before them.
+
+This hotel already maps these lines. Follow its pattern: the same kind of line goes to the same
+kind of account and department, and tax and service lines follow the ones already mapped.
+{examples or "  (none yet)"}
 
 Departments (code name):
 {dept_lines}
@@ -166,14 +129,14 @@ Departments (code name):
 Accounts (code [type] name):
 {acc_lines}
 
-Lines:
+New lines:
 {json.dumps(items, ensure_ascii=False)}
 
 Answer ONLY a JSON object: {{"<line id>": {{"dept": "<dept code>", "acc": "<account code>", "confidence": "high|medium|low", "why": "<max 12 words>"}}, ...}} with one entry per line id. Use only codes listed above."""
 
     data = await call_text_llm(prompt, module_id=Module.PMS_INTERFACE, max_tokens=8000)
     if not data:
-        logger.warning("[pms] No usable suggestion for %d new code(s)", len(new_keys))
+        logger.warning("[pms] No usable suggestion for %d new row(s)", len(new))
         return {}
     ids = [it["id"] for it in items]
     valid = _validate_codes(
@@ -184,7 +147,7 @@ Answer ONLY a JSON object: {{"<line id>": {{"dept": "<dept code>", "acc": "<acco
         _dept_allowed_map(departments),
     )
     out = {}
-    for key, item_id in zip(new_keys, ids, strict=True):
+    for key, item_id in zip(new, ids, strict=True):
         raw = data.get(item_id) or {}
         pick = valid.get(item_id) or {}
         out[key] = {

@@ -1,6 +1,8 @@
 """PMS interface (CA-93, CA-119): Carmen's hooks, the day each one names, and how it posts.
 
-See supabase/migrations/20261007000000_pms_events.sql and 20261009000000_pms_processing.sql.
+See supabase/migrations/20261007000000_pms_events.sql, 20261009000000_pms_processing.sql
+and 20261015000000_pms_carmen_engine.sql. Since decision-log #43 a day posts through Carmen's
+own PMS engine, so what each PMS code posts to lives in Carmen's mapping table, not here.
 """
 
 import uuid
@@ -15,14 +17,13 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from app.database import Base
 
-from .mixins import SoftDeleteMixin, TenantFKMixin, TimestampMixin, WriterMixin
+from .mixins import TenantFKMixin, TimestampMixin, WriterMixin
 
 # JSONB on Postgres, plain JSON on SQLite (the unit-test engine).
 _JSON = JSON().with_variant(JSONB(), "postgresql")
@@ -67,41 +68,14 @@ class PmsEvent(Base, TenantFKMixin, TimestampMixin):
     )
 
 
-class PmsCodeMapping(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
-    """What one PMS code posts to, for this BU and interface.
-
-    Keyed on the code, never its description (descriptions drift). `code_key` is
-    `<TransactionType>|<Code>`, `Ledger|<Code>` for the two ledgers, or one of the rules
-    `VAT|*` / `SVC|*`. Written by the review's Approve, which is what turns the AI's pick
-    into the BU's rule — the same contract as the email review's GL rules.
-    """
-
-    __tablename__ = "pms_code_mappings"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interface_name = Column(String(40), nullable=False)
-    code_key = Column(String(120), nullable=False)
-    dept_code = Column(String(20), nullable=False)
-    acc_code = Column(String(20), nullable=False)
-    source = Column(String(10), nullable=False, default="user", server_default="user")
-
-    __table_args__ = (
-        Index(
-            "uq_pms_code_mappings_key",
-            "tenant_id",
-            "interface_name",
-            "code_key",
-            unique=True,
-            postgresql_where=text("deleted_at IS NULL"),
-        ),
-    )
-
-
 class PmsSettings(Base, TimestampMixin, WriterMixin):
-    """How this BU's PMS days post, set on #/pms. No prefix means nothing posts."""
+    """Whether a clean day of this BU posts by itself, set on #/pms (default: it waits).
+
+    Everything else about how a day posts — prefix, sides, the counter account — is the BU's
+    PMS setting in Carmen (decision-log #43).
+    """
 
     __tablename__ = "pms_settings"
 
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
-    jv_prefix = Column(String(20), nullable=True)
     auto_post = Column(Boolean, nullable=False, default=False, server_default="false")

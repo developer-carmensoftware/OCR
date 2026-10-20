@@ -343,6 +343,93 @@ async def get_databank_day(
         raise wrap_network_error(e) from e
 
 
+# ── Carmen's PMS posting engine (decision-log #43) ───────────────────────────
+#
+# A BU's interface setting holds Carmen's own config per PMS — file layout, Dr/Cr, the
+# mapping key, the counter account — and Carmen's engine posts a Data Bank day by it. We
+# only read the setting and the mapping table, add rows to the table, and ask the engine
+# to post. The menu token (`<hash>|<uuid>`) opens nothing outside `/api/interface`, and
+# the two reads have no `/api/interface` twin yet: until Carmen adds them (CA-116) they
+# answer 404/405 and the day parks with `carmen_config_unreadable`. They live behind
+# this one prefix so that day is a one-line change.
+_PMS_CONFIG_PATH = "/interfacePost"
+
+
+def _quoted(*parts: str) -> str:
+    from urllib.parse import quote
+
+    return "/".join(quote(p, safe="") for p in parts)
+
+
+async def get_pms_settings(carmen_token: str) -> list[dict]:
+    """Every GL interface setting of this BU (`Code`, `InterfaceName`, `Configuration`, …)."""
+    try:
+        resp = await get_http_client().get(
+            f"{_base_url()}{_PMS_CONFIG_PATH}/Setting/GL", headers=_headers(carmen_token)
+        )
+        body = _json_or_raise(resp)
+        return body if isinstance(body, list) else []
+    except RequestError as e:
+        raise wrap_network_error(e) from e
+
+
+async def get_pms_mapping(code: str, post_type: str, carmen_token: str) -> list[dict]:
+    """The rows of one setting's mapping table. Carmen answers a .NET DataTable."""
+    try:
+        resp = await get_http_client().get(
+            f"{_base_url()}{_PMS_CONFIG_PATH}/mapping/{_quoted(code, post_type, 'GL')}",
+            headers=_headers(carmen_token),
+        )
+        body = _json_or_raise(resp)
+        rows = body.get("Rows") if isinstance(body, dict) else None
+        return [
+            {k: v for k, v in r.items() if k not in ("OriginalRow", "RowState")}
+            for r in rows or []
+            if isinstance(r, dict)
+        ]
+    except RequestError as e:
+        raise wrap_network_error(e) from e
+
+
+async def put_pms_mapping(code: str, post_type: str, rows: list[dict], carmen_token: str) -> Any:
+    """Replace one setting's mapping table with `rows`.
+
+    **Replace, not merge** (observed 2026-10-14 on test.PMS): rows left out are deleted. The
+    caller sends the table it has just read, plus its additions — never a partial list.
+    """
+    try:
+        resp = await get_http_client().put(
+            f"{_base_url()}/interfacePost/mapping/{_quoted(code, post_type, 'GL')}",
+            json=rows,
+            headers=_headers(carmen_token),
+        )
+        return _json_or_raise(resp)
+    except CarmenAPIError:
+        raise
+    except RequestError as e:
+        raise wrap_network_error(e) from e
+
+
+async def post_pms_gl(post_type: str, body: dict, carmen_token: str) -> Any:
+    """Ask Carmen's engine to post Data Bank rows by the setting `body["Code"]` names.
+
+    Carmen's refusals arrive as 303 with a JSON body (`Code -500 "Mapping is incomplete."`,
+    `Code -200 "Already Posted."`), so they come back as a value for the caller to read;
+    only ≥ 400 raises.
+    """
+    try:
+        resp = await get_http_client().post(
+            f"{_base_url()}/interfacePostGL/{_quoted(post_type)}",
+            json=body,
+            headers=_headers(carmen_token),
+        )
+        return _json_or_raise(resp)
+    except CarmenAPIError:
+        raise
+    except RequestError as e:
+        raise wrap_network_error(e) from e
+
+
 async def get_period_list(carmen_token: str) -> Any:
     try:
         resp = await get_http_client().get(

@@ -33,10 +33,7 @@ vi.mock('@/features/pms/api/pmsSettings', () => ({
   putPmsSettings: (...a: unknown[]) => putPmsSettings(...a),
   putPmsCredential: (...a: unknown[]) => putPmsCredential(...a),
 }))
-vi.mock('@/shared/api/carmen', () => ({
-  fetchGLPrefixes: () => Promise.resolve([{ PrefixName: 'JV', Description: 'General journal' }]),
-}))
-const SETTINGS = { jv_prefix: 'JV', auto_post: false, has_credential: true }
+const SETTINGS = { auto_post: false, has_credential: true }
 
 const { default: PmsPage } = await import('./PmsPage')
 
@@ -161,8 +158,6 @@ describe('posting settings (CA-119)', () => {
     const sw = await screen.findByRole('switch', { name: 'Post clean days automatically' })
     await waitFor(() => expect(sw).not.toBeDisabled())
     fireEvent.click(sw)
-    await waitFor(() =>
-      expect(putPmsSettings).toHaveBeenCalledWith({ jv_prefix: 'JV', auto_post: true })
-    )
+    await waitFor(() => expect(putPmsSettings).toHaveBeenCalledWith({ auto_post: true }))
   })
 })

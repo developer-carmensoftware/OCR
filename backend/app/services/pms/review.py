@@ -4,15 +4,17 @@ Mirrors `email_automation/review.py`. The approve/reject claim is a compare-and-
 `posting_started_at`, so two reviewers pressing Approve together cannot post a day twice,
 and the claim is handed back on every path that does not finish.
 
-**Approving is what makes the AI's pick the BU's rule.** The day's new codes travel in its
-`review_payload` with the AI's suggestion; Approve saves the reviewer's answer for each of
-them, then posts, then re-checks this BU's other parked days, which may now be clean.
+**Approving writes the AI's picks into Carmen** (decision-log #43). The day's new rows
+travel in its `review_payload` with the AI's suggestion. Approve reads Carmen's mapping
+table fresh, adds the reviewer's answer for every row it still cannot place, writes the
+table back — whole, because Carmen's PUT replaces it — and asks Carmen's engine to post the
+day. Then it re-checks this BU's other parked days, which may now be fully mapped.
 """
 
 import logging
 import uuid
-from datetime import UTC, date, datetime
-from decimal import Decimal
+from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import or_, select, update
@@ -24,24 +26,30 @@ from app.exceptions import CarmenServiceError, ConflictError, NotFoundError, Val
 from app.models.email_automation import EmailIngestSettings
 from app.models.pms import PmsEvent, PmsSettings
 from app.services.credit_card.gl_suggestion import _dept_allowed_map, _pair_ok
-from app.services.pms import day as pms_day
-from app.services.pms import mapping, posting
-from app.services.pms.process import REVIEW_CLAIM_TTL, _target
+from app.services.pms import carmen_config as cfg
+from app.services.pms import mapping
+from app.services.pms.process import (
+    REVIEW_CLAIM_TTL,
+    PostRefused,
+    _target,
+    carmen_words,
+    post_day,
+)
 from app.services.shared import carmen
 
 logger = logging.getLogger(__name__)
 
 
-def _money(v: Decimal) -> str:
-    return f"{v.quantize(pms_day.CENT)}"
+def _total(amounts: list[str]) -> str:
+    """The amount a key's rows add up to, as written — a key is usually one row."""
+    try:
+        return str(sum((Decimal(a) for a in amounts if a), Decimal(0)))
+    except InvalidOperation:
+        return amounts[0] if amounts else ""
 
 
 async def get_day(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) -> dict | None:
-    """What the review modal shows for one parked day, or None when it is not waiting.
-
-    The JV lines are not sent: they follow from `rows` and the accounts, and the screen
-    recomputes them as the reviewer changes a new code's account.
-    """
+    """What the review modal shows for one parked day, or None when it is not waiting."""
     row = await db.scalar(
         select(PmsEvent).where(
             PmsEvent.id == event_pk,
@@ -53,22 +61,21 @@ async def get_day(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) -
         return None
     payload = row.review_payload
     rows = payload.get("rows") or []
-    rules = await mapping.saved(db, tenant_id, payload.get("interface") or "")
-    terms = pms_day.terms(rows)
+    mapped = payload.get("mapped") or {}
     guessed = payload.get("guessed") or {}
+    keys = list(dict.fromkeys(r["key"] for r in rows))
     new_codes = []
-    for key in pms_day.keys(rows):
-        if key in rules:
+    for key in keys:
+        if key in mapped:
             continue
-        mine = [r for r in rows if pms_day.key_of(r) == key]
+        mine = [r for r in rows if r["key"] == key]
         pick = guessed.get(key) or {}
         new_codes.append(
             {
                 "key": key,
-                "code": pms_day.code_label(key),
-                "description": mine[0]["desc"] if mine else "",
-                "type": key.split("|", 1)[0],
-                "amount": _money(pms_day.off_by(mine)),
+                "label": cfg.label(key),
+                "values": mine[0]["values"] if mine else {},
+                "amount": _total([r["amount"] for r in mine]),
                 "dept": pick.get("dept"),
                 "acc": pick.get("acc"),
                 "confidence": pick.get("confidence"),
@@ -82,12 +89,13 @@ async def get_day(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) -
         "doc_date": payload.get("doc_date"),
         "reason_code": row.reason_code,
         "error_message": row.error_message,
-        "terms": [{"type": t, "amount": _money(terms[t])} for t in pms_day.TERMS if t in terms],
-        "off": _money(pms_day.off_by(rows)),
-        "codes": sum(1 for k in pms_day.keys(rows) if k not in pms_day.RULES),
-        "accounts": {k: v for k, v in rules.items() if k in set(pms_day.keys(rows))},
+        "setting_code": payload.get("setting_code"),
+        "post_type": payload.get("post_type"),
+        "counter": payload.get("counter") or {},
+        "key_columns": payload.get("key_columns") or [],
+        "rows": [{**r, **(mapped.get(r["key"]) or {})} for r in rows],
+        "mapped_count": sum(1 for k in keys if k in mapped),
         "new_codes": new_codes,
-        "rows": rows,
     }
 
 
@@ -138,19 +146,19 @@ async def _release(event_pk: uuid.UUID) -> None:
 
 
 def _check_picks(picks: dict[str, dict], accounts: list[dict], departments: list[dict]) -> None:
-    """Refuse a pick Carmen's chart of accounts does not have, naming the code."""
+    """Refuse a pick Carmen's chart of accounts does not have, naming the row."""
     valid_acc = {a["code"] for a in accounts}
     valid_dept = {d["code"] for d in departments}
     allowed = _dept_allowed_map(departments)
     for key, p in picks.items():
-        label = pms_day.code_label(key)
+        row = cfg.label(key)
         if p["dept"] not in valid_dept:
-            raise ValidationError(f"{label}: {p['dept']} is not a department in Carmen")
+            raise ValidationError(f"{row}: {p['dept']} is not a department in Carmen")
         if p["acc"] not in valid_acc:
-            raise ValidationError(f"{label}: {p['acc']} is not an account in Carmen")
+            raise ValidationError(f"{row}: {p['acc']} is not an account in Carmen")
         if not _pair_ok(p["dept"], p["acc"], allowed):
             raise ValidationError(
-                f"{label}: department {p['dept']} does not allow account {p['acc']}"
+                f"{row}: department {p['dept']} does not allow account {p['acc']}"
             )
 
 
@@ -162,12 +170,12 @@ async def approve(
     reviewer: str,
     reviewer_name: str | None,
 ) -> dict:
-    """Save the new codes' accounts, post the day, and re-check the BU's other parked days.
+    """Write the new rows' accounts into Carmen, have Carmen post the day, re-check the rest.
 
-    `picks` is `{key: {"dept", "acc"}}` for the day's new codes; a key the BU already has a
-    rule for is ignored (rules are changed on the mapping screen, not by one day's review).
-    Refuses — leaving the day parked — when a new code has no account, the day does not
-    balance, no JV prefix is set, or Carmen says no.
+    `picks` is `{key: {"dept", "acc"}}` for the day's new rows. A row Carmen's table has
+    meanwhile been given an account for keeps Carmen's (its own screen edits the table).
+    Refuses — leaving the day parked — when a row still has no account, Carmen's table
+    cannot be read (the PUT replaces it, so it is never written blind), or Carmen says no.
     """
     async with async_session() as db:
         claimed = await _claim(db, tenant_id, event_pk)
@@ -176,56 +184,50 @@ async def approve(
     try:
         payload = claimed.review_payload or {}
         rows = payload.get("rows") or []
-        interface = payload.get("interface") or ""
+        columns = payload.get("key_columns") or []
+        code, post_type = payload.get("setting_code") or "", payload.get("post_type") or ""
         async with async_session() as db:
-            rules = await mapping.saved(db, tenant_id, interface)
-            settings_row = await db.get(PmsSettings, tenant_id)
             token, uri = await _target(db, tenant_id)
-
-        if not (settings_row and settings_row.jv_prefix):
-            raise ValidationError("Pick a JV prefix on the PMS settings page before posting")
         if not token or not uri:
             raise ValidationError(
                 "No Carmen access is stored for this business unit. Open PMS settings from Carmen's menu."
             )
-        if pms_day.off_by(rows):
-            raise ValidationError(
-                "This day doesn't balance. Fix it in Comanche; the day comes back when it's resent."
-            )
-
-        guessed = payload.get("guessed") or {}
-        new_keys = [k for k in pms_day.keys(rows) if k not in rules]
-        chosen: dict[str, dict] = {}
-        for key in new_keys:
-            p = picks.get(key) or {}
-            if not pms_day.usable(p):
-                raise ValidationError("Pick an account for every new code")
-            ai = guessed.get(key) or {}
-            same = p["dept"] == ai.get("dept") and p["acc"] == ai.get("acc")
-            chosen[key] = {"dept": p["dept"], "acc": p["acc"], "source": "ai" if same else "user"}
-
         uri_ctx = current_carmen_uri.set(uri)
+
+        try:
+            current = await carmen.get_pms_mapping(code, post_type, token)
+        except carmen.CarmenAPIError as exc:
+            raise CarmenServiceError(
+                f"Couldn't read Carmen's {payload.get('interface')} mapping, so nothing was "
+                f"written or posted: {carmen_words(exc)}"
+            ) from exc
+        table = cfg.table_of(current, columns)
+        chosen: dict[str, dict] = {}
+        for key in cfg.new_keys(rows, table):
+            p = picks.get(key) or {}
+            if not mapping.usable(p):
+                raise ValidationError("Pick an account for every new row")
+            chosen[key] = {"dept": p["dept"], "acc": p["acc"]}
+
         if chosen:
             accounts, departments = await mapping.masters(token)
             _check_picks(chosen, accounts, departments)
-            async with async_session() as db:
-                await mapping.save(db, tenant_id, interface, chosen)
-                await db.commit()
+            try:
+                await carmen.put_pms_mapping(
+                    code, post_type, cfg.merged_rows(current, chosen, columns), token
+                )
+            except carmen.CarmenAPIError as exc:
+                raise CarmenServiceError(
+                    f"Carmen didn't save the accounts, so the day wasn't posted: {carmen_words(exc)}"
+                ) from exc
 
-        doc_date = date.fromisoformat(payload["doc_date"])
-        body = posting.build_payload(
-            pms_day.jv_lines(rows, {**rules, **chosen}),
-            doc_date=doc_date,
-            prefix=settings_row.jv_prefix,
-            text=posting.description(interface, payload.get("doc_type") or "", doc_date),
-        )
         try:
-            jv_no = await posting.post_day(body, token)
-        except posting.PostRefused as exc:
-            raise ValidationError(f"Carmen did not accept the JV: {exc}") from exc
+            outcome = await post_day(payload, payload["doc_date"], payload["databank_id"], token)
+        except PostRefused as exc:
+            raise ValidationError(f"Carmen didn't post the day: {exc}") from exc
         except carmen.CarmenAPIError as exc:
             raise CarmenServiceError(
-                f"{exc.detail} Check in Carmen whether the JV posted before trying again."
+                f"{carmen_words(exc)} Approving again is safe: Carmen refuses a day it has already posted."
             ) from exc
         posted = True
 
@@ -235,9 +237,9 @@ async def approve(
                 .where(PmsEvent.id == event_pk)
                 .values(
                     status="posted",
-                    jv_no=jv_no,
+                    jv_no=None,
                     review_payload=None,
-                    reason_code=None,
+                    reason_code="already_posted" if outcome == "already_posted" else None,
                     error_message=None,
                     posting_started_at=None,
                     reviewed_by=reviewer[:36],
@@ -247,8 +249,9 @@ async def approve(
             )
             await db.commit()
         if chosen:
-            await recheck(tenant_id, interface)
-        return {"jv_no": jv_no}
+            fresh = {**table, **{k: {**v, "name": ""} for k, v in chosen.items()}}
+            await recheck(tenant_id, payload.get("interface") or "", fresh)
+        return {"jv_no": None, "already_posted": outcome == "already_posted"}
     finally:
         if uri_ctx is not None:
             current_carmen_uri.reset(uri_ctx)
@@ -284,16 +287,16 @@ async def reject(
         await db.commit()
 
 
-async def recheck(tenant_id: uuid.UUID, interface: str) -> int:
-    """Recompute the flags of this BU's other parked days against the rules as they are now.
+async def recheck(tenant_id: uuid.UUID, interface: str, table: dict[str, dict]) -> int:
+    """Recompute the open rows of this BU's other parked days against Carmen's table as it
+    now is (`table`, just written by an approve).
 
-    A code approved on one day stops being "AI suggested" on every other day that has it.
+    A row approved on one day stops being "AI suggested" on every other day that has it.
     Costs no Carmen call: the rows are in each day's payload. Returns how many changed.
     Never raises — the approve it follows has already posted.
     """
     try:
         async with async_session() as db:
-            rules = await mapping.saved(db, tenant_id, interface)
             parked = (
                 (
                     await db.execute(
@@ -312,9 +315,12 @@ async def recheck(tenant_id: uuid.UUID, interface: str) -> int:
                 if payload.get("interface") != interface:
                     continue
                 rows, guessed = payload.get("rows") or [], payload.get("guessed") or {}
+                keys = dict.fromkeys(r["key"] for r in rows)
+                new = [k for k in keys if k not in table]
                 fresh = {
-                    "flags": pms_day.flags(rows, rules, guessed),
-                    **pms_day.open_keys(rows, rules, guessed),
+                    "mapped": {k: table[k] for k in keys if k in table},
+                    "flags": mapping.flags(new, guessed),
+                    **mapping.open_keys(new, guessed),
                 }
                 if any(payload.get(k) != v for k, v in fresh.items()):
                     # Replaced, not mutated: SQLAlchemy does not see in-place JSON edits.
@@ -328,25 +334,21 @@ async def recheck(tenant_id: uuid.UUID, interface: str) -> int:
 
 
 async def get_settings(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
-    """This BU's posting settings, and whether a Carmen credential is stored at all."""
+    """This BU's posting switch, and whether a Carmen credential is stored at all."""
     row = await db.get(PmsSettings, tenant_id)
     ingest = await db.get(EmailIngestSettings, tenant_id)
     return {
-        "jv_prefix": row.jv_prefix if row else None,
         "auto_post": bool(row and row.auto_post),
         "has_credential": bool(ingest and ingest.carmen_token_enc),
     }
 
 
-async def save_settings(
-    db: AsyncSession, tenant_id: uuid.UUID, *, jv_prefix: str | None, auto_post: bool
-) -> dict:
-    """Replace this BU's posting settings. The caller commits."""
+async def save_settings(db: AsyncSession, tenant_id: uuid.UUID, *, auto_post: bool) -> dict:
+    """Replace this BU's posting switch. The caller commits."""
     row = await db.get(PmsSettings, tenant_id)
     if row is None:
         row = PmsSettings(tenant_id=tenant_id)
         db.add(row)
-    row.jv_prefix = (jv_prefix or "").strip() or None
     row.auto_post = auto_post
     await db.flush()
     return await get_settings(db, tenant_id)

@@ -193,23 +193,31 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
       202 new day · 200 {duplicate:true} same day again (moves updated_at) · 401 · 413 · 422
   the hook carries no data: storing the day starts processing (services/pms/, process.kick;
       pg_cron sweeps /api/v1/pms/process/run every 10 min for what a restart left)
+      all with the BU's ONE stored Carmen credential (email_ingest_settings, decision #42)
+      NO RULES OF OUR OWN (decision #43): Carmen's engine posts, by Carmen's per-PMS config
+      carmen_config.py: the BU's interface setting (interfacePost/Setting/GL) → its active
+          REVENUE section → the INI in ConfigBase64: file layout + Mapping_MapCode
+          (Comanche [Code][Description]); a non-JSON layout → unsupported_pms_format
       read the day back: GET /api/interface/PMS/{name}/{docType}/Date/{docDate}
-      with the BU's ONE stored Carmen credential (email_ingest_settings, decision #42)
-      day.py: keys on the PMS Code (ledgers by Code, " - VAT"/" - SERVICE" rows → 2 rules),
-              balance = signed sum (Guest Ledger × −1), JV by (dept, acc)
-      mapping.py: pms_code_mappings per BU; the LLM only for codes never approved
-      flags (the email ladder) or auto_post off → pending_review; else post_day (/gljv,
-      PROVISIONAL until CA-116) → posted. A repeat hook re-reads an unposted day.
+      Carmen's mapping table (interfacePost/mapping/{setting}/REVENUE/GL) → rows it can't place
+      mapping.py: the LLM only for those, shown the BU's own mapped rows as examples
+      any new row, or auto_post off → pending_review; else post_day →
+          POST /api/interface/interfacePostGL/REVENUE {Code, DateFrom/To, counter, id:[DataBank Id]}
+          (Carmen decides Dr/Cr + the counter line; answers no JV no; -200 = already posted)
+      ⚠ the setting/mapping GETs have no /api/interface twin yet → carmen_config_unreadable
+        until Carmen adds them (CA-116). A repeat hook re-reads an unposted day.
 
 #/CreditCardOCR (the AI JV Automation queue) lists PMS days beside email + manual rows
   services/credit_card/activity.py `_pms_*`: one row per BU × day, source "pms"
   #/CreditCardOCR/review?pms=<id> → pages/PmsReviewDocument.tsx (the email modal's shell):
-      Balance, Accounts (new codes only, AI tag/Undo), JV lines | PMS rows chips
-  Approve saves the new codes' accounts as the BU's rules, rebuilds the JV server-side, posts
+      which Carmen setting posts it, Accounts (new rows only, AI tag + reason/Undo; Approve
+      waits until a person ticks or replaces every AI account), Carmen's mapped rows folded — no balance
+  Approve reads Carmen's table fresh, PUTs it back WHOLE (the PUT replaces it) + the new
+      rows, then has Carmen's engine post the day
 
 Carmen menu → #/pms?token=&bu=&user=&uri=   (same SSO link as email-settings)
   features/pms/pages/PmsPage.tsx   the BU's own keys: list · create · revoke (English only)
-                                   + Posting: JV prefix, auto-post (default off)
+                                   + Posting: auto-post (default off); the prefix is Carmen's
                                    + stores the link's token: PUT /api/v1/pms/credential
   GET/POST /api/v1/pms/keys, DELETE /keys/{id}   session JWT → the session's tenant only
 ```
@@ -223,7 +231,8 @@ by hand. `#/admin/api-keys` stays as a support tool. Keys are shown once and cap
 active per BU** (`api_keys.issue()`, both paths). Revoking is how a BU is switched off (no
 `modules` row yet). The key dialogs, status line and copy button live in
 `shared/components/apiKeys/` and are used by both pages.
-Contract for Carmen: [`docs/PMS_INTEGRATION.md`](docs/PMS_INTEGRATION.md).
+Contract for Carmen: [`docs/PMS_INTEGRATION.md`](docs/PMS_INTEGRATION.md). **Full docs: [`docs/pms-interface/`](docs/pms-interface/)**
+(requirements → architecture → API → data model → operations → decisions → status/Jira).
 
 ### Admin dashboard (`#/admin/*`) — check here before writing SQL
 
@@ -453,7 +462,7 @@ EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # dev default; per-BU routing uses
 | Identity | `tenants` (composite host+bu), `plans` |
 | Admin RBAC | `admin_users`, `roles`, `permissions`, `role_permissions`, `admin_user_roles` |
 | API Keys | `api_keys` (wired 2026-10-07: the PMS webhook's per-BU keys), `api_key_usage` (still unused) |
-| PMS interface | `pms_events` (one row per tenant × Data Bank day: the hook, then its processing state — `status`, `review_payload` while pending, `jv_no`), `pms_code_mappings` (per-BU PMS code → dept/acc, written by the review's Approve), `pms_settings` (JV prefix, auto-post) |
+| PMS interface | `pms_events` (one row per tenant × Data Bank day: the hook, then its processing state — `status`, `review_payload` while pending), `pms_settings` (auto-post). What each PMS row posts to lives in **Carmen's** mapping table, not here (decision #43) |
 | Modules | `modules`, `tenant_modules` |
 | Bank CMS | `banks`, `prompt_templates` |
 | Config | `system_configs`, `tenant_config_overrides`, `feature_flags`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries` |

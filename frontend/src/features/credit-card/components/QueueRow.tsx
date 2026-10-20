@@ -318,13 +318,19 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
             reader can already see, and not who, which is the part they came for. The
             unnamed wording survives as the fallback because a manual scanner's name is
             resolved from their session rather than stored, so it can genuinely be gone. */}
-        {row.source === 'manual'
-          ? row.posted_by_name
-            ? t('review.postedManuallyBy', { name: row.posted_by_name })
-            : t('review.postedManually')
-          : row.reviewed_by_name
-            ? t('review.postedBy', { name: row.reviewed_by_name })
-            : t('review.postedAutomatically')}
+        {/* A PMS day Carmen had posted before we asked (its own Post button, say): the
+            reviewer approved it, but the JV is not ours to claim. */}
+        {row.reason_code === 'already_posted'
+          ? row.reviewed_by_name
+            ? t('pms.alreadyPostedBy', { name: row.reviewed_by_name })
+            : t('pms.alreadyPostedAuto')
+          : row.source === 'manual'
+            ? row.posted_by_name
+              ? t('review.postedManuallyBy', { name: row.posted_by_name })
+              : t('review.postedManually')
+            : row.reviewed_by_name
+              ? t('review.postedBy', { name: row.reviewed_by_name })
+              : t('review.postedAutomatically')}
         {/* The JV posted but its VAT record did not — the document is done either way,
             so this is a note, not a failure. */}
         {row.error_message ? ` · ${row.error_message}` : ''}
