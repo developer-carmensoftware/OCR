@@ -259,6 +259,12 @@ class QueueSeenOut(BaseModel):
     seen: int
 
 
+class InputTaxOwedOut(BaseModel):
+    """Whether a posted manual scan still owes its input-tax record (the row's `input_tax_owed`)."""
+
+    owed: bool
+
+
 class InputTaxOverrides(BaseModel):
     """What the reviewer corrected on the input-tax panel.
 

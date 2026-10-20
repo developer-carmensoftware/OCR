@@ -51,7 +51,7 @@ sequenceDiagram
     API-->>Carmen: {pms, auto_post, key, has_credential}
     User->>Carmen: Generate key
     Carmen->>API: POST /api/v1/carmen/pms/keys {uri, bu, pms}
-    Note over API: _resolve(create=True): a BU never seen is created here, with 30 signup credits.<br/>credential.set_token (verify, Fernet, email_ingest_settings),<br/>wake_waiting + kick. issue(): revoke the old key, insert the new one
+    Note over API: _resolve(create=True): a BU never seen is created here, with 30 signup credits.<br/>credential.adopt_token (a held token that still works is kept, #45; else verify, Fernet, email_ingest_settings),<br/>wake_waiting + kick. issue(): revoke the old key, insert the new one
     API-->>Carmen: 201 {…, api_key: "cpk_…"} (only here)
     Carmen->>Carmen: store the key in this PMS setting
     User->>Carmen: auto-post on/off (default off)

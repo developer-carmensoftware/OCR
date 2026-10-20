@@ -1311,3 +1311,34 @@ rows, so each PMS starts at "wait for a person".
 **Not in this decision.** PMSs that Carmen's own post API fetches (no Data Bank, no hook): Carmen
 will list the PMS kinds, which are the same for every BU, and that flow gets its own decision.
 Blocker A (the setting GET) is unchanged.
+
+## 45. A Carmen PMS write keeps a working credential (2026-10-20)
+
+**Decided:** 2026-10-20, with the user. It amends #44's "every Carmen write stores the proven
+token as the BU's credential". #35 is unchanged.
+
+**What happened.** At 15:19 on 2026-10-20 a caller hit `PUT /api/v1/carmen/pms/settings` and
+`POST /api/v1/carmen/pms/keys` on QA for carmencloud, most likely Carmen building its PMS setting
+screen. Under #44 that write stored the caller's token as carmencloud's one credential.
+- It replaced `bd8d7b99`, which still worked, with a token that was dead about 30 minutes later.
+- From then on, every email post and approve was refused with 401 "SecurityToken has Expired".
+  The demo re-run caught it at E1.
+- Carmen's menu link pointed at our backend host, so the fresh token a menu open mints (#35)
+  never reached the settings page to put things right.
+- #44 assumed "Carmen sends the non-expiring token". That day it did not.
+
+**Decision.** A Carmen write on `/api/v1/carmen/pms` *offers* its token (`credential.adopt_token`):
+- if the BU holds no credential, or holds this same token, it is stored as before (`set_token`);
+- if the held token still answers Carmen, it is **kept**, with `verified_at` refreshed, and the
+  offered token is dropped;
+- if the held token is refused, the offered token replaces it. If minting a new token kills
+  the old one (#35), the probe sees that and the new one goes in, exactly as before.
+
+The days waiting for a credential are woken either way, since `verified_at` moved.
+
+**Unchanged.** `PUT /api/v1/carmen/settings/token` (a person pasting a token) and the settings
+page storing the menu link's token still replace the credential outright: those are deliberate
+token saves (#35, #38).
+
+**Costs one Carmen GET per write**, the same `verify_token` probe the daily health check runs.
+Writes come from a setting screen, so that is a handful a day.

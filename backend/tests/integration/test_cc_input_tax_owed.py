@@ -179,6 +179,32 @@ def test_the_row_button_route_answers_204_and_404():
     assert missing.status_code == 404
 
 
+@pytest.mark.parametrize(
+    ("overrides", "owed"),
+    [
+        ({}, True),
+        ({"input_tax_at": datetime(2026, 9, 15, 10, 0, tzinfo=UTC)}, False),
+        ({"tax_amt": Decimal("0")}, False),
+        ({"tax_amt": None}, False),
+        ({"submitted_at": None}, False),
+    ],
+    ids=["owed", "filed", "no-vat", "predates-tracking", "not-posted"],
+)
+def test_the_wizard_asks_whether_a_saved_draft_still_owes_its_record(overrides, owed):
+    """The restore prompt's question (2026-10-20: a reset card's draft was offered back)."""
+    card = _card(**overrides)
+    with make_test_client(_db(card), session=SESSION) as client:
+        resp = client.get(f"/api/v1/credit-card/activity/{card.id}/input-tax", headers=AUTH)
+    assert resp.status_code == 200
+    assert resp.json() == {"owed": owed}
+
+
+def test_a_deleted_or_foreign_card_owes_nothing_the_wizard_can_restore():
+    with make_test_client(_db(None), session=SESSION) as client:
+        resp = client.get(f"/api/v1/credit-card/activity/{uuid.uuid4()}/input-tax", headers=AUTH)
+    assert resp.status_code == 404
+
+
 def _proxy(card, result):
     post = AsyncMock(return_value=result)
     with (

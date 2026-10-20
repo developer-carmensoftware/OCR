@@ -425,6 +425,12 @@ export function useReviewDocument(
       onDone()
     } catch (e) {
       const err = e as Error & { status?: number }
+      if (err.status === 409 && doc?.reason_code === 'duplicate_document') {
+        // The server's own words ("… has already been posted to Carmen"): this copy stays
+        // parked, and Reject is its way out, so the reason stays where the reviewer is.
+        setPostError(err.message)
+        return
+      }
       if (err.status === 409) {
         // Someone else in the BU got there first. Nothing to fix here.
         showToast(t('review.alreadyHandled'), 'warning')

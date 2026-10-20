@@ -43,7 +43,8 @@ All four answer `{pms, auto_post, key: {prefix, created_at, last_used_at} | null
 - **`_resolve_for_read`** on GET: an unknown (host, bu) on the Carmen path is proven with
   `validate_uri` + `validate_token` and answers
   `{pms, auto_post: false, key: null, has_credential: false}`. Nothing is written.
-- **Every Carmen write** (PUT, POST) runs `credential.set_token` with the caller's token, then
+- **Every Carmen write** (PUT, POST) runs `credential.adopt_token` with the caller's token (kept
+  out if the BU's held credential still works, #45), then
   `process.wake_waiting` and `kick` for each day it wakes. The admin path stores nothing.
 
 ### Elsewhere

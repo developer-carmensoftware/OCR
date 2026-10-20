@@ -185,6 +185,17 @@ export async function recordInputTax(cardId: string): Promise<void> {
   }
 }
 
+/**
+ * Whether a posted manual scan still owes its input-tax record — the same answer the queue's
+ * `input_tax_owed` gives. A deleted card, or another BU's, answers 404, which owes nothing.
+ */
+export async function inputTaxOwed(cardId: string): Promise<boolean> {
+  const res = await apiFetch(API.creditCard.activityInputTax(cardId))
+  if (res.status === 404) return false
+  if (!res.ok) throw new Error(`Could not check the input tax (${res.status})`)
+  return ((await res.json()) as { owed: boolean }).owed
+}
+
 export async function getPending(id: string): Promise<ReviewDocumentDetail> {
   const res = await apiFetch(API.emailReview.document(id))
   if (!res.ok) throw new Error(`Document fetch failed (${res.status})`)

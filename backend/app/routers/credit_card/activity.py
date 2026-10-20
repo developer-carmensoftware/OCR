@@ -30,11 +30,12 @@ from app.database import get_db
 from app.exceptions import ValidationError
 from app.models.schemas.email_automation import (
     ActivityPage,
+    InputTaxOwedOut,
     QueueSeenIn,
     QueueSeenOut,
 )
 from app.services.credit_card import activity as activity_service
-from app.services.credit_card.input_tax import file_input_tax_for_card
+from app.services.credit_card.input_tax import file_input_tax_for_card, input_tax_owed
 
 router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card Activity"])
 
@@ -99,6 +100,20 @@ async def mark_chip_seen(
     tenant_id = uuid.UUID(str(session.tenant_id))
     total = await activity_service.mark_chip_seen(db, tenant_id, body.filter)
     return QueueSeenOut(filter=body.filter, seen=total)
+
+
+@router.get("/activity/{card_id}/input-tax", response_model=InputTaxOwedOut)
+async def read_input_tax_owed(
+    card_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
+):
+    """Whether a manual scan still owes its input-tax record. The wizard asks before it
+    offers a saved draft back: a draft whose record was filed from the queue, or whose card
+    was deleted, must not be restored and filed again. 404 for another BU's or a deleted card.
+    """
+    owed = await input_tax_owed(db, uuid.UUID(str(session.tenant_id)), card_id)
+    return InputTaxOwedOut(owed=owed)
 
 
 @router.post("/activity/{card_id}/input-tax", status_code=204)

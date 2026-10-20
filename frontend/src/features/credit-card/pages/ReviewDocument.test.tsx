@@ -997,6 +997,20 @@ describe('approving', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalled())
   })
 
+  it("keeps a duplicate's refusal on screen instead of saying someone else handled it", async () => {
+    const err = Object.assign(new Error('Document D-1 has already been posted to Carmen'), {
+      status: 409,
+    })
+    vi.mocked(api.getPending).mockResolvedValue(detail({ reason_code: 'duplicate_document' }))
+    vi.mocked(api.approveDocument).mockRejectedValue(err)
+    mount()
+    await clickApprove()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Document D-1 has already been posted to Carmen'
+    )
+    expect(onDone).not.toHaveBeenCalled()
+  })
+
   it('can decline the input-tax record without blocking the JV', async () => {
     vi.mocked(api.getPending).mockResolvedValue(detail())
     vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })

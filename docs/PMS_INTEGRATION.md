@@ -173,8 +173,9 @@ every BU that server handles; a 21st answers `429` with `Retry-After: 60`. One s
 a GET, and a save is one PUT or POST, so this is room for about 20 screen actions a minute.
 
 The token is sent the way every Carmen call sends it, with no scheme. Send the **non-expiring**
-token, the same kind as in the menu link: every write stores it as the BU's credential, which
-is what we read the Data Bank and post with (decision-log #42: one per BU, shared with email
+token, the same kind as in the menu link: a write stores it as the BU's credential unless the
+BU already holds one that still works (decision-log #45). That credential is what we read the
+Data Bank and post with (decision-log #42: one per BU, shared with email
 automation). We prove it against `uri` on every call. Show the screen only to users your own
 permission model allows; we check no roles of our own.
 
