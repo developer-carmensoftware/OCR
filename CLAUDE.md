@@ -189,8 +189,9 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
       sha256(key) → api_keys row (scope pms:events, not revoked, tenant live) → tenant_id
       stamps last_used_at/ip — what #/admin/api-keys reads as "is Carmen calling?"
   body {InterfaceType:"PMS", InterfaceName, DocType, DocDate} ≤ 16 KB   (Carmen's own hook)
+      InterfaceName (lower-cased) must be the key's interface_name, else 403 (decision #44)
       → pms_events, one row per BU × Data Bank day: event_id = "PMS/Comanche/Daily/2026-10-07"
-      202 new day · 200 {duplicate:true} same day again (moves updated_at) · 401 · 413 · 422
+      202 new day · 200 {duplicate:true} same day again (moves updated_at) · 401 · 403 · 413 · 422
   the hook carries no data: storing the day starts processing (services/pms/, process.kick;
       pg_cron sweeps /api/v1/pms/process/run every 10 min for what a restart left)
       all with the BU's ONE stored Carmen credential (email_ingest_settings, decision #42)
@@ -201,7 +202,7 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
       read the day back: GET /api/interface/PMS/{name}/{docType}/Date/{docDate}
       Carmen's mapping table (interfacePost/mapping/{setting}/REVENUE/GL) → rows it can't place
       mapping.py: the LLM only for those, shown the BU's own mapped rows as examples
-      any new row, or auto_post off → pending_review; else post_day →
+      any new row, or this PMS's auto_post off → pending_review; else post_day →
           POST /api/interface/interfacePostGL/REVENUE {Code, DateFrom/To, counter, id:[DataBank Id]}
           (Carmen decides Dr/Cr + the counter line; answers no JV no; -200 = already posted)
       ⚠ the setting/mapping GETs have no /api/interface twin yet → carmen_config_unreadable
@@ -215,22 +216,28 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
   Approve reads Carmen's table fresh, PUTs it back WHOLE (the PUT replaces it) + the new
       rows, then has Carmen's engine post the day
 
-Carmen menu → #/pms?token=&bu=&user=&uri=   (same SSO link as email-settings)
-  features/pms/pages/PmsPage.tsx   the BU's own keys: list · create · revoke (English only)
-                                   + Posting: auto-post (default off); the prefix is Carmen's
-                                   + stores the link's token: PUT /api/v1/pms/credential
-  GET/POST /api/v1/pms/keys, DELETE /keys/{id}   session JWT → the session's tenant only
+Carmen's PMS setting screen (one per BU × PMS) → /api/v1/carmen/pms   (decision #44)
+  routers/pms_carmen.py   auth = the email Settings API's _caller/_resolve: Authorization:
+                          <Carmen token> + uri/bu proven against that Carmen, or admin JWT
+  GET/PUT /settings {uri, bu, pms, auto_post}   pms = the hook's InterfaceName, lower-cased
+  POST /keys {uri, bu, pms} → api_key once; revokes the old one (1 live key per BU × PMS,
+      uq_api_keys_live_interface)   ·   DELETE /keys?uri&bu&pms = the off switch
+  every Carmen write: credential.set_token(the caller's token) + wake_waiting → the BU's ONE
+      credential; a write's _resolve(create=True): a BU never seen gets its tenant +
+      signup credits; GET (_resolve_for_read) proves the token, answers defaults, creates nothing
 ```
 
 The first endpoint Carmen calls *into* (decision-log #39; the body is Carmen's 4-field hook
 since #41). The key **is** the tenant: no
-host/bu in the body, so a key cannot write into another BU. **The BU creates its own key** at
-`#/pms`, opened only from Carmen's menu (decision-log #40). The SSO login creates or finds
-exactly that tenant, so a BU that never used AI can still get a key and nobody picks a tenant
-by hand. `#/admin/api-keys` stays as a support tool. Keys are shown once and capped at **2
-active per BU** (`api_keys.issue()`, both paths). Revoking is how a BU is switched off (no
-`modules` row yet). The key dialogs, status line and copy button live in
-`shared/components/apiKeys/` and are used by both pages.
+host/bu in the body, so a key cannot write into another BU, and it names its PMS, so it cannot
+write another PMS's days. **Carmen's PMS setting screen owns the settings** (decision-log #44,
+replacing #40's `#/pms`, which is deleted): it generates the key and sets auto-post per BU ×
+PMS, and every write stores the token it was proven with as the BU's credential. There is no
+PMS settings page of ours, and the queue's `no_credential` has no fix button: the fix is
+saving the PMS setting in Carmen. `#/admin/api-keys` stays as a support tool: list and
+revoke, **no issuing**. Revoking is how a PMS is switched off (no `modules` row yet).
+PMSs that Carmen's own post API fetches (no Data Bank, no hook) are not built: Carmen will
+list the PMS kinds first.
 Contract for Carmen: [`docs/PMS_INTEGRATION.md`](docs/PMS_INTEGRATION.md). **Full docs: [`docs/pms-interface/`](docs/pms-interface/)**
 (requirements → architecture → API → data model → operations → decisions → status/Jira).
 
@@ -257,7 +264,7 @@ answered, purely because nobody knew they were there.
 | | `#/admin/email` | email-ingestion runs + cron health |
 | | `#/admin/maintenance` | maintenance-mode flag + window (what `MaintenanceGate` reads) |
 | Who can touch it? | `#/admin/admin-users` | RBAC |
-| | `#/admin/api-keys` | keys we issue to external systems (Carmen's PMS webhook) — issue, revoke, **last used** |
+| | `#/admin/api-keys` | keys Carmen's PMS setting generates (one per BU × PMS) — list, revoke, **last used** |
 
 Gotchas worth knowing before trusting a number:
 
@@ -461,8 +468,8 @@ EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # dev default; per-BU routing uses
 |---|---|
 | Identity | `tenants` (composite host+bu), `plans` |
 | Admin RBAC | `admin_users`, `roles`, `permissions`, `role_permissions`, `admin_user_roles` |
-| API Keys | `api_keys` (wired 2026-10-07: the PMS webhook's per-BU keys), `api_key_usage` (still unused) |
-| PMS interface | `pms_events` (one row per tenant × Data Bank day: the hook, then its processing state — `status`, `review_payload` while pending), `pms_settings` (auto-post). What each PMS row posts to lives in **Carmen's** mapping table, not here (decision #43) |
+| API Keys | `api_keys` (the PMS webhook's keys, one live per BU × PMS via `interface_name`), `api_key_usage` (still unused) |
+| PMS interface | `pms_events` (one row per tenant × Data Bank day: the hook, then its processing state — `status`, `review_payload` while pending), `pms_settings` (auto-post, per tenant × PMS). What each PMS row posts to lives in **Carmen's** mapping table, not here (decision #43) |
 | Modules | `modules`, `tenant_modules` |
 | Bank CMS | `banks`, `prompt_templates` |
 | Config | `system_configs`, `tenant_config_overrides`, `feature_flags`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries` |

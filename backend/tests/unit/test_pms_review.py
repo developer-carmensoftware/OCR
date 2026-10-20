@@ -317,17 +317,26 @@ async def test_recheck_clears_the_flags_once_carmens_table_has_the_rows():
 
 
 @pytest.mark.asyncio
-async def test_settings_round_trip():
+async def test_settings_round_trip_is_per_pms():
     stored = {}
 
-    async def get(model, tenant_id):
+    async def get(model, ident):
         if model is review.PmsSettings:
-            return stored.get("row")
+            return stored.get(ident)
         return SimpleNamespace(carmen_token_enc="enc")
 
+    tenant_id = uuid4()
     db = MagicMock(get=AsyncMock(side_effect=get), flush=AsyncMock())
-    db.add = lambda row: stored.update(row=row)
-    assert await review.save_settings(db, uuid4(), auto_post=True) == {
-        "auto_post": True,
-        "has_credential": True,
-    }
+    db.add = lambda row: stored.update({(row.tenant_id, row.interface_name): row})
+    key = SimpleNamespace(key_prefix="cpk_abcdefgh", created_at=None, last_used_at=None)
+    with patch.object(review.api_keys, "live_key", AsyncMock(side_effect=[key, None])):
+        await review.save_settings(db, tenant_id, "comanche", auto_post=True, actor="user:u-1")
+        assert await review.get_settings(db, tenant_id, "comanche") == {
+            "pms": "comanche",
+            "auto_post": True,
+            "key": {"prefix": "cpk_abcdefgh", "created_at": None, "last_used_at": None},
+            "has_credential": True,
+        }
+        # Another PMS of the same BU keeps its own switch, and has no key yet.
+        other = await review.get_settings(db, tenant_id, "opera")
+    assert (other["auto_post"], other["key"]) == (False, None)

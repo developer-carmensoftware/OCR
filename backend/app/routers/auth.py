@@ -179,6 +179,21 @@ async def _upsert_tenant(db: AsyncSession, host: str, bu_code: str) -> tuple[Ten
     return tenant, created is not None
 
 
+async def ensure_tenant(db: AsyncSession, host: str, bu_code: str) -> Tenant:
+    """The (host, bu_code) tenant, created with its free trial on first encounter.
+
+    Used by `/exchange` and by Carmen's PMS settings API (`routers/pms_carmen.py`), which
+    can meet a BU that never opened the app. The grant shares the tenant INSERT's
+    transaction on purpose: the free trial exists exactly as long as the tenant does, so
+    it can neither be granted twice nor be lost by a tenant that survived a half-failed
+    call. The caller commits.
+    """
+    tenant, created = await _upsert_tenant(db, host, bu_code)
+    if created:
+        await grant_signup_credits(db, str(tenant.id))
+    return tenant
+
+
 async def validate_token(token: str, carmen_uri: str) -> None:
     from app.services.shared.carmen import get_http_client
 
@@ -230,12 +245,7 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
         raise HTTPException(status_code=500, detail="Session creation failed")
 
     async with async_session() as db:
-        tenant, created = await _upsert_tenant(db, host, bu)
-        if created:
-            # Same transaction as the tenant INSERT on purpose: the free trial exists
-            # exactly as long as the tenant does, so it can neither be granted twice
-            # nor be lost by a tenant that survived a half-failed login.
-            await grant_signup_credits(db, str(tenant.id))
+        tenant = await ensure_tenant(db, host, bu)
 
         session_id = uuid.uuid4()
         db.add(

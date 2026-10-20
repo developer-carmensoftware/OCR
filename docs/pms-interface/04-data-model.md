@@ -1,6 +1,6 @@
 # Data Model
 
-Two PMS tables (`pms_events`, `pms_settings`). One table borrowed from the baseline
+Two PMS tables (`pms_events`, `pms_settings`, the latter per BU × PMS). One table borrowed from the baseline
 (`api_keys`). One row shared with email automation (`email_ingest_settings`, for the
 credential). ORM: `backend/app/models/pms.py`, and `APIKey` in `models/admin.py`.
 
@@ -66,35 +66,40 @@ another day. A path-A payload (signed rows, a balance, `jv_prefix`) cannot appea
 
 ## `pms_settings`
 
-One row per BU, created on the first `PUT /api/v1/pms/settings`. A missing row means
-`auto_post = false`.
+One row per BU × PMS, created on Carmen's first `PUT /api/v1/carmen/pms/settings` for that
+PMS (decision-log #44). A missing row means `auto_post = false`.
 
 | Column | Type | Meaning |
 |---|---|---|
-| `tenant_id` | `uuid` PK, FK → `tenants` | |
+| `tenant_id` | `uuid`, PK part, FK → `tenants` | |
+| `interface_name` | `varchar(40)`, PK part | The PMS: the hook's `InterfaceName`, lower-case. `process` looks it up with the day's name lower-cased |
 | `auto_post` | `boolean not null default false` | On: a day with no new rows posts by itself. Off: every day waits. A day with new rows waits under either setting |
 | `created_at` / `updated_at` / `created_by` / `updated_by` | | `TimestampMixin` + `WriterMixin` |
 
 `jv_prefix` (added `20261009000000`) was dropped by `20261015000000`. The prefix is the
-setting's `JvType` in Carmen.
+setting's `JvType` in Carmen. Until `20261016000000` the key was `tenant_id` alone (one
+switch per BU, set on `#/pms`); that migration dropped those rows, so every PMS started off.
 
 ## `api_keys` (baseline table, first used by PMS)
 
 | Column | Meaning for PMS |
 |---|---|
 | `key_hash` | `sha256(plaintext)`. Unique among live keys (`uq_api_key_hash_active … where revoked_at is null`), which is what `authenticate()` looks up |
-| `key_prefix` | The first 12 characters (`cpk_` + 8), which is all either key screen ever shows |
+| `key_prefix` | The first 12 characters (`cpk_` + 8), which is all anything ever shows |
 | `tenant_id` | **The BU the key writes into** |
+| `interface_name` | **The PMS the key is for** (lower-case). A hook naming another is a `403`. Null only on keys revoked by `20261016000000` |
 | `scopes` | `["pms:events"]` |
-| `name` | Defaults to "PMS webhook" |
-| `last_used_at` / `last_used_ip` | Stamped on every authenticated hook. `#/pms` and `#/admin/api-keys` show it as "Last call" |
+| `name` | `"<pms> hook"`, e.g. `comanche hook` |
+| `last_used_at` / `last_used_ip` | Stamped on every authenticated hook. Carmen's PMS setting reads it as `key.last_used_at`; `#/admin/api-keys` shows it as "Last call" |
 | `revoked_at` / `revoked_by` / `revoke_reason` | Revocation; immediate |
 | `expires_at` | Never set. Keys do not expire (decision-log #39) |
 | `rate_limit_rpm` | Unused. The per-IP middleware limit applies |
 
-At most **2 live keys per tenant** (`MAX_ACTIVE_PER_TENANT`, checked in `issue()` on both
-paths). It is a count-then-insert, so two creates at the same instant could make a third.
-That is marked `ponytail:` in the code: keys are created by hand, a few times per BU.
+**One live key per tenant and PMS** (decision-log #44): `issue()` revokes the live key of
+that (tenant, PMS) and inserts the new one in the same transaction, and the partial unique
+index `uq_api_keys_live_interface (tenant_id, interface_name) where revoked_at is null` makes
+two generates at the same instant a `409` instead of two live keys. Until `20261016000000`
+it was 2 live keys per tenant for any PMS, checked by count; that migration revoked them all.
 `api_key_usage` exists but is still unused.
 
 ## The shared credential: `email_ingest_settings`
@@ -104,7 +109,7 @@ BU's `email_ingest_settings` row:
 
 | Column | Use |
 |---|---|
-| `carmen_token_enc` | The menu token, Fernet-encrypted. Any `#/pms` or email-settings visit replaces it |
+| `carmen_token_enc` | The Carmen token, Fernet-encrypted. Any write from Carmen's PMS setting screen, or any email-settings visit, replaces it |
 | `carmen_uri` | The Carmen origin. Empty falls back to `https://<tenants.host>` (`credential.posting_target`) |
 | `carmen_token_verified_at` | Last proven. **The wake rule:** a `WAKE_REASONS` day whose `processed_at` is older goes back to `received` |
 
@@ -116,7 +121,7 @@ creates it) with `enabled = false`. So the daily token-health sweep, which reads
 
 | Code | Set by | Status it leaves | Fixed by | Queue sentence |
 |---|---|---|---|---|
-| `no_credential` | process | `received` → `failed` at 3 | opening `#/pms` from Carmen's menu (fix button) | No Carmen access is stored for PMS |
+| `no_credential` | process | `received` → `failed` at 3 | saving the PMS setting in Carmen (any write stores the token) | No Carmen access is stored. Save this PMS setting in Carmen |
 | `carmen_config_unreadable` | process | `received` → `failed` | **Carmen** exposing the setting GET under `/api/interface`. **Every day today** | Carmen doesn't let this access read its PMS settings yet |
 | `pms_setting_missing` | process | `received` → `failed` | an active PMS setting for this `InterfaceName`, with an active REVENUE section, in Carmen | Carmen has no PMS posting setting for this interface |
 | `unsupported_pms_format` | process | **`failed` at once** | Carmen's setting is not a JSON-object layout; needs code here | Carmen's PMS setting uses a file the AI can't read yet |
@@ -145,6 +150,7 @@ unchanged. **There is no balance flag:** the sides are Carmen's.
 | `20261007000000_pms_events.sql` | `pms_events` as an inbox: `event_id`, `type`, `payload`, the unique key, RLS |
 | `20261009000000_pms_processing.sql` | The ledger columns on `pms_events`. Creates `pms_code_mappings` (path A) and `pms_settings` with `jv_prefix` and `auto_post`. Inserts the `modules` row `pms_interface` (sort 4). Schedules the **`pms-process`** cron (`*/10 * * * *` → `/api/v1/pms/process/run`) |
 | `20261015000000_pms_carmen_engine.sql` | Path B: **drops `pms_code_mappings`** and `pms_settings.jv_prefix`. Sends every `pending_review`/`failed` day back to `received`, with its payload, reason, attempts and claim cleared. **Deploy the code first, then `db push`**: the old code reads both |
+| `20261016000000_pms_settings_per_interface.sql` | Decision-log #44: `api_keys.interface_name`, **revokes every live key**, and adds `uq_api_keys_live_interface`. Empties `pms_settings` and re-keys it `(tenant_id, interface_name)`. Ships with `20261015000000`, in the same order |
 
 `20261009000000` and `20261015000000` both modify `pms_events` with `if not exists` / `if
 exists`, so re-running is safe. The table's comment from the first migration ("inbox only")

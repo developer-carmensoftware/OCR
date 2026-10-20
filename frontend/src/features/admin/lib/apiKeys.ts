@@ -1,7 +1,8 @@
 import { API } from '@/shared/api/endpoints'
 import { resolveUrl } from '@/shared/api/client'
 
-/** A PMS webhook key as the admin and BU key endpoints return it (never the plaintext). */
+/** A PMS webhook key as the admin endpoint returns it (never the plaintext). Carmen's PMS
+ *  setting screen generates them, one live key per BU and PMS (decision-log #44). */
 export interface ApiKeyRow {
   id: string
   tenant_id: string | null
@@ -10,6 +11,8 @@ export interface ApiKeyRow {
   bu_code: string | null
   tenant_host: string | null
   name: string
+  /** The PMS the key is for (the hook's InterfaceName, lower-case). Null on pre-#44 keys. */
+  interface_name: string | null
   key_prefix: string
   scopes: string[]
   created_at: string | null
@@ -17,11 +20,6 @@ export interface ApiKeyRow {
   last_used_ip: string | null
   revoked_at: string | null
   revoke_reason: string | null
-}
-
-/** The create response — the only time `key` (the plaintext) exists outside Carmen. */
-export interface IssuedApiKey extends ApiKeyRow {
-  key: string
 }
 
 /** Is Carmen's feed live: how many keys can call, and when one last did. */
@@ -35,26 +33,6 @@ export interface FeedStatus {
 export function pmsEventsUrl(origin = window.location.origin): string {
   const url = resolveUrl(API.pms.events)
   return /^https?:\/\//i.test(url) ? url : `${origin}${url}`
-}
-
-interface Setup {
-  buCode: string | null
-  host: string | null
-  endpoint: string
-  key: string
-}
-
-/** Everything the Carmen team needs to wire one BU, as one paste. English: it is read by
- *  Carmen's developers, whatever language the admin page is in. Contract: PMS_INTEGRATION.md. */
-export function carmenSetupText({ buCode, host, endpoint, key }: Setup): string {
-  const bu = buCode ? `${buCode}${host ? ` (${host})` : ''}` : 'business unit'
-  return [
-    `PMS → Carmen AI webhook — ${bu}`,
-    `Endpoint: POST ${endpoint}`,
-    `Header:   Authorization: Bearer ${key}`,
-    'Body:     {"InterfaceType": "PMS", "InterfaceName": "Comanche", "DocType": "Daily", "DocDate": "2026-10-07"}',
-    'A new day answers 202; the same day again answers 200.',
-  ].join('\n')
 }
 
 /** Used within the last day: Carmen is probably still sending with it. */

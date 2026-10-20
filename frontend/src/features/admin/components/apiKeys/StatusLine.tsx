@@ -1,6 +1,6 @@
 import CopyButton from '@/shared/components/ui/CopyButton'
-import UrlText from '@/shared/components/apiKeys/UrlText'
-import type { FeedStatus } from '@/shared/lib/apiKeys'
+import UrlText from './UrlText'
+import type { FeedStatus } from '@/features/admin/lib/apiKeys'
 import { timeAgo } from '@/shared/lib/orderHelpers'
 import { useT } from '@/i18n/LanguageContext'
 import { fmtDateTime } from '@/shared/lib/date'
@@ -9,15 +9,14 @@ interface Props {
   /** null while loading; 'error' when the count could not be read. */
   status: FeedStatus | 'error' | null
   endpoint: string
-  /** The next step when nothing is live. Omit to show the state without the pill. */
-  onCreate?: () => void
 }
 
 /**
  * DESIGN.md §5 status line for Carmen's PMS feed: how many keys can call and when one last
- * did, then the endpoint to give Carmen. Amber, with a "Create key" pill, when no key is live.
+ * did, then the endpoint Carmen posts to. Amber when no key is live. No "Create key" step:
+ * Carmen's PMS setting screen generates the keys (decision-log #44).
  */
-export default function StatusLine({ status, endpoint, onCreate }: Props) {
+export default function StatusLine({ status, endpoint }: Props) {
   const { t } = useT()
   const live = status && status !== 'error'
   const tone = !live ? 'idle' : status.active === 0 ? 'warn' : status.lastCall ? 'ok' : 'idle'
@@ -54,12 +53,6 @@ export default function StatusLine({ status, endpoint, onCreate }: Props) {
             </>
           )}
         </p>
-        {/* DESIGN.md §5: when the answer is no, the strip names the next step as a pill. */}
-        {live && status.active === 0 && onCreate && (
-          <button type="button" className="apikeys-step" onClick={onCreate}>
-            {t('apiKeys.create')}
-          </button>
-        )}
       </div>
       <div className="apikeys-status__endpoint">
         <span className="apikeys-status__label">{t('apiKeys.status.endpoint')}</span>

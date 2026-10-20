@@ -4,7 +4,7 @@
 [`../email-automation/06-decision-log.md`](../email-automation/06-decision-log.md), #39–#43.**
 PMS shares that log's numbering, because the decisions cross over: one Carmen credential, one
 queue, one auto-post rule. Code and `CLAUDE.md` cite them as "decision-log #NN". Add new PMS
-decisions there, as #44 onwards, and add a line here.
+decisions there, as #45 onwards, and add a line here.
 
 This page is the index, plus what was superseded and why.
 
@@ -12,11 +12,12 @@ This page is the index, plus what was superseded and why.
 
 | # | Date | Ticket | Decision | Still true? |
 |---|---|---|---|---|
-| [#39](../email-automation/06-decision-log.md#39-carmen-calls-into-us-for-pms-data-with-a-key-we-issue-2026-10-07) | 2026-10-07 | CA-93 | Carmen calls **into** us at `/api/v1/pms/events`, with a per-BU bearer key we issue. The key is the tenant. sha256 only, no HMAC. Keys do not expire. Revoking a key is the off switch | Yes. Its envelope `{event_id, type, data}` and "data in the body" were replaced by #41 |
-| [#40](../email-automation/06-decision-log.md#40-a-bu-creates-its-own-pms-key-from-carmens-menu-2026-10-07) | 2026-10-07 | CA-117 | The BU creates its own key at `#/pms`, opened only from Carmen's menu by SSO. Carmen gates who sees the menu, and we keep no roles. At most 2 active keys. English only | Yes |
+| [#39](../email-automation/06-decision-log.md#39-carmen-calls-into-us-for-pms-data-with-a-key-we-issue-2026-10-07) | 2026-10-07 | CA-93 | Carmen calls **into** us at `/api/v1/pms/events`, with a per-BU bearer key we issue. The key is the tenant. sha256 only, no HMAC. Keys do not expire. Revoking a key is the off switch | Yes, with the key now per BU **and** PMS (#44). Its envelope `{event_id, type, data}` and "data in the body" were replaced by #41 |
+| [#40](../email-automation/06-decision-log.md#40-a-bu-creates-its-own-pms-key-from-carmens-menu-2026-10-07) | 2026-10-07 | CA-117 | The BU creates its own key at `#/pms`, opened only from Carmen's menu by SSO. Carmen gates who sees the menu, and we keep no roles. At most 2 active keys. English only | **No. Replaced by #44**: `#/pms` is gone, and Carmen's PMS setting screen generates the keys. "Carmen gates, we keep no roles" still holds |
 | [#41](../email-automation/06-decision-log.md#41-carmens-hook-names-a-data-bank-day-we-read-the-data-back-2026-10-08) | 2026-10-08 | CA-93 | The hook is Carmen's own: `{InterfaceType, InterfaceName, DocType, DocDate}`, naming a Data Bank day that we read back. One row per BU × day. Lenient on sender defaults, strict on the date. 16 KB cap | Yes |
 | [#42](../email-automation/06-decision-log.md#42-a-pms-day-is-a-jv-in-the-same-review-queue-2026-10-09) | 2026-10-09 | CA-119 | A PMS day is one row in the AI JV Automation queue, with the email review's rules. **One Carmen credential per BU**, shared with email. No charge. A repeat hook re-reads an unposted day. The hook kicks processing, and a cron sweeps what is left | The queue, credential, charge, repeat and durability parts: **yes**. Its posting half (our JV, `/gljv`, `pms_code_mappings`, `jv_prefix`): **replaced by #43** |
 | [#43](../email-automation/06-decision-log.md#43-carmens-engine-posts-a-pms-day-by-carmens-own-config-2026-10-14) | 2026-10-14 | CA-119 | **No rules of our own.** Carmen's engine (`interfacePostGL/REVENUE`) posts by Carmen's per-PMS config. The mapping lives in Carmen's table, and Approve writes it back **whole**. REVENUE only, JSON-object layouts only | Yes. This is PR #292 |
+| [#44](../email-automation/06-decision-log.md#44-carmens-pms-setting-screen-owns-the-pms-settings-per-bu-and-pms-2026-10-16) | 2026-10-16 | CA-93 | **Carmen's PMS setting screen sets auto-post and generates the hook key, per BU × PMS**, through `/api/v1/carmen/pms`. One live key per BU × PMS; a new one revokes the old. A hook naming another PMS is a 403. Every Carmen write stores the proven token as the BU's credential. The first write creates a missing BU, with the signup credits; a read never does. No consent popup for a PMS-only BU (accepted). `#/pms` is deleted | Yes. Stacked on PR #292 |
 
 Two decisions from the email log apply here unchanged: **#24** (auto-post posts only what is
 ready to post: a flagged day waits under either setting) and **#34/#35/#38** (the settings

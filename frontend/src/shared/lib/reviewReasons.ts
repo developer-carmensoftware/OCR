@@ -189,8 +189,8 @@ export const FIX: Record<string, { key: TKey; href: string }> = {
   wrong_pdf_password: SETTINGS,
   ingest_paused: SETTINGS,
   tax_id_mismatch: SETTINGS,
-  // A PMS BU with no stored Carmen credential: #/pms, opened from Carmen's menu, stores one.
-  no_credential: { key: 'pms.actionOpenSettings', href: '#/pms' },
+  // No `no_credential` (PMS): the fix is saving the PMS setting in Carmen (decision #44),
+  // a screen we have no link to. Its reason says so instead.
 }
 
 /** `<a>` props for a fix button: an in-app hash stays in this tab, Carmen's screen gets its own. */

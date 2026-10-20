@@ -35,7 +35,7 @@ from app.services.pms.process import (
     carmen_words,
     post_day,
 )
-from app.services.shared import carmen
+from app.services.shared import api_keys, carmen
 
 logger = logging.getLogger(__name__)
 
@@ -333,22 +333,33 @@ async def recheck(tenant_id: uuid.UUID, interface: str, table: dict[str, dict]) 
         return 0
 
 
-async def get_settings(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
-    """This BU's posting switch, and whether a Carmen credential is stored at all."""
-    row = await db.get(PmsSettings, tenant_id)
+async def get_settings(db: AsyncSession, tenant_id: uuid.UUID, interface_name: str) -> dict:
+    """What Carmen's PMS setting screen shows for one PMS: its posting switch, its hook key
+    (never the key itself), and whether this BU has a Carmen credential stored at all."""
+    row = await db.get(PmsSettings, (tenant_id, interface_name))
     ingest = await db.get(EmailIngestSettings, tenant_id)
+    key = await api_keys.live_key(db, tenant_id, interface_name)
     return {
+        "pms": interface_name,
         "auto_post": bool(row and row.auto_post),
+        "key": key
+        and {
+            "prefix": key.key_prefix,
+            "created_at": key.created_at,
+            "last_used_at": key.last_used_at,
+        },
         "has_credential": bool(ingest and ingest.carmen_token_enc),
     }
 
 
-async def save_settings(db: AsyncSession, tenant_id: uuid.UUID, *, auto_post: bool) -> dict:
-    """Replace this BU's posting switch. The caller commits."""
-    row = await db.get(PmsSettings, tenant_id)
+async def save_settings(
+    db: AsyncSession, tenant_id: uuid.UUID, interface_name: str, *, auto_post: bool, actor: str
+) -> None:
+    """Replace this BU's posting switch for one PMS. The caller commits."""
+    row = await db.get(PmsSettings, (tenant_id, interface_name))
     if row is None:
-        row = PmsSettings(tenant_id=tenant_id)
+        row = PmsSettings(tenant_id=tenant_id, interface_name=interface_name, created_by=actor)
         db.add(row)
     row.auto_post = auto_post
+    row.updated_by = actor
     await db.flush()
-    return await get_settings(db, tenant_id)

@@ -1,7 +1,9 @@
 """API keys we issue to external systems — today only Carmen's PMS webhook (CA-93).
 
-The plaintext leaves this API exactly once, in the POST response. Revoke is a stamp, not
-a delete: `api_keys` rows are kept so "which key was live on that date" stays answerable.
+Support's view: every BU's keys, and revoke. Carmen's PMS setting screen is the only place
+a key is generated (`routers/pms_carmen.py`, decision-log #44), because a key made here has
+no field in Carmen to go into. Revoke is a stamp, not a delete: `api_keys` rows are kept so
+"which key was live on that date" stays answerable.
 """
 
 from uuid import UUID
@@ -13,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.admin import APIKey
-from app.models.schemas.pms import ApiKeyCreateIn
 from app.services.shared import api_keys
 from app.services.shared.audit import AuditAction, log_admin_action
 from app.services.shared.tenant_lookup import tenant_info_map
@@ -51,7 +52,7 @@ async def list_api_keys(
         },
         tiebreak=APIKey.id,
         default_sort="created_at",
-        searchable=(APIKey.name, APIKey.key_prefix),
+        searchable=(APIKey.name, APIKey.key_prefix, APIKey.interface_name),
     )
     rows, total = await paginate(db, q, lq.limit, lq.offset)
     tenants = await tenant_info_map(db, [r.tenant_id for r in rows])
@@ -61,33 +62,6 @@ async def list_api_keys(
         "offset": lq.offset,
         "data": [api_keys.key_row(r, tenants) for r in rows],
     }
-
-
-@router.post("/api-keys", status_code=201)
-async def create_api_key(
-    body: ApiKeyCreateIn,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("api_keys", "write")),
-):
-    if not admin.is_global and str(body.tenant_id) != admin.tenant_scope:
-        raise HTTPException(status_code=403, detail="Outside your tenant scope")
-    key, plaintext = await api_keys.issue(
-        db, body.tenant_id, body.name, actor=f"admin:{admin.admin_id}"
-    )
-    await db.commit()
-    await log_admin_action(
-        admin_user_id=admin.admin_id,
-        action=AuditAction.API_KEY_CREATE,
-        resource="api_keys",
-        target_type="api_key",
-        target_id=str(key.id),
-        after_value={"tenant_id": str(body.tenant_id), "name": key.name, "prefix": key.key_prefix},
-        ip_address=get_client_ip(request),
-    )
-    tenants = await tenant_info_map(db, [key.tenant_id])
-    # `key` is the only copy of the plaintext anywhere — the row holds its hash.
-    return {**api_keys.key_row(key, tenants), "key": plaintext}
 
 
 @router.delete("/api-keys/{key_id}")

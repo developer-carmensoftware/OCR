@@ -125,6 +125,8 @@ class APIKey(Base, TimestampMixin, WriterMixin):
     revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
     revoked_by = Column(String(36), nullable=True)
     revoke_reason = Column(Text, nullable=True)
+    # The PMS a hook key is for: the hook's InterfaceName, lower-case (decision-log #44).
+    interface_name = Column(String(40), nullable=True)
 
     usage = relationship("APIKeyUsage", back_populates="api_key")
 
@@ -132,6 +134,13 @@ class APIKey(Base, TimestampMixin, WriterMixin):
         Index(
             "uq_api_key_hash_active",
             "key_hash",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
+        Index(
+            "uq_api_keys_live_interface",
+            "tenant_id",
+            "interface_name",
             unique=True,
             postgresql_where=text("revoked_at IS NULL"),
         ),
