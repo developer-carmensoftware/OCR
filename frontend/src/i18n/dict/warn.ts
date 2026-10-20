@@ -17,6 +17,13 @@ export const en = {
   'warn.settlementTotalMissing':
     'The report’s own TOTAL line could not be read, so the card rows were not cross-checked.',
   'warn.merchantMismatch': 'Merchant {doc} was read, but the file is named for merchant {file}.',
+  // KBank's tax summary CSV against the settlement report it arrived with
+  // (`kbank_tax_summary.cross_check`): two sources for one settlement that disagree.
+  'warn.csvTaxInvoiceMismatch':
+    "KBank's tax summary gives tax invoice {csv}; the report prints {report}.",
+  'warn.csvFeeMismatch': "KBank's tax summary gives commission {csv}; the report prints {report}.",
+  'warn.csvVatMismatch': "KBank's tax summary gives VAT {csv}; the report prints {report}.",
+  'warn.csvNetMismatch': "KBank's tax summary gives net credit {csv}; the report prints {report}.",
   'warn.apTaxGuessed': 'Assumed unit prices are VAT {taxType} — the footer did not confirm it.',
   // Our own words for where VAT sits, not a Carmen field name, so they read translated
   // inside the sentence above.
@@ -37,6 +44,11 @@ export const th: Record<keyof typeof en, string> = {
   'warn.settlementTotalMissing':
     'อ่านบรรทัดยอดรวมของรายงานไม่ได้ จึงไม่ได้ตรวจทานยอดรายบัตรกับยอดรวม',
   'warn.merchantMismatch': 'อ่านได้ร้านค้า {doc} แต่ชื่อไฟล์เป็นของร้านค้า {file}',
+  'warn.csvTaxInvoiceMismatch':
+    'ไฟล์สรุปภาษีของ KBank ระบุเลขใบกำกับภาษี {csv} แต่รายงานพิมพ์ {report}',
+  'warn.csvFeeMismatch': 'ไฟล์สรุปภาษีของ KBank ระบุค่าธรรมเนียม {csv} แต่รายงานพิมพ์ {report}',
+  'warn.csvVatMismatch': 'ไฟล์สรุปภาษีของ KBank ระบุ VAT {csv} แต่รายงานพิมพ์ {report}',
+  'warn.csvNetMismatch': 'ไฟล์สรุปภาษีของ KBank ระบุยอดเงินเข้าสุทธิ {csv} แต่รายงานพิมพ์ {report}',
   'warn.apTaxGuessed': 'อนุมานว่าราคาต่อหน่วยเป็นแบบ{taxType} เพราะยอดท้ายเอกสารไม่ยืนยัน',
   'warn.taxType.Include': 'รวม VAT',
   'warn.taxType.Exclude': 'ไม่รวม VAT',
