@@ -256,8 +256,25 @@ async def test_new_row_created_with_encrypted_password():
     assert row.rules[0]["filename_patterns"] == ["MDR"]
     assert row.rules[0]["pdf_password_enc"]  # encrypted, non-empty
     assert len(row.ingest_tag) == 8  # allocated on this first successful enable
+    assert row.settings_saved_at is not None  # a person's save opens the confirmation window
     db.commit.assert_awaited_once()
     db.refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_confirmation_window_follows_a_save_not_any_write():
+    """Decision-log #46: the daily credential check writes every enabled row, so a gate on
+    `updated_at` never closed and the per-minute sweep logged into IMAP all day."""
+    from sqlalchemy.dialects import postgresql
+
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=MagicMock(scalars=MagicMock(return_value=["a1b2c3d4"])))
+
+    assert await es.tags_awaiting_confirmation(db, 24) == {"a1b2c3d4"}
+
+    sql = str(db.execute.await_args.args[0].compile(dialect=postgresql.dialect()))
+    assert "settings_saved_at >" in sql
+    assert "updated_at" not in sql
 
 
 @pytest.mark.asyncio

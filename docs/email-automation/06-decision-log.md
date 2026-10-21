@@ -1368,3 +1368,27 @@ token its link carried over carmencloud's working `bd8d7b99`. An hour later a po
   `_probe_held` and leaves the column alone when Carmen does not answer. `adopt_token` treats a
   NULL as refused and lets the offered token in without probing, which catches a token that
   still reads `/department` but is refused posts.
+
+## 46. The confirmation window opens on a person's save, not on any write (2026-10-21)
+
+**Decided:** 2026-10-21, with the user, after a dev health check. It amends #15's sweep gate.
+
+**What happened.** The per-minute `email-confirm` sweep opens the mailbox only for a BU
+`tags_awaiting_confirmation` calls mid-setup: no Gmail confirmation yet, and settings touched in
+the last 24 hours. "Touched" was `updated_at`, which every write of the row moves.
+- The daily credential check (`sweep_token_health`, 09:15) stamps `carmen_token_verified_at` on
+  every enabled BU, so a BU that never forwards from Gmail never left the window.
+- `adopt_token`'s re-proof (#45) moved it on every Carmen settings write too.
+- On dev, 2026-10-21: `/confirmations` ran 1,436 times a day at p50 2.4 s, max 85 s. Fifty calls
+  took more than pg_net's 5 s timeout. The design said steady state is no connection at all.
+
+**Decision.** The gate reads `settings_saved_at`. Its only writer is `save_settings`, so a
+credential write cannot reopen the window. The migration backfilled it from `updated_at`, so a
+BU genuinely mid-setup keeps its window and the stale ones drain within a day.
+`07-human-in-the-loop.md` had already called `updated_at` "booby trapped" and said nothing
+enforced dodging it. This closes that trap by moving the gate off `updated_at`, rather than
+asking every future writer to stay clear of it.
+
+**Unchanged.** The 24-hour window, the fallback (a confirmation outside it is picked up by the
+10-minute document poll), and `email-confirm`'s 5 s pg_net timeout. With the gate fixed, the
+sweep is one SELECT again, which is what that timeout assumed.

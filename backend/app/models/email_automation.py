@@ -75,6 +75,10 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     # the handshake actually completing, which the code above no longer can — so it is
     # what the settings screen reads to say "done" rather than "waiting for a code".
     gmail_confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    # When a person last saved these settings. Written only by `save_settings`; opens the
+    # per-minute confirmation sweep (`tags_awaiting_confirmation`). Not `updated_at`, which
+    # the daily credential check moves too (decision-log #46).
+    settings_saved_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index(
@@ -96,11 +100,11 @@ class EmailQueueSeen(Base, TimestampMixin):
     where `max(created_at)` cannot.
 
     **A table of its own rather than a column on `EmailIngestSettings`**, which already has
-    the one row per BU. That row gates a per-minute IMAP sweep through
-    `tags_awaiting_confirmation`'s `updated_at` filter, and its `WriterMixin` stamps
-    `updated_by` on every ORM write — so a filter chip click would reopen a mailbox
-    connection and rewrite who last changed the BU's email settings. See
-    20260902000000_email_queue_seen.sql for the two other designs this replaces.
+    the one row per BU. That row's `WriterMixin` stamps `updated_by` on every ORM write, so
+    a filter chip click would rewrite who last changed the BU's email settings. (It also
+    used to reopen the per-minute IMAP sweep, back when that gated on `updated_at`; it gates
+    on `settings_saved_at` since decision-log #46.) See 20260902000000_email_queue_seen.sql
+    for the two other designs this replaces.
 
     No `WriterMixin` (that listener is half of what this table exists to avoid) and no
     `SoftDeleteMixin`: it is one page's UI state, not business data, and losing a row costs

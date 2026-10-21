@@ -136,9 +136,13 @@ async def tags_awaiting_confirmation(db: AsyncSession, hours: int) -> set[str]:
 
     `gmail_confirmed_at is null` on its own is true forever for every BU that never sets
     up an auto-forward, which would mean an IMAP login every minute for the life of the
-    deployment. The `updated_at` window is what makes the sweep quiescent: a BU enters it
-    by saving settings and leaves it either by confirming or by going quiet, so the steady
+    deployment. The `settings_saved_at` window is what makes the sweep quiescent: a BU enters
+    it by saving settings and leaves it either by confirming or by going quiet, so the steady
     state is an empty set and no mailbox connection at all.
+
+    Not `updated_at` (decision-log #46). Every write of the row moves that, and the daily
+    credential check writes every enabled row, so the window never closed and the sweep
+    logged into IMAP 1 440 times a day. `settings_saved_at` has one writer, `save_settings`.
 
     A customer who saves settings today and gets to Gmail next week falls out of the
     window; their confirmation is picked up by the 10-minute document poll instead, which
@@ -153,7 +157,7 @@ async def tags_awaiting_confirmation(db: AsyncSession, hours: int) -> set[str]:
         select(EmailIngestSettings.ingest_tag).where(
             EmailIngestSettings.ingest_tag.is_not(None),
             EmailIngestSettings.gmail_confirmed_at.is_(None),
-            EmailIngestSettings.updated_at > since,
+            EmailIngestSettings.settings_saved_at > since,
         )
     )
     return {tag for tag in rows.scalars() if tag}
@@ -614,6 +618,8 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
     row.owner_emails = owner_emails
     row.tax_ids = tax_ids
     row.rules = [_merge_rule(r, existing.get(r.bank_code or "")) for r in rules]
+    # The only writer: a person saving is what opens the confirmation window (#46).
+    row.settings_saved_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(row)
     return row
