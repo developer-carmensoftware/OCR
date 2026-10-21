@@ -1356,3 +1356,15 @@ Writes come from a setting screen, so that is a handful a day.
 - **Accepted trade-off:** the choice is "still works now", not "will last". A short-lived
   held token beats a durable offered one until it dies, and the next write then replaces it.
   Picking by lifetime needs Carmen to tell us how long its tokens live.
+
+**Extended 2026-10-21 to the settings page's link token (amends #35).** After #302 shipped, at
+09:34 UTC on 2026-10-20 Carmen user `admin` opened email settings through SSO. The page stored the
+token its link carried over carmencloud's working `bd8d7b99`. An hour later a post got 401
+"SecurityToken has Expired" and posting stopped again, through the path #45 had left alone.
+- `PUT /settings/token` takes `from_link`. The settings page sends it for the link's token,
+  which then goes through `adopt_token`. A token pasted on purpose, or Carmen calling the
+  endpoint itself, still replaces outright.
+- `verified_at = NULL` now means "Carmen refused it" and nothing else. The daily check uses
+  `_probe_held` and leaves the column alone when Carmen does not answer. `adopt_token` treats a
+  NULL as refused and lets the offered token in without probing, which catches a token that
+  still reads `/department` but is refused posts.

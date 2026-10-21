@@ -156,7 +156,8 @@ meant an unrelated settings save reset the switch. Its one screen is ours: the s
 **The settings screen is `#/CreditCardOCR/email-settings`, in this app** (2026-10-01, decision-log #34;
 the first path, `#/email-settings`, redirects with its query).
 Carmen builds no settings form. Its menu opens the same SSO link as the queue, and that link's
-one `token` is also the BU's posting credential: the page stores it before reading anything
+one `token` is also the BU's posting credential: the page offers it before reading anything, and the
+server keeps a stored credential that still works instead (`from_link`, decision-log #45)
 (decision-log #35, one token since #38). The queue's fix buttons open it in the same
 tab. **Carmen decides who sees the menu item, and we check nothing twice**: no role gate
 and no permission endpoint, so any token the host's Carmen accepts may edit (QA S-07). Don't

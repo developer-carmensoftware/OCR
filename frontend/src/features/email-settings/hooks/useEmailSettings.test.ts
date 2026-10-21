@@ -279,11 +279,12 @@ describe('the posting token Carmen sends with the link', () => {
     })
   })
 
-  it('is stored before the settings are read, then forgotten', async () => {
+  it('is offered before the settings are read, then forgotten', async () => {
     sessionStorage.setItem(CARMEN_POSTING_TOKEN_KEY, 'fresh')
     const result = await loaded()
 
-    expect(api.putToken).toHaveBeenCalledWith('https://hotel.carmenwork.com', 'hq', 'fresh')
+    // Offered as the link's token: the server keeps a stored credential that still works.
+    expect(api.putToken).toHaveBeenCalledWith('https://hotel.carmenwork.com', 'hq', 'fresh', true)
     expect(vi.mocked(api.putToken).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(api.getSettings).mock.invocationCallOrder[0]
     )
@@ -304,6 +305,12 @@ describe('the posting token Carmen sends with the link', () => {
     await act(async () => {
       await result.current.saveToken('hand-set')
     })
+    // Set on purpose, so no `fromLink`: it replaces the stored credential outright.
+    expect(vi.mocked(api.putToken).mock.lastCall).toEqual([
+      'https://hotel.carmenwork.com',
+      'hq',
+      'hand-set',
+    ])
     expect(sessionStorage.getItem(CARMEN_POSTING_TOKEN_KEY)).toBeNull()
     expect(result.current.tokenError).toBeNull()
   })

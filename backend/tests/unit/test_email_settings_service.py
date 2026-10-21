@@ -9,6 +9,7 @@ when rules are sent) → cross-tenant conflict check → get_settings. Tag alloc
 uses db.scalar, so it is mocked separately.
 """
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -539,7 +540,10 @@ async def test_set_token_stores_nothing_when_carmen_rejects_it(monkeypatch):
     db.commit.assert_not_awaited()
 
 
-def _row_holding(token):
+_PROVEN = datetime(2026, 10, 1, tzinfo=UTC)
+
+
+def _row_holding(token, verified_at=_PROVEN):
     from app.auth.session import encrypt_carmen_token
     from app.config import settings as app_settings
 
@@ -547,7 +551,7 @@ def _row_holding(token):
         carmen_token_enc=encrypt_carmen_token(token, app_settings.session_encryption_key),
         carmen_uri="https://h",
         carmen_token_fp=credential.fingerprint(token),
-        carmen_token_verified_at=None,
+        carmen_token_verified_at=verified_at,
     )
 
 
@@ -591,9 +595,55 @@ async def test_adopt_keeps_the_held_credential_when_carmen_gives_no_verdict(monk
     kept = await credential.adopt_token(db, _tenant_with_host(), "short-lived", "https://h", "u")
 
     assert kept is row
-    assert row.carmen_token_verified_at is None
+    assert row.carmen_token_verified_at == _PROVEN
     store.assert_not_awaited()
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_adopt_replaces_a_held_credential_already_refused_without_asking_again(monkeypatch):
+    """`verified_at` is cleared only by a refusal (a real post's 401/403, or the daily check).
+    Such a token may still read /department while Carmen refuses its posts, so the probe
+    is not asked: the fresh token replaces it (decision-log #45, 2026-10-21)."""
+    probe = AsyncMock(return_value=True)
+    store = AsyncMock()
+    monkeypatch.setattr(credential, "_probe_held", probe)
+    monkeypatch.setattr(credential, "set_token", store)
+    tenant = _tenant_with_host()
+    row = _row_holding("held", verified_at=None)
+
+    await credential.adopt_token(_adopt_db(row), tenant, "new", "https://h", "u")
+
+    probe.assert_not_awaited()
+    assert store.await_args.args[1:4] == (tenant, "new", "https://h")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("verdict", "expected", "bucket"),
+    [(True, "now", "ok"), (False, None, "failed"), (None, _PROVEN, "unknown")],
+    ids=["accepted", "refused", "no-verdict"],
+)
+async def test_the_daily_check_clears_verified_at_only_on_a_refusal(
+    monkeypatch, verdict, expected, bucket
+):
+    """A timeout at the check's hour must not mark a working token refused: that is what
+    `adopt_token` reads to let a fresh token replace it."""
+    row = _row_holding("held")
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [row]
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+    monkeypatch.setattr(credential, "posting_target", AsyncMock(return_value=("held", "https://h")))
+    monkeypatch.setattr(credential, "_probe_held", AsyncMock(return_value=verdict))
+
+    summary = await credential.sweep_token_health(db)
+
+    assert summary[bucket] == 1 and summary["checked"] == 1
+    if expected == "now":
+        assert row.carmen_token_verified_at > _PROVEN
+    else:
+        assert row.carmen_token_verified_at == expected
 
 
 @pytest.mark.asyncio

@@ -431,14 +431,18 @@ async def write_token(
 
     Verified against Carmen before it is stored, so a token that will not work is
     rejected on the customer's own screen rather than at 3am on a real document.
+
+    `from_link` marks the token Carmen's menu link carried, which the settings page offers on
+    every open (#35). That one replaces the stored credential only if it no longer works
+    (decision-log #45): on 2026-10-20 a link's token, dead within the hour, replaced a working
+    one. A token set on purpose (pasted, or Carmen calling this itself) still replaces it.
     """
     tenant = await _resolve(db, caller, payload.uri, payload.bu)
     origin = await _safe_carmen_uri(tenant)
-    row = await credential.set_token(
-        db, tenant, payload.token.get_secret_value(), origin, caller.actor
-    )
+    store = credential.adopt_token if payload.from_link else credential.set_token
+    row = await store(db, tenant, payload.token.get_secret_value(), origin, caller.actor)
     logger.info(
-        "[email] Carmen token %s stored for %s/%s by %s",
+        "[email] Carmen token %s held for %s/%s by %s",
         row.carmen_token_fp,
         tenant.host,
         tenant.bu_code,

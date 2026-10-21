@@ -21,7 +21,7 @@ human-in-the-loop queue reads and writes — see
 | GET | `/api/v1/carmen/bank-codes` | Caller (see below) | Valid `bank_code` values for a rule — not tenant-scoped |
 | GET | `/api/v1/carmen/settings?uri=&bu=` | Caller | Read a BU's current settings |
 | PUT | `/api/v1/carmen/settings` | Caller | Replace a BU's settings wholesale |
-| PUT | `/api/v1/carmen/settings/token` | Caller | Store the Carmen posting credential (its own endpoint, not part of a settings edit) |
+| PUT | `/api/v1/carmen/settings/token` | Caller | Store the Carmen posting credential (its own endpoint, not part of a settings edit). With `from_link: true` (the settings page offering the token Carmen's menu link carried) it replaces the stored one only if that one no longer works; without it, it replaces outright (decision-log #45) |
 | GET | `/api/v1/carmen/settings/token?uri=&bu=` | Caller | Credential status — never the value |
 | DELETE | `/api/v1/carmen/settings/token?uri=&bu=` | Caller | Drop our copy (does **not** revoke it on Carmen's side) |
 | GET | `/api/v1/carmen/notifications?uri=&bu=&since=` | Caller | `{"has_notification": bool}` — a badge, not a feed. **Interim poll substitute** for the unbuilt webhook (`../CARMEN_INTEGRATION.md §3.2`) |

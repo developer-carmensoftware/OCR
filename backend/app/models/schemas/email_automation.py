@@ -84,6 +84,14 @@ class TokenIn(BaseModel):
     uri: str = Field(description=URI_DOC)
     bu: str
     token: SecretStr
+    from_link: bool = Field(
+        default=False,
+        description=(
+            "True when the token came in Carmen's menu link rather than being set on purpose: "
+            "it then replaces the stored credential only if that one no longer works "
+            "(decision-log #45). Omitted or false, it replaces it outright."
+        ),
+    )
     # ponytail: `uri` is an identity input only — we take its hostname and look the tenant
     # up by (host, bu). The origin we verify against and post to is still derived from
     # tenants.host (`_safe_carmen_uri`), never from anything in this payload. That is the

@@ -20,7 +20,7 @@ One row per BU (`tenant_id` is the primary key). What Carmen wrote through
 | `carmen_token_enc` | `text`, nullable | `20260803000000` | Fernet-encrypted posting credential |
 | `carmen_uri` | `text`, nullable | `20260804000000` | Origin this BU posts to; falls back to `https://<tenants.host>` when empty |
 | `carmen_token_fp` | `varchar(16)`, nullable | `20260804000000` | First 8 hex of `sha256(token)` — names the credential without revealing it |
-| `carmen_token_verified_at` | `timestamptz`, nullable | `20260804000000` | Last time the token was proven live; cleared (not deleted) on a failed re-check |
+| `carmen_token_verified_at` | `timestamptz`, nullable | `20260804000000` | Last time the token was proven live; cleared (not deleted) only when Carmen refuses it — a real post's 401/403 or the daily check's. A check Carmen does not answer leaves it. NULL is what lets a link's token replace the stored one (decision-log #45) |
 | `gmail_confirm_code` | `varchar(32)`, nullable | `20260807000000` | Kept as a fallback; expect `null` — see [06-decision-log.md](06-decision-log.md) |
 | `gmail_confirm_at` | `timestamptz`, nullable | `20260807000000` | When a confirmation code was last seen |
 | `gmail_confirmed_at` | `timestamptz`, nullable | `20260807020000` | When the poll followed the confirmation **link** and Google accepted it — the real "forward is live" signal today |
