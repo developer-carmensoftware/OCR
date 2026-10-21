@@ -26,6 +26,3 @@ httpx==0.28.1
 python-jose[cryptography]==3.5.0
 cryptography==50.0.1
 bcrypt==5.0.0
-
-# Observability
-sentry-sdk[fastapi]==2.69.1

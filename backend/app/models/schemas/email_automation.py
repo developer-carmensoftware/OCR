@@ -78,7 +78,7 @@ class TokenIn(BaseModel):
 
     Keeping it out of SettingsIn means an ordinary settings change (a new tax ID, a
     tweaked rule) never re-transmits the secret. SecretStr keeps it out of validation
-    errors and Sentry breadcrumbs.
+    errors and logs.
     """
 
     uri: str = Field(description=URI_DOC)

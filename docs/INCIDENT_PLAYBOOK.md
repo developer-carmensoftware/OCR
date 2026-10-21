@@ -10,7 +10,6 @@
 | ช่องทาง | สัญญาณ |
 |---|---|
 | Uptime monitor (UptimeRobot) | Email/alert ว่า health endpoint ไม่ตอบ |
-| Sentry | Error spike alert (ถ้าตั้ง `SENTRY_DSN` ไว้) |
 | ลูกค้าแจ้ง | โทร / LINE |
 
 **เปิด browser ไปที่ backend URL (Render):**
@@ -39,7 +38,7 @@
 ### Extract ช้า / error แต่ระบบอื่นปกติ
 
 1. เช็ค [status.openrouter.ai](https://status.openrouter.ai) — LLM upstream คือ bottleneck หลัก (ดู LOAD_TEST_REPORT_V2)
-2. ดู `llm_usage_logs` / Sentry ว่า error มาจาก OpenRouter (429/5xx) หรือโค้ดเรา
+2. ดู `llm_usage_logs` / Render logs ว่า error มาจาก OpenRouter (429/5xx) หรือโค้ดเรา
 3. HTTP 429 + `Retry-After` จากระบบเรา = LLM capacity valve ทำงานตามออกแบบ ไม่ใช่ bug
 
 ### Frontend เปิดไม่ขึ้น

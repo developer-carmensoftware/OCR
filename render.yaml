@@ -102,14 +102,6 @@ services:
       - key: INTERNAL_JOB_TOKEN
         sync: false
 
-      # ── Observability ─────────────────────────────────────────────────────────
-      # Without a DSN, Sentry no-ops and 5xx are only visible in Render's logs
-      # (which are lost on spin-down) — set this before opening to real users.
-      - key: SENTRY_DSN
-        sync: false
-      - key: SENTRY_ENVIRONMENT
-        value: production
-
       # ── App ─────────────────────────────────────────────────────────────────
       # Explicitly off: app_debug is the ONLY production switch — it gates the
       # weak-secret rejection, the wildcard-CORS hard-fail, admin/OCR key separation,

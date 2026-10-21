@@ -64,10 +64,6 @@ for _h in logging.getLogger().handlers:
 
 logger = logging.getLogger(__name__)
 
-from app.sentry import init_sentry  # noqa: E402
-
-init_sentry()
-
 from app.factory import create_app  # noqa: E402
 from app.lifecycle import lifespan  # noqa: E402
 

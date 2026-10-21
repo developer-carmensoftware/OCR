@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.database import ensure_db
-from app.sentry import capture
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,6 @@ async def _perf_flush_loop() -> None:
             break
         except Exception as exc:
             logger.error("[perf_flush] Error: %s", exc)
-            capture(exc)
 
 
 @asynccontextmanager

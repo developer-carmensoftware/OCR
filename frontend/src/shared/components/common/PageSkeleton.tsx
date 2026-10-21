@@ -1,5 +1,5 @@
 /**
- * PageSkeleton — Sentry-style skeleton shown during Suspense lazy-load.
+ * PageSkeleton — skeleton shown during Suspense lazy-load.
  * Uses the design system's CSS variables so it respects light/dark mode.
  */
 export default function PageSkeleton() {
