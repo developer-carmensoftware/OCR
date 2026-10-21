@@ -51,7 +51,6 @@ from app.routers.maintenance import router as maintenance_router
 from app.routers.notifications import router as notifications_router
 from app.routers.pms import router as pms_router
 from app.routers.pms_carmen import router as pms_carmen_router
-from app.sentry import capture
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +133,7 @@ def create_app(lifespan=None) -> FastAPI:
             code = getattr(exc, "status_code", None) if status is None else status
             code = code or 500
             # Expected client errors (4xx) are routine — log quietly, no stack trace.
-            # Server-side faults (5xx) keep full traceback + Sentry capture.
+            # Server-side faults (5xx) keep the full traceback.
             if code >= 500:
                 logger.error(
                     "Handled %s: %s %s\n%s",
@@ -143,7 +142,6 @@ def create_app(lifespan=None) -> FastAPI:
                     request.url,
                     traceback.format_exc(),
                 )
-                capture(exc)
             else:
                 logger.info(
                     "Client error %s (%s): %s %s",
@@ -175,7 +173,6 @@ def create_app(lifespan=None) -> FastAPI:
             logger.error("Unhandled exception: %s %s\n%s", request.method, request.url, tb)
         except Exception:
             pass
-        capture(exc)
         content: dict[str, Any] = {"detail": "Internal server error"}
         if settings.app_debug:
             content["traceback"] = tb

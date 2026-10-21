@@ -170,11 +170,6 @@ class Settings(BaseSettings):
     admin_bootstrap_username: str = ""
     admin_bootstrap_password: str = ""
 
-    # Sentry — leave empty to disable (set in production .env only)
-    sentry_dsn: str = ""
-    sentry_environment: str = "development"
-    sentry_traces_sample_rate: float = 0.1  # 10% of requests traced (cost control)
-
     # Logging — set to true in production for ELK/Datadog/cloud log aggregation
     log_json: bool = False
 
@@ -362,7 +357,7 @@ if not settings.app_debug and settings.session_encryption_key == _WEAK_FERNET_KE
 
 # ── Production deployment guards (warn loudly when prod config looks unset) ─────
 # These run only when app_debug=False (i.e. a real deployment). They do not crash
-# the app — a pilot may legitimately run without a proxy/Sentry — but a misconfigured
+# the app — a pilot may legitimately run without a proxy — but a misconfigured
 # CORS surface is the kind of mistake that silently exposes the API, so we shout.
 if not settings.app_debug:
     _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
@@ -388,11 +383,6 @@ if not settings.app_debug:
         _config_logger.critical(
             "ALLOWED_ORIGINS contains '*' — credentialed CORS is disabled and any origin is "
             "allowed. Set explicit origins for production."
-        )
-    if not settings.sentry_dsn:
-        _config_logger.warning(
-            "SENTRY_DSN is empty — backend errors will not be reported to centralized error "
-            "tracking. Set it for the pilot so issues are visible beyond ephemeral server logs."
         )
     if not settings.allowed_carmen_hosts_list:
         # Intentionally empty in many deployments: tenants self-host Carmen on

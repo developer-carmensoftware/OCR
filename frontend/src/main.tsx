@@ -1,39 +1,9 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react'
-import * as Sentry from '@sentry/react'
 import { LazyMotion, domAnimation } from 'framer-motion'
 
 // Theme is applied by an inline script in index.html, which runs before the static loader
 // paints — early enough that dark-mode users never see the light loader. Nothing to do
 // here; useDarkMode reads and toggles document.documentElement.dataset.theme from now on.
-
-if (import.meta.env.VITE_SENTRY_DSN) {
-  // The one-time Carmen SSO token arrives in the URL hash (#/…?token=…) and is only
-  // stripped later, inside a React effect (useCarmenSSO) — so the pageload transaction,
-  // navigation breadcrumbs, or any early error can carry it off-site. It cannot be
-  // stripped before init (the effect still needs to read it), so redact it on the way out.
-  // `posting_token` too: the settings link carries a BU posting token (decision #35).
-  const redact = (u: string) => u.replace(/([?&](?:posting_)?token=)[^&]*/gi, '$1[redacted]')
-  const scrub = <T extends Sentry.Event>(event: T): T => {
-    if (event.request?.url) event.request.url = redact(event.request.url)
-    if (typeof event.transaction === 'string') event.transaction = redact(event.transaction)
-    for (const crumb of event.breadcrumbs ?? []) {
-      for (const key of ['url', 'to', 'from'] as const) {
-        const value = crumb.data?.[key]
-        if (typeof value === 'string') crumb.data![key] = redact(value)
-      }
-    }
-    return event
-  }
-
-  Sentry.init({
-    dsn: import.meta.env.VITE_SENTRY_DSN as string,
-    environment: (import.meta.env.VITE_SENTRY_ENV as string) ?? 'production',
-    tracesSampleRate: 0.1,
-    integrations: [Sentry.browserTracingIntegration()],
-    beforeSend: scrub,
-    beforeSendTransaction: scrub,
-  })
-}
 
 import ReactDOM from 'react-dom/client'
 import { Toaster } from 'sonner'
