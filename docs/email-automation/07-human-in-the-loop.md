@@ -976,7 +976,9 @@ right until you check it:
   `updated_at`, and `WriterMixin`'s `before_update` listener stamps `updated_by` on any ORM
   write. A filter-chip click would reopen a mailbox connection and rewrite who last changed
   the BU's email settings. A Core `UPDATE` dodges both and nothing enforces that it keeps
-  being used.
+  being used. *(2026-10-21: it didn't keep being used. The daily credential check and #45's
+  re-proof both write the row, which held the sweep open permanently. Decision-log #46 moved
+  the gate to `settings_saved_at`, which has one writer. The `updated_by` half still stands.)*
 
 **The ceiling, stated.** A high-water count assumes anomaly counts only rise. They do today:
 every anomalous status is terminal, a stuck `received` row never resolves (single pass, no
