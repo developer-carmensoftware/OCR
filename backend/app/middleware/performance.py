@@ -98,37 +98,59 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
             request.state.document_ref = doc_ref
 
         start = time.perf_counter()
-        response = await call_next(request)
-        duration_ms = (time.perf_counter() - start) * 1000
-
-        final_doc_ref = getattr(request.state, "document_ref", doc_ref)
-        # A caller that is not one of our JWTs (the PMS webhook's API key) names its
-        # tenant here once its auth dependency has run.
-        tenant_id = getattr(request.state, "tenant_id", None) or tenant_id
-
-        _PERF_BUFFER.append(
-            {
-                "tenant_id": tenant_id or None,
-                "endpoint": request.url.path,
-                "method": request.method,
-                "duration_ms": duration_ms,
-                "status_code": response.status_code,
-                "carmen_user_id": carmen_user_id or None,
-                "resource_id": final_doc_ref,
-            }
+        try:
+            response = await call_next(request)
+        except Exception:
+            # An unhandled exception is answered by `unhandled_exception_handler`, which
+            # Starlette mounts on ServerErrorMiddleware — outside this middleware. So the 500
+            # never comes back through here; record it on the way out or #/admin/errors never
+            # counts it (2026-10-21: four 500s from a missing column, zero rows here).
+            _record(request, tenant_id, carmen_user_id, doc_ref, 500, start)
+            raise
+        duration_ms = _record(
+            request, tenant_id, carmen_user_id, doc_ref, response.status_code, start
         )
-        # If flushes have been failing (DB outage etc.), trim oldest rows so we
-        # never grow past _BUFFER_HARD_CAP. Losing the oldest perf data beats
-        # OOM-ing the worker.
-        overflow = len(_PERF_BUFFER) - _BUFFER_HARD_CAP
-        if overflow > 0:
-            del _PERF_BUFFER[:overflow]
-            logger.warning("perf buffer over cap — dropped %d oldest rows", overflow)
-        if len(_PERF_BUFFER) >= _FLUSH_SIZE:
-            import asyncio
-
-            asyncio.ensure_future(flush_perf_buffer())
 
         response.headers["X-Response-Time-Ms"] = f"{duration_ms:.1f}"
         response.headers["X-Request-ID"] = request_id
         return response
+
+
+def _record(
+    request: Request,
+    tenant_id: str,
+    carmen_user_id: str,
+    doc_ref: str | None,
+    status_code: int,
+    start: float,
+) -> float:
+    """Buffer one performance_logs row for this request; returns its duration in ms."""
+    duration_ms = (time.perf_counter() - start) * 1000
+    final_doc_ref = getattr(request.state, "document_ref", doc_ref)
+    # A caller that is not one of our JWTs (the PMS webhook's API key) names its
+    # tenant here once its auth dependency has run.
+    tenant_id = getattr(request.state, "tenant_id", None) or tenant_id
+
+    _PERF_BUFFER.append(
+        {
+            "tenant_id": tenant_id or None,
+            "endpoint": request.url.path,
+            "method": request.method,
+            "duration_ms": duration_ms,
+            "status_code": status_code,
+            "carmen_user_id": carmen_user_id or None,
+            "resource_id": final_doc_ref,
+        }
+    )
+    # If flushes have been failing (DB outage etc.), trim oldest rows so we
+    # never grow past _BUFFER_HARD_CAP. Losing the oldest perf data beats
+    # OOM-ing the worker.
+    overflow = len(_PERF_BUFFER) - _BUFFER_HARD_CAP
+    if overflow > 0:
+        del _PERF_BUFFER[:overflow]
+        logger.warning("perf buffer over cap — dropped %d oldest rows", overflow)
+    if len(_PERF_BUFFER) >= _FLUSH_SIZE:
+        import asyncio
+
+        asyncio.ensure_future(flush_perf_buffer())
+    return duration_ms
