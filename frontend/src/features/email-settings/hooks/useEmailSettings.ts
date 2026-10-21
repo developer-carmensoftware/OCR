@@ -192,14 +192,16 @@ export function useEmailSettings(): EmailSettingsController {
       return
     }
     setLoading(true)
-    // Carmen's menu mints a fresh posting token on every open, which kills the one we hold,
-    // so storing it comes first and the status read below already describes it. Kept on
-    // failure: Reload tries again, and nothing else can bring that token back.
+    // Carmen's menu mints a fresh token on every open and passes it in the link. It is offered
+    // first, so the status read below already describes the outcome: the server keeps a
+    // stored credential that still works and takes this one only if that one is refused
+    // (decision-log #45 — on 2026-10-20 a link's token, dead within the hour, had replaced a
+    // working one). Kept on failure: Reload tries again, and nothing else can bring it back.
     const fresh = sessionStorage.getItem(CARMEN_POSTING_TOKEN_KEY)
     let freshError: string | null = null
     if (fresh) {
       try {
-        await putToken(uri, bu, fresh)
+        await putToken(uri, bu, fresh, true)
         sessionStorage.removeItem(CARMEN_POSTING_TOKEN_KEY)
       } catch (err) {
         freshError = err instanceof Error ? err.message : 'Request failed'

@@ -754,3 +754,32 @@ async def test_the_trial_is_granted_only_with_the_tenant_row(created):
     ):
         assert await auth.ensure_tenant(MagicMock(), "hotel.carmen4.com", "gh01") is PMS_TENANT
     assert grant.await_count == int(created)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("from_link", "used", "unused"),
+    [(True, "adopt_token", "set_token"), (False, "set_token", "adopt_token")],
+    ids=["menu-link", "set-on-purpose"],
+)
+async def test_a_link_token_is_offered_and_a_pasted_one_replaces(from_link, used, unused):
+    """Decision-log #45 (2026-10-21): the settings page offers the token Carmen's menu link
+    carried, kept out if the held credential still works; a token set on purpose replaces it."""
+    from app.models.schemas.email_automation import TokenIn
+    from app.routers.email_automation import settings_api as mod
+
+    tenant = _tenant()
+    row = SimpleNamespace(carmen_token_fp="abc12345")
+    stores = {"adopt_token": AsyncMock(return_value=row), "set_token": AsyncMock(return_value=row)}
+    payload = TokenIn(uri="https://x", bu="hq", token=CARMEN_TOKEN, from_link=from_link)
+    with (
+        patch.object(mod, "_resolve", AsyncMock(return_value=tenant)),
+        patch.object(mod, "_safe_carmen_uri", AsyncMock(return_value="https://hotel")),
+        patch.object(mod.credential, "adopt_token", stores["adopt_token"]),
+        patch.object(mod.credential, "set_token", stores["set_token"]),
+        patch.object(mod.credential, "token_status", MagicMock(return_value={"ok": 1})),
+    ):
+        await mod.write_token(payload, AsyncMock(), Caller("user:x", CARMEN_TOKEN))
+
+    assert stores[used].await_args.args[1:4] == (tenant, CARMEN_TOKEN, "https://hotel")
+    stores[unused].assert_not_awaited()

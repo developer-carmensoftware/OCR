@@ -225,6 +225,7 @@ Authorization: <token>
 | `uri` **required** | string | ใช้หา BU เท่านั้น |
 | `bu` **required** | string | |
 | `token` **required** | string | **write-only** · ไม่เคยคืนค่ากลับ ไม่เคยโผล่ใน log |
+| `from_link` | boolean, optional | หน้า settings ของเราส่ง `true` ตอนเก็บ token ที่มากับลิงก์เมนู: จะ**ไม่ทับ** token ที่เก็บไว้ถ้ายังใช้ได้ (decision-log #45). Carmen เรียกเองไม่ต้องส่ง = ทับตามเดิม |
 
 ก่อนเก็บ เรายิง `GET https://{host}/Carmen.API/api/interface/department` ด้วย token นั้น
 ไม่ผ่าน = **ไม่เขียนอะไรลง DB เลย** (`422 token_rejected`) ·

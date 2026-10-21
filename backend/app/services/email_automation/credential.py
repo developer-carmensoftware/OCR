@@ -157,32 +157,35 @@ async def adopt_token(
 ) -> EmailIngestSettings:
     """`set_token`, unless the BU already holds a credential that still works (decision-log #45).
 
-    For writes that store a token as a side effect: Carmen's PMS setting screen proves the
-    caller with their token, and we used to keep it. On 2026-10-20 one such call replaced a
-    working credential with a token that died half an hour later, and every post for that
-    BU was refused until someone stored a good one again. So the held token is re-proven
-    first and kept if it answers. If Carmen did kill it by minting the new one (#35), the
-    probe says so and the new one goes in, as before.
+    For tokens that arrive as a side effect: Carmen's PMS setting screen proves the caller
+    with their token, and the email settings page stores the one its link carried (#35). On
+    2026-10-20 each path replaced a working credential with a token dead within the hour, and
+    every post for that BU was refused until a good one was stored again. So the held token
+    is re-proven first and kept if it answers. If Carmen did kill it by minting the new one
+    (#35), the probe says so and the new one goes in, as before.
 
-    Only Carmen refusing the held token (401/403) replaces it. A timeout or a 5xx says nothing
-    about the token, and treating it as "dead" would let a passing outage do what the
-    2026-10-20 write did, so the held one is kept, unproven.
+    Only Carmen refusing the held token replaces it: the probe's 401/403, or
+    `verified_at` already cleared, which only a refusal does (a real post's 401/403 in
+    `mark_token_unverified`, or the daily check). The second catches a token that still reads
+    `/department` but was refused a post. A timeout or a 5xx says nothing about the token, so
+    the held one is kept, unproven.
 
     The probe goes to `carmen_uri`, the origin the caller just validated, never to the one
     stored with the row: a credential is only ever sent to a URI that passed that check.
 
-    A deliberate token save (`PUT /settings/token`, the menu link) still calls `set_token`.
+    A token someone sets on purpose (pasted on the settings page, or Carmen calling
+    `PUT /settings/token` itself) still calls `set_token`.
     """
     row = await get_settings(db, tenant)
     held = _decrypt(row.carmen_token_enc) if row is not None else None
-    if row is not None and held and held != token:
+    if row is not None and held and held != token and row.carmen_token_verified_at is not None:
         works = await _probe_held(held, carmen_uri)
         if works is not False:
             if works:
                 row.carmen_token_verified_at = datetime.now(UTC)
                 await db.commit()
             logger.info(
-                "[pms] Kept credential %s for tenant %s (%s); did not replace it with %s",
+                "[credential] Kept %s for tenant %s (%s); did not replace it with %s",
                 row.carmen_token_fp,
                 tenant.id,
                 "re-proven" if works else "Carmen did not answer",
@@ -261,24 +264,32 @@ async def sweep_token_health(db: AsyncSession) -> dict:
     the first symptom is a customer's document failing to post at 3am, which is exactly
     what happened on 2026-08-28 while this sweep had an endpoint and no schedule (it now
     runs daily; see `20260828000000_email_token_health_cron.sql`). Clearing `verified_at`
-    on failure is deliberate: the credential may
-    well come back (a transient Carmen outage looks the same as a revocation), so
-    we record "unproven" rather than deleting something we cannot re-obtain.
+    on a refusal is deliberate: the credential may come back, so we record "unproven"
+    rather than deleting something we cannot re-obtain.
+
+    Only Carmen refusing it (401/403) clears it. A timeout or a 5xx leaves it as it was and
+    counts as `unknown`: `verified_at = NULL` means "Carmen said no", which is what
+    `adopt_token` reads to let a fresh token replace this one (decision-log #45), and a
+    passing outage at the check's hour must not say that about a working token.
     """
     rows = (
         (await db.execute(select(EmailIngestSettings).where(EmailIngestSettings.enabled.is_(True))))
         .scalars()
         .all()
     )
-    result = {"checked": 0, "ok": 0, "failed": 0}
+    result = {"checked": 0, "ok": 0, "failed": 0, "unknown": 0}
     for row in rows:
         token, uri = await posting_target(db, row)
         if not token or not uri:
             continue
         result["checked"] += 1
-        try:
-            await verify_token(token, uri)
-        except FieldValidationError:
+        works = await _probe_held(token, uri)
+        if works is None:
+            result["unknown"] += 1
+        elif works:
+            row.carmen_token_verified_at = datetime.now(UTC)
+            result["ok"] += 1
+        else:
             row.carmen_token_verified_at = None
             result["failed"] += 1
             logger.warning(
@@ -286,9 +297,6 @@ async def sweep_token_health(db: AsyncSession) -> dict:
                 row.carmen_token_fp,
                 row.tenant_id,
             )
-        else:
-            row.carmen_token_verified_at = datetime.now(UTC)
-            result["ok"] += 1
     await db.commit()
     return result
 

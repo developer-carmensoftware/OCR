@@ -174,8 +174,13 @@ export const saveSettings = (payload: SettingsPayload) =>
 export const getToken = (uri: string, bu: string) =>
   call<TokenStatus>(API.emailAutomation.tokenFor(uri, bu))
 
-export const putToken = (uri: string, bu: string, token: string) =>
-  call<TokenStatus>(API.emailAutomation.token, { method: 'PUT', ...json({ uri, bu, token }) })
+/** `fromLink`: the token Carmen's menu link carried. The server then keeps a stored credential
+ *  that still works instead (decision-log #45); a token set on purpose replaces it. */
+export const putToken = (uri: string, bu: string, token: string, fromLink = false) =>
+  call<TokenStatus>(API.emailAutomation.token, {
+    method: 'PUT',
+    ...json(fromLink ? { uri, bu, token, from_link: true } : { uri, bu, token }),
+  })
 
 export const deleteToken = (uri: string, bu: string) =>
   call<void>(API.emailAutomation.tokenFor(uri, bu), { method: 'DELETE' })
