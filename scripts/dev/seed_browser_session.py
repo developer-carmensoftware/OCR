@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 import uuid
@@ -128,8 +129,21 @@ async def main() -> int:
         print(f"\ntenant {tenant}  ({args.host}/{args.bu})   session {session_id}")
         print(f"expires in {args.hours}h\n")
         print("Open http://localhost:3010, run this in the DevTools console, then reload:\n")
-        # sessionStorage, not localStorage — that is where lib/api/client.ts reads it.
-        print(f"sessionStorage.setItem('ocr_access_token', '{token}'); location.hash = '#/pricing'")
+        # sessionStorage, not localStorage — that is where lib/api/client.ts reads it. Both
+        # keys: AuthContext restores a session only when it finds the token AND the user it
+        # belongs to, so the token alone works only under VITE_DEV_AUTH_BYPASS=true.
+        user = json.dumps(
+            {
+                "username": "browser-test",
+                "bu": args.bu,
+                "uri": f"https://{args.host}",
+                "tenant_id": str(tenant),
+            }
+        )
+        print(
+            f"sessionStorage.setItem('ocr_access_token', '{token}');"
+            f" sessionStorage.setItem('ocr_user:v1', '{user}'); location.hash = '#/pricing'"
+        )
         print("\nWhen finished:  python scripts/dev/seed_browser_session.py --revoke")
         return 0
     finally:
