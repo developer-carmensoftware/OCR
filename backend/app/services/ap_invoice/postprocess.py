@@ -51,6 +51,21 @@ def _qty_price_mismatch_warning(items: list[dict], vendor_tax_id: str) -> dict[s
     return {"code": "apQtyPriceMismatch", "params": {"lines": ", ".join(lines)}} if lines else None
 
 
+def _sign_on_price(items: list[dict]) -> None:
+    """Carry a credit row's minus on the price, never the quantity.
+
+    Nespresso prints its discount line as Quantity -1 × Price 190.00 = -190.00. Rule 2b of the
+    prompt asks for qty 1 × unitPrice -190, and the CA-123 vendor rules nudged the model into
+    copying the page instead (regression run, 2026-10-26). Same money either way, but every
+    step below and Carmen's line (qty × net price) were built on the positive-quantity shape:
+    a -1 quantity would post as a negative-quantity line, which nothing has ever sent.
+    """
+    for item in items:
+        if _num(item.get("qty")) < 0:
+            item["qty"] = -_num(item["qty"])
+            item["unitPrice"] = -_num(item.get("unitPrice"))
+
+
 def _num(v: Any) -> float:
     if v is None or v == "":
         return 0.0
@@ -391,6 +406,7 @@ def postprocess(raw: dict | None) -> dict:
     deposit_label = (raw.get("depositLabel") or "").strip()
 
     items = [dict(i) for i in items_raw if i is not None]
+    _sign_on_price(items)
     qty_price_warning = _qty_price_mismatch_warning(items, raw.get("vendorTaxId") or "")
 
     # Order matters: discount must be resolved before ANY sum is taken. Both

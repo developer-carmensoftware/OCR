@@ -692,6 +692,31 @@ class TestTaxTypeGuessWarning:
         assert postprocess(raw)["warnings"] == []
 
 
+class TestNegativeQuantityRow:
+    """Nespresso invoice 51686623 prints its discount as Quantity -1 × 190.00 = -190.00."""
+
+    def _raw(self, discount_row):
+        return {
+            "items": [
+                {"qty": 1, "unitPrice": 3800.0, "lineAmt": 3800.0, "taxPct": 7},
+                {"lineAmt": -190.0, "taxPct": 7, **discount_row},
+            ],
+            "docSubTotal": 3373.83,
+            "docTaxAmount": 236.17,
+            "docGrandTotal": 3610.0,
+        }
+
+    def test_the_minus_moves_to_the_price(self):
+        row = postprocess(self._raw({"qty": -1, "unitPrice": 190.0}))["items"][1]
+        assert (row["qty"], row["unitPrice"]) == (1.0, -190.0)
+
+    def test_same_result_as_the_rule_2b_shape(self):
+        # Rule 2b's reading (qty 1 × -190) is what this document produced before CA-123.
+        printed = postprocess(self._raw({"qty": -1, "unitPrice": 190.0}))
+        rule_2b = postprocess(self._raw({"qty": 1, "unitPrice": -190.0}))
+        assert printed == rule_2b
+
+
 class TestQtyPriceMismatchWarning:
     """CA-123: Polar Bear's invoice (INV-20260828145) read off its UNIT DETAILS columns,
     which is what landed in a customer's Carmen as Total 979.95 against Amount 915.89+VAT."""
