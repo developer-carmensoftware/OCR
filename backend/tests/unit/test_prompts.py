@@ -6,6 +6,8 @@ own "add a TOTAL summary row" / "line amount -> commis_amt" instructions.
 """
 
 from app.llm.prompts import _COMBINED, _REGISTRY, get_ocr_prompt
+from app.llm.prompts.ap_invoice import PROMPT as AP_PROMPT
+from app.llm.prompts.ap_invoice import VENDOR_RULES as AP_VENDOR_RULES
 
 _FEE_CODES = ("KTC", "GHL", "PAYPAL", "SIAMPAY")
 
@@ -68,3 +70,17 @@ def test_the_issuer_field_excludes_the_merchants_own_bank():
 
 def test_combined_prompt_asks_for_the_bank_it_identified_in_step_1():
     assert "report the entry you matched in the bank_code field" in _COMBINED
+
+
+def test_ap_prompt_carries_every_vendor_rule_after_the_json_rule():
+    # CA-123: a rule left out of the prompt is a vendor read the generic way again.
+    for tax_id, rule in AP_VENDOR_RULES.items():
+        assert f"{tax_id}: {rule}" in AP_PROMPT
+    # Keyed on the page, not on the model's own vendorTaxId read (which has come back as
+    # the buyer on Polar Bear's invoice).
+    assert "ปรากฏที่ใดก็ได้บนเอกสาร" in AP_PROMPT
+    assert AP_PROMPT.index("8. กฎเฉพาะผู้ขาย") > AP_PROMPT.index("7. ส่งคืน JSON")
+
+
+def test_polar_bear_reads_the_pack_columns():
+    assert "PACK DETAILS เท่านั้น" in AP_VENDOR_RULES["0105559082715"]

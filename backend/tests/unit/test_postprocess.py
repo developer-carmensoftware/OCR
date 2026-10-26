@@ -690,3 +690,82 @@ class TestTaxTypeGuessWarning:
             "depositPct": 0,
         }
         assert postprocess(raw)["warnings"] == []
+
+
+class TestNegativeQuantityRow:
+    """Nespresso invoice 51686623 prints its discount as Quantity -1 × 190.00 = -190.00."""
+
+    def _raw(self, discount_row):
+        return {
+            "items": [
+                {"qty": 1, "unitPrice": 3800.0, "lineAmt": 3800.0, "taxPct": 7},
+                {"lineAmt": -190.0, "taxPct": 7, **discount_row},
+            ],
+            "docSubTotal": 3373.83,
+            "docTaxAmount": 236.17,
+            "docGrandTotal": 3610.0,
+        }
+
+    def test_the_minus_moves_to_the_price(self):
+        row = postprocess(self._raw({"qty": -1, "unitPrice": 190.0}))["items"][1]
+        assert (row["qty"], row["unitPrice"]) == (1.0, -190.0)
+
+    def test_same_result_as_the_rule_2b_shape(self):
+        # Rule 2b's reading (qty 1 × -190) is what this document produced before CA-123.
+        printed = postprocess(self._raw({"qty": -1, "unitPrice": 190.0}))
+        rule_2b = postprocess(self._raw({"qty": 1, "unitPrice": -190.0}))
+        assert printed == rule_2b
+
+
+class TestQtyPriceMismatchWarning:
+    """CA-123: Polar Bear's invoice (INV-20260828145) read off its UNIT DETAILS columns,
+    which is what landed in a customer's Carmen as Total 979.95 against Amount 915.89+VAT."""
+
+    POLAR_BEAR = "0105559082715"
+
+    def _raw(self, *, tax_id=POLAR_BEAR, coconut=(12, 76.32), **row2):
+        qty, price = coconut
+        return {
+            "vendorTaxId": tax_id,
+            "items": [
+                {"qty": 5, "unitPrice": 148.60, "lineAmt": 743.00, "taxPct": 7},
+                {"qty": qty, "unitPrice": price, "lineAmt": 915.89, "taxPct": 7, **row2},
+                {"qty": 10, "unitPrice": 38.22, "lineAmt": 382.24, "taxPct": 7},
+                {"qty": 1, "unitPrice": 1895.33, "lineAmt": 1895.33, "taxPct": 7},
+            ],
+            "docSubTotal": 3936.46,
+            "docTaxAmount": 275.55,
+            "docGrandTotal": 4212.01,
+        }
+
+    def _warning(self, raw):
+        found = [w for w in postprocess(raw)["warnings"] if w["code"] == "apQtyPriceMismatch"]
+        return found[0] if found else None
+
+    def test_names_every_row_read_off_the_unit_columns(self):
+        assert self._warning(self._raw()) == {
+            "code": "apQtyPriceMismatch",
+            "params": {"lines": "2, 3"},
+        }
+
+    def test_pack_columns_raise_nothing(self):
+        raw = self._raw(coconut=(1, 915.89))
+        raw["items"][2].update(qty=1, unitPrice=382.24)
+        assert self._warning(raw) is None
+
+    def test_a_vendor_without_a_rule_is_not_checked(self):
+        assert self._warning(self._raw(tax_id="0105536000315")) is None
+
+    def test_a_formatted_tax_id_still_matches(self):
+        assert self._warning(self._raw(tax_id="0-1055-59082-71-5")) is not None
+
+    def test_one_satang_is_rounding_not_a_mismatch(self):
+        raw = self._raw(coconut=(1, 915.88))
+        raw["items"][2].update(qty=1, unitPrice=382.24)
+        assert self._warning(raw) is None
+
+    def test_a_discounted_row_is_skipped(self):
+        # Its gap to the Amount is the discount, not a misread column.
+        raw = self._raw(coconut=(1, 1000.00), discountAmt=84.11)
+        raw["items"][2].update(qty=1, unitPrice=382.24)
+        assert self._warning(raw) is None

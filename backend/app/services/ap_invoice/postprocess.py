@@ -9,7 +9,10 @@ reconciliation against the document's stated grand total.
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+from app.llm.prompts.ap_invoice import VENDOR_RULES
 
 # How far the winning VAT reading may miss the printed footer, as a fraction of it,
 # before we tell the user it was a guess. 1% is wide enough to absorb per-line rounding
@@ -24,6 +27,43 @@ _TAX_FIT_TOLERANCE = 0.01
 # translates rather than printing raw — see `warn.taxType.*` in `i18n/dict.ts`.
 def _tax_type_guessed_warning(tax_type: str) -> dict[str, Any]:
     return {"code": "apTaxGuessed", "params": {"taxType": tax_type}}
+
+
+def _qty_price_mismatch_warning(items: list[dict], vendor_tax_id: str) -> dict[str, Any] | None:
+    """The backstop for a vendor reading rule (CA-123) that did not take.
+
+    Such a vendor is on the list because its rows can be read with a qty/price pair that
+    does not multiply back to the printed Amount. If one still doesn't, Carmen — which
+    recomputes Total from Qty × Price — will show a Total that differs from the Amount by
+    that gap. Rows with a discount are skipped: their gap is the discount.
+
+    Read off the raw rows, before ``_resolve_line_discount`` turns any gap into a discount.
+    """
+    if re.sub(r"\D", "", vendor_tax_id or "") not in VENDOR_RULES:
+        return None
+    lines = []
+    for n, i in enumerate(items, 1):
+        amount = _num(i.get("lineAmt"))
+        if not amount or _num(i.get("discountAmt")) or _num(i.get("discountPct")):
+            continue
+        if round(abs((_num(i.get("qty")) or 1.0) * _num(i.get("unitPrice")) - amount), 2) > 0.01:
+            lines.append(str(n))
+    return {"code": "apQtyPriceMismatch", "params": {"lines": ", ".join(lines)}} if lines else None
+
+
+def _sign_on_price(items: list[dict]) -> None:
+    """Carry a credit row's minus on the price, never the quantity.
+
+    Nespresso prints its discount line as Quantity -1 × Price 190.00 = -190.00. Rule 2b of the
+    prompt asks for qty 1 × unitPrice -190, and the CA-123 vendor rules nudged the model into
+    copying the page instead (regression run, 2026-10-26). Same money either way, but every
+    step below and Carmen's line (qty × net price) were built on the positive-quantity shape:
+    a -1 quantity would post as a negative-quantity line, which nothing has ever sent.
+    """
+    for item in items:
+        if _num(item.get("qty")) < 0:
+            item["qty"] = -_num(item["qty"])
+            item["unitPrice"] = -_num(item.get("unitPrice"))
 
 
 def _num(v: Any) -> float:
@@ -366,6 +406,8 @@ def postprocess(raw: dict | None) -> dict:
     deposit_label = (raw.get("depositLabel") or "").strip()
 
     items = [dict(i) for i in items_raw if i is not None]
+    _sign_on_price(items)
+    qty_price_warning = _qty_price_mismatch_warning(items, raw.get("vendorTaxId") or "")
 
     # Order matters: discount must be resolved before ANY sum is taken. Both
     # _deposit_applies and _detect_tax_type sum qty × unitPrice − discountAmt, so a
@@ -386,6 +428,8 @@ def postprocess(raw: dict | None) -> dict:
     # a correct grand total over six wrong line amounts.
     if tax_misfit > _TAX_FIT_TOLERANCE:
         warnings.append(_tax_type_guessed_warning(tax_type))
+    if qty_price_warning:
+        warnings.append(qty_price_warning)
     for item in items:
         _compute_line_totals(item, tax_type)
 

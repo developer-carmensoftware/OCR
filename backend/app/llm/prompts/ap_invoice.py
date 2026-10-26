@@ -99,3 +99,33 @@ PROMPT = """คุณเป็นผู้ช่วย OCR สำหรับใ
 
 6. ค่าที่ไม่พบ: text ใส่ "", number ใส่ 0
 7. ส่งคืน JSON เท่านั้น ไม่มี markdown ไม่มีคำอธิบาย"""
+
+# Per-vendor reading rules (CA-123): vendors whose invoice the generic rules above read
+# wrong, keyed by the vendor's tax ID, the text appended to the prompt as written. Same for
+# every BU — the layout belongs to the vendor, not to whoever bought from them.
+#
+# The condition is the tax ID appearing anywhere on the page, not the vendorTaxId the model
+# reads: that read happens in this same call, and on Polar Bear's own invoice it has come
+# back as the buyer's tax ID.
+#
+# ponytail: every rule rides on every AP call. Move these to a table + admin page (or a
+# pre-pass that reads the tax ID first) once there are more than a handful of vendors.
+VENDOR_RULES: dict[str, str] = {
+    # โพลาร์ แบร์ มิชชั่น (Freshket's layout). UNIT DETAILS prints Amount ÷ unit qty
+    # rounded, so it never multiplies back — 12 × 76.32 = 915.84 against 915.89, which is
+    # the Total Carmen then shows. The PACK pair does multiply back.
+    "0105559082715": (
+        'ตารางมีจำนวน/ราคา 2 ชุด คือ "รายละเอียดต่อแพ็ค / PACK DETAILS" และ '
+        '"รายละเอียดต่อหน่วย / UNIT DETAILS" → qty = จำนวน (QUANTITY) และ '
+        "unitPrice = ราคาต่อหน่วย (UNIT PRICE) ของชุด PACK DETAILS เท่านั้น "
+        "ห้ามใช้ชุด UNIT DETAILS (ราคาชุดนั้นปัดเศษ คูณกลับไม่เท่ายอด); "
+        "lineAmt = คอลัมน์ ยอดเงินรวม / AMOUNT ตามที่พิมพ์"
+    ),
+}
+
+if VENDOR_RULES:
+    PROMPT += (
+        "\n\n8. กฎเฉพาะผู้ขาย — ถ้าเลขประจำตัวผู้เสียภาษีต่อไปนี้ปรากฏที่ใดก็ได้บนเอกสาร "
+        "ให้อ่านตามกฎของเลขนั้น (กฎนี้มีลำดับเหนือข้อ 1):\n"
+        + "\n".join(f"   - {tax_id}: {rule}" for tax_id, rule in VENDOR_RULES.items())
+    )
