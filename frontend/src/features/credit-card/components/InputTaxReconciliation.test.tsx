@@ -104,6 +104,19 @@ describe('InputTaxReconciliation — branch', () => {
   })
 })
 
+describe('InputTaxReconciliation — source', () => {
+  // CA-110 moved the JV onto per-bank sources (AICCPAYPAL, …). This record is a different
+  // Carmen document whose Source is an enum (Exported/User/Import/ACTX), so it stays ACTX.
+  // Server twin: test_cc_input_tax.py.
+  it("files under ACTX, not the bank's JV source", async () => {
+    const { addButton } = setup('PAYPAL')
+    await confirmSubmit(addButton)
+
+    await waitFor(() => expect(submitInputTax).toHaveBeenCalled())
+    expect(vi.mocked(submitInputTax).mock.lastCall?.[0]).toMatchObject({ Source: 'ACTX' })
+  })
+})
+
 describe('InputTaxReconciliation — Carmen verdict', () => {
   it('treats a non-zero Code as a failure, not a finished step', async () => {
     vi.mocked(submitInputTax).mockResolvedValue({ Code: -1, UserMessage: 'Tax ID is required' })
