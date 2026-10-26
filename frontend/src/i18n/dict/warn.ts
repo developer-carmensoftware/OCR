@@ -25,6 +25,10 @@ export const en = {
   'warn.csvVatMismatch': "KBank's tax summary gives VAT {csv}; the report prints {report}.",
   'warn.csvNetMismatch': "KBank's tax summary gives net credit {csv}; the report prints {report}.",
   'warn.apTaxGuessed': 'Assumed unit prices are VAT {taxType} — the footer did not confirm it.',
+  // CA-123: a vendor with a reading rule whose rows still don't multiply out. Carmen
+  // recomputes Total from Qty × Price, so the gap would show there.
+  'warn.apQtyPriceMismatch':
+    'Qty × unit price does not equal the amount on line {lines} — check the quantities.',
   // Our own words for where VAT sits, not a Carmen field name, so they read translated
   // inside the sentence above.
   'warn.taxType.Include': 'inclusive',
@@ -50,6 +54,8 @@ export const th: Record<keyof typeof en, string> = {
   'warn.csvVatMismatch': 'ไฟล์สรุปภาษีของ KBank ระบุ VAT {csv} แต่รายงานพิมพ์ {report}',
   'warn.csvNetMismatch': 'ไฟล์สรุปภาษีของ KBank ระบุยอดเงินเข้าสุทธิ {csv} แต่รายงานพิมพ์ {report}',
   'warn.apTaxGuessed': 'อนุมานว่าราคาต่อหน่วยเป็นแบบ{taxType} เพราะยอดท้ายเอกสารไม่ยืนยัน',
+  'warn.apQtyPriceMismatch':
+    'จำนวน × ราคาต่อหน่วย ไม่เท่ากับยอดเงินของบรรทัดที่ {lines} — กรุณาตรวจจำนวน',
   'warn.taxType.Include': 'รวม VAT',
   'warn.taxType.Exclude': 'ไม่รวม VAT',
   'warn.taxType.None': 'ยกเว้น VAT',
