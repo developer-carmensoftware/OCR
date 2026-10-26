@@ -50,8 +50,10 @@ services:
         value: deepseek/deepseek-v4-flash
       - key: LLM_TEXT_PROVIDER_ALLOWLIST
         value: fireworks,deepinfra,digitalocean
+      # Same as QA and .env.example (CA-125): on Polar Bear's invoice 2.5 read the buyer as the
+      # vendor 4/4 times. Editing this applies only on a blueprint sync — set it on Render too.
       - key: OPENROUTER_AP_INVOICE_MODEL
-        value: google/gemini-2.5-flash-lite
+        value: google/gemini-3.1-flash-lite-preview
 
       # ── Auth ────────────────────────────────────────────────────────────────
       - key: OCR_JWT_SECRET
