@@ -158,8 +158,10 @@ the first path, `#/email-settings`, redirects with its query).
 Carmen builds no settings form. Its menu opens the same SSO link as the queue, and that link's
 one `token` is also the BU's posting credential: the page offers it before reading anything, and the
 server keeps a stored credential that still works instead (`from_link`, decision-log #45)
-(decision-log #35, one token since #38). The queue's fix buttons open it in the same
-tab. **Carmen decides who sees the menu item, and we check nothing twice**: no role gate
+(decision-log #35, one token since #38). The queue's settings fix buttons (Open settings,
+Reconnect) open **Carmen's** `/setting` in a new tab, not this page: going through Carmen's
+menu is what hands the page a fresh token (`SETTINGS` / `fixLinkProps` in
+`shared/lib/reviewReasons.ts`); only Fix mapping stays in this tab. **Carmen decides who sees the menu item, and we check nothing twice**: no role gate
 and no permission endpoint, so any token the host's Carmen accepts may edit (QA S-07). Don't
 add a Home tile or a queue-header link either; the menu is the front door. English-only. A BU switching
 the feature on gets review; they turn it off once the queue
@@ -170,9 +172,11 @@ has earned it. Backpressure, not refunds, protects a BU that stops reading its q
 whether a *clean* document waits; it cannot decide that a doubtful one does. The gate is
 `_review_flags()` being empty — the same predicate that paints the queue's Message column,
 whose empty case reads *Ready to post* — so a document the reviewer would have been given a
-reason for never posts behind their back. Five flags: `mapping_missing`, `unbalanced`,
-`mapping_guessed`, `doc_no_missing` (both duplicate guards key on `doc_no`, so without one
-nothing can catch a second copy), `warnings`. Adding a flag therefore tightens auto-post as
+reason for never posts behind their back. Six flags (`_review_flags()` in
+`email_automation/ledger.py`): `mapping_missing`, `unbalanced`, `mapping_guessed`,
+`tin_unverified` (KBANK settlement report only: its page prints no tax ID, so nothing has
+verified the BU unless the CSV sidecar supplied one), `doc_no_missing` (both duplicate guards
+key on `doc_no`, so without one nothing can catch a second copy), `warnings`. Adding a flag therefore tightens auto-post as
 well as the row — that is intended, and is the reason there is one function and not two.
 `REVIEW_BACKLOG_CAP` and `_already_pending` are unconditional for the same reason: an
 auto-post BU now parks routinely.
