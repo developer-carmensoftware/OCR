@@ -16,7 +16,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
-| 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุมสามเส้นทางที่ยื่นภาษีซื้อ (wizard step 4, email automation, ปุ่มยื่นย้อนหลังในคิว), กติกาการเลือกผู้ขาย/tax profile/งวดภาษี, การกันยื่นซ้ำ และ QA matrix | รอ Lead Dev |
+| 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุมสามเส้นทางที่ยื่นภาษีซื้อ (wizard step 4, email automation, ปุ่มยื่นย้อนหลังในคิว), กติกาการเลือกผู้ขาย/tax profile/งวดภาษี, การกันยื่นซ้ำ และ QA matrix | Reviewed |
 
 <!-- pagebreak -->
 

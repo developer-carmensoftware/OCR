@@ -15,8 +15,8 @@ Template: Carmen Cloud ERP FRD Template v1.1
 
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
-| 1.0 | 25/08/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุมแคตตาล็อก module การเปิด-ปิดต่อ tenant แบบ opt-out และกลไก system config ทั่วไป | รอ Lead Dev |
-| 1.1 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — ตาราง modules มี 4 แถว: เพิ่ม `cc_ar_reconcile` (สร้าง 09/09/2026 แล้วปิดเมื่อ 22/09/2026 เมื่อรวมเข้ากับ credit-card flow) และ `pms_interface` (09/10/2026 มีไว้ให้ `llm_usage_logs` อ้างถึงเท่านั้น ไม่คิดเครดิต); Email Automation ต้องมีแพ็กสัญญาที่ active (ข้อยกเว้นของ "ไม่ผูก module กับแพ็ก"); แคตตาล็อกแพ็ก Lite และ Micro; path ตามโครงสร้างหลัง refactor | รอ Lead Dev |
+| 1.0 | 25/08/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุมแคตตาล็อก module การเปิด-ปิดต่อ tenant แบบ opt-out และกลไก system config ทั่วไป | Reviewed |
+| 1.1 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — ตาราง modules มี 4 แถว: เพิ่ม `cc_ar_reconcile` (สร้าง 09/09/2026 แล้วปิดเมื่อ 22/09/2026 เมื่อรวมเข้ากับ credit-card flow) และ `pms_interface` (09/10/2026 มีไว้ให้ `llm_usage_logs` อ้างถึงเท่านั้น ไม่คิดเครดิต); Email Automation ต้องมีแพ็กสัญญาที่ active (ข้อยกเว้นของ "ไม่ผูก module กับแพ็ก"); แคตตาล็อกแพ็ก Lite และ Micro; path ตามโครงสร้างหลัง refactor | Reviewed |
 
 <!-- pagebreak -->
 

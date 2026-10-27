@@ -17,8 +17,8 @@ Template: Carmen Cloud ERP FRD Template v1.1
 
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
-| 1.0 | 25/08/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุม extract / mapping / submit / correction learning พร้อม gate ladder, error matrix และ QA matrix | รอ Lead Dev |
-| 2.0 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — หน้าแรกของโมดูลเป็นคิวตรวจ และ wizard ย้ายไป `/manual`; GL mapping แยกตามธนาคาร; Description ต่อธนาคารพร้อม tag 3 ตัว (ไม่เติมวันที่ให้อัตโนมัติ); Branch ค่าเริ่มต้น 00000; ส่วน Settlement ของ KBANK บนหน้า mapping; JV source `AICC*` (CA-110); key กันซ้ำมี `doc_type`; JV ถือว่าสำเร็จเฉพาะ `Code: 0` และเก็บเลข JV กับยอดภาษีซื้อ; คำเตือนเป็น code ที่แปล EN/TH; AI แนะนำบัญชีลูกหนี้ตามแบรนด์บัตร; path ในตาราง feature ตามโครงสร้างหลัง refactor 25–28/09; แยกเนื้อหา input tax, payment gateway และคิวไปไว้ FRD-09/10/12 | รอ Lead Dev |
+| 1.0 | 25/08/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุม extract / mapping / submit / correction learning พร้อม gate ladder, error matrix และ QA matrix | Reviewed |
+| 2.0 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — หน้าแรกของโมดูลเป็นคิวตรวจ และ wizard ย้ายไป `/manual`; GL mapping แยกตามธนาคาร; Description ต่อธนาคารพร้อม tag 3 ตัว (ไม่เติมวันที่ให้อัตโนมัติ); Branch ค่าเริ่มต้น 00000; ส่วน Settlement ของ KBANK บนหน้า mapping; JV source `AICC*` (CA-110); key กันซ้ำมี `doc_type`; JV ถือว่าสำเร็จเฉพาะ `Code: 0` และเก็บเลข JV กับยอดภาษีซื้อ; คำเตือนเป็น code ที่แปล EN/TH; AI แนะนำบัญชีลูกหนี้ตามแบรนด์บัตร; path ในตาราง feature ตามโครงสร้างหลัง refactor 25–28/09; แยกเนื้อหา input tax, payment gateway และคิวไปไว้ FRD-09/10/12 | Reviewed |
 
 <!-- pagebreak -->
 
