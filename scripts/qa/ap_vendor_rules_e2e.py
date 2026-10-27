@@ -27,6 +27,7 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -276,19 +277,50 @@ async def cmd_stability(args) -> int:
 # ── regress ───────────────────────────────────────────────────────────────────
 
 
+# The buyer on most samples (CA-125): a vendorTaxId equal to one of these is certainly the
+# customer read as the vendor. The photos are Carmen Software's own purchases; WD Property is
+# Polar Bear's customer.
+KNOWN_BUYERS = {"0105562202751": "Carmen Software", "0105560215995": "WD Property"}
+
+
+def prompt_at(ref: str) -> str:
+    """The AP prompt as committed at `ref` — the baseline a prompt change is measured against."""
+    src = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(ROOT),
+            "show",
+            f"{ref}:backend/app/llm/prompts/ap_invoice.py",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    ).stdout
+    ns: dict = {}
+    exec(compile(src, f"{ref}:ap_invoice.py", "exec"), ns)  # noqa: S102 — this repo's own file
+    return ns["PROMPT"]
+
+
 async def cmd_regress(args) -> int:
     files = [p for p in ap_samples() if not args.only or p.name in args.only]
     sem = asyncio.Semaphore(args.concurrency)
     model = args.models[0]
+    old_prompt = prompt_at(args.baseline_ref) if args.baseline_ref else OLD_PROMPT
 
     async def one(path: Path) -> dict:
         async with sem:
-            old = signature(await extract(path, OLD_PROMPT, model, "old"))
+            old = signature(await extract(path, old_prompt, model, "old"))
             new = signature(await extract(path, NEW_PROMPT, model, "new"))
+            first = {
+                "old_tin": old.get("vendorTaxId"),
+                "new_tin": new.get("vendorTaxId"),
+            }
             if old == new:
-                return {"file": path.name, "verdict": "same"}
+                return {"file": path.name, "verdict": "same", **first}
             olds = [old] + [
-                signature(await extract(path, OLD_PROMPT, model, f"old{k}"))
+                signature(await extract(path, old_prompt, model, f"old{k}"))
                 for k in (2, 3)
             ]
             news = [new] + [
@@ -305,9 +337,18 @@ async def cmd_regress(args) -> int:
                 verdict = "RULE"
             else:
                 verdict = "noise"
-            return {"file": path.name, "verdict": verdict, "old": olds, "new": news}
+            return {
+                "file": path.name,
+                "verdict": verdict,
+                **first,
+                "old": olds,
+                "new": news,
+            }
 
-    print(f"{len(files)} samples, model {model}, concurrency {args.concurrency}")
+    print(
+        f"{len(files)} samples, model {model}, concurrency {args.concurrency}, "
+        f"baseline {args.baseline_ref or 'current prompt minus rule 8'}"
+    )
     results = await asyncio.gather(*(one(p) for p in files))
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / args.out).write_text(
@@ -321,6 +362,9 @@ async def cmd_regress(args) -> int:
         if r["verdict"] != "same":
             print(f"{r['verdict']:5} {r['file']}")
     print(f"\n{counts}  -> {OUT / args.out}")
+    for side in ("old", "new"):
+        buyer = [r["file"] for r in results if r.get(f"{side}_tin") in KNOWN_BUYERS]
+        print(f"buyer read as the vendor, {side}: {len(buyer)}  {buyer}")
     return 1 if counts["RULE"] or counts["error"] else 0
 
 
@@ -341,6 +385,11 @@ def main() -> None:
     )
     rg.add_argument(
         "--out", default="regress.json", help="report name under backend/scratch/ca123"
+    )
+    rg.add_argument(
+        "--baseline-ref",
+        help="git ref whose AP prompt is the 'old' side, e.g. origin/main "
+        "(default: the current prompt without rule 8, i.e. CA-123's comparison)",
     )
     args = ap.parse_args()
     cmd = {"fixture": cmd_fixture, "stability": cmd_stability, "regress": cmd_regress}[

@@ -50,8 +50,10 @@ services:
         value: deepseek/deepseek-v4-flash
       - key: LLM_TEXT_PROVIDER_ALLOWLIST
         value: fireworks,deepinfra,digitalocean
+      # What Render already runs on prod and QA (confirmed 2026-10-26, CA-125); this file still
+      # said gemini-2.5-flash-lite, which on Polar Bear's invoice read the buyer as the vendor.
       - key: OPENROUTER_AP_INVOICE_MODEL
-        value: google/gemini-2.5-flash-lite
+        value: google/gemini-3.1-flash-lite-preview
 
       # ── Auth ────────────────────────────────────────────────────────────────
       - key: OCR_JWT_SECRET

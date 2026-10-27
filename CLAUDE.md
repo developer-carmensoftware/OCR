@@ -431,7 +431,7 @@ client-IP logging and rate limiting read a spoofable header.
 OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_OCR_MODEL=google/gemini-2.5-flash-lite
 OPENROUTER_SUGGESTION_MODEL=deepseek/deepseek-v4-flash   # non-Google: must be served by the allowlist below
-OPENROUTER_AP_INVOICE_MODEL=google/gemini-2.5-flash-lite
+OPENROUTER_AP_INVOICE_MODEL=google/gemini-3.1-flash-lite-preview
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 LLM_DATA_COLLECTION=deny            # per-request no-train/no-collect enforcement (see Key Design Decisions)
 LLM_REQUIRE_ZDR=false               # strict Zero-Data-Retention routing (off until every model verified ZDR-capable)
