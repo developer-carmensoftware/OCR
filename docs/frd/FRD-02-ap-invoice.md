@@ -14,8 +14,8 @@ Template: Carmen Cloud ERP FRD Template v1.1
 
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
-| 1.0 | 25/08/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุม extraction, postprocess pipeline, field mapping ต่อผู้ขาย, การกระทบยอด และการส่งเข้า Carmen พร้อม gate ladder, error matrix และ QA matrix | รอ Lead Dev |
-| 1.1 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — CA-122: header `TaxStatus` เป็น `None` เมื่อผลรวมภาษีของบรรทัดเป็น 0 (เดิม `Pending` ทุกใบ); CA-123: กฎการอ่านเฉพาะผู้ขายตามเลขผู้เสียภาษี (`VENDOR_RULES`) พร้อมคำเตือน `apQtyPriceMismatch` และการแก้เครื่องหมายของบรรทัดส่วนลดที่ qty ติดลบ; บันทึก CA-125 เป็นปัญหาที่ยังเปิดอยู่; คำเตือนเป็น code ที่แปล EN/TH; ขั้นตอนเปลี่ยนเลขที่เมื่อ Carmen แจ้งว่าเลขซ้ำ; path ในตาราง feature ตามโครงสร้างหลัง refactor 25–28/09; API บันทึก field mapping เป็น PUT | รอ Lead Dev |
+| 1.0 | 25/08/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุม extraction, postprocess pipeline, field mapping ต่อผู้ขาย, การกระทบยอด และการส่งเข้า Carmen พร้อม gate ladder, error matrix และ QA matrix | Reviewed |
+| 1.1 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — CA-122: header `TaxStatus` เป็น `None` เมื่อผลรวมภาษีของบรรทัดเป็น 0 (เดิม `Pending` ทุกใบ); CA-123: กฎการอ่านเฉพาะผู้ขายตามเลขผู้เสียภาษี (`VENDOR_RULES`) พร้อมคำเตือน `apQtyPriceMismatch` และการแก้เครื่องหมายของบรรทัดส่วนลดที่ qty ติดลบ; บันทึก CA-125 เป็นปัญหาที่ยังเปิดอยู่; คำเตือนเป็น code ที่แปล EN/TH; ขั้นตอนเปลี่ยนเลขที่เมื่อ Carmen แจ้งว่าเลขซ้ำ; path ในตาราง feature ตามโครงสร้างหลัง refactor 25–28/09; API บันทึก field mapping เป็น PUT | Reviewed |
 
 <!-- pagebreak -->
 

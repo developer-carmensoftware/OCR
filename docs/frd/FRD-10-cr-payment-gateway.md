@@ -17,7 +17,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
-| 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุม layout 5 แบบ, การกระจาย VAT จากท้ายใบ, การตรวจกับยอดรวมที่พิมพ์, การตรวจจับผู้ออกเอกสาร, รูปแบบวันที่ไทย, JV source และ QA matrix | รอ Lead Dev |
+| 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุม layout 5 แบบ, การกระจาย VAT จากท้ายใบ, การตรวจกับยอดรวมที่พิมพ์, การตรวจจับผู้ออกเอกสาร, รูปแบบวันที่ไทย, JV source และ QA matrix | Reviewed |
 
 <!-- pagebreak -->
 

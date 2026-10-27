@@ -16,8 +16,8 @@ check-ignore: purchase_block_reason
 
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
-| 1.0 | 25/08/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุมลำดับการหักสองกระเป๋า การคืน การรีเซ็ตรอบ ledger และการจัดการโดย admin | รอ Lead Dev |
-| 1.1 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — ลบกติกาการซื้อทับ (`purchase_block_reason` ถูกลบเมื่อ 14/09/2026, CA-105: เปลี่ยนแพ็กได้ทุกทิศพร้อมคำเตือนฝั่งหน้าจอ ดู FRD-05); เพิ่ม AI Status API (`GET /api/v1/carmen/ai-status`) ที่ Carmen ใช้เลือก popup ขายของ อ่านจากเครดิตทดลองที่ใช้ไป; ระบุว่า PMS Interface ไม่หักเครดิต; path ตามโครงสร้างหลัง refactor (`services/shared/credits.py`) | รอ Lead Dev |
+| 1.0 | 25/08/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุมลำดับการหักสองกระเป๋า การคืน การรีเซ็ตรอบ ledger และการจัดการโดย admin | Reviewed |
+| 1.1 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — ลบกติกาการซื้อทับ (`purchase_block_reason` ถูกลบเมื่อ 14/09/2026, CA-105: เปลี่ยนแพ็กได้ทุกทิศพร้อมคำเตือนฝั่งหน้าจอ ดู FRD-05); เพิ่ม AI Status API (`GET /api/v1/carmen/ai-status`) ที่ Carmen ใช้เลือก popup ขายของ อ่านจากเครดิตทดลองที่ใช้ไป; ระบุว่า PMS Interface ไม่หักเครดิต; path ตามโครงสร้างหลัง refactor (`services/shared/credits.py`) | Reviewed |
 
 <!-- pagebreak -->
 

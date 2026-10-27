@@ -17,7 +17,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
-| 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว รวมสเปกคิวที่เดิมกระจายอยู่ใน Email FRD v3.0/v3.1 §4.2–4.3, §8.4c–8.6, §12.1–12.2 เข้ากับส่วนที่เพิ่มหลังจากนั้น (chip 5 ตัว, charged-means-reviewable, auto-post gate, แถว manual และแถว PMS) | รอ Lead Dev |
+| 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว รวมสเปกคิวที่เดิมกระจายอยู่ใน Email FRD v3.0/v3.1 §4.2–4.3, §8.4c–8.6, §12.1–12.2 เข้ากับส่วนที่เพิ่มหลังจากนั้น (chip 5 ตัว, charged-means-reviewable, auto-post gate, แถว manual และแถว PMS) | Reviewed |
 
 <!-- pagebreak -->
 

@@ -17,7 +17,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
-| 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว (path B ตาม decision-log #43 และหน้าตั้งค่าของ Carmen ตาม #44, #45) ครอบคลุม hook, การอ่านวันจาก Data Bank, AI แนะนำบัญชีเฉพาะแถวใหม่, การอนุมัติที่เขียน mapping table ของ Carmen แล้วให้ engine ของ Carmen post และสิ่งที่ยังรอจาก Carmen | รอ Lead Dev |
+| 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว (path B ตาม decision-log #43 และหน้าตั้งค่าของ Carmen ตาม #44, #45) ครอบคลุม hook, การอ่านวันจาก Data Bank, AI แนะนำบัญชีเฉพาะแถวใหม่, การอนุมัติที่เขียน mapping table ของ Carmen แล้วให้ engine ของ Carmen post และสิ่งที่ยังรอจาก Carmen | Reviewed |
 
 <!-- pagebreak -->
 
