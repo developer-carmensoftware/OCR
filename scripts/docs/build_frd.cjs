@@ -201,12 +201,26 @@ async function renderDiagrams(blocks) {
 const B = { style: d.BorderStyle.SINGLE, size: 4, color: 'auto' }
 const P = (children, opts = {}) => new d.Paragraph({ children, ...opts })
 
+// The longest run a column cannot wrap inside: Latin tokens (identifiers, codes), capped so
+// one long path cannot eat the table. Thai wraps by dictionary, so it never counts.
+function minWidth(rows, c) {
+  const tokens = rows.flatMap(r => (r[c] || '').replace(/<br\s*\/?>|\*\*|`/g, ' ').split(/\s+/))
+  const longest = Math.max(0, ...tokens.filter(t => !/[\u0E00-\u0E7F]/.test(t)).map(t => Math.min(t.length, 26)))
+  return longest * 110 + 200 // ~5.5pt a character at 10pt, plus the cell margins
+}
+
 function colWidths(rows, pct) {
   const n = rows[0].length
-  let w = pct && pct.length === n ? pct : rows[0].map((_, c) => Math.max(4, Math.min(60, ...rows.map(r => (r[c] || '').length))))
-  const sum = w.reduce((a, b) => a + b, 0)
-  w = w.map(x => Math.max(600, Math.floor((x / sum) * PAGE_W)))
-  w[w.length - 1] += PAGE_W - w.reduce((a, b) => a + b, 0)
+  const weight = pct && pct.length === n ? pct : rows[0].map((_, c) => Math.max(4, Math.min(60, ...rows.map(r => (r[c] || '').length))))
+  // Each column first gets room for its longest unbreakable token, scaled down when those
+  // alone would take more than 80% of the page; the rest is shared by content length.
+  let min = rows[0].map((_, c) => Math.max(600, minWidth(rows, c)))
+  const minSum = min.reduce((a, b) => a + b, 0)
+  if (minSum > PAGE_W * 0.8) min = min.map(x => Math.floor(x * PAGE_W * 0.8 / minSum))
+  const rest = PAGE_W - min.reduce((a, b) => a + b, 0)
+  const sum = weight.reduce((a, b) => a + b, 0)
+  const w = min.map((x, c) => x + Math.floor(rest * weight[c] / sum))
+  w[n - 1] += PAGE_W - w.reduce((a, b) => a + b, 0)
   return w
 }
 
@@ -232,11 +246,13 @@ function toDocx({ meta, blocks }) {
   kids.push(P([], { spacing: { after: 120 } }))
 
   let numInstance = 0
+  let breakBefore = false
   for (const b of blocks) {
     if (b.t === 'h') {
       const heading = [d.HeadingLevel.HEADING_1, d.HeadingLevel.HEADING_2, d.HeadingLevel.HEADING_3][b.level - 1]
       const spacing = [{ before: 320, after: 140 }, { before: 260, after: 120 }, { before: 200, after: 100 }][b.level - 1]
-      kids.push(P(runs(b.text), { heading, spacing, keepNext: true }))
+      kids.push(P(runs(b.text), { heading, spacing, keepNext: true, pageBreakBefore: breakBefore }))
+      breakBefore = false
     } else if (b.t === 'p') {
       kids.push(P(runs(b.text), { spacing: { before: 0, after: 120, line: 276 } }))
     } else if (b.t === 'note') {
@@ -276,6 +292,7 @@ function toDocx({ meta, blocks }) {
         borders: { top: B, bottom: B, left: B, right: B, insideHorizontal: B, insideVertical: B },
         rows: b.rows.map((r, ri) => new d.TableRow({
           tableHeader: ri === 0,
+          cantSplit: true,
           children: Array.from({ length: n }, (_, c) => cell(r[c] || '', widths[c], ri === 0)),
         })),
       }))
@@ -289,7 +306,9 @@ function toDocx({ meta, blocks }) {
       // always be recovered from the .docx alone.
       kids.push(P([new d.ImageRun({ type: 'png', data: b.png, transformation: { width: b.w, height: b.h }, altText: { name: `diagram_${b.num}`, title: b.caption, description: b.src } })], { spacing: { after: 200 } }))
     } else if (b.t === 'break') {
-      kids.push(P([new d.PageBreak()]))
+      // On the next heading, not as a paragraph of its own: LibreOffice turned a break
+      // paragraph after a short page into a blank page.
+      breakBefore = true
     }
   }
 
