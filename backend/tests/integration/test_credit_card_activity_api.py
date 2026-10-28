@@ -54,15 +54,8 @@ SESSION = SessionInfo(
 NOW = datetime(2026, 8, 31, 10, 0, tzinfo=UTC)
 
 
-def _pms_counts(review=0, success=0, unposted=0, today=0, failed=0, stopped=0):
-    return SimpleNamespace(
-        review=review,
-        success=success,
-        unposted=unposted,
-        today=today,
-        failed=failed,
-        stopped=stopped,
-    )
+def _pms_counts(review=0, success=0, unposted=0, today=0):
+    return SimpleNamespace(review=review, success=success, unposted=unposted, today=today)
 
 
 @pytest.fixture(autouse=True)
@@ -126,14 +119,13 @@ def _db(
     manual_count,
     emails,
     manuals,
-    seen=None,
     manual_today=0,
     manual_unposted=0,
     usernames=None,
 ):
     """Drive the five `db.execute` calls the handler makes, in order.
 
-    1. GROUP BY status, reason_code over email_documents → .all()
+    1. GROUP BY chip over email_documents                → .all()
     2. _manual_counts_stmt → .one(); `manual_count` is the posted scans, `manual_unposted`
        the charged-but-never-posted ones, `manual_today` both kinds since midnight ICT
     3. the email window                                  → .scalars().all()
@@ -141,21 +133,16 @@ def _db(
     5. username_map over those manual rows (only when one carries a user id)
        → .mappings().all(); `usernames` is {carmen_user_id: username}
 
-    `statuses` is the shorthand most tests want: {status: n}, no reason code, nothing
-    stuck, nothing noted, nothing today. `pairs` is the long form the `attention` tests
-    need: {(status, reason_code): (n, stuck, noted)} — `stuck` is how many are older than
-    `STUCK_AFTER`, `noted` how many carry an `error_message`. A fourth element sets how many
-    of that group arrived today, which is the only thing the Today chip counts.
-
-    `seen` is the `email_queue_seen` row, read with `db.get` rather than `db.execute`
-    precisely so it stays out of the ordering above — None means this BU has never opened
-    a chip, which is what `make_mock_db` already stubs.
+    `statuses` is the shorthand most tests want: {status: n}, no reason code, nothing today.
+    `pairs` is the long form for a bucket the reason code decides: {(status, reason_code):
+    (n, today)} — `today` is how many of that group arrived since midnight, which is the only
+    thing the Today filter counts.
     """
     db = make_mock_db()
 
     grouped = MagicMock()
     grouped.all.return_value = [
-        g for s, n in (statuses or {}).items() for g in _group(s, None, (n, 0, 0))
+        g for s, n in (statuses or {}).items() for g in _group(s, None, (n, 0))
     ] + [g for (s, rc), v in (pairs or {}).items() for g in _group(s, rc, v)]
     counted = MagicMock()
     counted.one.return_value = SimpleNamespace(
@@ -185,8 +172,6 @@ def _db(
         manual_window,
         names,
     ]
-    if seen is not None:
-        db.get.return_value = SimpleNamespace(seen=seen)
     return db
 
 
@@ -209,9 +194,7 @@ def _chip_of(status, reason_code):
     from it: a fixture that shares the implementation it is testing proves nothing about it.
 
     **No `dismissed` argument since §18.** Dismissal stopped deciding the bucket when
-    `_wants_a_human` narrowed to `pending_review`; it only quietens `_attention` now, which
-    is what keeps the migration's back-dated pile from shouting. That is also why `_group`
-    produces one row where it used to produce two.
+    `_wants_a_human` narrowed to `pending_review`.
     """
     if status == "posted":
         return "success"
@@ -223,15 +206,10 @@ def _chip_of(status, reason_code):
 
 
 def _group(status, reason_code, value):
-    """The GROUP BY row one (status, reason_code) produces.
+    """What one (status, reason_code) contributes to the GROUP BY. `value` is `(n, today)`.
 
-    **One row, always.** It used to be two when a group was partly dismissed, because the
-    real query groups by chip and dismissal decided the chip. It no longer does, so Postgres
-    now returns a single row carrying `dismissed` as a filtered sub-count.
-
-    `value` is `(n, stuck, noted)` plus two optionals: how many of that group arrived today
-    and how many have been put away. Absent means none, which is what every test written
-    before either existed wants.
+    The real query groups by chip alone, so two pairs in one bucket come back as one row;
+    the handler sums `n` per chip either way, which is why a row per pair is equivalent.
 
     **None at all for a hidden pair.** `_visible()` is a WHERE clause on the counts query, so
     those rows are gone before the GROUP BY sees them — not a bucket with nobody looking at
@@ -239,19 +217,8 @@ def _group(status, reason_code, value):
     """
     if _hidden(status, reason_code):
         return []
-    n, stuck, noted = value[0], value[1], value[2]
-    return [
-        SimpleNamespace(
-            chip=_chip_of(status, reason_code),
-            status=status,
-            reason_code=reason_code,
-            n=n,
-            stuck=stuck,
-            noted=noted,
-            today=value[3] if len(value) > 3 else 0,
-            dismissed=value[4] if len(value) > 4 else 0,
-        )
-    ]
+    n, today = value
+    return [SimpleNamespace(chip=_chip_of(status, reason_code), n=n, today=today)]
 
 
 # ── The anti-join ────────────────────────────────────────────────────────────
@@ -327,16 +294,6 @@ def test_a_manual_row_says_when_its_input_tax_is_still_owed(overrides, owed):
         body = client.get(BASE, headers=AUTH).json()
 
     assert body["data"][0]["input_tax_owed"] is owed
-
-
-def test_an_unposted_manual_scan_lights_no_dot():
-    """Stopping halfway is the scanner's own choice, not something wrong with the machine."""
-    db = _db(statuses={}, manual_count=0, manual_unposted=3, emails=[], manuals=[])
-    with make_test_client(db, session=SESSION) as client:
-        body = client.get(BASE, headers=AUTH).json()
-
-    assert body["attention"]["unposted"] == 0
-    assert body["unseen"]["unposted"] is False
 
 
 # ── The merged list ──────────────────────────────────────────────────────────
@@ -435,11 +392,11 @@ def test_the_review_chip_holds_documents_and_nothing_else():
     buried the documents the chip is named for. They are pointed at as causes now."""
     db = _db(
         pairs={
-            ("skipped", "unreadable_document"): (46, 0, 0),
-            ("skipped", "wrong_pdf_password"): (12, 0, 0),
-            ("failed", "carmen_rejected"): (3, 0, 0),
-            ("rejected", "rejected_by_reviewer"): (2, 0, 0),
-            ("pending_review", None): (4, 0, 0),
+            ("skipped", "unreadable_document"): (46, 0),
+            ("skipped", "wrong_pdf_password"): (12, 0),
+            ("failed", "carmen_rejected"): (3, 0),
+            ("rejected", "rejected_by_reviewer"): (2, 0),
+            ("pending_review", None): (4, 0),
         },
         manual_count=0,
         emails=[],
@@ -461,12 +418,12 @@ def test_the_review_chip_holds_documents_and_nothing_else():
 
 def test_the_noise_arm_only_claims_a_row_that_was_never_charged():
     """`unreadable_document` is written on charged `failed` rows too — by the generic handler
-    and inside the refund boundary — and those are a crash, which is exactly what the dot is
-    for. So the noise arm reads the status as well as the reason."""
+    and inside the refund boundary — and those are a crash, which a BU must find under Not
+    posted rather than in the quiet bucket. So the noise arm reads the status as well."""
     db = _db(
         pairs={
-            ("skipped", "unreadable_document"): (9, 0, 0),
-            ("failed", "unreadable_document"): (2, 0, 0),
+            ("skipped", "unreadable_document"): (9, 0),
+            ("failed", "unreadable_document"): (2, 0),
         },
         manual_count=0,
         emails=[],
@@ -476,8 +433,7 @@ def test_the_noise_arm_only_claims_a_row_that_was_never_charged():
         body = client.get(BASE, headers=AUTH).json()
 
     assert body["counts"]["noise"] == 9
-    assert body["counts"]["unposted"] == 2
-    assert body["attention"]["unposted"] == 2  # the crash still shouts
+    assert body["counts"]["unposted"] == 2  # the crash is a row a reader finds
 
 
 def test_a_clearable_refusal_is_an_ordinary_row_under_not_posted():
@@ -493,9 +449,9 @@ def test_a_clearable_refusal_is_an_ordinary_row_under_not_posted():
     row = _email(status="skipped", reason_code="wrong_pdf_password", review_payload=None)
     db = _db(
         pairs={
-            ("skipped", "wrong_pdf_password"): (11, 0, 0),
-            ("skipped", "sender_not_allowed"): (4, 0, 0),
-            ("failed", "carmen_rejected"): (3, 0, 0),
+            ("skipped", "wrong_pdf_password"): (11, 0),
+            ("skipped", "sender_not_allowed"): (4, 0),
+            ("failed", "carmen_rejected"): (3, 0),
         },
         manual_count=0,
         emails=[row],
@@ -524,8 +480,8 @@ def test_a_filename_rule_refusal_is_in_no_view_at_all():
     reading 46 rows of a rule working."""
     db = _db(
         pairs={
-            ("skipped", HIDDEN_REASON): (7, 0, 0),
-            ("pending_review", None): (2, 0, 0),
+            ("skipped", HIDDEN_REASON): (7, 0),
+            ("pending_review", None): (2, 0),
         },
         manual_count=0,
         emails=[
@@ -549,117 +505,6 @@ def test_a_filename_rule_refusal_is_in_no_view_at_all():
         "all": 2,
         "today": 0,
     }
-
-
-def test_attention_marks_the_machine_misbehaving_not_the_work():
-    """The dot means "something is off", not "there is work here" — `review` holds work by
-    definition now, so a dot drawn from its size would be lit whenever the feature was doing
-    its job. A reviewer's own rejection is not an anomaly either."""
-    db = _db(
-        pairs={
-            ("skipped", "unreadable_document"): (46, 0, 0),
-            ("skipped", "wrong_pdf_password"): (12, 0, 0),
-            ("failed", "carmen_rejected"): (3, 0, 0),
-            ("rejected", "rejected_by_reviewer"): (2, 0, 0),
-            ("pending_review", None): (5, 0, 0),
-            ("pending_review", "tax_id_mismatch"): (4, 0, 0),
-        },
-        manual_count=0,
-        emails=[],
-        manuals=[],
-    )
-    with make_test_client(db, session=SESSION) as client:
-        body = client.get(BASE, headers=AUTH).json()
-
-    # The 4 that stopped on a problem. The 5 waiting for a plain OK are the feature working.
-    assert body["attention"]["review"] == 4
-    # 3 Carmen refusals + the 12 the password stopped. **The cause scores onto the chip that
-    # draws it**, not onto its own bucket — a dot has to sit where the reader can act on it.
-    # The 46 that were never documents are the pipeline working, and the 2 rejections were
-    # somebody's decision.
-    assert body["attention"]["unposted"] == 15
-    assert body["attention"]["all"] == 19
-    # And the plain counts are untouched by any of it.
-    assert body["counts"]["review"] == 9
-    # 3 Carmen refusals + 2 rejections + the 12 the password stopped.
-    assert body["counts"]["unposted"] == 17
-    assert body["counts"]["noise"] == 46
-
-
-def test_a_dismissed_row_stops_lighting_the_dot():
-    """ "Seen" was never "fixed", but "put away" is answered — and a row that has been
-    answered has nothing left to say. Nothing sets `dismissed_at` any more; what this keeps
-    quiet is the pile the 2026-09-03 migration back-dated."""
-    db = _db(
-        pairs={("skipped", "wrong_pdf_password"): (46, 0, 0, 0, 46)},
-        manual_count=0,
-        emails=[],
-        manuals=[],
-    )
-    with make_test_client(db, session=SESSION) as client:
-        body = client.get(BASE, headers=AUTH).json()
-
-    assert body["counts"]["unposted"] == 46
-    assert body["attention"]["unposted"] == 0
-
-
-def test_the_dot_spans_every_anomaly_rather_than_a_window():
-    """The 7-day window is gone: what puts the dot out is the mark in `email_queue_seen`,
-    not a clock. Compiled, not executed, for the same reason as the anti-join above — the
-    mock DB runs no SQL, and a date bound sneaking back in would be invisible otherwise.
-
-    `STUCK_AFTER` stays, and is not the same kind of thing: `received` carries no reason
-    code, so age is the only thing telling a document being read right now from one the
-    pipeline abandoned.
-    """
-    sql = str(
-        _counts_stmt(uuid.uuid4(), NOW, NOW).compile(compile_kwargs={"literal_binds": True})
-    ).lower()
-    assert str((NOW - timedelta(days=7)).replace(tzinfo=None)) not in sql
-    assert str((NOW - timedelta(hours=1)).replace(tzinfo=None)) in sql
-    assert "count(*) as n" in sql
-
-
-def test_a_posted_document_whose_input_tax_failed_still_gets_a_dot():
-    """The quietest outcome in the system: the JV reached Carmen, the VAT record did not.
-    The row wears the Success pill and nothing else in the app says otherwise."""
-    db = _db(
-        pairs={("posted", None): (20, 0, 2)},
-        manual_count=0,
-        emails=[],
-        manuals=[],
-    )
-    with make_test_client(db, session=SESSION) as client:
-        body = client.get(BASE, headers=AUTH).json()
-
-    assert body["counts"]["success"] == 20
-    assert body["attention"]["success"] == 2
-
-
-def test_a_document_still_being_read_is_not_a_stuck_one():
-    """`received` is the state every row is claimed into, so one in flight during a poll
-    must not put a dot on the chip. Only age separates the two, and it carries no
-    reason_code to separate them any other way."""
-    db = _db(
-        pairs={("received", None): (4, 1, 0)},
-        manual_count=0,
-        emails=[],
-        manuals=[],
-    )
-    with make_test_client(db, session=SESSION) as client:
-        body = client.get(BASE, headers=AUTH).json()
-
-    assert body["counts"]["unposted"] == 4
-    assert body["attention"]["unposted"] == 1
-
-
-def test_attention_covers_every_chip_even_at_zero():
-    """Same reason `counts` does: the strip must not reflow as documents resolve."""
-    db = _db(statuses={"posted": 3}, manual_count=2, emails=[], manuals=[])
-    with make_test_client(db, session=SESSION) as client:
-        attention = client.get(BASE, headers=AUTH).json()["attention"]
-
-    assert attention == {"review": 0, "success": 0, "unposted": 0, "noise": 0, "all": 0}
 
 
 def test_review_filter_asks_for_no_manual_rows_at_all():
@@ -692,9 +537,9 @@ def test_today_counts_every_status_and_the_bus_own_scans():
     else."""
     db = _db(
         pairs={
-            ("posted", None): (40, 0, 0, 3),
-            ("skipped", "unreadable_document"): (46, 0, 0, 2),
-            ("pending_review", None): (5, 0, 0, 1),
+            ("posted", None): (40, 3),
+            ("skipped", "unreadable_document"): (46, 2),
+            ("pending_review", None): (5, 1),
         },
         manual_count=9,
         manual_today=4,
@@ -712,7 +557,7 @@ def test_today_is_left_out_of_the_all_count():
     merely empty. Today overlaps the other three by construction, so folding it in would
     count the same row twice and make that number a fiction."""
     db = _db(
-        pairs={("posted", None): (10, 0, 0, 10)},
+        pairs={("posted", None): (10, 10)},
         manual_count=0,
         manual_today=0,
         emails=[],
@@ -725,29 +570,11 @@ def test_today_is_left_out_of_the_all_count():
     assert counts["all"] == 10
 
 
-def test_today_carries_no_dot():
-    """`unseen` measures an anomaly count against a stored lifetime mark. Today's count
-    resets at midnight, so there is nothing a mark could mean — and every one of its rows is
-    already counted under a chip that does light."""
-    db = _db(
-        pairs={("failed", "carmen_rejected"): (3, 0, 0, 3)},
-        manual_count=0,
-        emails=[],
-        manuals=[],
-    )
-    with make_test_client(db, session=SESSION) as client:
-        body = client.get(BASE, headers=AUTH).json()
-
-    assert "today" not in body["attention"]
-    assert "today" not in body["unseen"]
-    assert body["unseen"]["unposted"] is True
-
-
 def test_today_asks_for_manual_rows_too():
     """`MANUAL_CHIPS` admits it, so the fourth `db.execute` is consumed and a scan done by
     hand this morning appears in the day's list beside the forwarded ones."""
     db = _db(
-        pairs={("posted", None): (1, 0, 0, 1)},
+        pairs={("posted", None): (1, 1)},
         manual_count=1,
         manual_today=1,
         emails=[_email(status="posted")],
@@ -815,7 +642,7 @@ def test_hiding_a_filename_rule_refusal_is_null_safe_and_on_both_statements():
     """
     for sql in (
         str(_email_stmt(uuid.uuid4(), None).compile(compile_kwargs={"literal_binds": True})),
-        str(_counts_stmt(uuid.uuid4(), NOW, NOW).compile(compile_kwargs={"literal_binds": True})),
+        str(_counts_stmt(uuid.uuid4(), NOW).compile(compile_kwargs={"literal_binds": True})),
     ):
         sql = sql.lower()
         assert f"reason_code is distinct from '{HIDDEN_REASON}'" in sql
@@ -839,7 +666,7 @@ def test_the_chip_is_grouped_by_name_not_by_a_second_case():
 
     `GROUP BY <the CASE>` reads as the obvious way to write this and is invalid: SQLAlchemy
     renders the expression again with a *fresh set of bind parameters*, so Postgres cannot
-    see the two as one thing and rejects `dismissed_at` inside the SELECT's CASE with
+    see the two as one thing and rejects the columns inside the SELECT's CASE with
     "must appear in the GROUP BY clause". Grouping by the output column's name renders the
     CASE once, and Postgres resolves a bare name in GROUP BY against the output columns.
 
@@ -848,142 +675,9 @@ def test_the_chip_is_grouped_by_name_not_by_a_second_case():
     exactly how this shipped: every compiled-SQL assertion here inlined its binds, and the
     mock DB below never executes anything.
     """
-    sql = str(_counts_stmt(uuid.uuid4(), NOW, NOW).compile()).lower()
+    sql = str(_counts_stmt(uuid.uuid4(), NOW).compile()).lower()
     assert sql.count("case") == 1, "the CASE is rendered twice — see the docstring"
     assert "group by chip" in sql
-
-
-# ── The dot, and what puts it out ────────────────────────────────────────────
-
-
-def test_a_chip_someone_already_opened_has_no_dot():
-    """The whole point: nothing retries a failure, so 49 dead documents would light the dot
-    for ever. The mark is what ends that — and it ends only the dot, never the count, which
-    still sizes the pile for the sentence a screen reader speaks."""
-    db = _db(
-        pairs={("pending_review", "tax_id_mismatch"): (49, 0, 0)},
-        manual_count=0,
-        emails=[],
-        manuals=[],
-        seen={"review": 49},
-    )
-    with make_test_client(db, session=SESSION) as client:
-        body = client.get(BASE, headers=AUTH).json()
-
-    assert body["unseen"]["review"] is False
-    assert body["attention"]["review"] == 49
-    assert body["counts"]["review"] == 49
-
-
-def test_a_newer_anomaly_brings_the_dot_back():
-    """A mark is a high-water line, not an off switch."""
-    db = _db(
-        pairs={("pending_review", "tax_id_mismatch"): (50, 0, 0)},
-        manual_count=0,
-        emails=[],
-        manuals=[],
-        seen={"review": 49},
-    )
-    with make_test_client(db, session=SESSION) as client:
-        assert client.get(BASE, headers=AUTH).json()["unseen"]["review"] is True
-
-
-def test_opening_one_chip_does_not_silence_another():
-    """A mark per chip, not one for the queue. Looking at the failures says nothing about
-    a JV that posted without its input-tax record."""
-    db = _db(
-        pairs={
-            ("pending_review", "tax_id_mismatch"): (49, 0, 0),
-            ("posted", None): (20, 0, 2),
-        },
-        manual_count=0,
-        emails=[],
-        manuals=[],
-        seen={"review": 49},
-    )
-    with make_test_client(db, session=SESSION) as client:
-        unseen = client.get(BASE, headers=AUTH).json()["unseen"]
-
-    assert unseen["review"] is False
-    assert unseen["success"] is True
-
-
-def test_the_log_chip_carries_no_dot():
-    """`all` is a view over the other chips, so a dot on it would only repeat theirs — and
-    it could never be put out, because `mark_chip_seen` refuses to store a mark for anything
-    that is not a status chip. Same rule as `today`, and the reason `unseen` is keyed off
-    `STATUS_CHIPS` rather than off `attention`, which does carry an `all` entry."""
-    db = _db(
-        pairs={("failed", "carmen_rejected"): (3, 0, 0)},
-        manual_count=0,
-        emails=[],
-        manuals=[],
-    )
-    with make_test_client(db, session=SESSION) as client:
-        body = client.get(BASE, headers=AUTH).json()
-
-    assert "all" not in body["unseen"]
-    assert "causes" not in body["unseen"]
-    assert "noise" not in body["unseen"]
-    assert body["unseen"]["unposted"] is True
-
-
-def test_a_business_unit_that_has_never_looked_sees_every_dot():
-    """No row is not an error — it is the first visit."""
-    db = _db(
-        pairs={("pending_review", "tax_id_mismatch"): (49, 0, 0)},
-        manual_count=0,
-        emails=[],
-        manuals=[],
-    )
-    with make_test_client(db, session=SESSION) as client:
-        assert client.get(BASE, headers=AUTH).json()["unseen"]["review"] is True
-
-
-def test_marking_a_chip_seen_stores_the_count_the_server_computed():
-    """Never the caller's number: a client is free to be wrong, and one bad value would
-    silence that BU's dot for good."""
-    db = _db(
-        pairs={("pending_review", "tax_id_mismatch"): (49, 0, 0)},
-        manual_count=0,
-        emails=[],
-        manuals=[],
-    )
-    with make_test_client(db, session=SESSION) as client:
-        res = client.post(f"{BASE}/seen", headers=AUTH, json={"filter": "review", "seen": 0})
-
-    assert res.status_code == 200
-    assert res.json() == {"filter": "review", "seen": 49}
-    # No row yet, so the first mark creates one rather than 404ing the way auto-post does.
-    assert db.add.called
-
-
-def test_marking_a_chip_seen_keeps_the_other_chips_marks():
-    """The stored value is replaced, not mutated — SQLAlchemy does not track an in-place
-    write to a JSON column, so `row.seen[k] = v` would commit nothing at all."""
-    db = _db(
-        pairs={("posted", None): (20, 0, 2)},
-        manual_count=0,
-        emails=[],
-        manuals=[],
-        seen={"review": 49},
-    )
-    with make_test_client(db, session=SESSION) as client:
-        client.post(f"{BASE}/seen", headers=AUTH, json={"filter": "success"})
-
-    assert db.get.return_value.seen == {"review": 49, "success": 2}
-
-
-def test_only_a_real_chip_can_be_marked_seen():
-    """A trust boundary: the value becomes a key in stored JSON. `all` and `today` are
-    refused with the nonsense — neither carries a dot, so neither has one to put out, and
-    `today`'s count resets at midnight where a stored mark never would."""
-    for bad in ("all", "today", "nonsense", ""):
-        db = _db(statuses={"posted": 1}, manual_count=0, emails=[], manuals=[])
-        with make_test_client(db, session=SESSION) as client:
-            assert (
-                client.post(f"{BASE}/seen", headers=AUTH, json={"filter": bad}).status_code == 400
-            )
 
 
 # ── PMS days (CA-119) ──────────────────────────────────────────────────────────
@@ -1037,8 +731,8 @@ def test_a_resolved_pms_day_carries_only_the_ledger_columns():
     assert row.flags == [] and row.guessed == [] and row.doc_date is None
 
 
-def test_pms_days_join_the_counts_the_dots_and_the_list(pms_part):
-    pms_part.counts.return_value = _pms_counts(review=2, success=5, unposted=1, today=1, failed=1)
+def test_pms_days_join_the_counts_and_the_list(pms_part):
+    pms_part.counts.return_value = _pms_counts(review=2, success=5, unposted=1, today=1)
     pms_part.rows.return_value = [_pms_row(_pms_day())]
     db = _db(statuses={"pending_review": 1}, manual_count=0, emails=[_email()], manuals=[])
     with make_test_client(db, session=SESSION) as client:
@@ -1049,8 +743,6 @@ def test_pms_days_join_the_counts_the_dots_and_the_list(pms_part):
     assert body["counts"]["unposted"] == 1
     assert body["counts"]["all"] == 9
     assert body["counts"]["today"] == 1
-    # A failed day lights Not posted, as a failed email document does.
-    assert body["attention"]["unposted"] == 1
     # Newest first across sources: the day arrived five minutes after the email.
     assert [r["source"] for r in body["data"]] == ["pms", "email"]
     assert pms_part.rows.await_args.args[2] == "review"

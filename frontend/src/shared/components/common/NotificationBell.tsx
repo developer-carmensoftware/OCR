@@ -198,9 +198,9 @@ export default function NotificationBell() {
       // (JV number, or the one reason it stopped) means anything.
       setDetail(n)
     } else if (noDocument) {
-      // No one document to open — land on the chip that holds all of them
-      // (`unposted`: `_chip_expr` in credit_card_activity.py puts both a skipped
-      // `wrong_pdf_password`/`unsupported_attachment` and a failed
+      // No one document to open — land on the view that holds all of them: All,
+      // narrowed to `unposted` (`_chip_expr` in credit_card/activity.py puts both a
+      // skipped `wrong_pdf_password`/`unsupported_attachment` and a failed
       // `unreadable_document` there).
       window.location.hash = '#/CreditCardOCR?filter=unposted'
     } else if (n.type === 'document_pending_review') {

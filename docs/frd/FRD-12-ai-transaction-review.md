@@ -1,13 +1,13 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-12 — CR: AI Transaction Review (AI JV Automation Queue)
-output: Carmen_Cloud_ERP_FRD-12_CR_AI_Transaction_Review_v1.0.docx
-Document Version: Version 1.0 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-12_CR_AI_Transaction_Review_v1.1.docx
+Document Version: Version 1.1 (As-Built Developer & Test Spec)
 Change Request ต่อ: FRD-01 Credit Card OCR · FRD Smart Credit Card Tax Ingestion & Auto-JV (Email) · FRD-11 PMS Interface
 Module ID: `credit_card_ocr`
 Status: Built, merged to main — คิวใช้งานจริงแล้วสำหรับแหล่ง email และ manual scan ส่วนแถว PMS แสดงในคิวแล้วแต่การ post รอ Carmen (ดู FRD-11)
-Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026)
-Date: 27 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026) + branch feat/ai-jv-two-chips (28/10/2026)
+Date: 28 October 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 ---
 
@@ -18,6 +18,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
 | 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว รวมสเปกคิวที่เดิมกระจายอยู่ใน Email FRD v3.0/v3.1 §4.2–4.3, §8.4c–8.6, §12.1–12.2 เข้ากับส่วนที่เพิ่มหลังจากนั้น (chip 5 ตัว, charged-means-reviewable, auto-post gate, แถว manual และแถว PMS) | Reviewed |
+| 1.1 | 28/10/2026 | Dev Team | ยุบ chip เหลือ 2 ตัว (Review, All) — Today / Posted / Not posted ย้ายไปเป็น dropdown ใน All, หน้าเปิดที่ Review ถ้ามีงาน ไม่งั้นไป All, ตัดจุดเตือน (dot) และ `POST /activity/seen` ออกทั้งหมด (07-human-in-the-loop.md §24) | |
 
 <!-- pagebreak -->
 
@@ -63,8 +64,8 @@ flowchart TB
 ## 2.1 In-Scope (ขอบเขตการทำงานของระบบ)
 
 - **Activity table แหล่งเดียว:** รวมแถวจาก `email_documents` (อีเมล), `credit_cards` ที่ไม่ได้มาจากอีเมล (manual scan) และ `pms_events` (วันของ PMS) เรียงตามเวลาล่าสุดก่อน ทุกแถวใช้ shape เดียวกัน (`ActivityRow`)
-- **Chip 5 ตัว:** Today, Review, Posted, Not posted, All — สามตัวกลางแบ่งตามสถานะ แต่ละแถวอยู่ใน bucket เดียวเท่านั้น ส่วน Today ตัดตามเวลา (ตั้งแต่เที่ยงคืนเวลาไทย) และ All คือ log ทั้งหมดของโมดูล
-- **จุดเตือน (dot) ต่อ chip:** ติดเมื่อมีแถวที่ผิดปกติซึ่งยังไม่มีใครใน BU เปิดดู และดับเมื่อมีคนเปิด chip นั้น การ "เห็นแล้ว" เก็บต่อ BU ไม่ใช่ต่อ browser (`email_queue_seen`)
+- **Chip 2 ตัว:** Review (งานที่รอคนตัดสิน) และ All (log ทั้งหมดของโมดูล) — ใน All มี dropdown กรองได้ทีละค่า: Everything · Today · Posted · Not posted แต่ละแถวอยู่ใน bucket สถานะเดียวเท่านั้น ส่วน Today ตัดตามเวลา (ตั้งแต่เที่ยงคืนเวลาไทย)
+- **ไม่มีจุดเตือน (dot):** ตัวเลขบน Review บอกแล้วว่ามีงาน และกระดิ่งแจ้ง `failed`, `wrong_pdf_password`, `unsupported_attachment` อยู่แล้ว สาเหตุที่กระดิ่งไม่แจ้ง (`sender_not_allowed`, `ingest_paused`, แถวค้าง, ภาษีซื้อล้มเหลวหลัง post, วัน PMS ที่ failed) เห็นได้ที่ All → Not posted
 - **เหตุผลบนแถว:** แถวที่รอตรวจแสดงเหตุผลเพียงหนึ่งวลีตามลำดับความสำคัญ (mapping ขาด → ยอดไม่ลงตัว → AI เดา mapping → ไม่มีเลขที่เอกสาร → tax ID ยังไม่ยืนยัน → มีคำเตือน → พร้อม post)
 - **Review dialog สำหรับเอกสารอีเมล:** แสดงสองฝั่งคือ "เอกสารเขียนว่าอะไร" กับ "อะไรจะถูก post" แก้หัวเอกสาร รายการ GL mapping และข้อมูลภาษีซื้อได้ก่อนกด Approve
 - **Review dialog สำหรับวันของ PMS:** dialog แยก (`PmsReviewDocument.tsx`) ใช้ API ของ PMS — รายละเอียดอยู่ใน FRD-11
@@ -93,9 +94,9 @@ flowchart TB
 <!-- widths: 9,22,39,30 -->
 | Feature ID | ชื่อฟีเจอร์ | คำอธิบาย | Source |
 |---|---|---|---|
-| F-01 | Activity Table API | รายการรวมสามแหล่ง แบ่ง chip พร้อมจำนวน จุดเตือน และ pagination | `routers/credit_card/activity.py` + `services/credit_card/activity.py` (`list_activity`) |
-| F-02 | Chip bucket (SQL) | นิยามเดียวว่าแถวไหนอยู่ chip ไหน ใช้ทั้งตอน list และตอนนับ | `_chip_expr()`, `_pms_chip_expr()` |
-| F-03 | Attention dot | นับแถวผิดปกติต่อ chip เทียบกับจำนวนที่ BU เห็นแล้ว | `_attention()`, `_anomalies()`, `mark_chip_seen()` |
+| F-01 | Activity Table API | รายการรวมสามแหล่ง แบ่งตาม filter พร้อมจำนวนและ pagination | `routers/credit_card/activity.py` + `services/credit_card/activity.py` (`list_activity`) |
+| F-02 | Chip bucket (SQL) | นิยามเดียวว่าแถวไหนอยู่ bucket ไหน ใช้ทั้งตอน list และตอนนับ | `_chip_expr()`, `_pms_chip_expr()` |
+| F-03 | Two chips + All dropdown | Review กับ All บนแถบ, Today / Posted / Not posted อยู่ใน dropdown ของ All | `ReviewQueue.tsx` (`QUEUE_CHIPS`, `ALL_SCOPES`) |
 | F-04 | Review flags + auto-post gate | คำนวณเหตุผลของเอกสารครั้งเดียวตอนพัก และใช้เป็นด่าน auto-post ด้วย | `email_automation/ledger.py` `_review_flags()` |
 | F-05 | Park-or-finish | ตัดสินว่าการปฏิเสธหลังอ่านเอกสารจะพักไว้ในคิวหรือจบสถานะ | `email_automation/pipeline.py` `_park_or_finish()` |
 | F-06 | Review Queue API (email) | อ่านเอกสารที่รอตรวจ, approve, reject และสถานะของหน้า | `routers/email_automation/review.py` |
@@ -114,10 +115,11 @@ flowchart TB
 
 | ส่วน | พฤติกรรม |
 |---|---|
-| แถบ chip | Today · Review · Posted · Not posted · All — ซ่อนทั้งแถบถ้า BU ยังไม่เคยมีเอกสารเลย (`counts.all = 0`) |
-| ตัวเลขบน chip | แสดงเฉพาะ **Review** และ **Today** เพราะเป็นสองตัวที่ลดลงได้ (Review ถูกจำกัดไว้ที่ 0–50 ด้วย backpressure และ Today รีเซ็ตทุกเที่ยงคืน) ส่วนอีกสามตัวเพิ่มขึ้นอย่างเดียว จำนวนแถวจึงไปแสดงที่ Pager แทน |
-| จุดเตือน | ติดบน Review / Posted / Not posted เมื่อค่าของ chip นั้นใน `unseen` เป็น true มีข้อความสำหรับ screen reader ควบคู่เสมอ Today และ All ไม่มีจุด |
-| chip เริ่มต้น | เปิดที่ chip แรกที่มีของ: Today → Review → Posted |
+| แถบ chip | Review · All — ซ่อนทั้งแถบถ้า BU ยังไม่เคยมีเอกสารเลย (`counts.all = 0`) |
+| Dropdown ใน All | แสดงเฉพาะตอนอยู่ที่ All ข้างปุ่ม Refresh: Everything · Today · Posted · Not posted (ค่า `filter` เดิมของ API) เริ่มที่ Everything ทุกครั้งที่กด All |
+| ตัวเลขบน chip | แสดงเฉพาะ **Review** เพราะลดลงได้ (จำกัดไว้ที่ 0–50 ด้วย backpressure) ส่วน All เพิ่มขึ้นอย่างเดียว จำนวนแถวจึงไปแสดงที่ Pager แทน |
+| จุดเตือน | ไม่มี |
+| chip เริ่มต้น | Review ถ้ามีงานรอ ไม่งั้น All (Everything) — ลิงก์ที่ระบุ `?filter=` ข้ามการเลือกนี้ |
 | ปุ่มบนหัวตาราง | Refresh, Mapping Settings (เปิด `#/CreditCardOCR/mapping` ในแท็บใหม่), Scan manually (ไป `#/CreditCardOCR/manual`) |
 | คอลัมน์ | Status · Document · Message · Received · JV · Actions |
 | Empty state | ข้อความต่างกันต่อ chip (ว่างบน Review = ไม่มีงานค้าง, ว่างบน Posted = ยังไม่มีอะไรลงบัญชี) และเป็นจริงทั้งตอน `auto_post` เปิดและปิด |
@@ -199,7 +201,7 @@ flowchart TB
 <!-- widths: 20,14,66 -->
 | Button Name | Action Type | Business Logic / System Behavior |
 |---|---|---|
-| Chip (Today/Review/Posted/Not posted/All) | Filter | `GET /api/v1/credit-card/activity?filter=<chip>` — ตัวกรองเก็บใน URL hash ถ้ากด chip ที่มีจุดเตือน เรียก `POST /activity/seen` ด้วย chip นั้น ระบบนับจำนวนเองฝั่ง server แล้วบันทึกเป็น "เห็นแล้ว" ของทั้ง BU |
+| Chip (Review/All) และ dropdown ของ All | Filter | `GET /api/v1/credit-card/activity?filter=<review\|all\|today\|success\|unposted>` — ลิงก์จากกระดิ่งเปิดด้วย `?filter=unposted` คือ All ที่กรองเป็น Not posted |
 | Refresh | Reload | โหลดหน้าปัจจุบันใหม่ ไม่ล้างตัวกรอง |
 | Review | Open dialog | แถว email เปิด `?id=`, แถว PMS เปิด `?pms=` — dialog เป็น route จึงแชร์ลิงก์และกด back ได้ |
 | Approve and post (email) | Form Submit | 1) ถ้ามีบัญชีที่ AI เดาหรือที่ผู้ตรวจแก้ หน้าจอบันทึกลง accounting config ก่อน (`patchAccountingConfig`) — การยืนยันของคนคือจุดที่คำแนะนำของ AI กลายเป็นกฎของ BU (decision-log #25) 2) `POST /api/v1/email/documents/{id}/approve` พร้อม `extracted`, `rows`, `post_input_tax`, `input_tax` 3) server claim แถว เช็คซ้ำ อ่าน credential ของ BU แล้ว post JV และภาษีซื้อ — ทำงานแบบ synchronous |
@@ -225,7 +227,7 @@ flowchart TB
 | `email_documents` | แถวของแหล่ง email หนึ่งแถวต่อ (message × attachment) | `status`, `reason_code`, `error_message`, `review_payload`, `posting_started_at`, `reviewed_by`, `reviewed_by_name`, `reviewed_at`, `dismissed_at`, `jv_no`, `task_id` |
 | `credit_cards` | แถวของแหล่ง manual — เฉพาะแถวที่ไม่มี `email_documents` ชี้ถึง (anti-join) | `submitted_at` (post แล้วหรือยัง), `tax_amt` (ใช้คำนวณ `input_tax_owed`), `jv_no`, `carmen_user_id` |
 | `pms_events` | แถวของแหล่ง PMS หนึ่งแถวต่อ BU × Data Bank day | `status`, `review_payload`, `reason_code`, `posting_started_at`, `reviewed_by_name`, `reviewed_at`, `jv_no` |
-| `email_queue_seen` | 1 แถวต่อ BU: chip → จำนวนแถวผิดปกติที่ BU เห็นแล้ว | `tenant_id` (PK), `seen` (jsonb) |
+| `email_queue_seen` | ไม่มีผู้อ่านแล้วตั้งแต่ v1.1 (จุดเตือนถูกตัด) — drop ใน migration ถัดไปหลัง deploy | — |
 | `email_ingest_settings` | สวิตช์ `auto_post` ต่อ BU (ค่าเริ่มต้น false) และ credential ที่ใช้ post | `auto_post`, credential ของ BU |
 
 ## 6.2 คอลัมน์ review บน email_documents
@@ -271,7 +273,7 @@ erDiagram
     }
 ```
 
-```mermaid 6.4b | PMS rows, the seen marks, and the auto-post switch — one row per BU for the last two
+```mermaid 6.4b | PMS rows, and the auto-post switch — one row per BU
 erDiagram
     PMS_EVENTS {
         uuid id PK
@@ -279,10 +281,6 @@ erDiagram
         jsonb review_payload "pending only"
         timestamptz posting_started_at "claim"
         varchar reviewed_by_name
-    }
-    EMAIL_QUEUE_SEEN {
-        uuid tenant_id PK
-        jsonb seen "chip to count"
     }
     EMAIL_INGEST_SETTINGS {
         uuid tenant_id PK
@@ -444,7 +442,7 @@ flowchart TB
 
 ## 8.7 User Operational Workflow
 
-- **ทุกวัน:** เปิดเมนู AI JV Automation ใน Carmen → หน้าคิวเปิดที่ Today ถ้ามีเอกสารวันนี้ ดูคอลัมน์ Message เพื่อเลือกแถวที่ควรเปิดก่อน แถว "Ready to post" คือแถวที่ใช้เวลาน้อยที่สุด
+- **ทุกวัน:** เปิดเมนู AI JV Automation ใน Carmen → หน้าคิวเปิดที่ Review ถ้ามีเอกสารรอ ดูคอลัมน์ Message เพื่อเลือกแถวที่ควรเปิดก่อน แถว "Ready to post" คือแถวที่ใช้เวลาน้อยที่สุด
 - **ตรวจหนึ่งใบ:** กด Review → เทียบฝั่ง Document กับเอกสารจริง → แก้ค่าที่อ่านผิด → ตรวจบัญชีที่ AI เดา (ทำเครื่องหมายไว้) → กด Approve and post → เห็นเลข JV ทันที
 - **Carmen ปฏิเสธ:** อ่านข้อความของ Carmen ใน dialog (เช่น period ปิด หรือไม่รู้จัก dept code) แก้แล้วกด Approve ใหม่ได้ในหน้าเดิม
 - **Carmen ไม่ตอบ:** เปิด Carmen ตรวจก่อนว่า JV เข้าไปแล้วหรือยัง ถ้าเข้าแล้วให้ Reject ใบนี้ ถ้ายังไม่เข้าจึงกด Approve อีกครั้ง
@@ -465,14 +463,14 @@ flowchart TB
 | EC-07 | BU ไม่มี credential ตอน Approve | 400 | "No Carmen posting credential for this business unit" |
 | EC-08 | บรรทัดมีจำนวนเงินแต่ไม่มีบัญชี (เรียก API ตรง) | 400 ก่อนเรียก Carmen | รายชื่อบรรทัดที่ต้องเลือกบัญชี |
 | EC-09 | Settlement report: mapping เปลี่ยนระหว่างที่ dialog เปิดอยู่ | JV ที่สร้างใหม่ไม่ตรงกับที่หน้าจอแสดง → 400 | ให้ปิดแล้วเปิดเอกสารใหม่ |
-| EC-10 | JV สำเร็จ แต่ภาษีซื้อล้มเหลว | สถานะ `posted`, เก็บหมายเหตุใน `error_message`, ไม่ rollback | แถว Posted มีหมายเหตุต่อท้าย และนับเป็นแถวผิดปกติ (จุดเตือน) |
+| EC-10 | JV สำเร็จ แต่ภาษีซื้อล้มเหลว | สถานะ `posted`, เก็บหมายเหตุใน `error_message`, ไม่ rollback | แถว Posted มีหมายเหตุต่อท้าย |
 | EC-11 | process ตายระหว่าง approve | claim หมดอายุใน 5 นาที แล้ว approve ใหม่ได้ | ภายใน 5 นาทีได้ 409 |
 | EC-12 | เปิด `?id=` ของเอกสารที่ไม่ใช่ของ BU หรือจบแล้ว | 404 แบบเดียวกันทั้งสองกรณี (ไม่บอกว่ามีอยู่จริง) | "This document is not waiting for review" |
 | EC-13 | BU มีเอกสารรอครบ 50 ใบ | อีเมลใหม่ถูกคืนในสภาพยังไม่อ่าน ไม่สร้างแถว ไม่เสียเครดิต | จำนวนบน Review หยุดที่ 50 |
-| EC-14 | แถวค้างที่ `received` เกิน 1 ชั่วโมง | ไปอยู่ Not posted พร้อมป้าย Stuck และนับเป็นแถวผิดปกติ | ป้าย Stuck |
+| EC-14 | แถวค้างที่ `received` เกิน 1 ชั่วโมง | ไปอยู่ Not posted พร้อมป้าย Stuck | ป้าย Stuck ที่ All → Not posted |
 | EC-15 | payload ของแถวหายระหว่างแสดง (race) | แถวยังแสดงด้วยค่าศูนย์ ไม่ทำให้ทั้งหน้าพัง | ตัวเลขเป็น 0 |
-| EC-16 | chip ใน URL ไม่รู้จัก (bookmark เก่า) | fallback เป็น `all` ไม่ตอบ 400 | ตาราง All |
-| EC-17 | `POST /activity/seen` ด้วย chip ที่ไม่ใช่ Review/Posted/Not posted | 400 — ค่านี้กลายเป็น key ใน jsonb จึงต้องตรวจ | — |
+| EC-16 | filter ใน URL ไม่รู้จัก (bookmark เก่า) | หน้าจอไม่สนใจค่า แล้วเลือก chip เริ่มต้นเอง ส่วน API fallback เป็น `all` ไม่ตอบ 400 | Review หรือ All |
+| EC-17 | bookmark เก่าที่ชี้ chip ที่ถูกยุบ (`?filter=success`) | เปิด All แล้วตั้ง dropdown เป็นค่านั้น | All กรองเป็น Posted |
 
 ## 9.1 State Diagram — สถานะของ email_documents
 
@@ -510,7 +508,7 @@ stateDiagram-v2
 
 ## 10.3 Performance & Capacity
 
-- จำนวนบน chip ทุกตัวและจำนวนแถวผิดปกติคำนวณใน GROUP BY เดียวต่อแหล่ง (email หนึ่ง query, manual หนึ่ง aggregate, PMS หนึ่ง aggregate)
+- จำนวนของทุก filter คำนวณใน GROUP BY เดียวต่อแหล่ง (email หนึ่ง query, manual หนึ่ง aggregate, PMS หนึ่ง aggregate)
 - การรวมสามแหล่งทำใน Python (ดึง `limit + offset` จากแต่ละแหล่ง เรียง แล้วตัด) — ถูกต้องที่ปริมาณปัจจุบัน (ตารางธุรกิจใหญ่ที่สุดมี 342 แถว ตาม `docs/SQL_PERFORMANCE_AUDIT.md`) ถ้า BU ใดเปิดหน้าลึกมากจนเห็นผล ให้เปลี่ยนเป็น UNION ALL
 - CASE ใน WHERE ใช้ index ไม่ได้ — ยอมรับได้ที่ปริมาณนี้ และระบุไว้ในโค้ดแล้วว่าจะขยายอย่างไร
 - Approve เป็น synchronous: ใช้เวลาเท่ากับการเรียก Carmen สองครั้ง (JV + ภาษีซื้อ) timeout ครั้งละ 30 วินาที
@@ -531,14 +529,15 @@ chip, ป้ายสถานะ, เหตุผล และปุ่มท�
 
 | สถานะ | รายการ |
 |---|---|
-| เสร็จ | Activity API รวมสามแหล่ง พร้อม counts / attention / unseen ใน response เดียว |
+| เสร็จ | Activity API รวมสามแหล่ง พร้อม counts ใน response เดียว |
 | เสร็จ | `_chip_expr()` เป็นนิยามเดียวที่ใช้ทั้ง list และ count, GROUP BY ด้วยชื่อคอลัมน์ (ไม่ render CASE สองครั้ง) |
 | เสร็จ | `_review_flags()` เป็นทั้งเหตุผลบนแถวและด่าน auto-post |
 | เสร็จ | `_park_or_finish()` — การปฏิเสธหลังอ่านพักในคิว ยกเว้นสามกรณีใน §8.3 |
 | เสร็จ | Approve: claim, เช็คซ้ำ, credential ของ BU, คืน claim ทุกทางที่ไม่จบ |
 | เสร็จ | Reject: ใช้ claim เดียวกัน, ไม่คืนเครดิต, บันทึกผู้ตัดสิน |
 | เสร็จ | AI suggestion ไม่ถูกเขียนลง config จนกว่าคนจะ Approve |
-| เสร็จ | `email_queue_seen` และ `POST /activity/seen` คำนวณจำนวนฝั่ง server |
+| เสร็จ | Chip 2 ตัว + dropdown ใน All, ไม่มีจุดเตือน (v1.1) |
+| รอ | Drop `email_queue_seen` หลัง deploy v1.1 |
 | เสร็จ | แถว manual (anti-join กับ email), สถานะ `scanned`, ปุ่ม Record input tax |
 | เสร็จ | แถว PMS และ dialog แยก |
 | เสร็จ | Backpressure 50 ใบต่อ BU และแจ้งเตือนแบบยอดรวม |
@@ -564,7 +563,6 @@ chip, ป้ายสถานะ, เหตุผล และปุ่มท�
 | Method | Path | หมายเหตุ |
 |---|---|---|
 | GET | `/api/v1/credit-card/activity?filter=&limit=&offset=` | filter: `today` \| `review` \| `success` \| `unposted` \| `all` (ค่าเริ่มต้น `all`), limit 1–100 (ค่าเริ่มต้น 25) |
-| POST | `/api/v1/credit-card/activity/seen` | body `{ filter }` — เฉพาะ `review` / `success` / `unposted` → `{ filter, seen }` |
 | GET | `/api/v1/credit-card/activity/{card_id}/input-tax` | → `{ owed }` ใช้ก่อน wizard เสนอกู้ draft |
 | POST | `/api/v1/credit-card/activity/{card_id}/input-tax` | ยื่นภาษีซื้อที่ manual scan ยังค้าง → 204 (FRD-09) |
 | GET | `/api/v1/email/documents/{id}` | เอกสารที่รอตรวจหนึ่งใบ พร้อม `extracted`, `suggested`, `doc_type`, `ar_jv` |
@@ -579,9 +577,7 @@ chip, ป้ายสถานะ, เหตุผล และปุ่มท�
 ```
 {
   "total": 3, "limit": 25, "offset": 0,
-  "counts":    { "today": 5, "review": 3, "success": 41, "unposted": 6, "noise": 2, "all": 52 },
-  "attention": { "review": 1, "success": 0, "unposted": 2, "noise": 0, "all": 3 },
-  "unseen":    { "review": true, "success": false, "unposted": false },
+  "counts": { "today": 5, "review": 3, "success": 41, "unposted": 6, "noise": 2, "all": 52 },
   "data": [
     {
       "id": "9f1c…", "source": "email", "status": "pending_review",
@@ -614,7 +610,7 @@ chip, ป้ายสถานะ, เหตุผล และปุ่มท�
 | Status | เมื่อไหร่ | Client ควรทำ |
 |---|---|---|
 | 200 / 204 | สำเร็จ | รีเฟรชตาราง |
-| 400 | Carmen ปฏิเสธ JV (ข้อความของ Carmen), ไม่มี credential, บรรทัดไม่มีบัญชี, JV เปลี่ยนระหว่างตรวจ, chip ของ `/seen` ไม่ถูกต้อง | แสดงข้อความ ให้ผู้ใช้แก้แล้วส่งใหม่ |
+| 400 | Carmen ปฏิเสธ JV (ข้อความของ Carmen), ไม่มี credential, บรรทัดไม่มีบัญชี, JV เปลี่ยนระหว่างตรวจ | แสดงข้อความ ให้ผู้ใช้แก้แล้วส่งใหม่ |
 | 401 | session หมดอายุ | login ผ่าน Carmen ใหม่ |
 | 404 | เอกสารไม่ได้รอตรวจ หรือไม่ใช่ของ BU นี้ | ปิด dialog แล้วรีเฟรช |
 | 409 | มีคนกำลัง post อยู่, มีคนจัดการไปแล้ว หรือเอกสารถูก post เข้า Carmen แล้ว | รีเฟรช ห้ามส่งซ้ำ |
@@ -658,15 +654,16 @@ chip, ป้ายสถานะ, เหตุผล และปุ่มท�
 | TC-Q-27 | Approve หลัง reject | เรียก approve บนเอกสารที่ reject แล้ว | 409 | ไม่มี un-reject |
 | TC-Q-28 | JV สำเร็จ ภาษีซื้อล้มเหลว | จำลอง `POST /inputTaxRec` ล้มเหลว | `posted` พร้อมหมายเหตุ | JV ไม่ถูก rollback |
 
-## 13.4 Category 4: Chips, counts & dots
+## 13.4 Category 4: Chips & counts
 
 | Test Case ID | Scenario & Pre-conditions | Test Steps | Expected Result | Pass Criteria |
 |---|---|---|---|---|
 | TC-Q-30 | ผลรวม | เรียก `/activity` | review + success + unposted + noise = all | ตรงทุกครั้ง |
 | TC-Q-31 | Today | มีเอกสารก่อนและหลังเที่ยงคืนเวลาไทย | Today นับเฉพาะหลังเที่ยงคืน ICT | ไม่ถูกบวกเข้า all |
 | TC-Q-32 | ไฟล์ที่กฎ filename ของ BU ปฏิเสธ | ส่งเมลที่มีไฟล์ไม่ตรง pattern | ไม่ปรากฏในมุมมองใดเลย | ยังเห็นได้ที่ `#/admin/email` |
-| TC-Q-33 | จุดเตือนดับเมื่อมีคนเห็น | มีแถว `failed` ใหม่ → ผู้ใช้ A เปิด Not posted | `unseen.unposted` เป็น false สำหรับทุกคนใน BU | ผู้ใช้ B ไม่เห็นจุดแล้ว |
-| TC-Q-34 | `/seen` ด้วย chip ผิด | POST `{ "filter": "all" }` | 400 | ไม่มีการเขียน `email_queue_seen` |
+| TC-Q-33 | chip เริ่มต้น | เปิดหน้าคิวเมื่อมี / ไม่มีเอกสารรอ | มีงาน → Review, ไม่มี → All (Everything) | ไม่มีจุดเตือนบน chip ใด |
+| TC-Q-34 | dropdown ใน All | กด All แล้วเลือก Today / Posted / Not posted | ตารางและ Pager เปลี่ยนตามค่าที่เลือก, chip All ยัง active | dropdown หายเมื่อกลับไป Review |
+| TC-Q-35 | ลิงก์จากกระดิ่ง | กดแถว "N files blocked" ในกระดิ่ง | เปิด All ที่ dropdown เป็น Not posted | ไม่ไล่ chip เริ่มต้นเอง |
 
 ## 13.5 Category 5: Concurrency & sources
 
@@ -675,6 +672,6 @@ chip, ป้ายสถานะ, เหตุผล และปุ่มท�
 | TC-Q-40 | สองคนกด Approve พร้อมกัน | ยิง approve สองครั้งขนานกัน | หนึ่ง 200 หนึ่ง 409 | JV เข้า Carmen ครั้งเดียว |
 | TC-Q-41 | Reject แข่ง Approve | ยิง approve และ reject ขนานกัน | หนึ่งสำเร็จ อีกหนึ่ง 409 | ไม่มีแถว rejected ที่มี JV |
 | TC-Q-42 | แถว manual ไม่ซ้ำกับแถวอีเมล | ประมวลผลเอกสารอีเมลหนึ่งใบ | ปรากฏเป็นแถว email แถวเดียว | ไม่มีแถว manual ของ task เดียวกัน |
-| TC-Q-43 | manual scan ทิ้งกลางทาง | สแกนแล้วปิดที่ step 3 | แถว `scanned` อยู่ใต้ Not posted | ไม่มีจุดเตือน |
+| TC-Q-43 | manual scan ทิ้งกลางทาง | สแกนแล้วปิดที่ step 3 | แถว `scanned` อยู่ใต้ All → Not posted | ไม่มีปุ่มบนแถว |
 | TC-Q-44 | วันของ PMS ที่รอตรวจ | มี `pms_events` สถานะ `pending_review` | แถว "PMS <วันที่>" ที่ Review ปุ่ม Review เปิด dialog ของ PMS | URL เป็น `?pms=<id>` |
 | TC-Q-45 | Backpressure | BU มี 50 ใบรอ แล้วส่งเมลใหม่ | ไม่มีแถวที่ 51 ไม่เสียเครดิต | เมลยังไม่ถูกอ่านใน mailbox |

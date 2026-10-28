@@ -14,8 +14,10 @@ Everything a *reviewer* does — open, approve, reject — stays there.
 Design: docs/email-automation/07-human-in-the-loop.md §6 (the screen), §9 (four tabs folded
 into one filtered table), §11 (the column order, and `attention`), §12 (three chips, and
 what the dot means now), §13 (the chips re-keyed on who can act, plus `today`), §14 (`all`
-back on the strip, and Posted/Not posted narrowed to what a credit was spent on). Where a row
-came from is no longer a column of its own — `MANUAL_CHIPS` below is why.
+back on the strip, and Posted/Not posted narrowed to what a credit was spent on), §24 (two
+chips — Review and All — with the rest behind All's dropdown; the dot and `POST
+/activity/seen` removed). Where a row came from is no longer a column of its own —
+`MANUAL_CHIPS` below is why.
 """
 
 from __future__ import annotations
@@ -27,13 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import SessionInfo, get_current_session
 from app.database import get_db
-from app.exceptions import ValidationError
-from app.models.schemas.email_automation import (
-    ActivityPage,
-    InputTaxOwedOut,
-    QueueSeenIn,
-    QueueSeenOut,
-)
+from app.models.schemas.email_automation import ActivityPage, InputTaxOwedOut
 from app.services.credit_card import activity as activity_service
 from app.services.credit_card.input_tax import file_input_tax_for_card, input_tax_owed
 
@@ -55,11 +51,14 @@ async def list_activity(
     `HIDDEN_REASON`, the one thing the log is better off not being (§20 #97).
     `counts["all"]` is also how the page tells a BU that has never had a document from one
     that has — the difference between the sales screen and an empty table. What the page
-    opens on is `today`, falling through to `review` and then to `success` — the first chip
-    with anything in it (see `useReviewQueue`). Every chip's count travels with this response
-    precisely so that decision costs no extra round trip on a day that has something in it.
+    opens on is `review`, falling through to `all` when nothing is waiting (see
+    `useReviewQueue`). Every chip's count travels with this response precisely so that
+    decision costs no extra round trip when there is work.
 
-    `today` is the one chip that is not about state — it is every row since midnight ICT,
+    `today`, `success` and `unposted` are no longer chips of their own (§24) — they are what
+    the All chip's dropdown narrows the log to — but the filters are unchanged here.
+
+    `today` is the one filter that is not about state — it is every row since midnight ICT,
     whatever became of it. So it overlaps all of the others by construction, which is why
     `counts["all"]` is summed **before** it is added: counting the same row twice would make
     that number a fiction. The five ledger buckets themselves never overlap — `_chip_expr`
@@ -73,33 +72,6 @@ async def list_activity(
     return await activity_service.list_activity(
         db, uuid.UUID(str(session.tenant_id)), filter, limit, offset
     )
-
-
-@router.post("/activity/seen", response_model=QueueSeenOut)
-async def mark_chip_seen(
-    body: QueueSeenIn,
-    db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-):
-    """Somebody in this BU opened that chip — put its dot out for all of them.
-
-    The count stored is the one **this** request computes, never a number the caller sent:
-    a client is free to be wrong, and one bad value would silence that BU's dot for good.
-
-    Anyone with a session for the BU may do it, the same rule approve and auto-post follow.
-    That is the point rather than a compromise — the queue is shared, so "has anyone here
-    seen this yet" is a fact about the BU and not about a browser or a person.
-    """
-    if body.filter not in activity_service.STATUS_CHIPS:
-        # A trust boundary: the value becomes a key in the stored JSON. `all` and `today`
-        # are rejected with the nonsense, deliberately — neither carries a dot, so neither
-        # has a mark to store. `today` additionally could not have one: the mark is a
-        # lifetime figure and that count resets at midnight.
-        raise ValidationError(f"Unknown filter: {body.filter}")
-
-    tenant_id = uuid.UUID(str(session.tenant_id))
-    total = await activity_service.mark_chip_seen(db, tenant_id, body.filter)
-    return QueueSeenOut(filter=body.filter, seen=total)
 
 
 @router.get("/activity/{card_id}/input-tax", response_model=InputTaxOwedOut)

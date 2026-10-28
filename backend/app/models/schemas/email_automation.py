@@ -216,21 +216,11 @@ class ActivityPage(Page[ActivityRow]):
     even at zero: a chip that appears only when it has rows makes the strip jump as
     documents resolve.
 
-    `attention` is the same shape and the same keys: of those rows, how many are wrong in
-    some way — every failure, a document claimed and never finished, a JV that posted
-    without its input-tax record. Not "what a person can fix"; see `_attention` in
-    routers/credit_card_activity.py for why that was the wrong line to draw.
-
-    `unseen` says which chips are holding an anomaly **nobody in this BU has looked at
-    yet** — the same keys again, and the one that renders the dot. Two fields rather than
-    one because they answer different questions: the dot asks "is there something new
-    here", and the screen-reader sentence beside it reports the size of the pile.
-
+    No `attention`/`unseen` any more: they fed the chips' amber dot, which went with
+    the five-chip strip (07-human-in-the-loop.md §24).
     """
 
     counts: dict[str, int] = Field(default_factory=dict)
-    attention: dict[str, int] = Field(default_factory=dict)
-    unseen: dict[str, bool] = Field(default_factory=dict)
 
 
 class ReviewStatus(BaseModel):
@@ -247,24 +237,6 @@ class ReviewStatus(BaseModel):
     ingest_address: str | None = None
     blockers: list[str] = Field(default_factory=list)
     counts: dict[str, int] = Field(default_factory=dict)
-
-
-class QueueSeenIn(BaseModel):
-    """Which chip somebody just opened. Its own route rather than a side effect of reading
-    the list: a GET that writes would let a prefetch or a retry clear the BU's dot.
-
-    Only the chip name. What gets stored is the anomaly count the **server** computes for
-    it — a client-supplied number would let one bad value silence that BU's dot for good.
-    """
-
-    filter: str
-
-
-class QueueSeenOut(BaseModel):
-    """What was actually recorded, so the caller can see the server's own number."""
-
-    filter: str
-    seen: int
 
 
 class InputTaxOwedOut(BaseModel):

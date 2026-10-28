@@ -37,18 +37,22 @@ export type ReviewFlag =
  *  `today` and `all` are the two that are not about state. `today` selects on *time* and
  *  overlaps all the others, which is why the server leaves it out of `counts.all`. `all`
  *  selects on nothing at all: it is the module's log, and the only view that shows the
- *  never-charged rows. Both are counted, neither carries a dot. */
+ *  never-charged rows. */
 export type ActivityFilter = 'all' | 'today' | 'review' | 'success' | 'unposted'
 
-/** The strip, left to right: the day, then the order a document moves through, then the log.
- *
- *  The first three are also the fall-through order the page opens on — `today`, then
- *  `review`, then `success`, stopping at the first with anything in it (`useReviewQueue`).
- *  Today reads first because it is the question asked on arrival, and a BU with twelve
- *  documents owed is still never shown a quiet morning: an empty chip hands over rather than
- *  holding. `all` is last because nobody arrives asking for everything — it is where you go
- *  when a document you expected is not in any of the others. */
-export const ACTIVITY_FILTERS: ActivityFilter[] = ['today', 'review', 'success', 'unposted', 'all']
+/** The strip: the work, then the log (§24). Two chips because the page is for what somebody
+ *  here has to do — everything else is one chip further, behind `ALL_SCOPES`. */
+export const QUEUE_CHIPS = ['review', 'all'] as const satisfies readonly ActivityFilter[]
+
+/** What the All chip's dropdown narrows the log to, one at a time — every value the API
+ *  already answered when these were chips of their own. `all` first: clicking the chip, or
+ *  landing on it, shows everything. */
+export const ALL_SCOPES = [
+  'all',
+  'today',
+  'success',
+  'unposted',
+] as const satisfies readonly ActivityFilter[]
 
 export interface ReviewDocument {
   id: string
@@ -121,18 +125,6 @@ export interface ReviewDocumentDetail extends ReviewDocument {
  *  the page — same shape reason `NotificationList` carries `unread_count`. */
 export interface ActivityPage extends Page<ReviewDocument> {
   counts: Record<string, number>
-  /** Same keys as `counts`: of those rows, how many are wrong in some way — a failure of
-   *  any kind, a document claimed and never finished, or a JV that posted without its
-   *  input-tax record. Not "what you can fix"; see `_attention` in
-   *  routers/credit_card_activity.py for why that was the wrong line to draw.
-   *
-   *  A lifetime figure. It sizes the pile for the screen-reader sentence; it is **not**
-   *  what decides whether the dot shows. */
-  attention: Record<string, number>
-  /** Same keys again: which chips are holding an anomaly nobody in this BU has looked at.
-   *  This is what renders the dot. Nothing retries a failure, so a dot drawn from
-   *  `attention` alone would be lit for good — `markChipSeen` is what puts it out. */
-  unseen: Record<string, boolean>
 }
 
 export async function listActivity(
@@ -145,26 +137,6 @@ export async function listActivity(
   )
   if (!res.ok) throw new Error(`Activity fetch failed (${res.status})`)
   return res.json() as Promise<ActivityPage>
-}
-
-/**
- * Put that chip's dot out — for everyone in the business unit, not just this browser.
- *
- * The server stores the anomaly count it computes for itself; nothing is sent but the chip
- * name. Failure is silently survivable (the dot simply stays on until next time), so the
- * caller does not await this or surface an error for it.
- *
- * Only a status chip has a mark; `today` and `all` are 400ed by the endpoint. Neither is
- * ever passed, because the caller fires this only for a chip whose dot is lit, and the
- * server sends no `unseen` entry for either.
- */
-export async function markChipSeen(filter: ActivityFilter): Promise<void> {
-  const res = await apiFetch(API.creditCard.activitySeen, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filter }),
-  })
-  if (!res.ok) throw new Error(`Could not mark seen (${res.status})`)
 }
 
 /**
