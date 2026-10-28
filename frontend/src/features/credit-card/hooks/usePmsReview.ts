@@ -25,8 +25,6 @@ export function usePmsReview(id: string, onClose: () => void, onDone: () => void
   const [loading, setLoading] = useState(true)
   const [gone, setGone] = useState(false)
   const [picks, setPicks] = useState<Record<string, Pick>>({})
-  // A person looked at the row: ticked the AI's account as right, or picked one themselves.
-  const [checked, setChecked] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(false)
   const [postError, setPostError] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState(false)
@@ -73,7 +71,6 @@ export function usePmsReview(id: string, onClose: () => void, onDone: () => void
 
   const setPick = useCallback(
     (key: string, field: 'dept' | 'acc', value: string) => {
-      setChecked(cur => ({ ...cur, [key]: true }))
       setPicks(cur => {
         const p = cur[key] ?? { dept: '', acc: '' }
         // A department that does not allow the chosen account clears it, as the JV editor
@@ -88,37 +85,22 @@ export function usePmsReview(id: string, onClose: () => void, onDone: () => void
     [masters.departments]
   )
 
-  /** Back to the AI's account, which nobody has checked yet. */
+  /** Back to the AI's account. */
   const undo = useCallback(
-    (key: string) => {
-      setPicks(cur => ({ ...cur, [key]: aiPick(key) }))
-      setChecked(cur => ({ ...cur, [key]: false }))
-    },
+    (key: string) => setPicks(cur => ({ ...cur, [key]: aiPick(key) })),
     [aiPick]
   )
 
-  const toggleChecked = useCallback(
-    (key: string) => setChecked(cur => ({ ...cur, [key]: !cur[key] })),
-    []
-  )
-
   const unpicked = (day?.new_codes ?? []).filter(c => !(picks[c.key]?.dept && picks[c.key]?.acc))
-  // The AI's accounts nobody has looked at. Approve writes them into Carmen's mapping for
-  // every later day, so each one needs a person first: ticked, or changed.
-  const toCheck = (day?.new_codes ?? []).filter(c => isAiPick(c.key) && !checked[c.key]).length
-  // Why Approve cannot be pressed. A balance is not a reason: Carmen's engine decides the
-  // sides and refuses a day it cannot post, in its own words (`postError`).
-  const blockReason = unpicked.length
-    ? t('pms.blockedPick')
-    : toCheck
-      ? t('pms.blockedCheck', { n: toCheck })
-      : null
-  const dirty =
-    Object.values(checked).some(Boolean) ||
-    (day?.new_codes ?? []).some(c => {
-      const p = picks[c.key]
-      return p?.dept !== (c.dept ?? '') || p?.acc !== (c.acc ?? '')
-    })
+  // Why Approve cannot be pressed: only a new row with no account. An AI account needs no
+  // tick of its own — pressing Approve over the AI tag is the person saying yes (decision-log
+  // #47). A balance is not a reason either: Carmen's engine decides the sides and refuses a
+  // day it cannot post, in its own words (`postError`).
+  const blockReason = unpicked.length ? t('pms.blockedPick') : null
+  const dirty = (day?.new_codes ?? []).some(c => {
+    const p = picks[c.key]
+    return p?.dept !== (c.dept ?? '') || p?.acc !== (c.acc ?? '')
+  })
 
   const requestClose = useCallback(() => {
     if (busy) return
@@ -174,11 +156,7 @@ export function usePmsReview(id: string, onClose: () => void, onDone: () => void
     picks,
     setPick,
     undo,
-    checked,
-    toggleChecked,
     isAiPick,
-    unpickedCount: unpicked.length,
-    toCheck,
     blockReason,
     busy,
     postError,

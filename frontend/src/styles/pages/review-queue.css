@@ -1715,8 +1715,8 @@
 /* ── A parked PMS day (CA-119) ─────────────────────────────────────────────────
    The email review's shell with a body that only reads: a note naming the Carmen setting
    that posts the day (decision-log #43 — the sides are Carmen's, so there is no balance
-   here), then Accounts — the new rows, the only thing decided here — and, folded under it,
-   the rows Carmen's mapping already places. */
+   here), then Accounts — one table laid out as Carmen's mapping screen, the new rows (the
+   only thing decided here) first, the rows Carmen already places after them. */
 
 .pms-note {
   display: flex;
@@ -1768,24 +1768,6 @@
   color: var(--text-2);
 }
 
-.pms-val .text-mono,
-.pms-val strong {
-  color: var(--text);
-}
-
-.pms-val strong {
-  font-weight: 600;
-}
-
-.pms-sep {
-  margin: 0 0.4rem;
-  color: var(--text-3);
-}
-
-.pms-w-amt {
-  width: 9rem;
-}
-
 .pms-w-dept {
   width: 8rem;
 }
@@ -1794,122 +1776,34 @@
   width: 12rem;
 }
 
-/* The rows table: a code is a few characters, an account name is the line's answer. */
+/* Five columns in a 64rem dialog: a code is a few characters, and Description keeps
+   what the fixed ones leave (about 21rem). */
 .pms-w-code {
-  width: 7rem;
+  width: 5rem;
 }
 
 .pms-w-name {
-  width: 24rem;
+  width: 16rem;
 }
 
-.pms-codecell {
-  flex: 1;
-  min-width: 0;
-}
-
-.pms-code {
-  margin-right: 0.4rem;
-  font-weight: 500;
-  color: var(--text);
-}
-
-.pms-desc {
-  color: var(--text);
-}
-
-/* The account a new row will post to, by name — the pickers only show its number. It wraps:
-   a long Thai account name cut to "…" was only readable on hover. */
-.pms-to,
-.pms-why {
-  display: block;
-  font-size: 0.75rem;
-  line-height: 1.4;
+/* The picked account's name, then whose answer it is (AI tag, or Undo). It wraps: a long
+   Thai account name cut to "…" was only readable on hover. */
+.pms-accdesc {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.4rem;
   text-wrap: pretty;
-  color: var(--text-3);
 }
 
-/* The AI tag explains nothing on hover any more: its reason is the `.pms-why` line. */
 .pms-tag-ai {
   cursor: default;
-}
-
-/* An AI pick the model itself was unsure of: where to look first. */
-.pms-tag-unsure {
-  background: var(--amber-light);
-  color: var(--amber-text);
-}
-
-/* "Checked": a person's tick on the AI's account, required before Approve. A chip with a
-   real checkbox in it, so the whole word is the hit area; emerald once ticked. */
-.pms-check {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.15rem 0.5rem 0.15rem 0.35rem;
-  border: 1px solid var(--border-raised, var(--border));
-  border-radius: var(--radius-pill);
-  background: var(--card-bg);
-  color: var(--text-2);
-  font-size: 0.7rem;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.pms-check input {
-  width: 0.85rem;
-  height: 0.85rem;
-  margin: 0;
-  accent-color: var(--emerald-text);
-  cursor: pointer;
-}
-
-.pms-check:has(input:checked) {
-  border-color: var(--emerald-mid);
-  background: var(--emerald-light);
-  color: var(--emerald-text);
 }
 
 .pms-nowrap {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.pms-n {
-  font-family: var(--font-mono);
-  font-weight: 500;
-  color: var(--text-3);
-}
-
-/* The rows Carmen already maps, folded under Accounts. It grows in the body's own scroll:
-   no frame of its own, so the dialog never has two scrollbars. */
-.pms-fold > summary {
-  display: grid;
-  grid-template-columns: 1rem auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0 0.6rem;
-  list-style: none;
-  cursor: pointer;
-}
-
-.pms-fold > summary::-webkit-details-marker {
-  display: none;
-}
-
-.pms-fold-icon {
-  color: var(--text-3);
-  transition: transform 160ms var(--ease, ease-out);
-}
-
-.pms-fold[open] .pms-fold-icon {
-  transform: rotate(90deg);
-}
-
-.pms-fold[open] > summary {
-  margin-bottom: 0.6rem;
 }
 
 .rd-blocked--note {
@@ -1935,11 +1829,5 @@
 
   .pms-val {
     grid-column: 2;
-  }
-
-  /* A thumb's target: the whole chip is the label. */
-  .pms-check {
-    min-height: 2.75rem;
-    padding-inline: 0.75rem;
   }
 }

@@ -3,7 +3,8 @@
  * it, the server read it back from Carmen's Data Bank and parked it here.
  *
  * Carmen's engine posts it, by the BU's PMS setting in Carmen (decision-log #43): debit,
- * credit and totals are never computed here. Amounts are as the PMS wrote them.
+ * credit and totals are never computed here, and the screen shows no amounts. The response
+ * still carries each row's amount and the AI's confidence and reason; nothing reads them.
  */
 
 import { apiFetch } from '@/shared/api/client'
@@ -14,7 +15,6 @@ export interface PmsRow {
   /** The mapping key: the key columns' values as a JSON array. Opaque to the screen. */
   key: string
   values: Record<string, string>
-  amount: string
   dept?: string | null
   acc?: string | null
   name?: string | null
@@ -26,11 +26,8 @@ export interface PmsNewCode {
   /** "100 · Room Charge - VAT" */
   label: string
   values: Record<string, string>
-  amount: string
   dept: string | null
   acc: string | null
-  confidence: string | null
-  why: string | null
 }
 
 export interface PmsDay {

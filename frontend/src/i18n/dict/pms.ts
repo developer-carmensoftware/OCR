@@ -1,32 +1,16 @@
 export const en = {
   // -- A parked PMS day, opened from the AI JV Automation queue (CA-119) ------------
   // Carmen's engine posts the day by the BU's PMS setting in Carmen (decision-log #43), so
-  // nothing here speaks of debit, credit or totals. Dept and Account stay English in both
-  // dictionaries, like the email review's JV table: they are matched against Carmen.
+  // nothing here speaks of debit, credit or totals. The column names are Carmen's own, as its
+  // mapping screen prints them, in both dictionaries: they are matched against Carmen.
   'pms.accounts': 'Accounts',
-  'pms.colNewRow': 'New row',
-  'pms.newRows': 'New rows',
-  'pms.colAmount': 'Amount',
-  'pms.colDept': 'Dept',
-  'pms.colAccount': 'Account',
-  // The Accounts readout, live from the reviewer's picks: "11 new · 2 need an account".
-  'pms.newCount': '{n} new',
-  'pms.needAccount': '{n} need an account',
-  'pms.toCheck': '{n} to check',
-  'pms.allChecked': 'all checked',
-  'pms.mappedInCarmen': '{n} mapped in Carmen',
-  'pms.allMapped': 'All {n} mapped in Carmen',
-  // The rows Carmen's mapping already places, folded under Accounts.
-  'pms.mappedRows': 'Mapped in Carmen',
+  'pms.colDept': 'DeptCode',
+  'pms.colAccount': 'AccCode',
+  'pms.colAccDesc': 'AccDesc',
+  'pms.rowCount': '{n} rows',
   'pms.carmenPosts':
     'Carmen posts this day with its {setting} setting ({postType}): it decides debit and credit, and posts the remainder to {counter}.',
   'pms.aiTag': 'AI',
-  'pms.aiWhy': 'AI: {why}',
-  // An AI pick the model itself was unsure of (confidence "low").
-  'pms.unsureTag': 'Unsure',
-  // A person ticks each AI account before Approve: it goes into Carmen's mapping for good.
-  'pms.checked': 'Checked',
-  'pms.checkedFor': 'Checked {code}',
   'pms.undo': 'Undo',
   'pms.undoFor': 'Undo {code}',
   'pms.deptFor': 'Dept for {code}',
@@ -34,7 +18,6 @@ export const en = {
   'pms.deptPlaceholder': 'Dept',
   'pms.accountPlaceholder': 'Account',
   'pms.blockedPick': 'Pick an account for every new row.',
-  'pms.blockedCheck': 'Check each account the AI picked ({n} left).',
   // What Approve does, said before it is pressed: the mapping outlives this day.
   'pms.saves':
     "Adds the new rows ({n}) to Carmen's {interface} mapping, which every later day uses. Then Carmen posts {date}.",
@@ -65,25 +48,13 @@ export const en = {
 
 export const th: Record<keyof typeof en, string> = {
   'pms.accounts': 'บัญชี',
-  'pms.colNewRow': 'แถวใหม่',
-  'pms.newRows': 'แถวใหม่',
-  'pms.colAmount': 'จำนวนเงิน',
-  'pms.colDept': 'Dept',
-  'pms.colAccount': 'Account',
-  'pms.newCount': 'ใหม่ {n} รายการ',
-  'pms.needAccount': 'ยังไม่มีบัญชี {n}',
-  'pms.toCheck': 'ต้องตรวจ {n}',
-  'pms.allChecked': 'ตรวจครบแล้ว',
-  'pms.mappedInCarmen': 'map ไว้ใน Carmen แล้ว {n}',
-  'pms.allMapped': 'map ไว้ใน Carmen ครบ {n} รายการ',
-  'pms.mappedRows': 'map ไว้ใน Carmen แล้ว',
+  'pms.colDept': 'DeptCode',
+  'pms.colAccount': 'AccCode',
+  'pms.colAccDesc': 'AccDesc',
+  'pms.rowCount': '{n} รายการ',
   'pms.carmenPosts':
     'Carmen จะโพสต์วันนี้ด้วย setting {setting} ({postType}) ของ Carmen เอง: Carmen เป็นคนกำหนด debit/credit และลงยอดที่เหลือเข้า {counter}',
   'pms.aiTag': 'AI',
-  'pms.aiWhy': 'AI: {why}',
-  'pms.unsureTag': 'ไม่แน่ใจ',
-  'pms.checked': 'ตรวจแล้ว',
-  'pms.checkedFor': 'ตรวจแล้ว {code}',
   'pms.undo': 'ย้อนกลับ',
   'pms.undoFor': 'ย้อนกลับ {code}',
   'pms.deptFor': 'Dept ของ {code}',
@@ -91,7 +62,6 @@ export const th: Record<keyof typeof en, string> = {
   'pms.deptPlaceholder': 'Dept',
   'pms.accountPlaceholder': 'Account',
   'pms.blockedPick': 'เลือกบัญชีให้แถวใหม่ทุกรายการ',
-  'pms.blockedCheck': 'ตรวจบัญชีที่ AI เลือกให้ทุกแถว (เหลือ {n})',
   'pms.saves':
     'จะเพิ่มแถวใหม่ ({n}) ลง mapping {interface} ใน Carmen ซึ่งทุกวันต่อจากนี้จะใช้ด้วย แล้วให้ Carmen โพสต์วันที่ {date}',
   'pms.postsAsIs': 'Carmen จะโพสต์วันที่ {date} ด้วย setting {interface} ของ Carmen',
