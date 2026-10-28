@@ -4,7 +4,8 @@
  *
  * Carmen's engine posts it, by the BU's PMS setting in Carmen (decision-log #43): debit,
  * credit and totals are never computed here, and the screen shows no amounts. The response
- * still carries each row's amount and the AI's confidence and reason; nothing reads them.
+ * still carries each row's amount, the AI's confidence and reason, and the setting and counter
+ * account Carmen posts with; nothing reads them.
  */
 
 import { apiFetch } from '@/shared/api/client'
@@ -37,11 +38,6 @@ export interface PmsDay {
   doc_date: string
   reason_code: string | null
   error_message: string | null
-  /** The Carmen interface setting the engine posts with (`Comanche.PMS`) and its section. */
-  setting_code: string
-  post_type: string
-  /** Where that setting posts the day's remainder (its Summary line). */
-  counter: { dept: string; acc: string; name: string }
   /** The mapping key's columns, in order (`Code`, `Description` for Comanche). */
   key_columns: string[]
   rows: PmsRow[]

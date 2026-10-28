@@ -101,9 +101,6 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
   // An account by its one short name, as Carmen's AccDesc column prints it.
   const accShort = (code?: string | null) => masters.accounts.find(a => a.code === code)?.name ?? ''
   const deptOptions = masters.departments.map(d => ({ code: d.code, name: d.name, name2: d.name2 }))
-  const counter = day
-    ? [`${day.counter.dept}/${day.counter.acc}`, day.counter.name].filter(Boolean).join(' ')
-    : ''
 
   // The rows Carmen's table already places, one per key: with no amount on screen, a key the
   // PMS wrote twice would read the same twice. A Map keeps each key at its first position.
@@ -227,19 +224,6 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
                   <span className="cc-alert-text">{stopText(day, t, true)}</span>
                 </div>
               )}
-
-              {/* Who decides the sides, so nobody looks here for a balance: Carmen's own
-                  setting, named as Carmen names it. */}
-              <p className="pms-note">
-                <Info size={14} aria-hidden="true" />
-                <span>
-                  {t('pms.carmenPosts', {
-                    setting: day.setting_code,
-                    postType: day.post_type,
-                    counter,
-                  })}
-                </span>
-              </p>
 
               <section className="pms-sec" aria-labelledby="pms-acc">
                 <Head id="pms-acc" title={t('pms.accounts')} state={r.blockReason ? 'warn' : 'ok'}>

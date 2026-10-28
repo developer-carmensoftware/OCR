@@ -216,7 +216,7 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
 #/CreditCardOCR (the AI JV Automation queue) lists PMS days beside email + manual rows
   services/credit_card/activity.py `_pms_*`: one row per BU × day, source "pms"
   #/CreditCardOCR/review?pms=<id> → pages/PmsReviewDocument.tsx (the email modal's shell):
-      which Carmen setting posts it, then ONE table laid out as Carmen's mapping screen
+      ONE table laid out as Carmen's mapping screen
       (Code · Description · DeptCode · AccCode · AccDesc): new rows first with pickers + AI
       tag/Undo, Carmen's rows read-only, one per key — no amounts, no balance, no tick:
       Approve opens once every new row has an account (decision-log #47)

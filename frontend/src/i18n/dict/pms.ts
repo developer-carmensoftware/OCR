@@ -1,15 +1,13 @@
 export const en = {
   // -- A parked PMS day, opened from the AI JV Automation queue (CA-119) ------------
   // Carmen's engine posts the day by the BU's PMS setting in Carmen (decision-log #43), so
-  // nothing here speaks of debit, credit or totals. The column names are Carmen's own, as its
+  // nothing here speaks of debit, credit, totals or that setting. The column names are Carmen's own, as its
   // mapping screen prints them, in both dictionaries: they are matched against Carmen.
   'pms.accounts': 'Accounts',
   'pms.colDept': 'DeptCode',
   'pms.colAccount': 'AccCode',
   'pms.colAccDesc': 'AccDesc',
   'pms.rowCount': '{n} rows',
-  'pms.carmenPosts':
-    'Carmen posts this day with its {setting} setting ({postType}): it decides debit and credit, and posts the remainder to {counter}.',
   'pms.aiTag': 'AI',
   'pms.undo': 'Undo',
   'pms.undoFor': 'Undo {code}',
@@ -52,8 +50,6 @@ export const th: Record<keyof typeof en, string> = {
   'pms.colAccount': 'AccCode',
   'pms.colAccDesc': 'AccDesc',
   'pms.rowCount': '{n} รายการ',
-  'pms.carmenPosts':
-    'Carmen จะโพสต์วันนี้ด้วย setting {setting} ({postType}) ของ Carmen เอง: Carmen เป็นคนกำหนด debit/credit และลงยอดที่เหลือเข้า {counter}',
   'pms.aiTag': 'AI',
   'pms.undo': 'ย้อนกลับ',
   'pms.undoFor': 'ย้อนกลับ {code}',

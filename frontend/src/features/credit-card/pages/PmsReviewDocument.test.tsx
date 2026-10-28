@@ -36,9 +36,6 @@ const DAY: PmsDay = {
   doc_date: '2024-09-05',
   reason_code: null,
   error_message: null,
-  setting_code: 'Comanche.PMS',
-  post_type: 'REVENUE',
-  counter: { dept: 'GEN', acc: '1021001', name: 'A/R - Guest Ledger' },
   key_columns: ['Code', 'Description'],
   rows: [
     {
@@ -97,16 +94,12 @@ beforeEach(() => {
 })
 
 describe('a parked PMS day', () => {
-  it('says Carmen posts it with its own setting, in one table laid out as Carmen maps', async () => {
+  it('is one table laid out as Carmen maps, and nothing about the sides', async () => {
     open()
     expect(await screen.findByText('Comanche · Daily ·', { exact: false })).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        'Carmen posts this day with its Comanche.PMS setting (REVENUE): it decides debit and credit, and posts the remainder to GEN/1021001 A/R - Guest Ledger.'
-      )
-    ).toBeInTheDocument()
-    // No balance of our own and no amounts: the sides are Carmen's.
+    // No balance, no amounts, no note on who decides the sides: they are Carmen's.
     expect(screen.queryByText(/balance/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/decides debit and credit/)).not.toBeInTheDocument()
     expect(screen.queryByText('Amount')).not.toBeInTheDocument()
     const accounts = screen.getByRole('region', { name: 'Accounts' })
     expect(within(accounts).getByText('3 rows')).toBeInTheDocument()

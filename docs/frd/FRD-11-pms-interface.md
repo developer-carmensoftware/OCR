@@ -18,7 +18,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
 | 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว (path B ตาม decision-log #43 และหน้าตั้งค่าของ Carmen ตาม #44, #45) ครอบคลุม hook, การอ่านวันจาก Data Bank, AI แนะนำบัญชีเฉพาะแถวใหม่, การอนุมัติที่เขียน mapping table ของ Carmen แล้วให้ engine ของ Carmen post และสิ่งที่ยังรอจาก Carmen | Reviewed |
-| 1.1 | 28/10/2026 | Dev Team | Dialog ตรวจเหลือตารางเดียวแบบหน้า mapping ของ Carmen (Code, Description, DeptCode, AccCode, AccDesc): แถวใหม่อยู่บน แถวที่ map แล้วอ่านอย่างเดียว ไม่แสดงยอด ตัดช่องติ๊ก Checked, ป้าย Unsure และเหตุผลของ AI — กด Approve ได้เมื่อแถวใหม่ทุกแถวมีบัญชี (decision-log #47) | |
+| 1.1 | 28/10/2026 | Dev Team | Dialog ตรวจเหลือตารางเดียวแบบหน้า mapping ของ Carmen (Code, Description, DeptCode, AccCode, AccDesc): แถวใหม่อยู่บน แถวที่ map แล้วอ่านอย่างเดียว ไม่แสดงยอด ตัดช่องติ๊ก Checked, ป้าย Unsure, เหตุผลของ AI และหมายเหตุที่บอกชื่อ PMS setting ของ Carmen — กด Approve ได้เมื่อแถวใหม่ทุกแถวมีบัญชี (decision-log #47) | |
 
 <!-- pagebreak -->
 
@@ -127,7 +127,6 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 
 | ส่วน | เนื้อหา |
 |---|---|
-| หมายเหตุด้านบน | ชื่อ PMS setting ของ Carmen ที่จะ post วันนั้น (เช่น `Comanche.PMS`, section REVENUE) |
 | Accounts | **ตารางเดียวแบบหน้า mapping ของ Carmen**: Code, Description, DeptCode, AccCode, AccDesc หัวตารางบอกจำนวนแถว (`N rows`) |
 | แถวใหม่ (อยู่บนสุด) | ช่องเลือกแผนกและบัญชี, AccDesc แสดงชื่อบัญชีที่เลือก ตามด้วยป้าย **AI** (ค่าของ AI) หรือปุ่ม Undo (คนเปลี่ยนแล้ว) |
 | แถวที่ Carmen map แล้ว | ข้อความอ่านอย่างเดียว หนึ่งแถวต่อ key เรียงตามลำดับของ PMS — แก้ที่หน้าจอของ Carmen |
