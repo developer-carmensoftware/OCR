@@ -1,7 +1,7 @@
 # Graph Report - OCR  (2026-10-28)
 
 ## Corpus Check
-- 421 files · ~307,568 words
+- 421 files · ~307,627 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `6628c091`
+- Built from commit: `f312fd1b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -112,7 +112,7 @@
 - SlipUpload.tsx
 - checkout.ts
 - vite-env.d.ts
-- postcss
+- eslint
 - mockPaths.test.ts
 - shared/api/auth.ts
 - cc.ts
@@ -301,7 +301,7 @@ Nodes (13): BADGE_TABS, BATCH_ACTIONS_FOR_TAB, BATCH_BUTTON, BatchAction, compan
 
 ### Community 26 - "devDependencies"
 Cohesion: 0.09
-Nodes (23): autoprefixer, eslint, eslint-plugin-react-hooks, devDependencies, autoprefixer, eslint, eslint-plugin-react-hooks, globals (+15 more)
+Nodes (23): autoprefixer, eslint-plugin-react-hooks, devDependencies, autoprefixer, eslint-plugin-react-hooks, globals, postcss, prettier (+15 more)
 
 ### Community 27 - "shared/api/credits.ts"
 Cohesion: 0.09
