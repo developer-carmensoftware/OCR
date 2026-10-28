@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import type { DetailRow } from '@/features/credit-card/components/DetailTable'
 import { BU_WIDE, type JvState, type Overrides } from '@/features/credit-card/components/JvEditor'
 import {
@@ -279,9 +279,11 @@ export function useReviewDocument(
   //
   // The grouping is re-read whenever the mapping page saves — it is switched there, in a
   // tab of its own, and the server posts with whatever it is at approve time. The rules
-  // re-read on the same signal inside `useAccountingConfig`.
+  // re-read on the same signal inside `useAccountingConfig`. A layout effect, so the
+  // listener is attached in the commit that shows the JV: a passive one could miss a save
+  // announced the moment it appeared.
   const [postType, setPostType] = useState<PostType | null>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isAR || !bankCode) return
     const onStorage = (e: StorageEvent) => {
       if (e.key !== appKey('accounting_config_updated')) return

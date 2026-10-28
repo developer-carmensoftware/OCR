@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { Sparkles, Undo2 } from 'lucide-react'
 import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
 import NumericInput from '@/shared/components/common/NumericInput'
@@ -162,7 +162,9 @@ export default function JvEditor({
 
   const loading = configLoading || mastersLoading
 
-  useEffect(() => {
+  // A layout effect, so the parent's copy is the table on screen: a passive one lags a
+  // regroup by a tick, and an Approve pressed in it saved a leg no longer shown.
+  useLayoutEffect(() => {
     // No reason while the masters are still arriving: there are no rows yet, and "there
     // is nothing to post" is a true sentence about an empty table that would flash under
     // the Approve button on every open.
