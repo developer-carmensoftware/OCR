@@ -205,9 +205,8 @@ describe('a parked PMS day', () => {
     await screen.findByText('2 rows')
     expect(approveButton()).toBeEnabled()
     expect(screen.queryAllByRole('textbox')).toHaveLength(0)
-    expect(
-      screen.getByText('Carmen posts 05/09/2024 with its Comanche setting.')
-    ).toBeInTheDocument()
+    // Nothing goes into Carmen's mapping, so the footer has nothing to warn about.
+    expect(screen.queryByText(/Carmen posts/)).not.toBeInTheDocument()
   })
 
   it("keeps Carmen's refusal on screen in Carmen's words", async () => {

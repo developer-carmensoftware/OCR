@@ -19,7 +19,6 @@ export const en = {
   // What Approve does, said before it is pressed: the mapping outlives this day.
   'pms.saves':
     "Adds the new rows ({n}) to Carmen's {interface} mapping, which every later day uses. Then Carmen posts {date}.",
-  'pms.postsAsIs': 'Carmen posts {date} with its {interface} setting.',
   'pms.rejectTitle': 'Reject this day?',
   'pms.rejectMsg': "It won't post. If Comanche resends the day, it comes back here.",
   'pms.rejectHint': 'e.g. night audit rerun',
@@ -60,7 +59,6 @@ export const th: Record<keyof typeof en, string> = {
   'pms.blockedPick': 'เลือกบัญชีให้แถวใหม่ทุกรายการ',
   'pms.saves':
     'จะเพิ่มแถวใหม่ ({n}) ลง mapping {interface} ใน Carmen ซึ่งทุกวันต่อจากนี้จะใช้ด้วย แล้วให้ Carmen โพสต์วันที่ {date}',
-  'pms.postsAsIs': 'Carmen จะโพสต์วันที่ {date} ด้วย setting {interface} ของ Carmen',
   'pms.rejectTitle': 'ปฏิเสธวันนี้?',
   'pms.rejectMsg': 'วันนี้จะไม่ถูกโพสต์ ถ้า Comanche ส่งวันนี้มาใหม่ จะกลับมาที่นี่อีกครั้ง',
   'pms.rejectHint': 'เช่น รัน night audit ใหม่',

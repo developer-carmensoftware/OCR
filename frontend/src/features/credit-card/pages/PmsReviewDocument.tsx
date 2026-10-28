@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
   AlertCircle,
@@ -84,7 +84,9 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
   // (Enter on an option) is not ours, and nothing approves behind a confirmation.
   const canApprove = !!day && !r.busy && !r.blockReason && !r.rejecting && !r.discarding
   const approveByKey = useRef<(() => void) | null>(null)
-  useEffect(() => {
+  // A layout effect, so the key is armed in the same commit that shows the day: a passive one
+  // could run after a key pressed the moment the table appeared.
+  useLayoutEffect(() => {
     approveByKey.current = canApprove ? r.approve : null
   })
   useEffect(() => {
@@ -342,16 +344,18 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
                   {r.blockReason}
                 </p>
               ) : (
-                !r.postError && (
+                // What Approve leaves behind, said before it is pressed: the new rows' accounts
+                // stay in Carmen's mapping for every later day. With no tick (decision-log
+                // #47) this and the AI tag are the warning. A day with nothing new needs none.
+                !r.postError &&
+                day.new_codes.length > 0 && (
                   <p className="rd-blocked rd-blocked--note" role="status">
                     <Info size={14} aria-hidden="true" />
-                    {day.new_codes.length > 0
-                      ? t('pms.saves', {
-                          n: day.new_codes.length,
-                          interface: day.interface,
-                          date: dmy(day.doc_date),
-                        })
-                      : t('pms.postsAsIs', { interface: day.interface, date: dmy(day.doc_date) })}
+                    {t('pms.saves', {
+                      n: day.new_codes.length,
+                      interface: day.interface,
+                      date: dmy(day.doc_date),
+                    })}
                   </p>
                 )
               )}

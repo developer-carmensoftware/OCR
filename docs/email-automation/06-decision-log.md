@@ -1417,8 +1417,11 @@ every AI account.
   reason and *Unsure*.
 - **No note naming Carmen's setting** ("Carmen posts this day with its … setting: it decides
   debit and credit, and posts the remainder to …"). It was there so nobody looked for a
-  balance; with no amounts there is none to look for, and nothing in it is changed here. The
-  footer still says Carmen posts the day.
+  balance; with no amounts there is none to look for, and nothing in it is changed here.
+- **The footer warns only when there are new rows:** "Adds the new rows (n) to Carmen's …
+  mapping, which every later day uses. Then Carmen posts …". With no tick, it and the AI tag
+  are the warning that an Approve outlives the day. A day with nothing new shows no note (its
+  "Carmen posts {date} with its … setting" said nothing the button does not).
 
 **Accepted risk.** A low-confidence AI account can now go into Carmen's table with one press,
 for every later day. The tag is the only warning left. A wrong mapping is fixed on Carmen's
