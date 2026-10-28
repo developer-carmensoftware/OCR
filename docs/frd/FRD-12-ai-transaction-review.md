@@ -1,12 +1,12 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-12 — CR: AI Transaction Review (AI JV Automation Queue)
-output: Carmen_Cloud_ERP_FRD-12_CR_AI_Transaction_Review_v1.1.docx
-Document Version: Version 1.1 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-12_CR_AI_Transaction_Review_v1.2.docx
+Document Version: Version 1.2 (As-Built Developer & Test Spec)
 Change Request ต่อ: FRD-01 Credit Card OCR · FRD Smart Credit Card Tax Ingestion & Auto-JV (Email) · FRD-11 PMS Interface
 Module ID: `credit_card_ocr`
 Status: Built, merged to main — คิวใช้งานจริงแล้วสำหรับแหล่ง email และ manual scan ส่วนแถว PMS แสดงในคิวแล้วแต่การ post รอ Carmen (ดู FRD-11)
-Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026) + branch feat/ai-jv-two-chips (28/10/2026)
+Source of truth: repo developer-carmensoftware/OCR @ 0f4da84c (28/10/2026) + branch chore/drop-email-queue-seen
 Date: 28 October 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 ---
@@ -19,6 +19,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 |---|---|---|---|---|
 | 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว รวมสเปกคิวที่เดิมกระจายอยู่ใน Email FRD v3.0/v3.1 §4.2–4.3, §8.4c–8.6, §12.1–12.2 เข้ากับส่วนที่เพิ่มหลังจากนั้น (chip 5 ตัว, charged-means-reviewable, auto-post gate, แถว manual และแถว PMS) | Reviewed |
 | 1.1 | 28/10/2026 | Dev Team | ยุบ chip เหลือ 2 ตัว (Review, All) — Today / Posted / Not posted ย้ายไปเป็น dropdown ใน All, หน้าเปิดที่ Review ถ้ามีงาน ไม่งั้นไป All, ตัดจุดเตือน (dot) และ `POST /activity/seen` ออกทั้งหมด (07-human-in-the-loop.md §24) | |
+| 1.2 | 28/10/2026 | Dev Team | Drop ตารางของจุดเตือนหลัง deploy v1.1 (migration `20261028000000`) | |
 
 <!-- pagebreak -->
 
@@ -217,7 +218,7 @@ flowchart TB
 
 # 6. Database Schema & Tables
 
-ฐานข้อมูล: PostgreSQL (Supabase) คิวไม่มีตารางของตัวเอง อ่านจากตารางของแต่ละแหล่ง และเขียนเฉพาะคอลัมน์ review กับตาราง `email_queue_seen`
+ฐานข้อมูล: PostgreSQL (Supabase) คิวไม่มีตารางของตัวเอง อ่านจากตารางของแต่ละแหล่ง และเขียนเฉพาะคอลัมน์ review
 
 ## 6.1 ตารางที่เกี่ยวข้อง
 
@@ -227,7 +228,6 @@ flowchart TB
 | `email_documents` | แถวของแหล่ง email หนึ่งแถวต่อ (message × attachment) | `status`, `reason_code`, `error_message`, `review_payload`, `posting_started_at`, `reviewed_by`, `reviewed_by_name`, `reviewed_at`, `dismissed_at`, `jv_no`, `task_id` |
 | `credit_cards` | แถวของแหล่ง manual — เฉพาะแถวที่ไม่มี `email_documents` ชี้ถึง (anti-join) | `submitted_at` (post แล้วหรือยัง), `tax_amt` (ใช้คำนวณ `input_tax_owed`), `jv_no`, `carmen_user_id` |
 | `pms_events` | แถวของแหล่ง PMS หนึ่งแถวต่อ BU × Data Bank day | `status`, `review_payload`, `reason_code`, `posting_started_at`, `reviewed_by_name`, `reviewed_at`, `jv_no` |
-| `email_queue_seen` | ไม่มีผู้อ่านแล้วตั้งแต่ v1.1 (จุดเตือนถูกตัด) — drop ใน migration ถัดไปหลัง deploy | — |
 | `email_ingest_settings` | สวิตช์ `auto_post` ต่อ BU (ค่าเริ่มต้น false) และ credential ที่ใช้ post | `auto_post`, credential ของ BU |
 
 ## 6.2 คอลัมน์ review บน email_documents
@@ -537,7 +537,7 @@ chip, ป้ายสถานะ, เหตุผล และปุ่มท�
 | เสร็จ | Reject: ใช้ claim เดียวกัน, ไม่คืนเครดิต, บันทึกผู้ตัดสิน |
 | เสร็จ | AI suggestion ไม่ถูกเขียนลง config จนกว่าคนจะ Approve |
 | เสร็จ | Chip 2 ตัว + dropdown ใน All, ไม่มีจุดเตือน (v1.1) |
-| รอ | Drop `email_queue_seen` หลัง deploy v1.1 |
+| เสร็จ | Drop ตารางของจุดเตือน (migration `20261028000000`) หลัง deploy v1.1 |
 | เสร็จ | แถว manual (anti-join กับ email), สถานะ `scanned`, ปุ่ม Record input tax |
 | เสร็จ | แถว PMS และ dialog แยก |
 | เสร็จ | Backpressure 50 ใบต่อ BU และแจ้งเตือนแบบยอดรวม |
