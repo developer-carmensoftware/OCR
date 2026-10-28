@@ -1715,3 +1715,7 @@ Two chips instead of five, and no amber dots. A BU with documents waiting lands 
 with none lands on its log, newest first. Today, Posted and Not posted are in the dropdown
 beside the refresh button, only while on All. The bell's "N files blocked" rows open All
 narrowed to Not posted.
+
+**Done (#115), same day:** migration `20261028000000_drop_email_queue_seen.sql` drops the
+table, and the `EmailQueueSeen` model, its tenancy-cleanup entry and the reset script's
+delete go with it. It ships only after the backend serving that database runs #313.

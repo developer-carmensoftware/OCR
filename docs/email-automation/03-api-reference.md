@@ -95,8 +95,8 @@ place under `today` and `all`:
 The **four ledger buckets** partition the ledger — exactly one each — so `counts["all"]` is a
 true total rather than a sum of overlapping piles.
 
-**No dot** (§24). `attention`, `unseen` and `POST /activity/seen` are gone; `email_queue_seen`
-has no reader and is dropped in a follow-up migration once this code is deployed.
+**No dot** (§24). `attention`, `unseen` and `POST /activity/seen` are gone, and
+`email_queue_seen` with them (migration `20261028000000`).
 
 **No dismissal** (§18 #86). `dismissed_at` survives as a column nothing reads or writes any
 more: both `POST /activity/{id}/dismiss` and the per-cause `POST /activity/dismiss` are gone.

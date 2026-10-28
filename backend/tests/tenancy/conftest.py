@@ -140,7 +140,6 @@ _CLEANUP_ORDER = [
     "credit_cards",
     "ap_invoices",
     "ocr_tasks",
-    "email_queue_seen",
     "email_ingest_settings",
     "correction_feedback",
     "bug_reports",

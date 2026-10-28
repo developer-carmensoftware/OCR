@@ -9,7 +9,6 @@ This is the wider sibling of `reset_email_test.py`: that one replays a single ma
 one clears the BU's whole email-automation state. What it removes, and why each one:
 
     email_documents        the dedupe ledger — every mail looks new again
-    email_queue_seen       the review queue's attention dot, so a new queue lights it
     email_ingest_settings  tag, rules, owner addresses, Carmen token, Gmail handshake
     tenant_subscriptions   the active window, so buying a package is part of the test
     credit_cards           soft-deleted for the doc_nos the mails posted (duplicate guard)
@@ -218,10 +217,6 @@ async def main() -> int:
         async with conn.transaction():
             res = await conn.execute("delete from email_documents where tenant_id = $1", tid)
             print(f"  email_documents   {res}")
-            # The queue's attention dot is a high-water mark over the rows just deleted;
-            # left behind, a genuinely new queue opens already acknowledged.
-            res = await conn.execute("delete from email_queue_seen where tenant_id = $1", tid)
-            print(f"  email_queue_seen  {res}")
             if settings_sql:
                 print(f"  settings          {await conn.execute(settings_sql, tid)}")
             else:

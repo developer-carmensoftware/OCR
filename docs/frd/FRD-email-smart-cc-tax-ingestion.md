@@ -1,12 +1,12 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: Smart Credit Card Tax Ingestion & Auto-JV (Email Automation – AI JV)
-output: Carmen Cloud ERP - FRD - Smart Credit Card Tax Ingestion & Auto-JV v4.0.docx
+output: Carmen Cloud ERP - FRD - Smart Credit Card Tax Ingestion & Auto-JV v4.1.docx
 Module Name: General Ledger (GL) & Account Payable (AP) — module id `credit_card_ocr`
-Document Version: Version 4.0 (As-Built Developer & Test Spec)
+Document Version: Version 4.1 (As-Built Developer & Test Spec)
 Status: Built, merged to main, live-tested end to end — หน้าตั้งค่าอยู่ในแอปตั้งแต่ 01/10/2026
 Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026)
-Date: 27 October 2026
+Date: 28 October 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 check-ignore: AIAGENT+<tag>@carmensoftware.com, E-TAX_INVOICE_CARD_*, KB1P554V2_SUM_<merchant_id>_<date>.pdf, SUM_<merchant_id>, TAX_SUMMARY_BY_TAX_ID_CSV_*
 สิ่งที่เปลี่ยนในฉบับนี้เมื่อเทียบกับ v3.1: *หน้าตั้งค่าย้ายจาก Carmen มาอยู่ในแอป (`#/CreditCardOCR/email-settings`) และใช้ token เดียวจากลิงก์เมนูของ Carmen เป็น credential สำหรับ post; KBANK มีโหมด Detailed Credit Card AR Reconciliation ที่อ่าน settlement report แทนใบกำกับค่าธรรมเนียม; คิวตรวจย้ายไปอธิบายใน FRD-12 และภาษีซื้อใน FRD-09 — ดู Revision History 4.0*
@@ -29,6 +29,7 @@ check-ignore: AIAGENT+<tag>@carmensoftware.com, E-TAX_INVOICE_CARD_*, KB1P554V2_
 | 3.0 | 08/09/2026 | Dev Team | ปรับทั้งฉบับตามฟีเจอร์ human-in-the-loop review queue (95 commits, feat/email-hitl-review) — เพิ่มขั้นตอนอนุมัติก่อน post, การตั้งค่า auto_post ต่อ BU, หน้าจอ Review Queue/Activity ใหม่, สถานะ ledger ใหม่ 2 ค่า (pending_review, rejected), คอลัมน์ฐานข้อมูลใหม่ 4 คอลัมน์ และตารางใหม่ 1 ตาราง | Dev Team |
 | 3.1 | 08/09/2026 | Dev Team | **(feat/auto-post-single-writer)** — ลบ PUT /api/v1/email/settings/auto-post และช่องตั้งค่าแยกบนหน้า Review Queue ทิ้งทั้งคู่ auto_post กลายเป็น field หนึ่งใน PUT /settings ที่มีพฤติกรรม merge (ไม่ส่ง = คงค่าเดิม) เป็นข้อยกเว้นเดียวของ endpoint นี้ที่ปกติเป็น full-replace | Dev Team |
 | 4.0 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — (1) หน้าตั้งค่าเป็นของแอป `#/CreditCardOCR/email-settings` เปิดจากเมนูของ Carmen ผ่าน SSO (decision-log #34) (2) token ในลิงก์ของเมนูเป็น credential สำหรับ post ตัวเดียว (#35, #38) และไม่แทนที่ credential ที่ยังใช้ได้ (#45) (3) KBANK: สวิตช์ Detailed Credit Card AR Reconciliation พร้อม merchant ID อ่าน settlement report เป็น JV เดียว ตรวจกับ tax summary CSV ในไฟล์ zip เดียวกัน (#28, #31, #36, #37) (4) คิวของ mailbox ใช้ keyword `$OcrDone` แทน `\Seen` (5) `+tag` ต้องอยู่บนที่อยู่ของเราเป๊ะ (6) near-duplicate (F-7) (7) rule ที่ปิดอยู่ให้ผล `ingest_paused` (8) retention ของ `email_documents` (9) sweep ยืนยัน Gmail เปิดตาม `settings_saved_at` (#46) (10) สเปกคิวย้ายไป FRD-12 และภาษีซื้อไป FRD-09 | Reviewed |
+| 4.1 | 28/10/2026 | Dev Team | ตาราง `email_queue_seen` (§6.3 เดิม) ถูก drop พร้อมจุดเตือนของคิว (FRD-12 v1.1–v1.2) Retention เลื่อนเป็น §6.3 และ `dismissed_at` ไม่มีผู้อ่านแล้ว | |
 
 <!-- pagebreak -->
 
@@ -82,7 +83,7 @@ flowchart TB
 - **Auto Integration to AP Input Tax Reconciliation:** ยื่นภาษีซื้อต่อจาก JV — ล้มเหลวได้โดยไม่ rollback JV (FRD-09)
 - **หน้าตั้งค่าในแอป (ใหม่ v4.0):** ที่อยู่สำหรับ forward, การเปิดใช้, post โดยไม่ต้องตรวจ, bank rules, tax ID ของบริษัท, อีเมลของบริษัท และสถานะ credential
 - **Gmail forwarding confirmation:** ระบบกดลิงก์ยืนยันของ Gmail ให้เอง — sweep ทุกนาทีเปิด mailbox เฉพาะ BU ที่เพิ่งบันทึกค่าตั้งภายใน 24 ชั่วโมง (#46)
-- **Retention:** แถวของ ledger ถูกล้างข้อมูลส่วนบุคคลและลบตามอายุ (§6.4)
+- **Retention:** แถวของ ledger ถูกล้างข้อมูลส่วนบุคคลและลบตามอายุ (§6.3)
 
 ## 2.2 Out-of-Scope (สิ่งที่อยู่นอกเหนือขอบเขต)
 
@@ -214,14 +215,10 @@ rule อื่นจะอ้างไฟล์ทั้งสองแบบข
 | `review_payload` | มีค่าเฉพาะตอน `pending_review` — ล้างทุกครั้งที่จบสถานะ |
 | `posting_started_at` | claim ของ approve/reject (FRD-12) |
 | `reviewed_by` / `reviewed_by_name` / `reviewed_at` | ผู้อนุมัติหรือปฏิเสธ |
-| `dismissed_at` | อ่านอย่างเดียว ใช้หยุดนับแถวเก่าเป็นแถวผิดปกติ |
+| `dismissed_at` | ไม่มีผู้อ่านหรือผู้เขียนแล้วตั้งแต่ FRD-12 v1.1 — เก็บไว้เป็นประวัติ |
 | `auth_verdict` (ใหม่ v4.0) | ผลตรวจผู้ส่งจาก MX ของเราเอง เช่น `dmarc=pass dkim=pass` — **วัดผลอย่างเดียว** ยังไม่มีด่านใดอ่าน |
 
-## 6.3 email_queue_seen
-
-หนึ่งแถวต่อ BU เก็บจำนวนแถวผิดปกติที่ BU เห็นแล้วต่อ chip — ดู FRD-12
-
-## 6.4 Retention (`fn_purge_email_documents`, ทุกวัน 03:50 UTC)
+## 6.3 Retention (`fn_purge_email_documents`, ทุกวัน 03:50 UTC)
 
 | สถานะ | ผล |
 |---|---|
@@ -548,7 +545,7 @@ stateDiagram-v2
 ## 10.4 Data Minimization & Retention
 
 - ไม่เก็บเนื้อไฟล์แนบ ไม่เก็บ message body ไม่เก็บ line item หลังจบสถานะ — `review_payload` เป็นข้อยกเว้นชั่วคราวระหว่างรอคน
-- Retention ตาม §6.4 (PDPA: มีวันสิ้นสุดของข้อมูลผู้ส่ง ชื่อไฟล์ และชื่อผู้ตรวจ) — ledger นี้เป็นข้อยกเว้นของ "ไม่ hard-delete" เพราะ Carmen เป็นระบบหลักของ JV
+- Retention ตาม §6.3 (PDPA: มีวันสิ้นสุดของข้อมูลผู้ส่ง ชื่อไฟล์ และชื่อผู้ตรวจ) — ledger นี้เป็นข้อยกเว้นของ "ไม่ hard-delete" เพราะ Carmen เป็นระบบหลักของ JV
 
 # 11. Developer Implementation Checklist & Acceptance Criteria
 
