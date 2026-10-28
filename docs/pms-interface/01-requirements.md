@@ -65,10 +65,14 @@ nobody.
 
 **Review**
 - **FR-9** A parked day is one row in `#/CreditCardOCR`, and its review is at
-  `#/CreditCardOCR/review?pms=<id>`. The review lists the new rows with the AI's pick, its
-  confidence and its reason. The rows Carmen already maps are folded underneath.
-- **FR-10** **Every AI pick needs a person before Approve**: a tick on *Checked*, or a
-  different account. An AI account goes into Carmen's table for every later day.
+  `#/CreditCardOCR/review?pms=<id>`. The review is **one table laid out as Carmen's mapping
+  screen**: Code, Description, DeptCode, AccCode, AccDesc. The new rows come first, with the
+  AI's pick tagged *AI*; the rows Carmen already maps follow, read-only, one per key. No
+  amounts: nothing on this screen can change them.
+- **FR-10** **Approve is the person's yes to the AI's picks** (decision-log #47): it opens as
+  soon as every new row has a department and an account, with no separate tick. An AI
+  account goes into Carmen's table for every later day, so it stays tagged *AI* until a
+  person picks another, and Undo puts the AI's back.
 - **FR-11** Approve reads Carmen's table fresh and checks each pick against the chart: the
   department exists, the account exists, and the department allows the account. It then
   writes the table back **whole** with the new rows, and asks the engine to post. When

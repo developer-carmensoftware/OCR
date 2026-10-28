@@ -1392,3 +1392,34 @@ asking every future writer to stay clear of it.
 **Unchanged.** The 24-hour window, the fallback (a confirmation outside it is picked up by the
 10-minute document poll), and `email-confirm`'s 5 s pg_net timeout. With the gate fixed, the
 sweep is one SELECT again, which is what that timeout assumed.
+
+## 47. The PMS review is Carmen's mapping table, and Approve is the yes (2026-10-28)
+
+**Decided:** 2026-10-28, with the user, in a grilling session. It replaces FR-10's tick
+("every AI pick needs a person before Approve: a tick on *Checked*, or a different account").
+#43 is unchanged.
+
+**What the review was.** Two tables: the new rows (Amount, department and account pickers, an
+AI tag, the AI's reason, an amber *Unsure* tag, a *Checked* tick, Undo), and the rows Carmen
+already maps, folded underneath, one per PMS row with its Amount. Approve waited for a tick on
+every AI account.
+
+**Decision.**
+- **One table, laid out as Carmen's own mapping screen:** Code, Description, DeptCode,
+  AccCode, AccDesc. The new rows come first, with pickers, so a long day never buries them;
+  Carmen's rows follow as text. Carmen's screen edits those, not this one (#43).
+- **One row per key.** With no amount on screen, a key the PMS wrote twice read the same twice.
+- **No amounts.** The reviewer decides accounts. Amounts, sides and totals are Carmen's
+  engine's, and nothing here could change them.
+- **No tick.** Approve opens once every new row has a department and an account. Pressing it
+  over rows tagged *AI* is the person's yes. The tick asked for the same yes twice.
+- **Kept:** the AI tag (until a person picks another account) and Undo. **Dropped:** the AI's
+  reason and *Unsure*.
+
+**Accepted risk.** A low-confidence AI account can now go into Carmen's table with one press,
+for every later day. The tag is the only warning left. A wrong mapping is fixed on Carmen's
+own mapping screen, as any other mapping is.
+
+**Unchanged.** The API still sends each row's `amount` and the AI's `confidence` and `why`
+(the screen reads none of them), and `approve()` still checks every pick against Carmen's
+chart before it writes.

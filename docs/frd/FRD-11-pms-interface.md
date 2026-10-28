@@ -1,12 +1,12 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-11 — PMS Interface Automation
-output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.0.docx
-Document Version: Version 1.0 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.1.docx
+Document Version: Version 1.1 (As-Built Developer & Test Spec)
 Module ID: `pms_interface` (ใช้บันทึก LLM usage เท่านั้น ไม่คิดเครดิต)
 Status: Built, merged to main (PR #284, #286, #287, #292, #293, #301–#303) — รอ Carmen เปิด setting GET ใต้ `/api/interface` (CA-116) ก่อนหน้านั้นทุกวันจะหยุดที่ `carmen_config_unreadable`
-Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026)
-Date: 27 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ b2e70358 (28/10/2026) + branch feat/pms-review-one-table
+Date: 28 October 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-10-07, interfacePostGL/REVENUE
 ---
@@ -18,6 +18,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
 | 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว (path B ตาม decision-log #43 และหน้าตั้งค่าของ Carmen ตาม #44, #45) ครอบคลุม hook, การอ่านวันจาก Data Bank, AI แนะนำบัญชีเฉพาะแถวใหม่, การอนุมัติที่เขียน mapping table ของ Carmen แล้วให้ engine ของ Carmen post และสิ่งที่ยังรอจาก Carmen | Reviewed |
+| 1.1 | 28/10/2026 | Dev Team | Dialog ตรวจเหลือตารางเดียวแบบหน้า mapping ของ Carmen (Code, Description, DeptCode, AccCode, AccDesc): แถวใหม่อยู่บน แถวที่ map แล้วอ่านอย่างเดียว ไม่แสดงยอด ตัดช่องติ๊ก Checked, ป้าย Unsure และเหตุผลของ AI — กด Approve ได้เมื่อแถวใหม่ทุกแถวมีบัญชี (decision-log #47) | |
 
 <!-- pagebreak -->
 
@@ -31,7 +32,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 
 - **ไม่มีกติกาบัญชีของเราเอง** (decision-log #43) — Dr/Cr, ยอดรวม, บรรทัดบัญชีพัก และ prefix ของ JV มาจาก PMS setting ของ Carmen ทั้งหมด ระบบอ่าน setting เพียงเพื่อหาแถวและ key ของ mapping
 - **AI ทำงานเฉพาะแถวใหม่** — แถวที่ Carmen map ไว้แล้วไม่ผ่าน AI ไม่ผ่านคน
-- **ทุกคำแนะนำของ AI ต้องมีคนยืนยันก่อน Approve** — ติ๊ก Checked หรือเปลี่ยนบัญชี เพราะบัญชีนั้นจะไปอยู่ในตารางของ Carmen ถาวร
+- **การกด Approve คือการยืนยันคำแนะนำของ AI** (decision-log #47) — ไม่มีช่องติ๊กแยก บัญชีที่ AI เลือกมีป้าย **AI** จนกว่าคนจะเปลี่ยน เพราะบัญชีนั้นจะไปอยู่ในตารางของ Carmen ถาวร
 - **ไม่เขียนตารางของ Carmen แบบไม่ดู** — PUT ของ Carmen แทนที่ทั้งตาราง ระบบอ่านตารางสดทุกครั้งก่อนเขียน
 - **ไม่คิดเครดิต** — BU จ่ายค่า interface แยกต่างหาก
 
@@ -127,11 +128,12 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 | ส่วน | เนื้อหา |
 |---|---|
 | หมายเหตุด้านบน | ชื่อ PMS setting ของ Carmen ที่จะ post วันนั้น (เช่น `Comanche.PMS`, section REVENUE) |
-| Accounts | **เฉพาะแถวใหม่**: รหัส · คำอธิบาย, ยอดตามที่ PMS เขียน, ช่องเลือกแผนกและบัญชี, ป้าย **AI**, ป้าย **Unsure** สีเหลืองเมื่อ AI มั่นใจต่ำ, เหตุผลของ AI, ช่องติ๊ก **Checked** และ Undo |
-| Mapped in Carmen (N) | แถวที่ Carmen map ไว้แล้ว พับไว้ด้านล่าง |
-| Footer | เหตุผลเดียวที่ทำให้ยังกด Approve ไม่ได้ ("Pick an account for every new row." / "Check each account the AI picked (N left).") หรือสรุปว่า Approve จะเขียนอะไร |
+| Accounts | **ตารางเดียวแบบหน้า mapping ของ Carmen**: Code, Description, DeptCode, AccCode, AccDesc หัวตารางบอกจำนวนแถว (`N rows`) |
+| แถวใหม่ (อยู่บนสุด) | ช่องเลือกแผนกและบัญชี, AccDesc แสดงชื่อบัญชีที่เลือก ตามด้วยป้าย **AI** (ค่าของ AI) หรือปุ่ม Undo (คนเปลี่ยนแล้ว) |
+| แถวที่ Carmen map แล้ว | ข้อความอ่านอย่างเดียว หนึ่งแถวต่อ key เรียงตามลำดับของ PMS — แก้ที่หน้าจอของ Carmen |
+| Footer | เหตุผลเดียวที่ทำให้ยังกด Approve ไม่ได้ ("Pick an account for every new row.") หรือสรุปว่า Approve จะเขียนอะไร |
 | ปุ่ม | Approve (หรือ Ctrl/⌘+Enter), Reject (เหตุผลไม่บังคับ) — ถ้าออกโดยมีการแก้ค้าง ถามก่อน |
-| สิ่งที่ไม่แสดง | ยอดรวม, Dr/Cr, บรรทัด JV — เป็นของ engine ของ Carmen |
+| สิ่งที่ไม่แสดง | ยอดของแต่ละแถว, ยอดรวม, Dr/Cr, บรรทัด JV — เป็นของ engine ของ Carmen และแก้จากหน้านี้ไม่ได้ |
 
 ## 4.4 ค่าที่ Carmen PMS setting screen ตั้งได้
 
@@ -150,7 +152,7 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 | Generate key (หน้าจอ Carmen) | API | `POST /api/v1/carmen/pms/keys` — พิสูจน์ token กับ Carmen ของ BU, สร้าง tenant ถ้ายังไม่มี (พร้อมเครดิตทดลอง), เก็บ credential ตาม #45, ปลุกวันที่รอ, ออก key ใหม่และเพิกถอน key เดิม |
 | Auto-post (หน้าจอ Carmen) | API | `PUT /api/v1/carmen/pms/settings` — แทนที่ค่า auto-post ของ PMS นั้น และทำเรื่อง credential เหมือนข้างบน |
 | Review (แถวคิว) | Open dialog | `GET /api/v1/pms/days/{id}` |
-| Checked / เปลี่ยนบัญชี | Edit | ทุกคำแนะนำของ AI ต้องถูกติ๊กหรือเปลี่ยนก่อน Approve จะเปิด |
+| เปลี่ยนบัญชี / Undo | Edit | เปลี่ยนแผนกหรือบัญชีของแถวใหม่ (ป้าย AI หายไป) หรือ Undo กลับไปค่าของ AI — Approve เปิดเมื่อแถวใหม่ทุกแถวมีแผนกและบัญชี |
 | Approve | Form Submit | `POST /api/v1/pms/days/{id}/approve` `{mappings}` → claim → อ่านตารางสด → แถวที่ Carmen map ไปแล้วระหว่างนั้นใช้บัญชีของ Carmen → ทุกแถวที่เหลือต้องมีแผนกและบัญชี → ตรวจกับผังบัญชี (แผนกมีจริง, บัญชีมีจริง, แผนกอนุญาตบัญชีนั้น) → PUT ทั้งตาราง → `interfacePostGL/REVENUE` → `posted` แล้ว recheck วันอื่นของ BU |
 | Reject | Form Submit | `POST /api/v1/pms/days/{id}/reject` → `rejected`, reason `rejected_by_reviewer`, ล้าง payload |
 | Revoke (admin) | Confirm | `#/admin/api-keys` — เพิกถอนทันที พร้อมเหตุผล |
@@ -416,7 +418,7 @@ sequenceDiagram
 ## 8.7 User Operational Workflow
 
 - **ตั้งค่าครั้งแรก (ในหน้าจอ Carmen):** เปิด PMS setting ของ PMS นั้น → Generate key (Carmen เก็บ key และส่งไปกับทุก hook) → เลือก auto-post (แนะนำให้ปิดไว้ในช่วงแรก)
-- **ทุกวัน:** หลัง night audit วันนั้นเข้าคิวเอง ถ้ามีแถวใหม่ แถวในคิวบอกรหัสที่ AI แนะนำ → กด Review → ตรวจบัญชีทีละแถว ติ๊ก Checked หรือเปลี่ยน → Approve → Carmen post
+- **ทุกวัน:** หลัง night audit วันนั้นเข้าคิวเอง ถ้ามีแถวใหม่ แถวในคิวบอกรหัสที่ AI แนะนำ → กด Review → ตรวจบัญชีของแถวใหม่ (อยู่บนสุด) เปลี่ยนถ้าไม่ถูก → Approve → Carmen post
 - **หลังสัปดาห์แรก:** รหัสส่วนใหญ่อยู่ในตารางของ Carmen แล้ว ถ้าเปิด auto-post วันที่ไม่มีแถวใหม่จะ post เองโดยไม่มีใครแตะ
 - **แถวหยุดเพราะการตั้งค่า:** แก้บนหน้าจอของ Carmen (บันทึก PMS setting เพื่อเก็บ credential, เปิดสิทธิ์ Data Bank, ตั้ง section REVENUE) แล้วระบบจะลองใหม่เอง
 
@@ -522,7 +524,7 @@ stateDiagram-v2
 
 - hook ของวันใหม่ได้ 202 ภายในเวลาสั้น และวันเดิมได้ 200 `duplicate: true` โดยไม่สร้างแถวใหม่
 - วันที่มีแถวใหม่ไปอยู่ที่คิวเสมอ ไม่ว่าจะเปิด auto-post หรือไม่ และแถวในคิวบอกรหัสที่ AI แนะนำ
-- กด Approve ไม่ได้จนกว่าทุกคำแนะนำของ AI จะถูกติ๊กหรือเปลี่ยน
+- กด Approve ไม่ได้จนกว่าแถวใหม่ทุกแถวจะมีแผนกและบัญชี ถ้า AI เลือกให้ครบแล้วกดได้ทันที
 - หลัง Approve ตารางของ Carmen มีแถวเดิมทั้งหมดบวกแถวใหม่ (ไม่มีแถวหาย) และ engine post วันนั้น
 - รหัสที่อนุมัติแล้วไม่เป็นแถวใหม่ในวันอื่นที่รออยู่ (recheck)
 - ระบบไม่ส่ง Dr/Cr หรือยอดรวมของตัวเองไปที่ Carmen
@@ -606,8 +608,8 @@ POST /api/v1/pms/days/8c2e…/approve
 
 | Test Case ID | Scenario & Pre-conditions | Test Steps | Expected Result | Pass Criteria |
 |---|---|---|---|---|
-| TC-PMS-20 | ยังไม่ติ๊กทุกคำแนะนำ | เปิด dialog | Approve ถูกปิด "Check each account the AI picked (N left)" | — |
-| TC-PMS-21 | Approve ปกติ | ติ๊กทุกแถว → Approve | PUT ตาราง (แถวเดิมครบ + แถวใหม่) → post | `posted` และตารางไม่มีแถวหาย |
+| TC-PMS-20 | แถวใหม่ที่ AI แนะนำไม่ได้ | เปิด dialog | Approve ถูกปิด "Pick an account for every new row." | เลือกบัญชีแล้ว Approve เปิด |
+| TC-PMS-21 | Approve ปกติ | AI เลือกครบ → Approve (ไม่ต้องแตะอะไร) | PUT ตาราง (แถวเดิมครบ + แถวใหม่) → post | `posted` และตารางไม่มีแถวหาย |
 | TC-PMS-22 | Carmen map รหัสเดียวกันระหว่างตรวจ | map ในหน้าจอ Carmen แล้ว Approve | ใช้บัญชีของ Carmen | — |
 | TC-PMS-23 | บัญชีที่แผนกไม่อนุญาต | เลือกคู่ที่ไม่อนุญาต → Approve | 400 ระบุแถว | ไม่ PUT |
 | TC-PMS-24 | PUT สำเร็จ post ล้มเหลว | จำลอง engine ล่ม | 503 วันยังรอ | Approve ซ้ำได้ `posted` |
