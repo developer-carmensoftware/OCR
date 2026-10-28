@@ -1768,18 +1768,20 @@
   color: var(--text-2);
 }
 
+/* Five columns in a 64rem dialog. DeptCode and AccCode only ever hold a short code in a
+   picker (its list keeps its own 16rem minimum); Code holds Comanche keys as long as
+   "Deposit Ledger" and wraps a longer one rather than cutting it. Description keeps what
+   the fixed ones leave (about 24rem). */
 .pms-w-dept {
-  width: 8rem;
+  width: 5.5rem;
 }
 
 .pms-w-acc {
-  width: 12rem;
+  width: 7rem;
 }
 
-/* Five columns in a 64rem dialog: a code is a few characters, and Description keeps
-   what the fixed ones leave (about 21rem). */
 .pms-w-code {
-  width: 5rem;
+  width: 9rem;
 }
 
 .pms-w-name {
@@ -1798,12 +1800,6 @@
 
 .pms-tag-ai {
   cursor: default;
-}
-
-.pms-nowrap {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .rd-blocked--note {

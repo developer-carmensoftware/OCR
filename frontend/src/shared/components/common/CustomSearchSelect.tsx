@@ -31,14 +31,18 @@ interface Props {
  *  Fixed, because the list is portaled to <body> — so it is re-placed as the page scrolls. */
 function panelStyle(rect: DOMRect): CSSProperties {
   const PANEL_H = 240
+  // 16rem: under a narrow field (the PMS review's AccCode) an option's code and name still
+  // fit one line. A list widened past its field moves left to stay on screen.
+  const PANEL_MIN_W = 256
+  const width = Math.max(rect.width, PANEL_MIN_W)
   const fitsBelow = window.innerHeight - rect.bottom >= PANEL_H
   const fitsAbove = rect.top >= PANEL_H
   const openAbove = !fitsBelow && fitsAbove
   return {
     position: 'fixed',
     ...(openAbove ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
-    left: rect.left,
-    width: rect.width,
+    left: Math.min(rect.left, window.innerWidth - width - 8),
+    width,
     maxHeight: '240px',
     overflowY: 'auto',
     background: 'var(--gray-50)',

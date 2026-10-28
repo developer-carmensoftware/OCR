@@ -115,7 +115,7 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
   // title, and the row's title is its description.
   const keyCells = (values: Record<string, string>) =>
     (day?.key_columns ?? []).map((col, c) => (
-      <td key={col} className={c === 0 ? 'text-mono pms-nowrap' : 'jv-desc'} data-label={col}>
+      <td key={col} className={c === 0 ? 'text-mono' : 'jv-desc'} data-label={col}>
         {c === 0 ? values[col] : <span className="jv-desc-in">{values[col]}</span>}
       </td>
     ))
