@@ -60,8 +60,7 @@ stuck mid-flight is still findable. An unknown value falls back to `review`.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/v1/credit-card/activity?filter=&limit=&offset=` | `ActivityPage` — email documents **and** manual scans, newest first, plus `counts`, `attention` and `unseen` per chip |
-| POST | `/api/v1/credit-card/activity/seen` | `{filter}` — somebody in this BU opened that chip, put its dot out |
+| GET | `/api/v1/credit-card/activity?filter=&limit=&offset=` | `ActivityPage` — email documents **and** manual scans, newest first, plus `counts` per filter |
 | POST | `/api/v1/credit-card/activity/{id}/input-tax` | File the ACTX a posted manual scan still owes (`input_tax_owed`), from the sums stamped with its JV. 204 / 404 / 409 nothing left to file / 400 with the reason |
 | GET | `/api/v1/credit-card/activity/{id}/input-tax` | `{owed}`: whether that card still owes its ACTX, by the same rule as `input_tax_owed`. 404 for a deleted or another BU's card. The manual wizard asks before it offers a posted draft back |
 
@@ -72,38 +71,40 @@ NULL` and no `email_documents` row pointing at its task — email ingest writes 
 without that anti-join one forwarded statement is listed under each source.
 
 **`filter` is `all` · `today` · `review` · `success` · `unposted`**; unknown falls back to
-`all`. All five have a chip on screen. They are **not** a grouping of statuses —
+`all`. Two are chips on screen — `review` and `all` — and the All chip's dropdown narrows
+the log to `today`, `success` or `unposted` (§24). They are **not** a grouping of statuses —
 `_chip_expr()` in `services/credit_card/activity.py` is the single definition, as a SQL `CASE` the
 list filters on and the counts group by:
 
-| chip | what is in it |
+| filter | what is in it |
 |---|---|
-| `today` | every row since midnight ICT, whatever became of it. Cuts across the others, which is why it is left out of `counts["all"]`. Carries a count, never a dot |
-| `review` | a document waiting for somebody's decision: `pending_review`, and nothing else (§18 #82) |
+| `today` | every row since midnight ICT, whatever became of it. Cuts across the others, which is why it is left out of `counts["all"]` |
+| `review` | a document waiting for somebody's decision: `pending_review`, and nothing else (§18 #82). The only chip with a number on screen |
 | `success` | `posted`. Manual scans land here too — they are only listed once posted |
 | `unposted` | **it did not become a JV**: rejections, charged failures, a `received` row the pipeline never finished, and the pre-charge refusals a person can clear from settings — all of them as ordinary rows, one per attachment |
-| `all` | no predicate at all — the module's log, and the only view holding the chipless bucket below. No count, no dot |
+| `all` | no predicate at all — the module's log, and the only view holding the bucket below |
 
-Plus one **bucket with no chip**, and what fills it is *volume* rather than the charge
-(§18 #83). It cannot be passed as `filter`, appears in `counts` and `attention`, never in
-`unseen`, and is listed in place under `today` and `all`:
+Plus one **bucket with no filter of its own**, and what fills it is *volume* rather than the
+charge (§18 #83). It cannot be passed as `filter`, appears in `counts`, and is listed in
+place under `today` and `all`:
 
 | bucket | what is in it |
 |---|---|
-| `noise` | `status = 'skipped'` **and** `reason_code IN ('no_rule_match', 'unreadable_document')` — the two that fire per *attachment* on legitimate mail (97 of one dev BU's 140 rows). `attention` is always `0`. The status test is load-bearing: the same code on a `failed` row is a crash inside the refund boundary |
+| `noise` | `status = 'skipped'` **and** `reason_code = 'unreadable_document'` — fires per *attachment* on legitimate mail. The status test is load-bearing: the same code on a `failed` row is a crash inside the refund boundary |
 
 The **four ledger buckets** partition the ledger — exactly one each — so `counts["all"]` is a
 true total rather than a sum of overlapping piles.
 
-**No dismissal** (§18 #86). `dismissed_at` survives as a column that `_attention` reads —
-it is what keeps the 2026-09-03 migration's back-dated pile from lighting the dot — but
-nothing writes it any more: both `POST /activity/{id}/dismiss` and the per-cause
-`POST /activity/dismiss` are gone. A row under `Not posted` accumulates there like every
-failure and rejection beside it.
+**No dot** (§24). `attention`, `unseen` and `POST /activity/seen` are gone; `email_queue_seen`
+has no reader and is dropped in a follow-up migration once this code is deployed.
+
+**No dismissal** (§18 #86). `dismissed_at` survives as a column nothing reads or writes any
+more: both `POST /activity/{id}/dismiss` and the per-cause `POST /activity/dismiss` are gone.
+A row under `Not posted` accumulates there like every failure and rejection beside it.
 
 See [`07-human-in-the-loop.md §9`](07-human-in-the-loop.md) for the table, §12 for the chips
 and the dot, §13 for the re-key on who can act, §14 for the charge split and `all`'s return,
-§18 for the noise arm and the narrowed `review`.
+§18 for the noise arm and the narrowed `review`, §24 for the two chips.
 
 **`auto_post` is a field of `PUT /api/v1/carmen/settings` and has no route of its own**
 (§21 #98, 2026-09-08). It used to have one, on the reasoning that the settings endpoint is a

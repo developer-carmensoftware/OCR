@@ -1692,3 +1692,26 @@ A BU that has never scanned sees "No scans yet" and an upload button, not an ema
 Every manual scan now appears as soon as it is read. It sits under Not posted, with the
 scanner's name, until it posts, and then under Posted. The Not posted chip's count grows
 with abandoned scans. Its dot does not light for them.
+
+## §24 — Two chips: the work and the log (2026-10-28)
+
+The strip had five chips (Today · Review · Posted · Not posted · All), three of them able to
+carry an amber dot. The user wanted the page to point at what somebody here has to do and
+nothing else. A grilling session (2026-10-28) settled the shape.
+
+### The decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 111 | **Two chips, Review and All.** Today, Posted and Not posted become the All chip's dropdown (`InlineSelect`, shown only on All): Everything · Today · Posted · Not posted, one at a time. The API's `filter` values are unchanged, so a stale `?filter=success` still lands, now on All narrowed to Posted. | Review is the work; everything else is the log. Every view the old chips gave is still one click further, and no backend filter had to change. |
+| 112 | **The page opens on Review, and falls through to All when Review is empty.** The All dropdown starts on Everything. Today is no longer the landing chip. | A BU that scans by hand or posts without review has nothing under Review ever. Landing it on "Nothing needs review" every morning is a page with nothing to read. |
+| 113 | **No dot on any chip.** `attention`, `unseen`, `_attention`, `_anomalies`, `ATTENTION_REASONS`, `STUCK_AFTER`, `markChipSeen` and `POST /activity/seen` are deleted. | The Review count already says there is work, and the bell rings for `failed`, `wrong_pdf_password` and `unsupported_attachment`. |
+| 114 | **The bell is not widened to cover the gap.** `sender_not_allowed`, `ingest_paused`, a stuck `received` row, a JV whose input tax failed, and a failed PMS day now surface only under All → Not posted (and to support on `#/admin/email`). | Both reason codes were taken off the bell on purpose (`NOTIFIABLE_SKIPS` in `ledger.py`): anyone who knows the +tag address can make `sender_not_allowed` fire, and `ingest_paused` describes something the BU did itself. Accepted, knowing it is the shape of the 2026-08-28 incident. |
+| 115 | **`email_queue_seen` is dropped in a follow-up PR**, after this code is deployed. `email_documents.dismissed_at` stays: it is history, and nothing here needs it gone. | Deploys are by hand and `db push` has been forgotten before. A migration that ran before this code would 500 every `GET /activity` on the old code's read of the table. |
+
+### What a BU will notice
+
+Two chips instead of five, and no amber dots. A BU with documents waiting lands on them. A BU
+with none lands on its log, newest first. Today, Posted and Not posted are in the dropdown
+beside the refresh button, only while on All. The bell's "N files blocked" rows open All
+narrowed to Not posted.
