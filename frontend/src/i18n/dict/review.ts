@@ -148,6 +148,10 @@ export const en = {
   // forwarded or scanned by hand — which makes it the only place the rows the BU's own
   // filename rules threw out can be found, and the answer to "did my statement arrive?".
   'review.filterAll': 'All',
+  // The same `all`, as the first option of the All chip's dropdown — "All" beside "All"
+  // would say nothing about what is being narrowed.
+  'review.filterEverything': 'Everything',
+  'review.scopeLabel': 'Show',
   'review.colDocument': 'Document',
   'review.colReceived': 'Received',
   'review.colJv': 'JV no.',
@@ -265,7 +269,6 @@ export const en = {
   // hit, so nothing ever retries one of these — an amber pill alone reads as "in progress".
   'review.rcStuckHint':
     'This one will not be picked up again. Forward it again if it never reached Carmen.',
-  'review.chipAttention': '{count} need attention',
   'review.secTax': 'Input tax',
   'review.secTaxLabel': 'Post the input tax record',
   'review.approve': 'Approve and post',
@@ -391,6 +394,8 @@ export const th: Record<keyof typeof en, string> = {
   'review.filterSuccess': 'ลงบัญชีแล้ว',
   'review.filterUnposted': 'ไม่ได้ลงบัญชี',
   'review.filterAll': 'ทั้งหมด',
+  'review.filterEverything': 'ทุกสถานะ',
+  'review.scopeLabel': 'แสดง',
   'review.colDocument': 'Document',
   'review.colReceived': 'Received',
   'review.colJv': 'JV no.',
@@ -449,7 +454,6 @@ export const th: Record<keyof typeof en, string> = {
   'review.rcUnknown': 'ไม่มีการบันทึกเหตุผล',
   'review.rcStuck': 'เริ่มอ่านแล้วแต่หยุดกลางทาง',
   'review.rcStuckHint': 'รายการนี้จะไม่ถูกหยิบไปทำใหม่ ถ้ายังไม่ถึง Carmen ให้ส่งเมลเข้ามาอีกครั้ง',
-  'review.chipAttention': 'มี {count} รายการผิดปกติ',
   'review.secTax': 'Input tax',
   'review.secTaxLabel': 'บันทึกรายการภาษีซื้อ',
   'review.approve': 'อนุมัติและโพสต์',

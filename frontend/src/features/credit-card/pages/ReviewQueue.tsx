@@ -14,27 +14,35 @@ import {
 import AppHeader from '@/shared/components/common/AppHeader'
 import UsageIndicator from '@/shared/components/common/UsageIndicator'
 import Pager from '@/shared/components/common/Pager'
+import InlineSelect from '@/shared/components/common/InlineSelect'
 import QueueRow from '@/features/credit-card/components/QueueRow'
 import ReviewDocument from './ReviewDocument'
 import PmsReviewDocument from './PmsReviewDocument'
 import { useReviewQueue } from '@/features/credit-card/hooks/useReviewQueue'
 import { prefetchGlMasters } from '@/features/credit-card/hooks/mapping/useGlMasters'
-import { ACTIVITY_FILTERS, type ActivityFilter } from '@/features/credit-card/api/emailReview'
+import {
+  ALL_SCOPES,
+  QUEUE_CHIPS,
+  type ActivityFilter,
+} from '@/features/credit-card/api/emailReview'
 import { useRowsPerPage } from '@/shared/hooks/useRowsPerPage'
 import { useT } from '@/i18n/LanguageContext'
 import type { TKey } from '@/i18n/dict'
 
-// Five chips, and only three of them are about state. `today` cuts across those three on
-// time; `all` selects on nothing and is the module's log — the one view that shows the
-// attachments nobody was charged for, which `Posted` and `Not posted` no longer claim.
-// Neither of the two carries a dot: a chip that is a view over the others does not get to
-// shout on their behalf.
+// Two chips (§24): the work, and the log. Today, Posted and Not posted were chips of their
+// own until the page was told to point at what somebody here has to do and nothing else;
+// they are now what the All chip's dropdown narrows the log to. `all` reads "All" on the
+// chip and "Everything" in the dropdown, where "All" beside "All" would say nothing.
 const FILTER_LABEL: Record<ActivityFilter, TKey> = {
   today: 'review.filterToday',
   review: 'review.filterReview',
   success: 'review.filterSuccess',
   unposted: 'review.filterUnposted',
   all: 'review.filterAll',
+}
+const SCOPE_LABEL: Record<(typeof ALL_SCOPES)[number], TKey> = {
+  ...FILTER_LABEL,
+  all: 'review.filterEverything',
 }
 
 // What an empty chip says, per chip — because the same sentence cannot answer five different
@@ -120,14 +128,16 @@ function docIdFromHash(param: 'id' | 'pms' = 'id'): string | null {
  *  dialog (CA-119). */
 const pmsIdFromHash = () => docIdFromHash('pms')
 
-/** The chip the URL asked to open on, if any — how the bell's blocked/failed rows land
- *  on `unposted` instead of wherever `useReviewQueue`'s own fall-through would pick.
- *  Read once at mount, same as `docIdFromHash`; the page does not track it afterwards,
- *  so switching chips by hand does not fight this. */
+/** The filter the URL asked to open on, if any — how the bell's blocked/failed rows land
+ *  on All filtered to `unposted` instead of wherever `useReviewQueue`'s own fall-through
+ *  would pick. Read once at mount, same as `docIdFromHash`; the page does not track it
+ *  afterwards, so switching chips by hand does not fight this. */
 function filterFromHash(): ActivityFilter | null {
   const query = window.location.hash.split('?')[1]
   const f = query ? new URLSearchParams(query).get('filter') : null
-  return (ACTIVITY_FILTERS as string[]).includes(f || '') ? (f as ActivityFilter) : null
+  return ([...QUEUE_CHIPS, ...ALL_SCOPES] as string[]).includes(f || '')
+    ? (f as ActivityFilter)
+    : null
 }
 
 /** The skeleton is the real row with its content hidden, so the list does not jolt when
@@ -207,20 +217,8 @@ export default function ReviewQueue() {
   // This one starts at 10 rather than the app-wide 15: the queue is a landing page, and a
   // reviewer should see the whole first page without scrolling. A stored choice still wins.
   const [limit, setLimit] = useRowsPerPage(10)
-  const {
-    filter,
-    setFilter,
-    rows,
-    total,
-    counts,
-    attention,
-    unseen,
-    offset,
-    setOffset,
-    loading,
-    error,
-    reload,
-  } = useReviewQueue(limit, filterFromHash())
+  const { filter, setFilter, rows, total, counts, offset, setOffset, loading, error, reload } =
+    useReviewQueue(limit, filterFromHash())
   const [reloading, setReloading] = useState(false)
   const [openId, setOpenId] = useState(() => docIdFromHash())
   const [openPms, setOpenPms] = useState(pmsIdFromHash)
@@ -271,6 +269,8 @@ export default function ReviewQueue() {
   const hasWork = rows.length > 0
   // Nothing at all, from either source — not merely an empty chip.
   const nothingEver = (counts.all ?? 0) === 0
+  // Every filter that is not the work is a view of the log, so it lights the All chip.
+  const chip = filter === 'review' ? 'review' : 'all'
 
   return (
     <div className="app-container">
@@ -287,66 +287,51 @@ export default function ReviewQueue() {
           the Needs review chip prints two rows below it, and had nothing true to say to a
           BU that posts without review — so it is gone and the strip moved up into its row.
 
-          Hidden until the BU has a single row, from either source: five chips above "no
-          scans yet" would be scaffolding, not navigation. */}
+          Hidden until the BU has a single row, from either source: chips above "no scans
+          yet" would be scaffolding, not navigation.
+
+          No dot on either chip (§24). It used to point at anomalies nobody had looked at;
+          the Review count already says there is work, and the bell rings for what it rings
+          for. What neither covers — a sender the BU never allowed, a paused rule — is under
+          All → Not posted, by decision. */}
       <div className="rq-bar">
         {!nothingEver && (
           <div className="rq-tabs" role="tablist" aria-label={t('review.tabsLabel')}>
-            {ACTIVITY_FILTERS.map(id => {
-              // Whether this chip is holding something nobody here has looked at, and how
-              // big the pile under it is. A cause with nothing pointing at it is a cause
-              // nobody finds — the shape of the 2026-08-28 `sender_not_allowed` incident,
-              // whose whole family is now in `review` until somebody puts it away.
-              //
-              // Two values because they answer different questions. Nothing retries a
-              // failure, so a dot drawn from the count alone would be lit for good;
-              // opening the chip is what puts it out, for the whole BU.
-              //
-              // `today` and `all` get no entry from the server and so never light. Every
-              // row under them is counted under a status chip as well, so anything wrong
-              // with one is already being pointed at.
-              const owed = attention[id] ?? 0
-              const isNew = !!unseen[id]
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={filter === id}
-                  className={`rq-tab${filter === id ? ' rq-tab--active' : ''}`}
-                  onClick={() => setFilter(id)}
-                >
-                  {t(FILTER_LABEL[id])}
-                  {/* Never colour alone (WCAG 1.4.1) — the dot is decorative and the
-                    sentence beside it is what a screen reader reads out. */}
-                  {isNew && (
-                    <>
-                      <span className="rq-tab-dot" aria-hidden="true" />
-                      <span className="sr-only">
-                        {t('review.chipAttention', { count: String(owed) })}
-                      </span>
-                    </>
-                  )}
-                  {/* Only the two chips whose number can go down carry one, and zero is
-                    shown on both — the strip never reflows, because the other three never
-                    have one to lose.
-
-                    `Review` is bounded by construction: backpressure hands mail back unread
-                    past 50 pending, so it lives in 0–50 and falls as it is worked. `Today`
-                    is bounded by the clock and empties itself every midnight. `Posted`,
-                    `Not posted` and `All` are 0 to infinity and never fall — at four figures
-                    the number is furniture, and it is on screen every day for ever. The size
-                    of the list is in the Pager once the chip is open, which is where it
-                    means something. */}
-                  {(id === 'review' || id === 'today') && (
-                    <span className="rq-tab-count text-mono">{counts[id] ?? 0}</span>
-                  )}
-                </button>
-              )
-            })}
+            {QUEUE_CHIPS.map(id => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={chip === id}
+                className={`rq-tab${chip === id ? ' rq-tab--active' : ''}`}
+                onClick={() => setFilter(id)}
+              >
+                {t(FILTER_LABEL[id])}
+                {/* Only Review carries a number, and zero is shown — the strip never
+                    reflows. It is bounded by construction (backpressure hands mail back
+                    unread past 50 pending) and falls as it is worked. `All` is 0 to
+                    infinity and never falls: at four figures the number is furniture. Its
+                    size is in the Pager, which is where it means something. */}
+                {id === 'review' && (
+                  <span className="rq-tab-count text-mono">{counts.review ?? 0}</span>
+                )}
+              </button>
+            ))}
           </div>
         )}
         <div className="rq-bar-actions">
+          {/* What the log is narrowed to — only on All, so Review has nothing on screen but
+              the work. `InlineSelect` for the same reason the Pager uses it: a native
+              <select> hands its option list to the OS and wears none of the app's tokens. */}
+          {!nothingEver && chip === 'all' && (
+            <InlineSelect
+              className="rq-scope"
+              value={filter}
+              onChange={v => setFilter(v as ActivityFilter)}
+              options={ALL_SCOPES.map(id => ({ value: id, label: t(SCOPE_LABEL[id]) }))}
+              aria-label={t('review.scopeLabel')}
+            />
+          )}
           <button
             type="button"
             className="btn-icon"

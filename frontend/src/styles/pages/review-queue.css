@@ -472,15 +472,23 @@
   color: var(--primary);
 }
 
-/* This chip is holding rows someone here could clear. Amber, and never on its own: the
-   sr-only sentence beside it carries the same fact for anyone who cannot see the dot. */
-.rq-tab-dot {
-  width: 0.4rem;
-  height: 0.4rem;
-  border-radius: var(--radius-pill);
-  background: var(--amber);
-  flex: none;
-  margin-left: -0.15rem;
+/* The All chip's dropdown (`InlineSelect`). Its own trigger is a ghost for table cells;
+   here it sits beside the bar's framed icon buttons, so it wears their frame — same rule
+   the Pager's size control follows (components/pager.css). */
+.rq-scope .isel-trigger {
+  min-height: 36px;
+  padding: 0 0.45rem 0 0.7rem;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--fg);
+}
+
+.rq-scope .isel-trigger:hover,
+.rq-scope .isel-trigger[data-open='true'] {
+  background: var(--muted);
+  border-color: var(--fg);
+  color: var(--fg);
 }
 
 .rq-reason--ok {
