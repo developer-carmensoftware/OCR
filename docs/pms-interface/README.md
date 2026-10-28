@@ -21,8 +21,8 @@ account). The engine refuses a day while any of its rows is missing from that ta
 PMS codes keep appearing. Carmen's own table covered only 1 of 73 dev days in full. The PMS
 interface removes that chore. Carmen sends us a four-field hook naming the day. We read the
 day back and find the rows the table cannot place, and the AI suggests an account for each.
-The day then waits in the AI JV Automation queue until a person ticks or replaces those
-accounts. On Approve, the accounts go into Carmen's table and Carmen's engine posts the day.
+The day then waits in the AI JV Automation queue until a person approves those accounts, or
+replaces them first. On Approve, the accounts go into Carmen's table and Carmen's engine posts the day.
 **We decide no debit, credit or total.** Those are Carmen's per-PMS config (decision-log #43).
 
 ## Where this fits

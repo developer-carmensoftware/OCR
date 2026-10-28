@@ -98,7 +98,8 @@ Things to add to the tickets. Nothing below has been posted yet.
 
   Path B replaces all of these (decision-log #43, Draft PR #292). New acceptance items:
   - Approve writes Carmen's table back whole, then the engine posts;
-  - every AI pick is ticked or replaced before Approve;
+  - Approve opens once every new row has an account; the AI's picks need no separate tick
+    (decision-log #47);
   - JV 1142 posted and voided on `test.PMS` (2026-10-14).
 - **CA-116.** Comments stop on 2026-10-09. Missing:
   - the 2026-10-14 findings: the sides are per PMS in Carmen's INI; JV 36 equals our rule; the

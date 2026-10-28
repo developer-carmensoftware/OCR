@@ -114,7 +114,8 @@ checks:
 ```
 
 `key` is opaque to the client: send it back unchanged as the key of `mappings`. `amount` is
-the string the PMS wrote. **There is no side and no total.** `404` when the day is not
+the string the PMS wrote. The review screen reads neither `amount` nor `confidence`/`why`
+(decision-log #47); they stay in the response as the day's record. **There is no side and no total.** `404` when the day is not
 `pending_review` for this BU, or has no payload.
 
 ## `POST /days/{id}/approve`

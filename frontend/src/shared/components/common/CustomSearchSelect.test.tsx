@@ -104,6 +104,21 @@ describe('CustomSearchSelect — by keyboard', () => {
     expect(panel()?.style.top).toBe('342px') // 4px under the field where it is now
   })
 
+  it('is never narrower than 16rem, and a widened list stays on screen', () => {
+    render(<Picker />)
+    openPicker()
+    const field = screen.getByLabelText('Department').parentElement as HTMLElement
+    // A 5rem field near the right edge of a 1024px window.
+    field.getBoundingClientRect = () =>
+      ({ top: 300, bottom: 338, left: 900, width: 80, height: 38, right: 980 }) as DOMRect
+
+    fireEvent.scroll(document)
+
+    const panel = document.querySelector('.css-select-panel') as HTMLElement
+    expect(panel.style.width).toBe('256px')
+    expect(panel.style.left).toBe(`${window.innerWidth - 256 - 8}px`)
+  })
+
   it('goes off screen with its field, rather than floating free', () => {
     // No closing on scroll at all: a field on its way *into* view is off screen on the
     // first frames of the scroll that reveals it, exactly like one on its way out.
