@@ -90,33 +90,6 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     )
 
 
-class EmailQueueSeen(Base, TimestampMixin):
-    """Which of the review queue's amber dots this BU has already been shown.
-
-    `seen` maps chip name → the anomaly count somebody here has acknowledged, e.g.
-    `{"unposted": 49}`; the dot shows while the live count is higher. A count rather than a
-    timestamp because a document can become anomalous long after it arrived — parked on
-    Monday, rejected on Wednesday — and a count read fresh on every request catches that
-    where `max(created_at)` cannot.
-
-    **A table of its own rather than a column on `EmailIngestSettings`**, which already has
-    the one row per BU. That row's `WriterMixin` stamps `updated_by` on every ORM write, so
-    a filter chip click would rewrite who last changed the BU's email settings. (It also
-    used to reopen the per-minute IMAP sweep, back when that gated on `updated_at`; it gates
-    on `settings_saved_at` since decision-log #46.) See 20260902000000_email_queue_seen.sql
-    for the two other designs this replaces.
-
-    No `WriterMixin` (that listener is half of what this table exists to avoid) and no
-    `SoftDeleteMixin`: it is one page's UI state, not business data, and losing a row costs
-    one extra dot.
-    """
-
-    __tablename__ = "email_queue_seen"
-
-    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
-    seen = Column(_JSON, nullable=False, default=dict)
-
-
 class EmailDocument(Base, TenantFKMixin, TimestampMixin):
     """One row per (message, attachment) we have looked at — the dedupe ledger."""
 
