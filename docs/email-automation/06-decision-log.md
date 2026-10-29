@@ -1497,6 +1497,12 @@ the documents.
   document is readable. The PMS column keeps nothing readable.
 - **No migration.** A value with no `enc` key is read as it stands, so the rows already waiting,
   and a rolling deploy, keep working. A token another key wrote reads as `None`, and is logged.
+- **A cleared payload is SQL NULL.** The type is `none_as_null`. The plain JSON type had stored
+  `None` as the JSON value `null`, which `IS NOT NULL` still matches; dev has 77 such rows,
+  left as they are because they hold nothing. The type also never calls two `None`s equal, so
+  clearing a row whose token reads as `None` (another key) still writes NULL; until that
+  change, `_finish` left that ciphertext behind. Both were found by the tests:
+  [`qa/2026-10-29-review-payload-encryption-test-report.md`](qa/2026-10-29-review-payload-encryption-test-report.md).
 - **The old rows are encrypted on request, after the deploy**:
   `POST /api/v1/admin/review-payloads/encrypt` (admin `configs:write`, or the internal job token),
   with `?dry_run=true` first. It is a call rather than a startup task or a script, for two
