@@ -21,6 +21,7 @@ from sqlalchemy.sql import func
 
 from app.database import Base
 
+from .encrypted_json import EncryptedText
 from .enums import (
     BillingDocumentType,
     CreditLedgerReason,
@@ -228,9 +229,11 @@ class BillingDocument(Base, TimestampMixin, SoftDeleteMixin):
     buyer_tax_id = Column(String(20), nullable=True)
     buyer_address = Column(Text, nullable=True)
     buyer_branch = Column(String(100), nullable=True)
-    buyer_email = Column(String(255), nullable=True)
-    buyer_contact_name = Column(String(255), nullable=True)
-    buyer_tel = Column(String(50), nullable=True)
+    # The contact *person* — personal data, so encrypted at rest. The company fields above
+    # stay plain: they are not personal data, and the AR-profile search filters on them.
+    buyer_email = Column(EncryptedText(), nullable=True)
+    buyer_contact_name = Column(EncryptedText(), nullable=True)
+    buyer_tel = Column(EncryptedText(), nullable=True)
 
     # Single line item = the pack purchased
     pack_code = Column(String(20), nullable=False)

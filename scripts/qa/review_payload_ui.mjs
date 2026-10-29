@@ -17,6 +17,9 @@
 // E-12 the PMS day's queue row carries its line count and flags out of the payload
 // E-13 a row encrypted under another key lists with no figures, opens, and can be rejected
 // E-14 no uncaught error in the page through the whole run
+// E-15 the corrections the wizard sends on submit, through the signed-in session
+// E-16 a bug report with a screenshot (there is no UI for it, so its endpoint directly)
+//      — `review_payload_e2e.py check` then proves both are stored as tokens
 // C-01 (OLD_API_URL set) the backend from `main` — what a rollback serves — answers the
 //      queue and a document with encrypted rows in the table: 200, never 500
 //
@@ -233,16 +236,37 @@ async function main() {
   check('E-08', 'plaintext row opens on its own data', values.includes(DOCS.legacy))
   await shot('E-08-legacy-dialog')
 
+  // ── E-15 / E-16 corrections and a bug report, through the session ─────────
+  const corr = await api('POST', '/api/v1/feedback/corrections', {
+    corrections: [
+      { doc_no: 'E2E-ENC-CORR-01', bank_code: 'KBANK', field_name: 'merchant_id',
+        original_value: '451005282039001', corrected_value: '451005282039009' },
+      { doc_no: 'E2E-ENC-CORR-01', bank_code: 'KBANK', field_name: 'branch_no',
+        original_value: '', corrected_value: '00002' },
+    ],
+  })
+  check('E-15', 'the wizard\'s corrections are saved', corr.status === 200 && corr.body?.saved === 2,
+    `HTTP ${corr.status} saved=${corr.body?.saved}`)
+  const png = fs.readFileSync(path.join(SHOTS, 'E-04-bay-dialog.png')).toString('base64')
+  const bug = await api('POST', '/api/v1/feedback/bug-report', {
+    module: 'credit_card_ocr', category: 'bug', description: 'E2E-ENC screenshot',
+    screenshot_b64: png, screenshot_mime: 'image/png',
+  })
+  check('E-16', 'a bug report with a real screenshot is accepted', bug.status === 201,
+    `HTTP ${bug.status} ${Math.round(png.length / 1024)} KB`)
+
   // ── E-09 the backfill endpoint, dry run ───────────────────────────────────
-  const dry = await fetch(`${API}/api/v1/admin/review-payloads/encrypt?dry_run=true`, {
+  const dry = await fetch(`${API}/api/v1/admin/encryption/backfill?dry_run=true`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${envVar('INTERNAL_JOB_TOKEN')}` },
   })
   const dryBody = await dry.json().catch(() => ({}))
-  check('E-09', 'dry run counts the plaintext row and writes nothing',
-    dry.status === 200 && dryBody.status === 'dry_run' && dryBody.plaintext_rows?.email_documents >= 1,
-    JSON.stringify(dryBody.plaintext_rows))
-  const anonymous = await fetch(`${API}/api/v1/admin/review-payloads/encrypt?dry_run=true`, { method: 'POST' })
+  const found = dryBody.plaintext_rows || {}
+  check('E-09', 'dry run counts the plaintext rows and writes nothing',
+    dry.status === 200 && dryBody.status === 'dry_run' && found['email_documents.review_payload'] >= 1 &&
+      found['correction_feedback.corrected_value'] >= 0 && 'bug_reports.screenshot_b64' in found,
+    JSON.stringify(found))
+  const anonymous = await fetch(`${API}/api/v1/admin/encryption/backfill?dry_run=true`, { method: 'POST' })
   const refused = anonymous.status
   check('E-09', 'refused without the job token / admin', refused === 401, `HTTP ${refused}`)
 

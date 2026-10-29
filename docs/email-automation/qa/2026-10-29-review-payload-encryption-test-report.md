@@ -120,7 +120,8 @@ fails on dev: `carmen`, `carmencloud` and `pms-e2e` hold one credential. That is
 
 ## Deploy and rollback
 
-- **Order.** Deploy, then call `POST /api/v1/admin/review-payloads/encrypt?dry_run=true`, then
+- **Order.** Deploy, then call `POST /api/v1/admin/review-payloads/encrypt?dry_run=true` (renamed
+  `/admin/encryption/backfill` by `feat/encrypt-corrections`, which covers more columns), then
   call it again without `dry_run`. Once per environment, dev before prod. On dev today the dry
   run should count about 7.
 - **Rollback.** Rolling back after the backfill is safe but blind, as C-01 shows. `main` answers

@@ -22,7 +22,7 @@ create table if not exists tenants (
     name          varchar(255) not null,
     plan          varchar(20)  not null default 'free' references plans (code),
     is_active     boolean      not null default true,
-    contact_email varchar(255),
+    contact_email text,
     notes         text,
     created_at    timestamptz  not null default now(),
     updated_at    timestamptz           default now(),

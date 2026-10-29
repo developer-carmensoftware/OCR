@@ -34,6 +34,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.constants import DocType, PostType
 from app.database import Base
 
+from .encrypted_json import EncryptedText
 from .enums import TaskStatus
 from .mixins import SoftDeleteMixin, TenantFKMixin, TimestampMixin, WriterMixin
 
@@ -205,8 +206,10 @@ class CorrectionFeedback(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
     doc_no = Column(String(100), nullable=False, index=True)
     bank_code = Column(String(20), ForeignKey("banks.code"), nullable=False, index=True)
     field_name = Column(String(100), nullable=False, index=True)
-    original_value = Column(Text, nullable=True)
-    corrected_value = Column(Text, nullable=True)
+    # What was printed and what the user made it: a merchant ID, an amount, a name.
+    # Encrypted at rest; the hints only ever count rows per field_name.
+    original_value = Column(EncryptedText(), nullable=True)
+    corrected_value = Column(EncryptedText(), nullable=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
 
     __table_args__ = (
@@ -449,7 +452,8 @@ class BugReport(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixi
     category = Column(String(32), nullable=False)
     description = Column(Text, nullable=False)
     status = Column(String(16), nullable=False, server_default="open", index=True)
-    screenshot_b64 = Column(Text, nullable=True)
+    # A screenshot of the app can show a whole document, so it is encrypted at rest.
+    screenshot_b64 = Column(EncryptedText(), nullable=True)
     screenshot_mime = Column(String(16), nullable=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
 

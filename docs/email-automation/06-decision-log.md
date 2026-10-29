@@ -1504,8 +1504,8 @@ the documents.
   change, `_finish` left that ciphertext behind. Both were found by the tests:
   [`qa/2026-10-29-review-payload-encryption-test-report.md`](qa/2026-10-29-review-payload-encryption-test-report.md).
 - **The old rows are encrypted on request, after the deploy**:
-  `POST /api/v1/admin/review-payloads/encrypt` (admin `configs:write`, or the internal job token),
-  with `?dry_run=true` first. It is a call rather than a startup task or a script, for two
+  `POST /api/v1/admin/encryption/backfill` (admin `configs:write`, or the internal job token;
+  `/review-payloads/encrypt` until the extension below), with `?dry_run=true` first. It is a call rather than a startup task or a script, for two
   reasons found while building it:
   - The rows must be encrypted with the **deployed** server's key. Backends run from a laptop or
     a test worktree against the same dev database sometimes hold another one: dev sessions from
@@ -1520,3 +1520,35 @@ the documents.
   is no worse than today for the secrets, and it is still one key to guard.
 - A payload decrypted for the review screen is plain in memory and in the API response, as it
   always was.
+
+**Extended the same day** (branch `feat/encrypt-corrections`), after an audit of every text and
+JSON column for what a document leaves behind:
+- **Encrypted too:** `correction_feedback.original_value` / `corrected_value` (what a user
+  corrected on a scan: merchant IDs, amounts, names) and `bug_reports.screenshot_b64` (a
+  screenshot of the app can show a whole document). `EncryptedText` stores a bare Fernet token;
+  a value that does not start like one (`gAAAAA`) is a row from before. Nothing reads either in
+  SQL: the hints count corrections per `field_name`, and no screen sends or reads a bug report.
+- **The backfill covers every encrypted column** (`payload_encryption.COLUMNS`), and its route
+  was renamed to say so.
+- **Left plain, on purpose:**
+  - **Card and invoice headers** (`doc_no`, company names, amounts): the duplicate guard and the
+    queue use them in SQL, and they are what Carmen already holds.
+  - **IP addresses in `audit_logs` / `consent_logs`:** they are legal evidence that has to read,
+    and they already have their own retention.
+  - **Company details** (`buyer_name`, `buyer_tax_id`, `buyer_address`, `buyer_branch`,
+    `ar_customer_profiles`): not personal data, and the AR-profile search runs `ilike` on them.
+- **A contact person's details, encrypted too** (the user's call, the same day):
+  - `billing_documents.buyer_contact_name` / `buyer_tel` / `buyer_email` and
+    `tenants.contact_email` (`EncryptedText`);
+  - `email_ingest_settings.owner_emails` (`EncryptedJSON`, a list).
+
+  Every reader goes through the ORM: the proforma, the AR remark sent to Carmen, the checkout
+  prefill, the sender check and the admin pages.
+- **That one needed a migration** (`20261029010000`, varchar → text). A token is at least 100
+  characters and does not fit `buyer_tel varchar(50)`.
+  - **Order:** the migration is pushed **before** the code that writes tokens serves.
+  - **Roll forward, not back:** code from before this reads a token as the value, so a
+    rollback after the backfill would print tokens on proformas and send them in the AR remark.
+    Review payloads, by contrast, degrade to zeros on old code.
+- **Deferred:** a retention window and an admin viewer for bug-report screenshots. Nothing
+  produces one yet; both come with the screen that does.

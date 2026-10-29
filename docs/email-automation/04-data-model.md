@@ -14,7 +14,7 @@ One row per BU (`tenant_id` is the primary key). What Carmen wrote through
 | `ingest_tag` | `varchar(32)`, **nullable** | `20260803000000`, dropped `20260805000000`, re-added nullable `20260806000000` | The `+tag` in the ingest address. See [Schema drift](#schema-drift-worth-knowing) below |
 | `enabled` | `boolean not null default false` | `20260803000000` | Whether the feature is switched on |
 | `enabled_at` | `timestamptz`, nullable | `20260818010000` | The last off→on edge. Mail that arrived before it is `skipped / ingest_paused` instead of replayed — switching off means the BU is keying those documents by hand. Null = no filtering |
-| `owner_emails` | `jsonb not null default '[]'` | `20260807010000` | Optional sender allow-list — empty accepts any sender |
+| `owner_emails` | `jsonb not null default '[]'` | `20260807010000` | Optional sender allow-list — empty accepts any sender. Encrypted at rest since 2026-10-29 (`{"enc": …}`, decision #49); only Python reads it (`sender_allowed`) |
 | `tax_ids` | `jsonb not null default '[]'` | `20260803000000` | This BU's registered tax IDs — unique across all BUs |
 | `rules` | `jsonb not null default '[]'` | `20260803000000` | Bank → filename-pattern rules; `pdf_password_enc` inside each is Fernet-encrypted |
 | `carmen_token_enc` | `text`, nullable | `20260803000000` | Fernet-encrypted posting credential |
