@@ -137,6 +137,7 @@ def real_engine():
 # Children first. `email_documents` FKs `ocr_tasks`; `credit_cards`/`ap_invoices` do too.
 _CLEANUP_ORDER = [
     "email_documents",
+    "pms_events",
     "credit_cards",
     "ap_invoices",
     "ocr_tasks",

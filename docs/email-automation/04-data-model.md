@@ -60,7 +60,7 @@ trail for every outcome, `reason_code` taxonomy included.
 | `reason_code` | `varchar(50)`, nullable | Stable identifier — see the taxonomy below |
 | `error_message` | `text`, nullable | Human-readable detail |
 | `attempts` | `integer not null default 0` | Always `1` in practice — see [Not built](02-architecture.md#not-built)-adjacent note in 05-operations |
-| `review_payload` | `jsonb`, nullable | The extracted document a reviewer edits, **only while `pending_review`**. Cleared by `_finish()` on every terminal transition. Keys: `extracted`, `flags`, `unmapped`, `guessed`, and `suggested` — the last being the dept/acc the AI chose, which since decision #25 lives here and nowhere else until a human approves ([shape](07-human-in-the-loop.md)) |
+| `review_payload` | `jsonb`, nullable | The extracted document a reviewer edits, **only while `pending_review`**. Cleared by `_finish()` on every terminal transition. Keys: `extracted`, `flags`, `unmapped`, `guessed`, and `suggested` — the last being the dept/acc the AI chose, which since decision #25 lives here and nowhere else until a human approves ([shape](07-human-in-the-loop.md)). **Encrypted at rest** (decision #49): stored as `{"enc": <Fernet token>, "doc_type": …}` by `models/encrypted_json.py`, so `doc_type` is the only key SQL can read (`ar_reconcile.latest_real_sample` filters on it); raw-SQL readers decode with `read_stored()` |
 | `reviewed_by` | `varchar(36)`, nullable | `carmen_user_id` of whoever approved or rejected it. No FK — there is no users table, and the id is opaque to us |
 | `reviewed_by_name` | `varchar(100)`, nullable | Their username, from the same session claims. Stored because an opaque uuid answers nobody's question about who posted a JV |
 | `reviewed_at` | `timestamptz`, nullable | When they did |
@@ -247,6 +247,6 @@ Line items are the exception now, and only just: `review_payload` holds the extr
 document — line items included — **while it is waiting for a human**, because there is
 nothing else to show them and no second extraction to fall back on. It is cleared the
 moment the document reaches a terminal state, so the steady state is still "no line items
-stored". That is why a resolved row in the queue shows the JV it became rather than an
+stored". While it waits it is encrypted at rest (decision #49), so a database reader sees a token, not the document. That is why a resolved row in the queue shows the JV it became rather than an
 amount: the amount is genuinely gone, and rendering `0.00` would be a wrong number instead
 of a missing one.

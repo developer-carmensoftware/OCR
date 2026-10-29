@@ -1475,3 +1475,48 @@ approve panel's corrections are not kept; the late dialog asks again.
 **Accepted risk.** "Keyed in Carmen" is a person's word, unchecked. A wrong press leaves a VAT
 claim unfiled with nothing in this app still asking for it; `input_tax_keyed` and `input_tax_by`
 are what tell it apart from a record this app filed.
+
+## 49. Review payloads are encrypted at rest, and the old rows on request (2026-10-29)
+
+**Decided:** 2026-10-29, with the user, after asking where the data behind an email post and its
+input tax lives. It narrows #22 ("charged means reviewable") without changing it: a parked
+document keeps its whole extraction, but the table no longer holds it readable.
+
+**What was there.** `email_documents.review_payload` holds a pending document's whole extraction,
+line items included, and `pms_events.review_payload` a pending PMS day's revenue rows. Both
+were plain JSONB. Only secrets were app-encrypted: the session tokens, the BU posting credential
+and the PDF passwords. Supabase encrypts its disks, but anyone who can query the database read
+the documents.
+
+**Decision.**
+- **One column type, `EncryptedJSON`** (`models/encrypted_json.py`), on both columns. It stores
+  `{"enc": <Fernet token>}` in the same JSONB column, encrypted with `SESSION_ENCRYPTION_KEY`,
+  the key that already covers the other secrets. No new environment variable.
+- **`doc_type` stays readable** on the email column, because `ar_reconcile.latest_real_sample`
+  filters on it in SQL. It names which of two layouts a document is; nothing printed on the
+  document is readable. The PMS column keeps nothing readable.
+- **No migration.** A value with no `enc` key is read as it stands, so the rows already waiting,
+  and a rolling deploy, keep working. A token another key wrote reads as `None`, and is logged.
+- **A cleared payload is SQL NULL.** The type is `none_as_null`. The plain JSON type had stored
+  `None` as the JSON value `null`, which `IS NOT NULL` still matches; dev has 77 such rows,
+  left as they are because they hold nothing. The type also never calls two `None`s equal, so
+  clearing a row whose token reads as `None` (another key) still writes NULL; until that
+  change, `_finish` left that ciphertext behind. Both were found by the tests:
+  [`qa/2026-10-29-review-payload-encryption-test-report.md`](qa/2026-10-29-review-payload-encryption-test-report.md).
+- **The old rows are encrypted on request, after the deploy**:
+  `POST /api/v1/admin/review-payloads/encrypt` (admin `configs:write`, or the internal job token),
+  with `?dry_run=true` first. It is a call rather than a startup task or a script, for two
+  reasons found while building it:
+  - The rows must be encrypted with the **deployed** server's key. Backends run from a laptop or
+    a test worktree against the same dev database sometimes hold another one: dev sessions from
+    2026-10-28 were written under the CI dummy key.
+  - It must run **after** the deploy, because the old code cannot read `{"enc"}`. (It degrades to
+    zeros on the queue rather than a 500.)
+- Scripts that read the column with raw SQL decode with `read_stored()`. The three QA scripts that
+  read `review_payload` were changed.
+
+**Accepted.**
+- Key rotation would turn every waiting payload, session and credential unreadable together. That
+  is no worse than today for the secrets, and it is still one key to guard.
+- A payload decrypted for the review screen is plain in memory and in the API response, as it
+  always was.

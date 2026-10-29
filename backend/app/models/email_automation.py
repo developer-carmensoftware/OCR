@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from app.database import Base
 
+from .encrypted_json import EncryptedJSON
 from .mixins import TenantFKMixin, TimestampMixin, WriterMixin
 
 # JSONB on Postgres, plain JSON on SQLite (the unit-test engine).
@@ -109,8 +110,9 @@ class EmailDocument(Base, TenantFKMixin, TimestampMixin):
     # Set only while status == 'pending_review'; _finish clears it on every terminal
     # transition. This is the one place extracted line items touch disk, and it lasts
     # exactly as long as a human owes us a decision — see the migration for why that
-    # narrows "line items are NOT persisted" rather than repealing it.
-    review_payload = Column(_JSON, nullable=True)
+    # narrows "line items are NOT persisted" rather than repealing it. Encrypted at rest;
+    # `doc_type` stays readable because `ar_reconcile.latest_real_sample` filters on it.
+    review_payload = Column(EncryptedJSON(clear=("doc_type",)), nullable=True)
     # Who clicked approve/reject. Audit only: no FK, no enforcement — there is no users
     # table, and any Carmen session for this BU can approve.
     reviewed_by = Column(String(36), nullable=True)

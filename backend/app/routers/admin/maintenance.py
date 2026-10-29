@@ -77,6 +77,22 @@ async def trigger_pricing_sync(
     return {"status": "sync_started"}
 
 
+@router.post("/review-payloads/encrypt")
+async def encrypt_review_payloads(
+    dry_run: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+    _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
+):
+    """Encrypt the review payloads still stored in plaintext — once per environment, after
+    the deploy that encrypts new writes. `dry_run` counts without writing. See
+    `services/shared/payload_encryption.py` for why this is a call and not a startup task."""
+    from app.services.shared.payload_encryption import encrypt_plaintext_review_payloads
+
+    found = await encrypt_plaintext_review_payloads(db, dry_run=dry_run)
+    logger.info("Review payloads in plaintext (dry_run=%s): %s", dry_run, found)
+    return {"status": "dry_run" if dry_run else "completed", "plaintext_rows": found}
+
+
 @router.get("/pricing/list")
 async def get_pricing_list(
     db: AsyncSession = Depends(get_db),
