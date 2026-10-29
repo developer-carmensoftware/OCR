@@ -181,3 +181,25 @@ describe('CustomSearchSelect — by keyboard', () => {
     options.forEach(o => expect(o).toHaveAttribute('tabindex', '-1'))
   })
 })
+
+describe('CustomSearchSelect — an option with no name', () => {
+  it('shows the bare code, without a separator pointing at nothing', () => {
+    render(
+      <CustomSearchSelect
+        value={null}
+        onChange={() => {}}
+        options={[
+          { code: '10/2026', name: '' },
+          { code: 'GEN', name: 'General' },
+        ]}
+        aria-label="Tax period"
+      />
+    )
+    fireEvent.click(screen.getByLabelText('Tax period'))
+    const options = screen
+      .getAllByRole('button')
+      .map(b => b.textContent?.replace(/\s+/g, ' ').trim())
+    expect(options).toContain('10/2026')
+    expect(options).toContain('GEN - General')
+  })
+})
