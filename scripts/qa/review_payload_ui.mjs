@@ -242,8 +242,9 @@ async function main() {
   check('E-09', 'dry run counts the plaintext row and writes nothing',
     dry.status === 200 && dryBody.status === 'dry_run' && dryBody.plaintext_rows?.email_documents >= 1,
     JSON.stringify(dryBody.plaintext_rows))
-  const noAuth = await fetch(`${API}/api/v1/admin/review-payloads/encrypt?dry_run=true`, { method: 'POST' })
-  check('E-09', 'refused without the job token / admin', noAuth.status === 401, `HTTP ${noAuth.status}`)
+  const anonymous = await fetch(`${API}/api/v1/admin/review-payloads/encrypt?dry_run=true`, { method: 'POST' })
+  const refused = anonymous.status
+  check('E-09', 'refused without the job token / admin', refused === 401, `HTTP ${refused}`)
 
   // ── E-13 another key's row: opens, and can be put away ────────────────────
   const before = pageErrors.length
