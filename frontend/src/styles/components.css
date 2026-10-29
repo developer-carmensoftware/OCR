@@ -1256,6 +1256,28 @@ input[type='text'].detail-input:focus {
   text-align: center;
 }
 
+/* A dialog whose body is a form (CustomModal `wide`). The icon, title and message stay
+   centred like every other confirmation; the form under them reads left to right. Scrolls
+   inside itself rather than past the viewport on a short screen. */
+.modal-box--wide {
+  max-width: 860px;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.modal-box--wide .itx,
+.modal-box--wide .itx-warn {
+  margin-top: 1.25rem;
+  text-align: left;
+}
+
+/* The dialog's other answer ("keyed in Carmen already"), under the form it skips and apart
+   from Cancel / Record, which stay the dialog's own pair. */
+.itx-late-alt {
+  margin-top: 0.75rem;
+  text-align: left;
+}
+
 .modal-doc {
   display: inline-block;
   font-family: 'IBM Plex Mono', monospace;

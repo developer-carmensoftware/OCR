@@ -3,12 +3,23 @@ import { toast } from 'sonner'
 import { ExternalLink } from 'lucide-react'
 import { useT } from '@/i18n/LanguageContext'
 import CustomModal from '@/shared/components/common/CustomModal'
+import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
 import { glFieldLabel, glFieldList } from '@/features/credit-card/lib/glFieldLabels'
 import { FIX, fixLinkProps, stopText } from '@/shared/lib/reviewReasons'
 import { getCarmenUrl } from '@/shared/lib/url'
-import { recordInputTax } from '@/features/credit-card/api/emailReview'
-import type { ReviewDocument } from '@/features/credit-card/api/emailReview'
+import {
+  inputTaxPreview,
+  markInputTaxKeyed,
+  recordInputTax,
+} from '@/features/credit-card/api/emailReview'
+import type {
+  InputTaxPreview,
+  ItxOverrides,
+  ReviewDocument,
+} from '@/features/credit-card/api/emailReview'
+import type { BankCode } from '@/shared/types/api'
 import type { TKey } from '@/i18n/dict'
+import InputTaxPanel from './InputTaxPanel'
 
 /**
  * The reason line, in priority order. One phrase, never a list.
@@ -175,8 +186,9 @@ function RowAction({ row, onOpen, onChanged }: Props) {
     )
   }
 
-  // A posted manual scan whose input tax never followed. Ahead of the JV link because it is
-  // the one thing on this row still owed, and the JV number stays in its own column to copy.
+  // A posted row — manual or email — whose input tax never followed. Ahead of the JV link
+  // because it is the one thing on this row still owed, and the JV number stays in its own
+  // column to copy.
   if (row.input_tax_owed) return <RecordInputTax row={row} onDone={onChanged} />
 
   // A posted row has somewhere to go: the JV it became, in Carmen. Same destination the
@@ -225,26 +237,62 @@ function RowAction({ row, onOpen, onChanged }: Props) {
   )
 }
 
+/** "2026-09" → "09/2026", the way the panel prints a period everywhere else. */
+const monthLabel = (period: string) => `${period.slice(5)}/${period.slice(0, 4)}`
+
 /**
- * File the input tax a posted manual scan still owes — the wizard's step 4, after the
- * session that should have done it is gone. The server builds the record from the sums it
- * stamped with the JV; this only asks, sends, and says what happened.
+ * File the input tax a posted card still owes, manual or email — the wizard's step 4, or the
+ * email filing that was refused or unticked, after the moment that should have done it is
+ * gone (CA-111). The amounts are the server's, stamped with the JV; the dialog is the
+ * approve screen's input-tax panel, so the two dead ends of the old confirm-only button — a
+ * bank with no registered identity, a rate no profile declares — are a field each here.
  *
- * The confirm is not ceremony: someone may already have keyed this record into Carmen by
- * hand, and the app cannot see that. Two copies of a VAT claim is the one outcome worse
- * than the missing one.
+ * Two things only filing late has. The period: a claim may land in a later month of its
+ * 6-month window, and the server says which months are left. And "Keyed in Carmen already":
+ * the app cannot see a record somebody typed into Carmen by hand, and a second copy of a VAT
+ * claim is the one outcome worse than the missing one — so the dialog asks, and the answer
+ * is stored as the user's word.
  */
 function RecordInputTax({ row, onDone }: { row: ReviewDocument; onDone?: () => void }) {
   const { t } = useT()
-  const [open, setOpen] = useState(false)
+  const cardId = row.card_id ?? row.id
+  const doc = row.doc_no || '—'
+  const [preview, setPreview] = useState<InputTaxPreview | null>(null)
   const [busy, setBusy] = useState(false)
+  const [overrides, setOverrides] = useState<ItxOverrides>({})
+  const [branch, setBranch] = useState('')
+  const [period, setPeriod] = useState('')
+  const [blocked, setBlocked] = useState(false)
 
-  async function confirm() {
+  async function open() {
     setBusy(true)
     try {
-      await recordInputTax(row.id)
-      toast.success(t('review.inputTaxRecorded', { doc: row.doc_no || '' }))
-      setOpen(false)
+      const p = await inputTaxPreview(cardId)
+      if (!p.owed) {
+        // Filed or marked from somewhere else since the table was fetched.
+        toast.info(t('review.lateItxGone', { doc }))
+        onDone?.()
+        return
+      }
+      // What files when nobody overrides it, shown as the starting value — so what the
+      // dialog shows is what posts, and an empty registry entry reads as the gap it is.
+      setOverrides({ vendor_name: p.vendor_name ?? '', tax_id: p.tax_id ?? '' })
+      setBranch(p.branch_no ?? '')
+      setPeriod(p.periods?.[0] ?? '')
+      setPreview(p)
+    } catch (err) {
+      toast.error(t('review.inputTaxRecordFailed', { msg: (err as Error).message }))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function settle(action: () => Promise<void>, done: string) {
+    setBusy(true)
+    try {
+      await action()
+      toast.success(done)
+      setPreview(null)
       onDone?.()
     } catch (err) {
       toast.error(t('review.inputTaxRecordFailed', { msg: (err as Error).message }))
@@ -253,22 +301,86 @@ function RecordInputTax({ row, onDone }: { row: ReviewDocument; onDone?: () => v
     }
   }
 
+  const record = () =>
+    settle(
+      () => recordInputTax(cardId, { ...overrides, branch_no: branch || undefined, period }),
+      t('review.inputTaxRecorded', { doc })
+    )
+  const keyed = () => settle(() => markInputTaxKeyed(cardId), t('review.lateItxMarked', { doc }))
+
+  const periods = preview?.periods ?? []
   return (
     <>
-      <button type="button" className="btn btn-outline btn-sm" onClick={() => setOpen(true)}>
+      <button
+        type="button"
+        className="btn btn-outline btn-sm"
+        onClick={open}
+        disabled={busy && !preview}
+      >
         {t('review.actionRecordInputTax')}
       </button>
       <CustomModal
-        show={open}
+        show={preview !== null}
+        wide
         type="warning"
         title={t('review.recordInputTaxTitle')}
-        message={t('review.recordInputTaxBody', { doc: row.doc_no || '—' })}
+        message={t('review.recordInputTaxBody', { doc })}
         confirmText={busy ? t('cc.sending') : t('review.actionRecordInputTax')}
         cancelText={t('modal.cancel')}
         busy={busy}
-        onConfirm={confirm}
-        onCancel={() => setOpen(false)}
-      />
+        confirmDisabled={blocked || !!preview?.expired || !period}
+        onConfirm={record}
+        onCancel={() => setPreview(null)}
+      >
+        {preview && (
+          <>
+            {preview.expired && <p className="itx-warn">{t('review.lateItxExpired')}</p>}
+            <InputTaxPanel
+              standalone
+              details={[
+                {
+                  CommisAmt: String(preview.commis_amt ?? 0),
+                  TaxAmt: String(preview.tax_amt ?? 0),
+                },
+              ]}
+              headerData={{
+                DocNo: preview.doc_no ?? '',
+                DocDate: preview.doc_date ?? '',
+                BranchNo: branch,
+              }}
+              bank={(preview.bank_code ?? '') as BankCode | ''}
+              enabled
+              onEnabledChange={() => {}}
+              onUpdate={(key, value) => key === 'BranchNo' && setBranch(value)}
+              overrides={overrides}
+              onOverride={patch => setOverrides(o => ({ ...o, ...patch }))}
+              onBlocked={setBlocked}
+              periodSlot={
+                periods.length ? (
+                  <CustomSearchSelect
+                    value={period ? monthLabel(period) : null}
+                    onChange={label => setPeriod(periods.find(p => monthLabel(p) === label) ?? '')}
+                    options={periods.map(p => ({ code: monthLabel(p), name: '' }))}
+                    aria-label={t('review.itxPeriod')}
+                  />
+                ) : (
+                  <span className="itx-fact-v text-mono">—</span>
+                )
+              }
+            />
+            <div className="itx-late-alt">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={keyed}
+                disabled={busy}
+              >
+                {t('review.lateItxKeyed')}
+              </button>
+            </div>
+          </>
+        )}
+      </CustomModal>
     </>
   )
 }
@@ -332,10 +444,14 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
               ? t('review.postedBy', { name: row.reviewed_by_name })
               : t('review.postedAutomatically')}
         {/* The JV posted but its VAT record did not — the document is done either way,
-            so this is a note, not a failure. */}
-        {row.error_message ? ` · ${row.error_message}` : ''}
-        {/* A manual scan's own version of that note, in the reader's language. */}
-        {row.input_tax_owed ? ` · ${t('review.inputTaxOwed')}` : ''}
+            so this is a note, not a failure. The server's reason when it has one (an email
+            filing that was refused says why); otherwise the plain fact, in the reader's
+            language — never both, which said the same thing twice. */}
+        {row.error_message
+          ? ` · ${row.error_message}`
+          : row.input_tax_owed
+            ? ` · ${t('review.inputTaxOwed')}`
+            : ''}
       </span>
     )
   }

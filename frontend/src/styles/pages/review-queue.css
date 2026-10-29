@@ -846,12 +846,13 @@
  * could never be (2.5% in light, so hover did nothing there at all). It marks the extent
  * of the field rather than its bottom edge, so an empty branch box is on the screen, and
  * a row of them reads as cells rather than as a grid of boxes. */
-.rd-modal {
+.rd-modal,
+.modal-box--wide {
   --field-rest: oklch(from var(--text) l c h / 0.05);
   --field-hover: oklch(from var(--text) l c h / 0.09);
 }
 
-.rd-modal .rd-f-input {
+:is(.rd-modal, .modal-box--wide) .rd-f-input {
   width: 100%;
   padding: 0.25rem 0.4rem;
   font-size: 0.875rem;
@@ -867,19 +868,19 @@
     border-color 140ms var(--ease-out-premium, ease-out);
 }
 
-.rd-modal .rd-f-input:hover:not(:focus) {
+:is(.rd-modal, .modal-box--wide) .rd-f-input:hover:not(:focus) {
   background: var(--field-hover);
 }
 
-.rd-modal .rd-f-input:focus,
-.rd-modal .rd-f-input:focus-visible {
+:is(.rd-modal, .modal-box--wide) .rd-f-input:focus,
+:is(.rd-modal, .modal-box--wide) .rd-f-input:focus-visible {
   outline: none;
   background: var(--card-bg);
   border-color: var(--primary);
   box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.18);
 }
 
-.rd-modal .rd-f-input::placeholder {
+:is(.rd-modal, .modal-box--wide) .rd-f-input::placeholder {
   color: var(--amber-text);
   font-style: italic;
 }
@@ -931,17 +932,20 @@
    rule is "everywhere on this screen a value can be chosen", and naming the containers
    one by one is what left the input-tax panel's tax profile as a raw browser `<select>`
    next to four flat boxes. `CustomModal`'s confirmations render no picker, so widening
-   the scope reaches nothing else. */
-.rd-modal .custom-search-select-input:not([data-error]):not([data-suggested]) {
+   the scope reaches nothing else — except its `wide` form, which is the same input-tax
+   panel filed late from the queue (CA-111) and so takes the same treatment. */
+:is(.rd-modal, .modal-box--wide)
+  .custom-search-select-input:not([data-error]):not([data-suggested]) {
   background: var(--field-rest);
   border-color: transparent;
 }
 
-.rd-modal .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]) {
+:is(.rd-modal, .modal-box--wide)
+  .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]) {
   background: var(--field-hover);
 }
 
-.rd-modal .custom-search-select-input:focus {
+:is(.rd-modal, .modal-box--wide) .custom-search-select-input:focus {
   background: var(--card-bg);
   border-color: var(--primary);
   box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.18);
@@ -949,11 +953,11 @@
 
 /* Flat costs the picker the one thing that said it was a picker — it has no chevron of its
    own. So the wrapper draws one, and the input leaves room for it. */
-.rd-modal .custom-search-select {
+:is(.rd-modal, .modal-box--wide) .custom-search-select {
   position: relative;
 }
 
-.rd-modal .custom-search-select::after {
+:is(.rd-modal, .modal-box--wide) .custom-search-select::after {
   content: '';
   position: absolute;
   right: 0.45rem;
@@ -968,7 +972,7 @@
 }
 
 /* Geometry, so a picker and a plain field are the same height in the same row. */
-.rd-modal .custom-search-select-input {
+:is(.rd-modal, .modal-box--wide) .custom-search-select-input {
   padding: 0.25rem 1.25rem 0.25rem 0.4rem;
   font-size: 0.83rem;
   border-radius: var(--radius-sm);
@@ -1477,6 +1481,12 @@
 .itx-check:has(input:disabled) {
   color: var(--text-4);
   cursor: not-allowed;
+}
+
+/* What unticking means, said where it is unticked: the record is owed, not waived. */
+.itx-later {
+  font-size: 0.78rem;
+  color: var(--text-3);
 }
 
 /* One grid for the whole panel: four columns, both rows on them.

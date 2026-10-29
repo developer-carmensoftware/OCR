@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
 import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
 import { useT } from '@/i18n/LanguageContext'
@@ -24,6 +24,11 @@ interface Props {
    *  than acted on here: the button belongs to the review screen, and the JV has its own
    *  reasons to be unpostable. Mirrors `JvEditor`'s `onState`. */
   onBlocked: (blocked: boolean) => void
+  /** The record on its own, filed late from the queue (CA-111): open, and no tick box — the
+   *  dialog around it is the choice. */
+  standalone?: boolean
+  /** Filing late is the one place the period is chosen; this replaces the period shown. */
+  periodSlot?: ReactNode
 }
 
 /**
@@ -73,9 +78,11 @@ export default function InputTaxPanel({
   overrides,
   onOverride,
   onBlocked,
+  standalone = false,
+  periodSlot,
 }: Props) {
   const { t } = useT()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(standalone)
   const [profiles, setProfiles] = useState<TaxProfileItem[]>([])
 
   useEffect(() => {
@@ -164,28 +171,33 @@ export default function InputTaxPanel({
 
   return (
     <div className="itx">
-      <div className="itx-head">
-        <label className="itx-check">
-          <input
-            type="checkbox"
-            checked={enabled && !nothingToFile}
-            disabled={nothingToFile}
-            onChange={e => onEnabledChange(e.target.checked)}
-          />
-          <span>{t('review.secTaxLabel')}</span>
-        </label>
+      {!standalone && (
+        <div className="itx-head">
+          <label className="itx-check">
+            <input
+              type="checkbox"
+              checked={enabled && !nothingToFile}
+              disabled={nothingToFile}
+              onChange={e => onEnabledChange(e.target.checked)}
+            />
+            <span>{t('review.secTaxLabel')}</span>
+          </label>
+          {/* Unticking is "not now", not "never": the row it leaves behind offers to file the
+              record later, or to mark it keyed by hand (CA-111). */}
+          {!enabled && !nothingToFile && <span className="itx-later">{t('review.itxLater')}</span>}
 
-        <button
-          type="button"
-          className="itx-toggle"
-          aria-expanded={open}
-          aria-controls="itx-body"
-          onClick={() => setOpen(o => !o)}
-        >
-          <ChevronDown size={14} className={open ? 'itx-chev is-open' : 'itx-chev'} />
-          <span>{t(open ? 'review.itxHide' : 'review.itxShow')}</span>
-        </button>
-      </div>
+          <button
+            type="button"
+            className="itx-toggle"
+            aria-expanded={open}
+            aria-controls="itx-body"
+            onClick={() => setOpen(o => !o)}
+          >
+            <ChevronDown size={14} className={open ? 'itx-chev is-open' : 'itx-chev'} />
+            <span>{t(open ? 'review.itxHide' : 'review.itxShow')}</span>
+          </button>
+        </div>
+      )}
 
       {open && (
         <div className="itx-body" id="itx-body">
@@ -345,9 +357,11 @@ export default function InputTaxPanel({
               </span>
               <span className="itx-fact">
                 <span className="rd-f-label">{t('review.itxPeriod')}</span>
-                <span className="itx-fact-v text-mono" title={period}>
-                  {period}
-                </span>
+                {periodSlot ?? (
+                  <span className="itx-fact-v text-mono" title={period}>
+                    {period}
+                  </span>
+                )}
               </span>
 
               {/* Right-aligned, as `.jv-num` right-aligns every figure on this screen, so

@@ -90,3 +90,13 @@ describe('CustomModal — password affordances', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1) // unchanged while busy
   })
 })
+
+describe('CustomModal — a form in the body (wide)', () => {
+  it('confirmDisabled holds confirm without the spinner busy brings, and keeps cancel', () => {
+    render(<CustomModal {...baseProps} inputLabel={undefined} wide confirmDisabled />)
+    expect(screen.getByRole('button', { name: 'Unlock' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+    expect(document.querySelector('.animate-spin')).toBeNull()
+    expect(document.querySelector('.modal-box--wide')).toBeTruthy()
+  })
+})
