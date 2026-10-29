@@ -278,6 +278,7 @@ async def proxy_create_input_tax(
         # user retries — that retry is a second ACTX.
         try:
             card.input_tax_at = datetime.now(UTC)  # type: ignore[assignment]
+            card.input_tax_by = session.carmen_user_id  # type: ignore[assignment]
             await db.commit()
         except Exception:
             logger.exception("[carmen_proxy] Input tax posted but input_tax_at not stamped")

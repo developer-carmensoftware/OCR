@@ -29,9 +29,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import SessionInfo, get_current_session
 from app.database import get_db
-from app.models.schemas.email_automation import ActivityPage, InputTaxOwedOut
+from app.models.schemas.email_automation import ActivityPage, InputTaxOwedOut, LateInputTaxIn
 from app.services.credit_card import activity as activity_service
-from app.services.credit_card.input_tax import file_input_tax_for_card, input_tax_owed
+from app.services.credit_card.input_tax import (
+    file_input_tax_for_card,
+    input_tax_preview,
+    mark_input_tax_keyed,
+)
 
 router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card Activity"])
 
@@ -80,30 +84,56 @@ async def read_input_tax_owed(
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """Whether a manual scan still owes its input-tax record. The wizard asks before it
-    offers a saved draft back: a draft whose record was filed from the queue, or whose card
-    was deleted, must not be restored and filed again. 404 for another BU's or a deleted card.
+    """Whether a posted card still owes its input-tax record, and what the late-filing dialog
+    shows when it does. The wizard asks too, before it offers a saved draft back: a draft
+    whose record was filed from the queue, or whose card was deleted, must not be restored and
+    filed again. 404 for another BU's or a deleted card.
     """
-    owed = await input_tax_owed(db, uuid.UUID(str(session.tenant_id)), card_id)
-    return InputTaxOwedOut(owed=owed)
+    preview = await input_tax_preview(db, uuid.UUID(str(session.tenant_id)), card_id)
+    return InputTaxOwedOut(**preview)
 
 
 @router.post("/activity/{card_id}/input-tax", status_code=204)
 async def record_input_tax(
     card_id: uuid.UUID,
+    body: LateInputTaxIn | None = None,
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """File the input tax a manual scan's posted JV still owes — the row's `input_tax_owed`.
+    """File the input tax a posted JV still owes — the row's `input_tax_owed`, manual or email.
 
-    The wizard files it on step 4, and a session that died before then (or a step 4 that was
-    skipped) used to leave the VAT claim with no trace anywhere but a browser draft. This is
-    the same record, built server-side from what was stamped on the card with the JV, and
-    posted with the caller's own Carmen token — as the wizard would have.
+    The wizard files it on step 4 and email files it right after the JV, but a step 4 that
+    died or was skipped, an unticked box, or a refused filing used to leave the VAT claim
+    with nothing but a note. This is the same record, built server-side from what was stamped
+    on the card with the JV, corrected by `body` where the dialog allows, and posted with the
+    caller's own Carmen token — as the wizard would have.
 
     404 for another BU's card, 409 when there is nothing left to file, 400 with the reason
-    when the record cannot be built or Carmen refuses it.
+    when the record cannot be built, the period is outside the claim window, or Carmen
+    refuses it.
     """
     await file_input_tax_for_card(
-        db, uuid.UUID(str(session.tenant_id)), card_id, session.carmen_token
+        db,
+        uuid.UUID(str(session.tenant_id)),
+        card_id,
+        session.carmen_token,
+        user_id=session.carmen_user_id,
+        overrides=body,
+    )
+
+
+@router.post("/activity/{card_id}/input-tax/keyed", status_code=204)
+async def record_input_tax_keyed(
+    card_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
+):
+    """Mark the input tax as keyed into Carmen by hand, so the row stops asking.
+
+    Calls nothing in Carmen — it has no search on its register to check against — and stays
+    available once the claim window has closed, when keying it by hand is all that is left.
+    404 / 409 as for filing it.
+    """
+    await mark_input_tax_keyed(
+        db, uuid.UUID(str(session.tenant_id)), card_id, session.carmen_user_id
     )
