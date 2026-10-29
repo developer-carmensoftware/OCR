@@ -1504,8 +1504,8 @@ the documents.
   change, `_finish` left that ciphertext behind. Both were found by the tests:
   [`qa/2026-10-29-review-payload-encryption-test-report.md`](qa/2026-10-29-review-payload-encryption-test-report.md).
 - **The old rows are encrypted on request, after the deploy**:
-  `POST /api/v1/admin/review-payloads/encrypt` (admin `configs:write`, or the internal job token),
-  with `?dry_run=true` first. It is a call rather than a startup task or a script, for two
+  `POST /api/v1/admin/encryption/backfill` (admin `configs:write`, or the internal job token;
+  `/review-payloads/encrypt` until the extension below), with `?dry_run=true` first. It is a call rather than a startup task or a script, for two
   reasons found while building it:
   - The rows must be encrypted with the **deployed** server's key. Backends run from a laptop or
     a test worktree against the same dev database sometimes hold another one: dev sessions from
@@ -1520,3 +1520,21 @@ the documents.
   is no worse than today for the secrets, and it is still one key to guard.
 - A payload decrypted for the review screen is plain in memory and in the API response, as it
   always was.
+
+**Extended the same day** (branch `feat/encrypt-corrections`), after an audit of every text and
+JSON column for what a document leaves behind:
+- **Encrypted too:** `correction_feedback.original_value` / `corrected_value` (what a user
+  corrected on a scan: merchant IDs, amounts, names) and `bug_reports.screenshot_b64` (a
+  screenshot of the app can show a whole document). `EncryptedText` stores a bare Fernet token;
+  a value that does not start like one (`gAAAAA`) is a row from before. Nothing reads either in
+  SQL: the hints count corrections per `field_name`, and no screen sends or reads a bug report.
+- **The backfill covers every encrypted column** (`payload_encryption.COLUMNS`), and its route
+  was renamed to say so.
+- **Left plain, on purpose:**
+  - **Card and invoice headers** (`doc_no`, company names, amounts): the duplicate guard and the
+    queue use them in SQL, and they are what Carmen already holds.
+  - **IP addresses in `audit_logs` / `consent_logs`:** they are legal evidence that has to read,
+    and they already have their own retention.
+  - **Billing contact details:** the user's call, still open.
+- **Deferred:** a retention window and an admin viewer for bug-report screenshots. Nothing
+  produces one yet; both come with the screen that does.

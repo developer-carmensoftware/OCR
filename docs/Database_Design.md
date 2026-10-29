@@ -234,7 +234,7 @@ User corrections of LLM-extracted fields → drives `shared/correction.py` which
 |---|---|
 | `bank_code` FK → banks | |
 | `doc_no`, `field_name` | |
-| `original_value`, `corrected_value` | |
+| `original_value`, `corrected_value` | Encrypted at rest (`EncryptedText`, a Fernet token). Nothing reads them in SQL; the hints count rows per `field_name` |
 | `value_embedding` | `extensions.vector(1536)` — HNSW cosine index for nearest-neighbour prompt hints (NULL until embedded) |
 | `carmen_user_id` | who corrected |
 
@@ -272,12 +272,13 @@ It ran hourly at `created_at + 1h` until 2026-08-19, which logged active users o
 
 ### `bug_reports`
 
-User-submitted bug report from the frontend. Append-only in practice; `status` supports admin triage.
+User-submitted bug report. Append-only in practice; `status` supports admin triage. Only the
+endpoint exists (`POST /api/v1/feedback/bug-report`): no screen sends one yet, and none reads one.
 
 | Key columns | Notes |
 |---|---|
 | `title`, `description` | |
-| `screenshot_b64` | Base64 image, frontend caps at 1 MB |
+| `screenshot_b64` | Base64 image, request capped at ~1 MB. Encrypted at rest (`EncryptedText`): a screenshot of the app can show a whole document |
 | `status` | Triage workflow state |
 | `carmen_user_id` | Reporter |
 
