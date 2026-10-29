@@ -321,16 +321,13 @@ sequenceDiagram
     participant API as /activity/card/input-tax
     participant C as Carmen
     U->>Q: Record input tax
-    Q->>API: GET (prefill, periods)
-    U->>Q: fix vendor/profile/branch, pick period, Record
+    Q->>API: GET → prefill, periods
+    U->>Q: fix fields, pick period, Record
     Q->>API: POST body
-    API->>API: lock card FOR UPDATE
-    API->>API: JV posted? not resolved? sums stamped? period in window?
-    API->>C: GET /taxProfile
-    API->>API: build_input_tax_payload from card + body
+    API->>API: lock card FOR UPDATE<br/>guards, period in window
     API->>C: POST /inputTaxRec (user token)
     C-->>API: Code 0
-    API->>API: stamp input_tax_at/_by, clear email note
+    API->>API: stamp input_tax_at/_by<br/>clear email note
     API-->>Q: 204, row note disappears
 ```
 
