@@ -86,6 +86,9 @@ def _email(**overrides):
         reviewed_by_name=None,
         reviewed_at=None,
         review_payload={"extracted": {"details": []}, "flags": ["mapping_guessed"]},
+        # Default None: `_email_cards` then makes no query, so a fixture that does not care
+        # about input tax cannot shift the positional `side_effect` in `_db`.
+        task_id=None,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -122,13 +125,16 @@ def _db(
     manual_today=0,
     manual_unposted=0,
     usernames=None,
+    cards=None,
 ):
-    """Drive the five `db.execute` calls the handler makes, in order.
+    """Drive the `db.execute` calls the handler makes, in order.
 
     1. GROUP BY chip over email_documents                → .all()
     2. _manual_counts_stmt → .one(); `manual_count` is the posted scans, `manual_unposted`
        the charged-but-never-posted ones, `manual_today` both kinds since midnight ICT
     3. the email window                                  → .scalars().all()
+    3a. `_email_cards`, the cards behind posted email rows (only when `cards` is given — the
+       handler only asks when a posted email row carries a `task_id`) → .scalars().all()
     4. the manual window (only when the filter admits manual rows) → .all()
     5. username_map over those manual rows (only when one carries a user id)
        → .mappings().all(); `usernames` is {carmen_user_id: username}
@@ -165,10 +171,17 @@ def _db(
         SimpleNamespace(carmen_user_id=k, username=v) for k, v in (usernames or {}).items()
     ]
 
+    card_lookup = []
+    if cards is not None:
+        found = MagicMock()
+        found.scalars.return_value.all.return_value = cards
+        card_lookup = [found]
+
     db.execute.side_effect = [
         grouped,
         counted,
         email_window,
+        *card_lookup,
         manual_window,
         names,
     ]
@@ -294,6 +307,62 @@ def test_a_manual_row_says_when_its_input_tax_is_still_owed(overrides, owed):
         body = client.get(BASE, headers=AUTH).json()
 
     assert body["data"][0]["input_tax_owed"] is owed
+    assert body["data"][0]["card_id"] == str(card[0].id)
+
+
+def _email_card(task_id, **overrides):
+    card = SimpleNamespace(
+        id=uuid.uuid4(),
+        task_id=task_id,
+        submitted_at=NOW,
+        tax_amt=Decimal("70.00"),
+        input_tax_at=None,
+    )
+    for k, v in overrides.items():
+        setattr(card, k, v)
+    return card
+
+
+@pytest.mark.parametrize(
+    ("overrides", "owed"),
+    [
+        # Refused, failed, or unticked at approve: the sums were stamped, the record was not.
+        ({}, True),
+        # Filed with the JV, or from this row later.
+        ({"input_tax_at": NOW}, False),
+        # Posted before CA-111 stamped email cards: nobody knows what it owed.
+        ({"tax_amt": None}, False),
+    ],
+    ids=["owed", "filed", "pre-release"],
+)
+def test_an_email_row_answers_input_tax_owed_from_its_card(overrides, owed):
+    """CA-111: an email document's claim can be filed late too, keyed on its card, not on
+    its ledger row's id."""
+    task_id = uuid.uuid4()
+    card = _email_card(task_id, **overrides)
+    note = "Input tax not recorded: bank KTC has no registered tax ID on file"
+    email = _email(status="posted", jv_no="JV-1", review_payload=None, task_id=task_id)
+    email.error_message = note
+    db = _db(statuses={"posted": 1}, manual_count=0, emails=[email], manuals=[], cards=[card])
+    with make_test_client(db, session=SESSION) as client:
+        row = client.get(BASE, headers=AUTH).json()["data"][0]
+
+    assert row["source"] == "email"
+    assert row["id"] == str(email.id)
+    assert row["card_id"] == str(card.id)
+    assert row["input_tax_owed"] is owed
+    # The note is the row's own and survives either way: the pre-release row has nothing else.
+    assert row["error_message"] == note
+
+
+def test_a_pending_email_row_costs_no_card_lookup():
+    """Only a posted row can owe input tax. `cards` is not supplied, so a lookup here would
+    take the manual window's place in the side_effect and the list would come back wrong."""
+    email = _email(task_id=uuid.uuid4())  # pending_review by default
+    db = _db(statuses={PENDING: 1}, manual_count=0, emails=[email], manuals=[])
+    with make_test_client(db, session=SESSION) as client:
+        row = client.get(BASE, headers=AUTH).json()["data"][0]
+    assert (row["card_id"], row["input_tax_owed"]) == (None, False)
 
 
 # ── The merged list ──────────────────────────────────────────────────────────

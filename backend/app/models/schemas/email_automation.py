@@ -201,11 +201,18 @@ class ActivityRow(ReviewDocument):
     # says so in words rather than printing a raw id.
     posted_by_name: str | None = None
 
-    # A manual scan whose JV posted, which owed VAT, and whose input-tax record this app
-    # never filed — the session died on step 4, or step 4 was skipped. The row says so and
-    # offers to file it (`POST /activity/{id}/input-tax`). Always False for email rows,
-    # whose own failure note is `error_message`.
+    # A posted JV that owed VAT and whose input-tax record was never resolved: step 4 died or
+    # was skipped, the reviewer unticked the box, or the filing was refused. The row says so
+    # and offers to file it (`POST /activity/{card_id}/input-tax`). Email rows answer it from
+    # their card too since CA-111; one posted before that has no sums stamped and owes nothing
+    # we can name, so its `error_message` note is all it shows.
     input_tax_owed: bool = False
+
+    # The credit card behind the row — what the input-tax endpoints are keyed on. A manual
+    # row's `id` already is one; an email row's `id` is its ledger row, so this is the only
+    # way from it to the card. None for PMS days, unposted email rows, and duplicates (which
+    # never get a card).
+    card_id: str | None = None
 
 
 class ActivityPage(Page[ActivityRow]):
