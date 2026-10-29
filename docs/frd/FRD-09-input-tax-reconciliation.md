@@ -1,12 +1,12 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-09 — AI Input Tax Reconciliation (ACTX)
-output: Carmen_Cloud_ERP_FRD-09_Input_Tax_Reconciliation_v1.0.docx
-Document Version: Version 1.0 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-09_Input_Tax_Reconciliation_v1.1.docx
+Document Version: Version 1.1 (As-Built Developer & Test Spec)
 Module ID: `credit_card_ocr` (ไม่มี module แยก และไม่คิดเครดิตเพิ่ม เพราะไม่มีการเรียก LLM)
 Status: Built, merged to main, in production use
-Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026)
-Date: 27 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026) + branch feat/ca-111-late-input-tax
+Date: 29 October 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 ---
 
@@ -17,6 +17,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
 | 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุมสามเส้นทางที่ยื่นภาษีซื้อ (wizard step 4, email automation, ปุ่มยื่นย้อนหลังในคิว), กติกาการเลือกผู้ขาย/tax profile/งวดภาษี, การกันยื่นซ้ำ และ QA matrix | Reviewed |
+| 1.1 | 29/10/2026 | Dev Team | CA-111: ยื่นย้อนหลังได้ทั้ง manual และ email (email stamp ยอดลง card หลัง post), ปุ่มในคิวเปิด dialog แก้ผู้ขาย/เลขผู้เสียภาษี/profile/สาขา, เลือกงวดภาษีในกรอบ 6 เดือน, ปุ่ม Keyed in Carmen already, คอลัมน์ `input_tax_by` / `input_tax_keyed` (decision-log #48) | |
 
 <!-- pagebreak -->
 
@@ -32,7 +33,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 - **ไม่ยื่นรายการที่ไม่ครบ** — งวดภาษีผิดเดือนหรืออัตราที่เดาเอา ต้องมีคนไปแก้ใน Carmen ซึ่งแย่กว่าการไม่ยื่น ระบบจึงปฏิเสธพร้อมบอกเหตุผล
 - **ผู้ขายคือธนาคารที่ออกใบกำกับภาษี** — ชื่อ เลขผู้เสียภาษี และที่อยู่มาจากทะเบียนธนาคาร ไม่ใช่จากข้อมูลของโรงแรม
 - **ยื่นอัตราตาม tax profile แต่ยื่นยอดภาษีตามเอกสาร** — ยอดที่อ่านมาคลาดเล็กน้อยต้องไม่กลายเป็น "7% ของฐาน" ในบัญชีเงียบๆ
-- **ยื่นได้ครั้งเดียวต่อเอกสาร** — `credit_cards.input_tax_at` เป็นตัวกันยื่นซ้ำ
+- **ยื่นได้ครั้งเดียวต่อเอกสาร** — `credit_cards.input_tax_at` เป็นตัวกันยื่นซ้ำ ไม่ว่าจะยื่นผ่านแอป หรือมีคนกดว่าคีย์ใน Carmen เองแล้ว (`input_tax_keyed`)
 
 ## 1.1 System Context Diagram (ภาพรวมการไหลของข้อมูล)
 
@@ -57,7 +58,8 @@ flowchart TB
 
 - **Wizard step 4 (manual scan):** หลัง JV post สำเร็จ แสดงรายการภาษีซื้อหนึ่งแถวให้ตรวจ แล้วกด Add Input Tax เพื่อยื่น หรือ Skip เพื่อจบโดยไม่ยื่น
 - **Email automation:** ยื่นต่อจาก JV ทันที ทั้งในเส้นทาง auto-post และเมื่อคนกด Approve ใน dialog ตรวจ ซึ่งมีแผงภาษีซื้อให้ติ๊กเปิด/ปิดการยื่น และแก้ผู้ขาย เลขผู้เสียภาษี tax profile และสาขาได้
-- **ยื่นย้อนหลังจากคิว:** manual scan ที่ JV post แล้วแต่ภาษีซื้อไม่ได้ยื่น (session หมดก่อนถึง step 4 หรือผู้ใช้กด Skip) แสดง "input tax not recorded" บนแถว พร้อมปุ่ม Record input tax
+- **ยื่นย้อนหลังจากคิว (manual และ email):** แถวที่ JV post แล้วแต่ภาษีซื้อไม่ได้ยื่น — manual scan ที่ session หมดก่อนถึง step 4 หรือกด Skip, เอกสารอีเมลที่ผู้ตรวจเอาติ๊กออก หรือการยื่นถูกปฏิเสธ/ล้มเหลว — แสดงหมายเหตุบนแถว พร้อมปุ่ม Record input tax ที่เปิด dialog แก้ค่าได้ เลือกงวดภาษีได้ และมีปุ่ม Keyed in Carmen already
+- **Email stamp ยอดลง card:** หลัง post (ทั้ง auto-post และ approve) ระบบเก็บ `commis_amt` / `tax_amt` และเลขที่/วันที่/สาขาตามที่ post ไว้บน `credit_cards` เพราะผลการอ่านถูกล้างทันทีที่แถวจบ
 - **Settlement report (KBANK):** รายงาน settlement ยื่นภาษีซื้อของตัวเองจากแถวรวมของรายงาน (`total_row`) เพราะแถวรายการแยกตามประเภทบัตรไม่ได้พิมพ์ค่าคอมมิชชันและ VAT (decision-log #28)
 - **กู้ draft ของ wizard:** draft ที่ JV post แล้วจะถูกเสนอให้กู้คืนเฉพาะเมื่อ server ยืนยันว่ายังค้างยื่นภาษีซื้ออยู่จริง
 
@@ -66,11 +68,13 @@ flowchart TB
 | ไม่ทำ | ผู้ใช้ต้องทำอะไรแทน / อยู่ที่ไหนแทน |
 |---|---|
 | แก้รายการภาษีซื้อหลังยื่นแล้ว | แก้ใน Carmen โดยตรง (backend มี proxy `PUT /api/v1/carmen/input-tax/{rec_seq}` แต่ไม่มีหน้าจอเรียกใช้) |
+| ยื่นภาษีซื้อของเอกสารอีเมลที่ post ก่อนปล่อย CA-111 | ใบเหล่านั้นไม่มียอดเก็บไว้ หมายเหตุ "Input tax not recorded …" ยังอยู่บนแถว ต้องคีย์ใน Carmen |
+| chip / ตัวนับ / bell สำหรับแถวที่ค้างยื่น | มีแค่หมายเหตุและปุ่มบนแถว (decision-log #48) |
+| ยื่นหลังเลยกรอบ 6 เดือน | ปุ่ม Record ถูกปิด เหลือ Keyed in Carmen already |
 | ขั้นตอน "Input Tax Reconciliation Completed" และรายงานภาษีซื้อ | เป็นขั้นตอนของ Carmen AP เอง ระบบนี้ทำแค่สร้างรายการเข้าไป |
 | เอกสารที่มีหลายอัตราภาษีในใบเดียว | ระบบยื่นเป็นรายการเดียวตามอัตรารวม (ภาษี ÷ ฐาน) ถ้าไม่มี profile ตรงอัตรานั้น ต้องเลือก profile เองในแผงของ dialog ตรวจ หรือคีย์ใน Carmen |
 | ยื่นภาษีซื้อของ manual scan ที่ post ก่อน 29/09/2026 | ใบเหล่านั้นไม่ได้เก็บยอดไว้ (`tax_amt` ว่าง) ต้องคีย์ใน Carmen |
-| CA-111 "JV post without input tax handling" | ยังอยู่สถานะ To Do ใน Jira และยังไม่มีรายละเอียด |
-| ตรวจว่ามีคนคีย์ภาษีซื้อใบเดียวกันเข้า Carmen เองแล้วหรือยัง | ระบบมองไม่เห็นรายการที่คีย์เอง ปุ่ม Record input tax จึงถามยืนยันก่อนทุกครั้ง |
+| ตรวจว่ามีคนคีย์ภาษีซื้อใบเดียวกันเข้า Carmen เองแล้วหรือยัง | Carmen ไม่มี API ค้นทะเบียนภาษีซื้อ dialog จึงเตือนก่อนทุกครั้ง และมีปุ่ม Keyed in Carmen already ให้คนบอกเอง |
 
 <!-- pagebreak -->
 
@@ -85,8 +89,12 @@ flowchart TB
 | F-04 | Email filing | ยื่นต่อจาก JV ทั้ง auto-post และ approve ไม่ raise ข้อผิดพลาด คืนเป็นหมายเหตุ | `email_automation/pipeline.py` `_post_input_tax()` |
 | F-05 | Review panel | แผงภาษีซื้อใน dialog ตรวจ: ติ๊กยื่น/ไม่ยื่น และแก้ผู้ขาย เลขผู้เสียภาษี profile สาขา | `InputTaxPanel.tsx` |
 | F-06 | Filing guard (wizard) | proxy ที่รับ `credit_card_id` ล็อกแถว ปฏิเสธการยื่นซ้ำ และ stamp `input_tax_at` | `routers/carmen.py` `proxy_create_input_tax()` |
-| F-07 | Late filing (queue) | สร้างรายการจากยอดที่ stamp ไว้กับ JV แล้วยื่น | `file_input_tax_for_card()` + `POST /api/v1/credit-card/activity/{card_id}/input-tax` |
-| F-08 | Owed check | "JV post แล้ว มี VAT และยังไม่ได้ยื่น" — ใช้ทั้งบนแถวคิวและตอนเสนอกู้ draft | `owes_input_tax()`, `input_tax_owed()`, `draftWorthOffering()` |
+| F-07 | Late filing (queue) | manual และ email: สร้างรายการจากยอดที่ stamp ไว้กับ JV พร้อมค่าที่แก้ใน dialog และงวดที่เลือก แล้วยื่น | `file_input_tax_for_card()` + `POST /api/v1/credit-card/activity/{card_id}/input-tax` |
+| F-08 | Owed check | "JV post แล้ว มี VAT และยังไม่ได้ยื่น" — ใช้ทั้งบนแถวคิว (manual และ email) และตอนเสนอกู้ draft | `owes_input_tax()`, `input_tax_preview()`, `draftWorthOffering()` |
+| F-09 | Email stamping | หลัง post เก็บยอดสองยอด เลขที่/วันที่/สาขาตามที่ post และเวลาที่ยื่น (ถ้ายื่นสำเร็จ) บน card | `email_automation/ledger.py` `_stamp_input_tax()` |
+| F-10 | Claim window | เดือนที่ยังยื่นได้: เดือนเอกสารถึง +6 เดือน ไม่เกินเดือนปัจจุบัน (เวลาไทย) | `claim_periods()` |
+| F-11 | Keyed in Carmen | ปิดรายการค้างโดยไม่เรียก Carmen บันทึกว่าใครกด | `mark_input_tax_keyed()` + `POST /api/v1/credit-card/activity/{card_id}/input-tax/keyed` |
+| F-12 | Late dialog | แผงภาษีซื้อแบบ standalone ใน dialog ของแถว + ตัวเลือกงวดภาษี | `QueueRow.tsx` `RecordInputTax`, `InputTaxPanel` (`standalone`, `periodSlot`) |
 
 # 4. UI Specs & Field Mapping
 
@@ -125,18 +133,32 @@ flowchart TB
 <!-- widths: 18,46,36 -->
 | Field | กติกา | ตัวอย่าง |
 |---|---|---|
-| `Prefix` | `vat` + ปี ค.ศ. + เดือน ของวันที่เอกสาร (ปี พ.ศ. แปลงเป็น ค.ศ.) | vat202610 |
+| `Prefix` | `vat` + ปี ค.ศ. + เดือน ของวันที่เอกสาร (ปี พ.ศ. แปลงเป็น ค.ศ.) — ยื่นย้อนหลังใช้งวดที่เลือกใน dialog | vat202610 |
 | `Source` | ค่าคงที่ | ACTX |
-| `FrDate` / `ToDate` | วันแรกและวันสุดท้ายของเดือนนั้น (ปีอธิกสุรทิน ก.พ. จบวันที่ 29) | 2026-10-01 / 2026-10-31 |
-| `InvhTInvNo` / `InvhTInvDt` | เลขที่และวันที่ของเอกสาร | IV6910-00213 / 2026-10-15T00:00:00.000Z |
+| `FrDate` / `ToDate` | วันแรกและวันสุดท้ายของเดือนนั้น (ปีอธิกสุรทิน ก.พ. จบวันที่ 29) — ตามงวดเดียวกับ `Prefix` | 2026-10-01 / 2026-10-31 |
+| `InvhTInvNo` / `InvhTInvDt` | เลขที่และวันที่ของเอกสาร — ไม่เปลี่ยนตามงวดที่เลือก | IV6910-00213 / 2026-10-15T00:00:00.000Z |
 | `InvhDesc` | คำอธิบายแบบเดียวกับ JV (`render_description`) | Commission KTC 10/2026 |
 | `VnName` / `TaxId` / `Address` | ทะเบียนของธนาคารผู้ออกใบกำกับ (ตาราง `banks`: `legal_name`, `tax_id`, `address`) หรือค่าที่ผู้ตรวจแก้ — ช่องว่างหรือช่องที่มีแต่ช่องว่างถือว่าไม่มีค่า | Krungthai Card PCL / 0107545000292 |
 | `BranchNo` | สาขาบนเอกสาร → สาขาของ BU → `00000` | 00000 |
 | `TaxProfileCode` / `TaxProfileDesc` | profile ที่ active และอัตราตรงกับ ภาษี ÷ ฐาน × 100 (คลาดไม่เกิน 0.01) หรือ profile ที่ผู้ตรวจเลือก | VAT07 / VAT 7% |
 | `TaxRate` | อัตราของ profile (ถ้า profile ไม่ได้ประกาศอัตรา ใช้อัตราจริงของเอกสาร) | 7 |
 | `BfTaxAmt` / `TaxAmt` / `TotalAmt` | Σ `commis_amt`, Σ `tax_amt`, ผลรวม — ยอดชุดเดียวกับ JV | 1500.00 / 105.00 / 1605.00 |
-| `UserModified` | wizard ส่ง `admin`, ฝั่ง server ส่ง `OCR-EMAIL` | OCR-EMAIL |
+| `UserModified` | wizard ส่ง `admin`, ฝั่ง server (email และยื่นย้อนหลัง) ส่ง `OCR-EMAIL` | OCR-EMAIL |
 | `VnCode` | ว่างเสมอ | "" |
+
+## 4.4 Late filing dialog — ปุ่ม Record input tax บนแถวคิว
+
+เปิดจากแถวที่ `input_tax_owed` ทั้ง manual และ email ระบบอ่าน `GET /api/v1/credit-card/activity/{card_id}/input-tax` ก่อน ถ้าไม่ค้างแล้ว (มีคนยื่นจากที่อื่น) จะไม่เปิด dialog และ refresh ตาราง
+
+| ส่วน | แก้ได้ไหม | ที่มา |
+|---|---|---|
+| Vendor name, Tax ID | ได้ | ค่าเริ่มต้นคือทะเบียนธนาคารฝั่ง server (`banks`) — ค่าที่แสดงคือค่าที่จะยื่น ถ้าทะเบียนว่าง ช่องว่างและปุ่ม Record ถูกปิดจนกว่าจะกรอก |
+| Tax profile | ได้ | profile ที่ active ใน Carmen |
+| Branch No. | ได้ | สาขาบน card → สาขาของ BU |
+| งวดภาษี | ได้ (เลือกจากรายการ) | `periods` จาก server: เดือนเอกสารถึง +6 เดือน ไม่เกินเดือนปัจจุบัน ค่าเริ่มต้นคือเดือนเอกสาร |
+| ยอดฐาน / ภาษี / รวม | ไม่ได้ | ยอดที่ stamp ไว้กับ JV |
+
+เลยกรอบ 6 เดือน (`expired`): dialog แสดงเหตุผลและปิดปุ่ม Record เหลือ **Keyed in Carmen already** ซึ่งเปิดให้กดได้เสมอ ไม่เรียก Carmen และย้อนไม่ได้
 
 # 5. Action Buttons & Business Logic
 
@@ -144,10 +166,11 @@ flowchart TB
 | Button Name | Action Type | Business Logic / System Behavior |
 |---|---|---|
 | Add Input Tax (wizard) | Confirm + Submit | ถามยืนยัน → `POST /api/v1/carmen/input-tax?credit_card_id=<card>` ด้วย token ของผู้ใช้ → ถือว่าสำเร็จเฉพาะเมื่อ Carmen ตอบ `Code: 0` (Carmen ตอบ HTTP 200 พร้อมคำตัดสินใน body) → stamp `input_tax_at` แล้วจบ wizard |
-| Skip (wizard) | Confirm | จบ wizard โดยไม่ยื่น — JV ยังอยู่ และแถวในคิวจะแสดง "input tax not recorded" พร้อมปุ่มยื่นย้อนหลัง |
-| ช่องติ๊ก post input tax (dialog ตรวจ) | Toggle | ไม่ติ๊ก = ผู้ตรวจตั้งใจคีย์ภาษีซื้อเอง ระบบ post เฉพาะ JV |
-| Approve and post (dialog ตรวจ) | Form Submit | หลัง JV สำเร็จ ยื่นภาษีซื้อด้วย credential ของ BU พร้อมค่าที่ผู้ตรวจแก้ (`input_tax`) ถ้าไม่สำเร็จ เอกสารยังเป็น `posted` และมีหมายเหตุ "Input tax not recorded …" |
-| Record input tax (แถวคิว) | Confirm + Submit | ถามยืนยัน ("ทำเฉพาะเมื่อยังไม่มีใครคีย์ใน Carmen") → `POST /api/v1/credit-card/activity/{card_id}/input-tax` → server ล็อกแถว สร้างรายการจากยอดที่ stamp ไว้กับ JV แล้วยื่นด้วย token ของผู้ใช้ |
+| Skip (wizard) | Confirm | จบ wizard โดยไม่ยื่น — JV ยังอยู่ ข้อความบอกว่าบันทึกทีหลังได้จากคิว และแถวในคิวจะแสดง "input tax not recorded" พร้อมปุ่มยื่นย้อนหลัง |
+| ช่องติ๊ก post input tax (dialog ตรวจ) | Toggle | ไม่ติ๊ก = "ยังไม่ยื่นตอนนี้" ระบบ post เฉพาะ JV และแถวที่ได้จะค้างยื่น (มีปุ่มยื่นย้อนหลัง) — ไม่ใช่ "คีย์เองแล้ว" |
+| Approve and post (dialog ตรวจ) | Form Submit | หลัง JV สำเร็จ ยื่นภาษีซื้อด้วย credential ของ BU พร้อมค่าที่ผู้ตรวจแก้ (`input_tax`) ถ้าไม่สำเร็จ เอกสารยังเป็น `posted` มีหมายเหตุ "Input tax not recorded …" และ card ถูก stamp ให้ค้างยื่น |
+| Record input tax (แถวคิว, manual และ email) | Dialog + Submit | เปิด dialog §4.4 → `POST /api/v1/credit-card/activity/{card_id}/input-tax` พร้อม body (ผู้ขาย, เลขผู้เสียภาษี, profile, สาขา, งวด) → server ล็อกแถว ตรวจงวดอยู่ในกรอบ สร้างรายการจากยอดที่ stamp ไว้กับ JV แล้วยื่นด้วย token ของผู้ใช้ → stamp `input_tax_at` / `input_tax_by` และล้างหมายเหตุของแถว email |
+| Keyed in Carmen already (dialog §4.4) | Submit | `POST /api/v1/credit-card/activity/{card_id}/input-tax/keyed` → ไม่เรียก Carmen, stamp `input_tax_at`, `input_tax_keyed = true`, `input_tax_by` = ผู้กด ย้อนไม่ได้ กดได้แม้เลยกรอบ 6 เดือน |
 | Restore draft (wizard) | Prompt | draft ที่ JV post แล้วถูกเสนอเฉพาะเมื่อ `GET /api/v1/credit-card/activity/{card_id}/input-tax` ตอบ `owed: true` — ถ้าเช็คไม่ได้ (เครือข่ายขัดข้อง) ยังเสนอให้ ไม่ทิ้งงานที่ทำค้างไว้ |
 
 <!-- pagebreak -->
@@ -160,7 +183,11 @@ flowchart TB
 |---|---|
 | `commis_amt` | Σ ค่าคอมมิชชันก่อน VAT — stamp พร้อมกับ JV ใช้เป็นฐานของภาษีซื้อเมื่อยื่นย้อนหลัง |
 | `tax_amt` | Σ VAT — stamp พร้อมกับ JV เป็น null สำหรับใบที่ post ก่อน migration นี้ |
-| `input_tax_at` | เวลาที่แอปนี้ยื่นภาษีซื้อสำเร็จ — null พร้อมกับ `tax_amt > 0` และ `submitted_at` มีค่า หมายถึง "ยังค้างยื่น" |
+| `input_tax_at` | เวลาที่ภาษีซื้อถูกปิดรายการ: แอปนี้ยื่นสำเร็จ หรือมีคนกด Keyed in Carmen — null พร้อมกับ `tax_amt > 0` และ `submitted_at` มีค่า หมายถึง "ยังค้างยื่น" |
+| `input_tax_by` | Carmen user id ของคนที่ยื่นจากแอปหรือกด Keyed (migration `20261029000000`) — null = email job ยื่นเอง หรือปิดรายการก่อน migration |
+| `input_tax_keyed` | `true` = คีย์ใน Carmen เองแล้วกดบอกในแอป (ไม่ได้เรียก Carmen), `false` = แอปนี้ยื่น |
+
+เอกสารอีเมล: ทั้งสามยอดแรกถูก stamp หลัง `_finish` ของแถว (`_stamp_input_tax`) พร้อม `doc_no` / `doc_date` / `branch_no` ตามที่ post — เอกสารที่ post ก่อน CA-111 มี `tax_amt` ว่าง
 
 ## 6.2 ตาราง banks — ทะเบียนผู้ขาย
 
@@ -193,7 +220,9 @@ erDiagram
         timestamptz submitted_at "JV posted"
         numeric commis_amt "base"
         numeric tax_amt "VAT"
-        timestamptz input_tax_at "filed"
+        timestamptz input_tax_at "resolved"
+        varchar input_tax_by
+        boolean input_tax_keyed
     }
 ```
 
@@ -277,7 +306,10 @@ sequenceDiagram
         C-->>P: Code 0 or a refusal
     end
     P->>L: finish posted<br/>error_message = note or empty
+    P->>P: _stamp_input_tax on the card<br/>sums, doc as posted, filed or owed
 ```
+
+**ลำดับมีความหมาย:** stamp หลัง `_finish` เสมอ ก่อนหน้านั้น card ยังไม่มี `tax_amt` จึงไม่ค้างยื่น ไม่มีใครยื่นย้อนหลังระหว่างที่ pipeline ยังยื่นอยู่ และการยื่นย้อนหลังไม่ล้างหมายเหตุที่ `_finish` จะเขียนทับกลับมา
 
 ## 8.4 Sequence — ยื่นย้อนหลังจากคิว
 
@@ -288,15 +320,17 @@ sequenceDiagram
     participant Q as Queue row
     participant API as /activity/card/input-tax
     participant C as Carmen
-    U->>Q: Record input tax, confirm
-    Q->>API: POST
+    U->>Q: Record input tax
+    Q->>API: GET (prefill, periods)
+    U->>Q: fix vendor/profile/branch, pick period, Record
+    Q->>API: POST body
     API->>API: lock card FOR UPDATE
-    API->>API: JV posted? not filed? sums stamped?
+    API->>API: JV posted? not resolved? sums stamped? period in window?
     API->>C: GET /taxProfile
-    API->>API: build_input_tax_payload from card
+    API->>API: build_input_tax_payload from card + body
     API->>C: POST /inputTaxRec (user token)
     C-->>API: Code 0
-    API->>API: stamp input_tax_at
+    API->>API: stamp input_tax_at/_by, clear email note
     API-->>Q: 204, row note disappears
 ```
 
@@ -305,7 +339,8 @@ sequenceDiagram
 - **Manual scan:** ทำ wizard จนถึง step 3 แล้ว post JV → step 4 แสดงรายการภาษีซื้อ → ตรวจผู้ขาย เลขผู้เสียภาษี และ profile → กด Add Input Tax → ยืนยัน
 - **ข้าม step 4:** กด Skip ได้ถ้าจะคีย์ภาษีซื้อเองใน Carmen ถ้าภายหลังต้องการให้ระบบยื่นให้ ใช้ปุ่ม Record input tax บนแถวในคิว
 - **Session หมดระหว่าง step 4:** เปิด wizard ใหม่ ระบบเสนอให้กู้ draft (ถ้ายังค้างยื่น) หรือไปกดปุ่มบนแถวในคิว
-- **เอกสารอีเมล:** ภาษีซื้อยื่นให้เองหลัง JV ถ้าแถว Posted มีหมายเหตุ "Input tax not recorded …" ให้อ่านเหตุผลแล้วคีย์ใน Carmen หรือแก้ทะเบียนธนาคาร/ profile สำหรับใบถัดไป
+- **เอกสารอีเมล:** ภาษีซื้อยื่นให้เองหลัง JV ถ้าแถว Posted มีหมายเหตุ "Input tax not recorded …" (หรือผู้ตรวจเอาติ๊กออก) แถวจะมีปุ่ม Record input tax — อ่านเหตุผล แก้ช่องที่ขาดใน dialog แล้วยื่น หรือกด Keyed in Carmen already ถ้าคีย์เองแล้ว
+- **ยื่นช้าข้ามเดือน:** เลือกงวดภาษีใน dialog ได้ถึง 6 เดือนหลังเดือนเอกสาร (ไม่เกินเดือนปัจจุบัน) เลยกรอบแล้วยื่นจากแอปไม่ได้
 
 # 9. Error Handling & Edge Cases Matrix
 
@@ -325,7 +360,14 @@ sequenceDiagram
 | EC-11 | Carmen ตอบ HTTP 200 แต่ `Code ≠ 0` | ถือว่าไม่สำเร็จ ไม่ stamp | wizard: toast ข้อความ Carmen / email: หมายเหตุบนแถว / คิว: 400 |
 | EC-12 | Carmen รับรายการแล้ว แต่ stamp `input_tax_at` ล้มเหลว | ไม่ตอบ error (กันผู้ใช้กดซ้ำจนเกิดรายการที่สอง) | สำเร็จตามปกติ |
 | EC-13 | โหลด tax profile ไม่ได้ | email: หมายเหตุ / คิว: 503 | ข้อความจาก Carmen |
-| EC-14 | Settlement report | ใช้ `total_row` เป็นยอด ไม่ใช่แถวรายการ | ยอดตรงกับแถวรวมของรายงาน |
+| EC-14 | Settlement report | ใช้ `total_row` เป็นยอด ไม่ใช่แถวรายการ — ทั้งตอนยื่นและตอน stamp ลง card | ยอดตรงกับแถวรวมของรายงาน |
+| EC-15 | ยื่นย้อนหลังหลังเลยกรอบ 6 เดือน | 400 "Past the 6-month input-tax claim window" ไม่เรียก Carmen | dialog ปิดปุ่ม Record เหลือ Keyed in Carmen already |
+| EC-16 | งวดที่ส่งมาอยู่นอกกรอบ (ก่อนเดือนเอกสาร หรือเดือนในอนาคต) | 400 ไม่เรียก Carmen (รูปแบบผิด เช่น 2026-13 → 422) | ข้อความจาก server |
+| EC-17 | กด Keyed ซ้ำ หรือกด Record หลัง Keyed | 409 | "already been recorded" |
+| EC-18 | เอกสารอีเมลที่ post ก่อน CA-111 | `tax_amt` ว่าง ไม่ค้างยื่น | หมายเหตุเดิมยังอยู่ ไม่มีปุ่ม |
+| EC-19 | ผู้ตรวจเอาติ๊กออกตอน approve | card ถูก stamp ยอดแต่ไม่ stamp `input_tax_at` | แถว Posted มี "input tax not recorded" + ปุ่ม |
+| EC-20 | เอกสารอีเมลซ้ำ (`is_duplicate`) | ไม่มี card จึงไม่ค้างยื่น | ไม่มีปุ่ม |
+| EC-21 | stamp ลง card ล้มเหลว (เช่น doc_no ที่ผู้ตรวจแก้ชนกับใบที่ post แล้ว) | log แล้วข้าม JV ไม่ได้รับผลกระทบ | แถวไม่ค้างยื่น หมายเหตุยังอยู่ |
 
 # 10. Non-Functional & Technical Requirements
 
@@ -362,6 +404,10 @@ sequenceDiagram
 | เสร็จ | stamp `commis_amt`, `tax_amt` พร้อม JV และ `input_tax_at` เมื่อยื่นสำเร็จ |
 | เสร็จ | ปุ่ม Record input tax ในคิว และการเช็คก่อนเสนอกู้ draft |
 | เสร็จ | Branch default `00000` ทั้งสองฝั่ง |
+| ส่งทดสอบ | Email stamp ยอดและเลขที่/วันที่/สาขาลง card หลัง `_finish` (`_stamp_input_tax`) |
+| ส่งทดสอบ | แถว email มี `card_id` และ `input_tax_owed` จาก card |
+| ส่งทดสอบ | Dialog ยื่นย้อนหลัง: แก้ผู้ขาย/เลขผู้เสียภาษี/profile/สาขา, เลือกงวดในกรอบ 6 เดือน, Keyed in Carmen already |
+| ส่งทดสอบ | คอลัมน์ `input_tax_by`, `input_tax_keyed` (migration `20261029000000`) |
 
 ## 11.2 Acceptance Criteria
 
@@ -370,6 +416,9 @@ sequenceDiagram
 - ยื่นซ้ำบนเอกสารเดียวกันไม่ได้ในทุกเส้นทาง
 - ภาษีซื้อที่ยื่นไม่สำเร็จไม่ทำให้ JV ถูก rollback และมีเหตุผลแสดงให้คนเห็น
 - manual scan ที่ข้าม step 4 แสดง "input tax not recorded" ในคิว และยื่นย้อนหลังได้หนึ่งครั้ง
+- เอกสารอีเมลที่ผู้ตรวจเอาติ๊กออก หรือยื่นไม่ผ่าน ยื่นย้อนหลังได้จากแถวหนึ่งครั้ง ด้วยยอดเดียวกับ JV
+- ยื่นย้อนหลังลงงวดที่เลือกได้ภายใน 6 เดือนหลังเดือนเอกสาร โดยวันที่ใบกำกับยังเป็นของเอกสาร
+- Keyed in Carmen already ปิดรายการค้างโดยไม่สร้างรายการใน Carmen
 
 # 12. API Specifications
 
@@ -382,8 +431,9 @@ sequenceDiagram
 |---|---|---|
 | GET | `/api/v1/carmen/tax-profiles` | proxy ของ `GET /taxProfile` |
 | POST | `/api/v1/carmen/input-tax?credit_card_id=<uuid>` | body = payload §4.3 → คำตอบของ Carmen ตามจริง ถ้ามี card id: 409 เมื่อยื่นแล้ว, 404 เมื่อ card ถูกลบ |
-| GET | `/api/v1/credit-card/activity/{card_id}/input-tax` | → `{ "owed": true }` |
-| POST | `/api/v1/credit-card/activity/{card_id}/input-tax` | ยื่นย้อนหลัง → 204 |
+| GET | `/api/v1/credit-card/activity/{card_id}/input-tax` | → `{ "owed": false }` หรือเมื่อค้าง `{ owed, doc_no, doc_date, bank_code, branch_no, commis_amt, tax_amt, vendor_name, tax_id, periods, expired }` |
+| POST | `/api/v1/credit-card/activity/{card_id}/input-tax` | ยื่นย้อนหลัง body (ไม่บังคับ) `{ vendor_name, tax_id, profile_code, branch_no, period: "YYYY-MM" }` → 204 |
+| POST | `/api/v1/credit-card/activity/{card_id}/input-tax/keyed` | Keyed in Carmen already → 204 |
 | POST | `/api/v1/email/documents/{id}/approve` | ฟิลด์ `post_input_tax` และ `input_tax` (`vendor_name`, `tax_id`, `profile_code`) — ดู FRD-12 |
 
 ## 12.2 ตัวอย่าง payload
@@ -410,7 +460,8 @@ POST /api/v1/carmen/input-tax?credit_card_id=4b1e…
 | 200 / 204 | ส่งถึง Carmen แล้ว (เส้นทาง wizard ต้องดู `Code` ใน body ต่อ) | wizard: ตรวจ `Code: 0` ก่อนถือว่าสำเร็จ |
 | 400 | สร้างรายการไม่ได้ (เหตุผลขึ้นต้น "Input tax not recorded") หรือ Carmen ปฏิเสธ | แสดงเหตุผล |
 | 404 | card ไม่ใช่ของ BU หรือถูกลบแล้ว | ไม่ยื่น |
-| 409 | ยื่นแล้ว, JV ยังไม่ post หรือ card ไม่มียอดที่เก็บไว้ | ไม่ยื่นซ้ำ ตรวจใน Carmen |
+| 409 | ยื่นแล้ว (หรือ Keyed แล้ว), JV ยังไม่ post หรือ card ไม่มียอดที่เก็บไว้ | ไม่ยื่นซ้ำ ตรวจใน Carmen |
+| 422 | `period` รูปแบบไม่ใช่ YYYY-MM | แก้ค่าที่ส่ง |
 | 503 | ติดต่อ Carmen ไม่ได้ | ลองใหม่ภายหลัง |
 
 # 13. Test Cases & QA Matrix
@@ -446,3 +497,15 @@ POST /api/v1/carmen/input-tax?credit_card_id=4b1e…
 | TC-ITX-23 | กู้ draft หลังยื่นจากคิวแล้ว | เปิด wizard ใหม่ | ไม่เสนอ draft | `owed` = false |
 | TC-ITX-24 | กู้ draft ของ card ที่ถูกลบ | ลบ card แล้วเปิด wizard | ไม่เสนอ draft และถ้าเรียก API ตรงได้ 404 | ไม่ยื่น VAT ของเอกสารที่ไม่มีแล้ว |
 | TC-ITX-25 | ภาษีซื้อล้มเหลวหลัง JV (email) | จำลอง `POST /inputTaxRec` ล้มเหลว | สถานะ `posted` พร้อมหมายเหตุ | JV ไม่ถูก rollback |
+
+## 13.4 Category 4: ยื่นย้อนหลัง email และงวดภาษี (CA-111)
+
+| Test Case ID | Scenario & Pre-conditions | Test Steps | Expected Result | Pass Criteria |
+|---|---|---|---|---|
+| TC-ITX-30 | เอกสารอีเมล approve โดยเอาติ๊กภาษีซื้อออก | approve แล้วกลับไปที่คิว | แถว Posted มี "input tax not recorded" + ปุ่ม Record input tax | card มี `tax_amt`, `input_tax_at` ว่าง |
+| TC-ITX-31 | เอกสารอีเมลที่ธนาคารไม่มี tax ID | กด Record input tax → กรอกเลขผู้เสียภาษี → Record | รายการ ACTX ใน Carmen ด้วยเลขที่กรอก หมายเหตุหายจากแถว | ยอดตรงกับ JV |
+| TC-ITX-32 | เลือกงวดถัดไป | เอกสาร 15/09/2026 เปิด dialog ในเดือน 10/2026 เลือก 10/2026 → Record | `Prefix` vat202610, `InvhTInvDt` 2026-09-15 | — |
+| TC-ITX-33 | เลยกรอบ 6 เดือน | เอกสาร 31/03/2026 เปิด dialog ในเดือน 10/2026 | ปุ่ม Record ถูกปิด มีข้อความเลยกำหนด | เรียก API ตรงได้ 400 |
+| TC-ITX-34 | Keyed in Carmen already | กดปุ่มใน dialog | แถวกลับเป็น posted ปกติ ไม่มีรายการใหม่ใน Carmen | `input_tax_keyed` true, `input_tax_by` = ผู้กด |
+| TC-ITX-35 | Settlement report (KBANK) ยื่นย้อนหลัง | approve โดยเอาติ๊กออก → Record จากแถว | ยอดตาม `total_row` ของรายงาน | — |
+| TC-ITX-36 | manual scan ที่ธนาคารไม่มีทะเบียน | Skip step 4 → Record จากแถว → กรอกผู้ขายและเลขผู้เสียภาษี | ยื่นสำเร็จ (เดิม 400 ติดตาย) | — |

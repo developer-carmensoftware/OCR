@@ -1430,3 +1430,48 @@ own mapping screen, as any other mapping is.
 **Unchanged.** The API still sends each row's `amount` and the AI's `confidence` and `why`
 (the screen reads none of them), and `approve()` still checks every pick against Carmen's
 chart before it writes.
+
+## 48. A posted JV's input tax can be filed late, from email as from a manual scan (2026-10-29)
+
+**Decided:** 2026-10-29, with the user, in a grilling session for CA-111 ("JV post without input
+tax handling"). It amends #22's "charged means reviewable" for the second document only: the JV
+stays done, and the VAT record it left owing becomes something the queue can still settle.
+
+**What was there.** A manual scan whose step 4 died or was skipped could be filed later from the
+queue (`file_input_tax_for_card`, built from `commis_amt`/`tax_amt` stamped with the JV). An email
+document could not: `_mark_submitted` stamped only `submitted_at`, `_finish` clears
+`review_payload`, the row carried no card id, and a reviewer who unticked "post input tax" left
+no trace at all. The one way back was keying it in Carmen. The manual button was confirm-only, so
+its two commonest refusals (no registered tax ID for the bank, no profile at the rate) were dead
+ends, and it always filed into the document's month.
+
+**Decision.**
+- **Owed is one rule for both sources:** JV posted, VAT > 0, input tax not resolved
+  (`owes_input_tax`). Wizard Skip, an unticked approve box, and a refused or failed filing all
+  count. An unticked box now means "not now", not "keyed by hand".
+- **Email stamps what late filing needs**, in `_stamp_input_tax`, **after `_finish`**: the two sums
+  from the same lines the filing summed (`[total_row]` for the settlement report), the document
+  number, date and branch as posted, and `input_tax_at` only when the record was actually filed.
+  After `_finish`, so the card owes nothing until the row's note is written and a late filing
+  cannot clear a note `_finish` then writes back.
+- **The row's button opens the approve screen's input-tax panel** (`InputTaxPanel standalone`):
+  vendor, tax ID, profile and branch editable, amounts locked to the stamped sums. Filed with the
+  clicking user's session token, as the manual button already was.
+- **The tax period is chosen only when filing late**, from the document's month to six after it,
+  capped at the current Thai month (Revenue Code s.82/3). The server offers the months
+  (`claim_periods`) and refuses any other. Past the window Record is unavailable. Approve and
+  step 4 stay on the document's month.
+- **"Keyed in Carmen already"** in the same dialog settles it without a Carmen call, which has no
+  search on its register: `input_tax_keyed = true`, `input_tax_by` = who said so. Irreversible,
+  open to anyone who can use the queue (decision #35's rule: Carmen decides who sees the menu).
+- **Resolving clears the posted email row's `error_message`**: on a posted row it only ever holds
+  the input-tax note. Once resolved the row is a plain posted row; the audit is the card's.
+
+**Not done.** No backfill: an email document posted before this, or a manual scan before
+2026-09-29, has no sums stamped, owes nothing we can name, and keeps its text note. No chip, count
+or bell for owed rows (the note and the button on the row are the surfacing). No retry. The
+approve panel's corrections are not kept; the late dialog asks again.
+
+**Accepted risk.** "Keyed in Carmen" is a person's word, unchecked. A wrong press leaves a VAT
+claim unfiled with nothing in this app still asking for it; `input_tax_keyed` and `input_tax_by`
+are what tell it apart from a record this app filed.
