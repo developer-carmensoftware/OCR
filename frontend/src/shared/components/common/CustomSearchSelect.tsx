@@ -430,16 +430,20 @@ export default function CustomSearchSelect({
                   }}
                 >
                   {opt.code}{' '}
-                  <span
-                    style={{
-                      color: 'var(--text-3)',
-                      fontWeight: 500,
-                      fontFamily: "'IBM Plex Sans Thai', sans-serif",
-                    }}
-                  >
-                    {' '}
-                    - {opt.name}
-                  </span>
+                  {/* No name, no separator: a bare code (a tax period, a profile Carmen lists
+                      without a description) read as "10/2026 -", a name gone missing. */}
+                  {opt.name && (
+                    <span
+                      style={{
+                        color: 'var(--text-3)',
+                        fontWeight: 500,
+                        fontFamily: "'IBM Plex Sans Thai', sans-serif",
+                      }}
+                    >
+                      {' '}
+                      - {opt.name}
+                    </span>
+                  )}
                 </div>
                 {opt.name2 && (
                   <div
