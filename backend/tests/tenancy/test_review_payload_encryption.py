@@ -642,3 +642,255 @@ def test_d14_a_text_token_another_key_wrote_reads_as_none_and_is_left_alone(real
         )
     )
     assert raw == (foreign, foreign)  # a token, so not plaintext: not rewritten
+
+
+# ── A contact person's details (decision-log #49, extended) ─────────────────
+#
+# Needs migration 20261029010000 (the contact columns widened to text): a token does not fit
+# varchar(50). Run against a database that has it — the local Supabase stack until it ships.
+
+CONTACT = "คุณสมหญิง ใจดี ฝ่ายบัญชีเจ้าหนี้ สำนักงานใหญ่ กรุงเทพมหานคร"
+TEL = "02-123-4567 ต่อ 1234"
+# 200 characters: its token would not fit even the old varchar(255).
+LONG_EMAIL = "accounts.payable.team." + "x" * 158 + "@example.co.th"
+CONTACT_COLS = "buyer_contact_name, buyer_tel, buyer_email"
+
+
+def _paid_order(real_engine, tenant_id):
+    order_id = uuid.uuid4()
+
+    async def _insert():
+        async with real_engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "insert into credit_orders (id, tenant_id, pack_code, credits, amount_thb,"
+                    " status, billing_period, created_at, updated_at) values"
+                    " (:id, :t, 'pack_small', 500, 1200, 'paid', 'monthly', now(), now())"
+                ),
+                {"id": order_id, "t": tenant_id},
+            )
+
+    run(_insert())
+    return order_id
+
+
+def _proforma(tenant_id, order_id, tax_id):
+    """Written through the ORM, as `issue_document` writes it (not through `issue_document`
+    itself: that takes a real proforma number off the shared sequence)."""
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from app.models.billing import BillingDocument
+    from app.models.enums import BillingDocumentType
+
+    async def _add():
+        async with async_session() as db:
+            doc = BillingDocument(
+                tenant_id=tenant_id,
+                order_id=order_id,
+                doc_type=BillingDocumentType.PROFORMA,
+                number=f"ENC-PF-{uuid.uuid4().hex[:10]}",
+                issue_date=datetime.now(UTC),
+                buyer_name="บริษัท ทดสอบการเข้ารหัส จำกัด",
+                buyer_tax_id=tax_id,
+                buyer_branch="00000",
+                buyer_contact_name=CONTACT,
+                buyer_tel=TEL,
+                buyer_email=LONG_EMAIL,
+                pack_code="pack_small",
+                credits=500,
+                subtotal=Decimal("1200.00"),
+                vat_rate=Decimal("7.00"),
+                vat_amount=Decimal("84.00"),
+                total=Decimal("1284.00"),
+                currency="THB",
+            )
+            db.add(doc)
+            await db.commit()
+            return doc.id
+
+    return run(_add())
+
+
+def test_d15_a_proformas_contact_is_stored_as_tokens_and_prefills_decrypted(real_engine, tenants):
+    """Also D-19: a 200-character email and a long Thai name fit once encrypted — the widening
+    migration, proved by the insert not failing."""
+    from app.services.billing.documents import get_last_buyer_info
+
+    order_id = _paid_order(real_engine, tenants.b)
+    doc_id = _proforma(tenants.b, order_id, f"9{uuid.uuid4().int % 10**12:012d}")
+
+    raw = run(_text_cols("billing_documents", CONTACT_COLS, "id = :i", {"i": doc_id}))
+    assert all(v.startswith("gAAAAA") for v in raw)
+    assert not any("สมหญิง" in v or "example.co.th" in v for v in raw)
+    (name,) = run(_text_cols("billing_documents", "buyer_name", "id = :i", {"i": doc_id}))
+    assert name == "บริษัท ทดสอบการเข้ารหัส จำกัด"  # the company stays plain
+
+    async def _prefill():
+        async with async_session() as db:
+            return await get_last_buyer_info(db, str(tenants.b))
+
+    info = run(_prefill())
+    assert (info["contact_name"], info["tel"]) == (CONTACT, TEL)
+
+
+def test_d16_the_ar_remark_sent_to_carmen_carries_the_decrypted_contact(real_engine, tenants):
+    """`post_ar_batch` reads the proforma through the ORM and writes the contact into Carmen's
+    Remark. `post_ar_entry` is replaced, so nothing reaches Carmen."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.models.billing import ArCustomerProfile
+    from app.services.billing.ar_posting import post_ar_batch
+
+    tax_id = f"8{uuid.uuid4().int % 10**12:012d}"
+    order_id = _paid_order(real_engine, tenants.b)
+    _proforma(tenants.b, order_id, tax_id)
+
+    async def _post():
+        async with async_session() as db:
+            db.add(
+                ArCustomerProfile(
+                    buyer_name="ENC-D16",
+                    buyer_tax_id=tax_id,
+                    buyer_branch="00000",
+                    carmen_ar_code="AR-ENC",
+                )
+            )
+            await db.commit()
+            sent = AsyncMock(return_value={"carmen_ar_ref": "AR-REF-ENC"})
+            with patch("app.services.billing.ar_posting.post_ar_entry", sent):
+                results = await post_ar_batch(db, [str(order_id)], is_global=True, tenant_scope="")
+            await db.execute(
+                text("delete from ar_customer_profiles where buyer_tax_id = :t"), {"t": tax_id}
+            )
+            await db.commit()
+            return results, sent
+
+    results, sent = run(_post())
+    assert results[0].success, results[0].error
+    remark = sent.await_args.kwargs["remark"]
+    assert CONTACT in remark and TEL in remark and LONG_EMAIL in remark
+    assert "gAAAAA" not in remark
+
+
+def test_d17_owner_emails_are_stored_as_a_token_and_the_sender_check_reads_them(tenants):
+    from app.models.email_automation import EmailIngestSettings
+    from app.services.email_automation.imap import sender_allowed
+
+    emails = ["accounting@example.co.th", "ap@example.co.th"]
+
+    async def _set(value):
+        async with async_session() as db:
+            row = await db.get(EmailIngestSettings, tenants.c)
+            before = list(row.owner_emails) if row else None
+            if row is None:
+                row = EmailIngestSettings(tenant_id=tenants.c)
+                db.add(row)
+            row.owner_emails = value
+            await db.commit()
+            return before
+
+    async def _as_ingest_reads_it():
+        async with async_session() as db:
+            row = await db.get(EmailIngestSettings, tenants.c)
+            return list(row.owner_emails or [])  # ingest.py, verbatim
+
+    before = run(_set(emails))
+    try:
+        (raw,) = run(
+            _text_cols(
+                "email_ingest_settings", "owner_emails::text", "tenant_id = :t", {"t": tenants.c}
+            )
+        )
+        assert set(json.loads(raw)) == {"enc"} and "example" not in raw
+        read = run(_as_ingest_reads_it())
+        assert read == emails
+        assert sender_allowed(read, "Bank <noreply@bank.co.th>, AP <ap@example.co.th>")
+        assert not sender_allowed(read, "Someone <ap@example.co.th.evil.io>")
+    finally:
+        run(_set(before or []))
+
+
+def test_d18_the_backfill_encrypts_contacts_written_in_plaintext(real_engine, tenants):
+    """Rows from before: a proforma's contact (with a NULL email), a tenant's contact email,
+    and an `owner_emails` list — a JSON *array*, which the backfill must count too."""
+    from app.models.billing import BillingDocument
+    from app.models.email_automation import EmailIngestSettings
+    from app.models.identity import Tenant
+
+    order_id = _paid_order(real_engine, tenants.b)
+    doc_id = uuid.uuid4()
+
+    async def _seed():
+        async with real_engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "insert into billing_documents (id, tenant_id, order_id, doc_type, number,"
+                    " issue_date, buyer_name, buyer_contact_name, buyer_tel, buyer_email,"
+                    " pack_code, credits, subtotal, vat_rate, vat_amount, total, currency,"
+                    " created_at, updated_at) values (:id, :t, :o, 'proforma', :n, now(),"
+                    " 'ENC-D18', :c, '0812345678', null, 'pack_small', 500, 1200, 7, 84, 1284,"
+                    " 'THB', now(), now())"
+                ),
+                {
+                    "id": doc_id,
+                    "t": tenants.b,
+                    "o": order_id,
+                    "n": f"ENC-PF-{doc_id.hex[:10]}",
+                    "c": CONTACT,
+                },
+            )
+            await conn.execute(
+                text("update tenants set contact_email = 'ops@example.co.th' where id = :t"),
+                {"t": tenants.b},
+            )
+            await conn.execute(
+                text(
+                    "insert into email_ingest_settings (tenant_id, enabled, tax_ids, rules,"
+                    " owner_emails) values (:t, false, '[]', '[]', '[\"ap@example.co.th\"]')"
+                    " on conflict (tenant_id) do update set owner_emails = excluded.owner_emails"
+                ),
+                {"t": tenants.b},
+            )
+
+    run(_seed())
+
+    counted = _backfill(tenants.b, dry_run=True)
+    for col in ("buyer_contact_name", "buyer_tel"):
+        assert counted[f"billing_documents.{col}"] >= 1
+    assert counted["tenants.contact_email"] == 1
+    assert counted["email_ingest_settings.owner_emails"] == 1
+    assert _backfill(tenants.b) == counted
+
+    raw = run(_text_cols("billing_documents", CONTACT_COLS, "id = :i", {"i": doc_id}))
+    assert raw[0].startswith("gAAAAA") and raw[1].startswith("gAAAAA") and raw[2] is None
+    (email,) = run(_text_cols("tenants", "contact_email", "id = :t", {"t": tenants.b}))
+    assert email.startswith("gAAAAA")
+    (owners,) = run(
+        _text_cols(
+            "email_ingest_settings", "owner_emails::text", "tenant_id = :t", {"t": tenants.b}
+        )
+    )
+    assert set(json.loads(owners)) == {"enc"}
+
+    async def _through_the_app():
+        async with async_session() as db:
+            doc = await db.get(BillingDocument, doc_id)
+            tenant = await db.get(Tenant, tenants.b)
+            settings_row = await db.get(EmailIngestSettings, tenants.b)
+            return (
+                doc.buyer_contact_name,
+                doc.buyer_tel,
+                doc.buyer_email,
+                tenant.contact_email,
+                settings_row.owner_emails,
+            )
+
+    assert run(_through_the_app()) == (
+        CONTACT,
+        "0812345678",
+        None,
+        "ops@example.co.th",
+        ["ap@example.co.th"],
+    )
+    assert not any(_backfill(tenants.b).values())  # idempotent

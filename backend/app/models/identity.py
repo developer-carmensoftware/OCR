@@ -13,6 +13,7 @@ from sqlalchemy.orm import relationship
 
 from app.database import Base
 
+from .encrypted_json import EncryptedText
 from .mixins import SoftDeleteMixin, TimestampMixin, WriterMixin
 
 
@@ -47,7 +48,7 @@ class Tenant(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     name = Column(String(255), nullable=False)
     plan = Column(String(20), ForeignKey("plans.code"), nullable=False, default="free")
     is_active = Column(Boolean, default=True, nullable=False)
-    contact_email = Column(String(255), nullable=True)
+    contact_email = Column(EncryptedText(), nullable=True)  # a person's address: encrypted at rest
     notes = Column(Text, nullable=True)
 
     plan_ref = relationship("Plan", back_populates="tenants")

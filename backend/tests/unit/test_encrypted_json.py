@@ -36,6 +36,18 @@ def test_reads_back_what_went_in():
     assert t.process_result_value(t.process_bind_param(PAYLOAD, PG), PG) == PAYLOAD
 
 
+def test_a_list_round_trips_and_a_list_from_before_reads_as_it_stands():
+    """`owner_emails` is a JSON list, not an object: a token as well, and a plaintext list
+    (every row before encryption) is not mistaken for one."""
+    t = EncryptedJSON()
+    emails = ["accounting@example.co.th", "ap@example.co.th"]
+    stored = t.process_bind_param(emails, PG)
+    assert set(stored) == {"enc"} and "example" not in str(stored)
+    assert t.process_result_value(stored, PG) == emails
+    assert t.process_result_value(emails, PG) == emails
+    assert t.process_result_value([], PG) == []
+
+
 def test_without_clear_keys_nothing_is_readable():
     stored = EncryptedJSON().process_bind_param({"rows": [{"code": "103", "amount": 5}]}, PG)
     assert set(stored) == {"enc"}

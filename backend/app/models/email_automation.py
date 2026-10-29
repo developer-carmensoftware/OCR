@@ -54,7 +54,8 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     # The customer's own addresses. Empty = accept any sender; non-empty = the message
     # must carry one of them in From/To/Cc. A second layer, not the routing key — these
     # headers are composed by the sender, unlike the envelope tag. See the migration.
-    owner_emails = Column(_JSON, nullable=False, default=list)
+    # People's addresses, so encrypted at rest; only Python compares them (`sender_allowed`).
+    owner_emails = Column(EncryptedJSON(), nullable=False, default=list)
     tax_ids = Column(_JSON, nullable=False, default=list)
     rules = Column(_JSON, nullable=False, default=list)
     # Must be replayed to Carmen on every post, so it is encrypted, not hashed.

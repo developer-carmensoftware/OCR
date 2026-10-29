@@ -19,13 +19,15 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Text, and_, cast, func, select, type_coerce, update
+from sqlalchemy import Text, and_, cast, func, inspect, or_, select, type_coerce, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.billing import BillingDocument
 from app.models.business import BugReport, CorrectionFeedback
-from app.models.email_automation import EmailDocument
+from app.models.email_automation import EmailDocument, EmailIngestSettings
 from app.models.encrypted_json import TOKEN_PREFIX, EncryptedJSON
+from app.models.identity import Tenant
 from app.models.pms import PmsEvent
 
 # Every column the app encrypts. A new one is added here, and the backfill covers it.
@@ -35,6 +37,11 @@ COLUMNS = (
     CorrectionFeedback.original_value,
     CorrectionFeedback.corrected_value,
     BugReport.screenshot_b64,
+    BillingDocument.buyer_contact_name,
+    BillingDocument.buyer_tel,
+    BillingDocument.buyer_email,
+    Tenant.contact_email,
+    EmailIngestSettings.owner_emails,
 )
 
 
@@ -42,12 +49,17 @@ def _plaintext(col):
     """SQL for "this value is set and is not a token". Read through `type_coerce`/`cast`:
     compared through the column's own type, the literal would be encrypted too."""
     if isinstance(col.expression.type, EncryptedJSON):
-        stored = cast(col, JSONB)
-        # An object, so not SQL NULL and not the JSON `null` the old `_finish` left on
-        # cleared rows — those hold nothing to encrypt.
-        return and_(func.jsonb_typeof(stored) == "object", ~stored.has_key("enc"))
+        stored, kind = cast(col, JSONB), func.jsonb_typeof(cast(col, JSONB))
+        # Not SQL NULL (jsonb_typeof is NULL then) and not the JSON `null` the old `_finish`
+        # left on cleared rows — those hold nothing to encrypt. A list (`owner_emails`) is
+        # plaintext as much as an object without `enc` is.
+        return and_(kind != "null", or_(kind != "object", ~stored.has_key("enc")))
     stored = type_coerce(col, Text)
     return and_(stored.isnot(None), ~stored.startswith(TOKEN_PREFIX))
+
+
+def _tenant_col(model):
+    return model.id if model is Tenant else model.tenant_id
 
 
 async def encrypt_plaintext_columns(
@@ -61,19 +73,18 @@ async def encrypt_plaintext_columns(
     found: dict[str, int] = {}
     for col in COLUMNS:
         model = col.class_
+        pk = inspect(model).primary_key[0]  # email_ingest_settings is keyed on tenant_id
         plaintext = [_plaintext(col)]
         if tenant_ids is not None:
-            plaintext.append(model.tenant_id.in_(tenant_ids))
-        ids = (await db.execute(select(model.id).where(*plaintext))).scalars().all()
+            plaintext.append(_tenant_col(model).in_(tenant_ids))
+        ids = (await db.execute(select(pk).where(*plaintext))).scalars().all()
         found[f"{model.__tablename__}.{col.key}"] = len(ids)
         if dry_run:
             continue
         for row_id in ids:
             # Read through the column type (a plaintext value comes back as it stands), then
             # written back through it — which is what encrypts it.
-            value = await db.scalar(select(col).where(model.id == row_id))
-            await db.execute(
-                update(model).where(model.id == row_id, *plaintext).values({col.key: value})
-            )
+            value = await db.scalar(select(col).where(pk == row_id))
+            await db.execute(update(model).where(pk == row_id, *plaintext).values({col.key: value}))
         await db.commit()
     return found
