@@ -9,9 +9,10 @@ lives here.
 Kept deliberately in step with InputTaxReconciliation.tsx. `test_cc_input_tax.py`
 pins the arithmetic and the date/prefix derivation.
 
-`file_input_tax_for_card` is the third caller: a manual scan whose JV posted and whose
-step 4 never happened (the session died, or it was skipped), filed afterwards from the
-activity table out of the two sums stamped on the card with the JV.
+`file_input_tax_for_card` is the third caller: a posted JV whose record never followed —
+the wizard's step 4 died or was skipped, an email reviewer unticked the box, or the filing
+was refused — filed afterwards from the activity table out of the two sums stamped on the
+card with the JV (CA-111). `mark_input_tax_keyed` is the other way to settle it.
 """
 
 from __future__ import annotations
@@ -19,15 +20,16 @@ from __future__ import annotations
 import calendar
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import CarmenServiceError, ConflictError, NotFoundError, ValidationError
 from app.models.business import CreditCard
 from app.models.catalog import Bank
+from app.models.email_automation import EmailDocument
 from app.models.schemas import ExtractedDetailRow
 from app.services.credit_card.accounting_config import description_for, get_accounting_config
 from app.services.credit_card.jv import num, r2, render_description
@@ -44,6 +46,18 @@ _RATE_TOLERANCE = 0.01
 # standing in for a fact nobody read. Which is why branch is not a refusal the way the
 # vendor's name and tax ID are: those have no correct default, and this one does.
 _HEAD_OFFICE = "00000"
+
+# Input tax not claimed in the month the tax invoice names may be claimed in a later month,
+# up to six after it (Revenue Code s.82/3) — the window a late filing can choose from.
+_CLAIM_MONTHS = 6
+# The month a claim is filed in is Thailand's. Same value as `activity.ICT`, copied rather
+# than imported: activity.py imports this module.
+_ICT = timezone(timedelta(hours=7))
+
+
+def _now() -> datetime:
+    """The clock the claim window is measured against — patched in tests."""
+    return datetime.now(UTC)
 
 
 def _clean(value: Any) -> str:
@@ -102,6 +116,31 @@ def _iso_parts(doc_date: str | None) -> tuple[str, str] | None:
         return None
 
 
+def input_tax_sums(details: list[ExtractedDetailRow]) -> tuple[float, float]:
+    """(Σ commission before VAT, Σ VAT) — the record's base and tax, and the two sums
+    stamped on the card so it can still be filed after the extraction is gone."""
+    return r2(sum(num(d.commis_amt) for d in details)), r2(sum(num(d.tax_amt) for d in details))
+
+
+def claim_periods(doc_date: date | None, now: datetime) -> list[str]:
+    """The months ("YYYY-MM", oldest first) a claim for this document may still be filed in.
+
+    From the document's own month to six after it, but never past the current Thai month —
+    a period that has not started cannot be filed into. A document dated in the future has
+    only its own month. Empty when the window has closed, or when there is no date to
+    measure it from.
+    """
+    if doc_date is None:
+        return []
+    today = now.astimezone(_ICT)
+    first = doc_date.year * 12 + doc_date.month - 1
+    current = today.year * 12 + today.month - 1
+    if current > first + _CLAIM_MONTHS:
+        return []
+    last = max(first, min(first + _CLAIM_MONTHS, current))
+    return [f"{m // 12:04d}-{m % 12 + 1:02d}" for m in range(first, last + 1)]
+
+
 def build_input_tax_payload(
     details: list[ExtractedDetailRow],
     *,
@@ -114,6 +153,7 @@ def build_input_tax_payload(
     vendor_name: str | None = None,
     tax_id: str | None = None,
     profile_code: str | None = None,
+    period: tuple[str, str] | None = None,
 ) -> tuple[dict | None, str | None]:
     """(payload, reason it was skipped) — exactly one of the two is ever set.
 
@@ -136,19 +176,23 @@ def build_input_tax_payload(
     period still comes from the document date, and a named profile's rate and wording are
     still read back from Carmen's own list. A browser may say *which* profile; it may
     never define one.
+
+    `period` (YYYY, MM) is the one exception to "the period is the document's": a claim
+    filed late (`file_input_tax_for_card`) may land in a later month of the claim window.
+    It moves only the period — the tax invoice date stays the document's.
     """
-    net = r2(sum(num(d.commis_amt) for d in details))
-    tax = r2(sum(num(d.tax_amt) for d in details))
+    net, tax = input_tax_sums(details)
     if tax <= 0 or net <= 0:
         return None, None  # no VAT on this document — nothing was lost
 
     # The month the claim is filed in is the document's own, and deliberately not a field:
     # it is a fact about the statement, and the document date two fields up is where a
-    # misread one is corrected.
+    # misread one is corrected. Filing late is the exception, and the caller checks it.
     parts = _iso_parts(doc_date)
     if parts is None:
         return None, f"Input tax not recorded: document date {doc_date!r} has no readable day"
-    year, month = parts
+    doc_year = parts[0]
+    year, month = period or parts
 
     # Both halves of the vendor's identity, and both are refusals. Carmen accepts a record
     # with `TaxId: ""` and rejects it silently afterwards, which is the failure mode this
@@ -196,7 +240,7 @@ def build_input_tax_payload(
         "FrDate": f"{year}-{month}-01",
         "ToDate": f"{year}-{month}-{last_day:02d}",
         "InvhTInvNo": doc_no or "",
-        "InvhTInvDt": f"{year}-{mon.zfill(2)}-{day.zfill(2)}T00:00:00.000Z",
+        "InvhTInvDt": f"{doc_year}-{mon.zfill(2)}-{day.zfill(2)}T00:00:00.000Z",
         # The JV's own rendering, so the two records from one statement read the same —
         # this used to append the date itself and post any `{Tag}` raw.
         "InvhDesc": render_description(
@@ -233,13 +277,6 @@ def owes_input_tax(card: Any) -> bool:
     )
 
 
-async def input_tax_owed(db: AsyncSession, tenant_id: uuid.UUID, card_id: uuid.UUID) -> bool:
-    """Whether this BU's live card still owes its input-tax record. `NotFoundError` when the
-    card is another BU's or has been deleted, which for a restore prompt means the same as
-    "nothing owed"."""
-    return owes_input_tax(await _live_card(db, tenant_id, card_id))
-
-
 async def _live_card(
     db: AsyncSession, tenant_id: uuid.UUID, card_id: uuid.UUID, *, lock: bool = False
 ) -> Any:
@@ -257,20 +294,10 @@ async def _live_card(
     return card
 
 
-async def file_input_tax_for_card(
-    db: AsyncSession, tenant_id: uuid.UUID, card_id: uuid.UUID, carmen_token: str
-) -> None:
-    """File the ACTX a posted manual scan still owes, and stamp `input_tax_at`.
-
-    The card is locked FOR UPDATE through the Carmen call, as `proxy_gljv` does, so two
-    presses serialize and the second is refused rather than filing twice.
-
-    Built from the card, not from a browser: the two sums were stamped with the JV, the
-    date/number/branch are the card's own, and the vendor, profile and wording are resolved
-    exactly as the email job resolves them. A reason `build_input_tax_payload` refuses on is
-    raised as it stands — it opens "Input tax not recorded" and names what is missing.
-    """
-    card = await _live_card(db, tenant_id, card_id, lock=True)
+def _assert_owed(card: Any) -> None:
+    """The refusals every way of resolving a card's input tax shares — filing it, or marking
+    it keyed by hand. Each is a 409: nothing is wrong with the request, there is just nothing
+    left to resolve."""
     if card.submitted_at is None:
         raise ConflictError("This document's JV has not been posted to Carmen")
     if card.input_tax_at is not None:
@@ -278,6 +305,62 @@ async def file_input_tax_for_card(
     if card.tax_amt is None:
         # Posted before the sums were stored — there is nothing to build the record from.
         raise ConflictError("This document predates input-tax tracking; key it in Carmen")
+
+
+async def _resolve(
+    db: AsyncSession, tenant_id: uuid.UUID, card: Any, user_id: str | None, *, keyed: bool
+) -> None:
+    """Stamp the card resolved and commit.
+
+    Also clears the note on the posted email row this card came from, if any: on a posted
+    row `error_message` only ever holds "Input tax not recorded …", and leaving it would keep
+    saying so beside a record that is now there. No-op for a manual scan, which has no row.
+    """
+    card.input_tax_at = datetime.now(UTC)
+    card.input_tax_by = user_id
+    card.input_tax_keyed = keyed
+    await db.execute(
+        update(EmailDocument)
+        .where(
+            EmailDocument.tenant_id == tenant_id,
+            EmailDocument.task_id == card.task_id,
+            EmailDocument.status == "posted",
+        )
+        .values(error_message=None)
+    )
+    await db.commit()
+
+
+async def file_input_tax_for_card(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    card_id: uuid.UUID,
+    carmen_token: str,
+    *,
+    user_id: str | None = None,
+    overrides: Any = None,
+) -> None:
+    """File the ACTX a posted card still owes — a manual scan or an email document — and
+    stamp it resolved.
+
+    The card is locked FOR UPDATE through the Carmen call, as `proxy_gljv` does, so two
+    presses serialize and the second is refused rather than filing twice.
+
+    The amounts come from the card, never from a browser: the two sums were stamped with the
+    JV. `overrides` (`LateInputTaxIn`) carries what the late dialog lets a person correct —
+    vendor, tax ID, profile, branch, the same as the approve panel — and the period, which
+    must be one `claim_periods` still offers. A reason `build_input_tax_payload` refuses on
+    is raised as it stands — it opens "Input tax not recorded" and names what is missing.
+    """
+    card = await _live_card(db, tenant_id, card_id, lock=True)
+    _assert_owed(card)
+
+    periods = claim_periods(card.doc_date, _now())
+    if card.doc_date is not None and not periods:
+        raise ValidationError("Past the 6-month input-tax claim window — key it in Carmen")
+    period = getattr(overrides, "period", None) or (periods[0] if periods else None)
+    if period is not None and period not in periods:
+        raise ValidationError(f"Tax period {period} is outside this document's claim window")
 
     bank_code: str | None = card.bank_code  # type: ignore[assignment]
     config = await get_accounting_config(db, str(tenant_id), bank_code)
@@ -292,9 +375,13 @@ async def file_input_tax_for_card(
         doc_no=card.doc_no,  # type: ignore[arg-type]
         doc_date=card.doc_date.strftime("%d/%m/%Y") if card.doc_date else None,
         bank=bank,
-        branch=card.branch_no or config.branch,  # type: ignore[arg-type]
+        branch=_clean(getattr(overrides, "branch_no", None)) or card.branch_no or config.branch,  # type: ignore[arg-type]
         description=description_for(config, bank_code),
         tax_profiles_raw=profiles,
+        vendor_name=getattr(overrides, "vendor_name", None),
+        tax_id=getattr(overrides, "tax_id", None),
+        profile_code=getattr(overrides, "profile_code", None),
+        period=tuple(period.split("-")) if period else None,  # type: ignore[arg-type]
     )
     if payload is None:
         raise ValidationError(skipped or "There is no VAT on this document to record")
@@ -308,5 +395,52 @@ async def file_input_tax_for_card(
         reason = res.get("UserMessage") or res.get("InternalMessage") or f"Code {res.get('Code')}"
         raise ValidationError(f"Carmen: {reason}")
 
-    card.input_tax_at = datetime.now(UTC)  # type: ignore[assignment]
-    await db.commit()
+    await _resolve(db, tenant_id, card, user_id, keyed=False)
+
+
+async def mark_input_tax_keyed(
+    db: AsyncSession, tenant_id: uuid.UUID, card_id: uuid.UUID, user_id: str | None
+) -> None:
+    """Record that somebody keyed this card's input tax into Carmen by hand.
+
+    No Carmen call, because there is nothing to ask: Carmen has no search on its input-tax
+    register, so this is a person's word, kept as `input_tax_keyed` beside who said it. No
+    claim-window check either — keying it by hand is exactly what is left once the window
+    has closed.
+    """
+    card = await _live_card(db, tenant_id, card_id, lock=True)
+    _assert_owed(card)
+    await _resolve(db, tenant_id, card, user_id, keyed=True)
+
+
+async def input_tax_preview(db: AsyncSession, tenant_id: uuid.UUID, card_id: uuid.UUID) -> dict:
+    """Whether this BU's live card still owes its input-tax record, and — when it does — what
+    the late-filing dialog shows (`InputTaxOwedOut`).
+
+    `{"owed": False}` on its own otherwise, without the lookups below: the wizard's
+    draft-restore check calls this too and needs only that. `NotFoundError` when the card is
+    another BU's or deleted, which for that check means the same as "nothing owed".
+
+    The vendor is the bank's registry entry, the one `file_input_tax_for_card` posts when
+    nobody overrides it — so what the dialog shows is what would post.
+    """
+    card = await _live_card(db, tenant_id, card_id)
+    if not owes_input_tax(card):
+        return {"owed": False}
+    bank_code: str | None = card.bank_code  # type: ignore[assignment]
+    config = await get_accounting_config(db, str(tenant_id), bank_code)
+    bank = await db.get(Bank, bank_code) if bank_code else None
+    periods = claim_periods(card.doc_date, _now())
+    return {
+        "owed": True,
+        "doc_no": card.doc_no,
+        "doc_date": card.doc_date.strftime("%d/%m/%Y") if card.doc_date else None,
+        "bank_code": bank_code,
+        "branch_no": card.branch_no or config.branch,
+        "commis_amt": float(card.commis_amt or 0),
+        "tax_amt": float(card.tax_amt or 0),
+        "vendor_name": _clean(getattr(bank, "legal_name", None)) or None,
+        "tax_id": _clean(getattr(bank, "tax_id", None)) or None,
+        "periods": periods,
+        "expired": card.doc_date is not None and not periods,
+    }

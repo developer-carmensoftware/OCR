@@ -23,6 +23,7 @@ from app.database import async_session
 from app.models.business import CreditCard
 from app.models.email_automation import EmailDocument
 from app.models.schemas import ExtractedCreditCardData
+from app.services.credit_card.input_tax import input_tax_sums
 from app.services.credit_card.jv import num, r2
 from app.services.shared import notification as notification_service
 from app.utils.date_parsing import parse_doc_date
@@ -268,18 +269,74 @@ async def _mark_submitted(tenant_id: str, task_id: str | None) -> None:
         return
     try:
         async with async_session() as db:
-            card = await db.scalar(
-                select(CreditCard).where(
-                    CreditCard.task_id == uuid.UUID(task_id),
-                    CreditCard.tenant_id == uuid.UUID(tenant_id),
-                    CreditCard.deleted_at.is_(None),
-                )
-            )
+            card = await _card_for_task(db, tenant_id, task_id)
             if card is not None:
                 card.submitted_at = datetime.now(UTC)  # type: ignore[assignment]
                 await db.commit()
     except Exception:
         logger.exception("[email] Could not stamp submitted_at for task %s", task_id)
+
+
+async def _card_for_task(db: AsyncSession, tenant_id: str, task_id: str) -> CreditCard | None:
+    """This BU's live card for the ledger row's task — see `_mark_submitted` for why the
+    lookup is by the server-owned `task_id` and never by an id from a request body."""
+    return await db.scalar(
+        select(CreditCard).where(
+            CreditCard.task_id == uuid.UUID(task_id),
+            CreditCard.tenant_id == uuid.UUID(tenant_id),
+            CreditCard.deleted_at.is_(None),
+        )
+    )
+
+
+async def _stamp_input_tax(
+    tenant_id: str,
+    task_id: str | None,
+    extracted: ExtractedCreditCardData,
+    details: list | None = None,
+    *,
+    filed: bool,
+    by: str | None = None,
+) -> None:
+    """Stamp on the card what a late input-tax filing needs, once the posting is over.
+
+    The two sums, from the same lines the filing summed (`details`, the settlement report's
+    `[total_row]`; None = `extracted.details`, as `_post_input_tax` reads it), because the
+    extraction itself is gone the moment `_finish` clears `review_payload`. The document
+    number, date and branch as they were *posted* — a reviewer's corrections never reached
+    the card otherwise, and the date is what the claim window is measured from. And
+    `input_tax_at`, only when the record was actually filed: `_post_input_tax` returns None
+    both for that and for "no VAT", which the sums tell apart.
+
+    Called after `_finish`, never before: until this write lands `tax_amt` is NULL and the
+    card owes nothing, so nobody can file it late while the pipeline is still filing it, and
+    a late filing cannot clear a note `_finish` then writes back.
+
+    Logs and returns on failure, like `_mark_submitted` — the JV is in Carmen's books. The
+    card then simply owes nothing we can name, and the row's note still says why.
+    """
+    if not task_id:
+        return
+    net, tax = input_tax_sums(extracted.details if details is None else details)
+    try:
+        async with async_session() as db:
+            card = await _card_for_task(db, tenant_id, task_id)
+            if card is None:
+                return
+            card.commis_amt = net  # type: ignore[assignment]
+            card.tax_amt = tax  # type: ignore[assignment]
+            if extracted.doc_no:
+                card.doc_no = extracted.doc_no  # type: ignore[assignment]
+            if doc_date := parse_doc_date(extracted.doc_date):
+                card.doc_date = doc_date  # type: ignore[assignment]
+            if extracted.branch_no:
+                card.branch_no = extracted.branch_no  # type: ignore[assignment]
+            if filed and net > 0 and tax > 0:
+                card.input_tax_at = datetime.now(UTC)  # type: ignore[assignment]
+                card.input_tax_by = by  # type: ignore[assignment]
+            await db.commit()
+    except Exception:
+        logger.exception("[email] Could not stamp input-tax sums for task %s", task_id)
 
 
 def _review_flags(

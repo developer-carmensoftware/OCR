@@ -99,9 +99,13 @@ export interface ReviewDocument {
    *  row then says it was scanned by hand without naming anybody, which is the honest
    *  answer; a raw user id would not be. */
   posted_by_name: string | null
-  /** A `manual` row whose JV posted, which owed VAT, and whose input-tax record was never
-   *  filed — the session died on step 4, or it was skipped. `recordInputTax` files it. */
+  /** A posted row whose JV owed VAT and whose input-tax record was never resolved — step 4
+   *  died or was skipped, the reviewer unticked the box, or the filing was refused. Manual
+   *  and email alike (CA-111). `recordInputTax` files it; `markInputTaxKeyed` settles it. */
   input_tax_owed?: boolean
+  /** The card the input-tax endpoints are keyed on. A manual row's `id` already is one; an
+   *  email row's `id` is its ledger row, so this is the only way from it to the card. */
+  card_id?: string | null
 }
 
 /** One document, opened. `extracted` is an `/extract` response verbatim, which is exactly
@@ -139,33 +143,83 @@ export async function listActivity(
   return res.json() as Promise<ActivityPage>
 }
 
-/**
- * File the input tax a posted manual scan still owes. Built server-side from the sums
- * stamped on the card with its JV, and posted with this user's own Carmen token.
- *
- * 409 = nothing left to file (someone already did), 400 = the record cannot be built or
- * Carmen refused it. Either way the server's words are what the user needs to read.
- */
-export async function recordInputTax(cardId: string): Promise<void> {
-  const res = await apiFetch(API.creditCard.activityInputTax(cardId), { method: 'POST' })
-  if (!res.ok) {
-    const detail = await res
-      .json()
-      .then(d => (d as { detail?: string }).detail)
-      .catch(() => null)
-    throw new Error(detail || `Could not record input tax (${res.status})`)
-  }
+/** The server's words on a refusal — they are what the user needs to read. */
+async function refusal(res: Response, fallback: string): Promise<Error> {
+  const detail = await res
+    .json()
+    .then(d => (d as { detail?: string }).detail)
+    .catch(() => null)
+  return new Error(detail || `${fallback} (${res.status})`)
+}
+
+/** The late input-tax dialog's corrections (`LateInputTaxIn`): the approve panel's three,
+ *  plus the branch, and the period — "YYYY-MM", one of the preview's `periods`. */
+export interface LateInputTaxBody extends ItxOverrides {
+  branch_no?: string
+  period?: string
 }
 
 /**
- * Whether a posted manual scan still owes its input-tax record — the same answer the queue's
- * `input_tax_owed` gives. A deleted card, or another BU's, answers 404, which owes nothing.
+ * File the input tax a posted card still owes, manual or email. Built server-side from the
+ * sums stamped on the card with its JV, corrected by `body`, and posted with this user's own
+ * Carmen token.
+ *
+ * 409 = nothing left to file (someone already did), 400 = the record cannot be built, the
+ * period is outside the claim window, or Carmen refused it.
  */
-export async function inputTaxOwed(cardId: string): Promise<boolean> {
+export async function recordInputTax(cardId: string, body: LateInputTaxBody = {}): Promise<void> {
+  const res = await apiFetch(API.creditCard.activityInputTax(cardId), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw await refusal(res, 'Could not record input tax')
+}
+
+/**
+ * Settle it without filing: somebody keyed the record into Carmen by hand. No Carmen call —
+ * it has no search on its register — so this is the user's word, and stored as theirs.
+ */
+export async function markInputTaxKeyed(cardId: string): Promise<void> {
+  const res = await apiFetch(`${API.creditCard.activityInputTax(cardId)}/keyed`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw await refusal(res, 'Could not mark the input tax as keyed')
+}
+
+/** What the late-filing dialog shows (`InputTaxOwedOut`). Everything but `owed` is absent
+ *  when nothing is owed. */
+export interface InputTaxPreview {
+  owed: boolean
+  doc_no?: string | null
+  doc_date?: string | null
+  bank_code?: string | null
+  branch_no?: string | null
+  commis_amt?: number | null
+  tax_amt?: number | null
+  /** The bank's registered identity — what files when nobody overrides it. */
+  vendor_name?: string | null
+  tax_id?: string | null
+  /** The months ("YYYY-MM") it may still be filed in, oldest — the default — first. */
+  periods?: string[]
+  /** The 6-month claim window has closed: it can only be marked keyed by hand. */
+  expired?: boolean
+}
+
+/**
+ * Whether a posted card still owes its input-tax record, and what the dialog shows when it
+ * does. A deleted card, or another BU's, answers 404, which owes nothing.
+ */
+export async function inputTaxPreview(cardId: string): Promise<InputTaxPreview> {
   const res = await apiFetch(API.creditCard.activityInputTax(cardId))
-  if (res.status === 404) return false
+  if (res.status === 404) return { owed: false }
   if (!res.ok) throw new Error(`Could not check the input tax (${res.status})`)
-  return ((await res.json()) as { owed: boolean }).owed
+  return res.json() as Promise<InputTaxPreview>
+}
+
+/** `inputTaxPreview`'s yes/no alone — the wizard's draft-restore check. */
+export async function inputTaxOwed(cardId: string): Promise<boolean> {
+  return (await inputTaxPreview(cardId)).owed
 }
 
 export async function getPending(id: string): Promise<ReviewDocumentDetail> {
@@ -189,7 +243,8 @@ export interface ApproveResult {
  * Only the three things the machine can get wrong and a human can see. The amounts are
  * the JV's and are edited on its table; a record that disagreed with the journal it is
  * filed beside is the one outcome worse than no record. The tax period is likewise absent:
- * it follows the document date, and that is where a misread one is corrected.
+ * at approve it follows the document date, and that is where a misread one is corrected.
+ * Filing late is the one place it is chosen (`LateInputTaxBody`).
  */
 export interface ItxOverrides {
   vendor_name?: string

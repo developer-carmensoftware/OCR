@@ -41,6 +41,12 @@ interface Props {
    * wearing the same blue as every ordinary OK.
    */
   confirmVariant?: 'confirm' | 'danger'
+  /** A dialog whose `children` are a form rather than a line of detail — the late input-tax
+   *  record (CA-111). Widens the box, left-aligns it, and gives it the review screen's field
+   *  treatment. */
+  wide?: boolean
+  /** Confirm is unavailable for a reason the dialog itself states (a field still missing). */
+  confirmDisabled?: boolean
 }
 
 export default function CustomModal({
@@ -62,6 +68,8 @@ export default function CustomModal({
   errorNonce = 0,
   children,
   confirmVariant = 'confirm',
+  wide = false,
+  confirmDisabled = false,
 }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -230,7 +238,11 @@ export default function CustomModal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
         >
-          <m.div ref={boxRef} className={`modal-box modal-${type}`} {...boxMotion}>
+          <m.div
+            ref={boxRef}
+            className={`modal-box modal-${type}${wide ? ' modal-box--wide' : ''}`}
+            {...boxMotion}
+          >
             <div className="modal-icon-wrapper">
               <cfg.Icon size={26} strokeWidth={1.75} />
             </div>
@@ -301,7 +313,7 @@ export default function CustomModal({
                 type="button"
                 className={`btn btn-${confirmVariant}`}
                 onClick={onConfirm}
-                disabled={busy}
+                disabled={busy || confirmDisabled}
               >
                 {busy && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
                 {confirmLabel}

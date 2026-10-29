@@ -8,7 +8,9 @@ docs/email-automation/07-human-in-the-loop.md.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 
 from sqlalchemy import and_, case, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -268,7 +270,37 @@ def _manual_row(card: CreditCard, task: OCRTask, name: str | None) -> ActivityRo
         jv_no=card.jv_no,
         posted_by_name=name,
         input_tax_owed=owes_input_tax(card),
+        card_id=str(card.id),
     )
+
+
+def _email_row(e: EmailDocument, card: CreditCard | None) -> ActivityRow:
+    """An email document, plus what only its card knows: whether its input tax is still
+    owed, and the card id the input-tax endpoints are keyed on (CA-111)."""
+    row = ActivityRow(**to_review_row(e).model_dump(), source="email")
+    if card is not None:
+        row.card_id = str(card.id)
+        row.input_tax_owed = owes_input_tax(card)
+    return row
+
+
+async def _email_cards(
+    db: AsyncSession, tenant_id: uuid.UUID, emails: Sequence[EmailDocument]
+) -> dict[Any, CreditCard]:
+    """The live cards behind the window's posted email rows, by task — one query, and none at
+    all when nothing in the window has posted. Only a posted row can owe input tax; a pending
+    one's card is not posted yet, and a duplicate never got a card."""
+    tasks = [e.task_id for e in emails if e.status == "posted" and e.task_id is not None]
+    if not tasks:
+        return {}
+    cards = await db.execute(
+        select(CreditCard).where(
+            CreditCard.tenant_id == tenant_id,
+            CreditCard.task_id.in_(tasks),
+            CreditCard.deleted_at.is_(None),
+        )
+    )
+    return {c.task_id: c for c in cards.scalars().all()}
 
 
 def _day_start() -> datetime:
@@ -518,7 +550,8 @@ async def list_activity(
     # ever pages deep enough for the double-fetch to show up.
     window = limit + offset
     emails = (await db.execute(email_stmt.limit(window))).scalars().all()
-    rows = [ActivityRow(**to_review_row(e).model_dump(), source="email") for e in emails]
+    cards = await _email_cards(db, tenant_id, emails)
+    rows = [_email_row(e, cards.get(e.task_id)) for e in emails]
     if wants_manual:
         manuals = (await db.execute(manual_stmt.limit(window))).all()
         # Who ran each scan. One bulk lookup for the whole window rather than a query per

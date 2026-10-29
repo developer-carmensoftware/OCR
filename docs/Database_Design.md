@@ -195,7 +195,9 @@ Extracted header data from a credit card bank statement.
 | `doc_no`, `branch_no` | |
 | `submitted_at` | NULL = draft; NOT NULL = submitted to Carmen ERP |
 | `commis_amt`, `tax_amt` | `NUMERIC(14,2)` — Σ commission and Σ VAT, stamped with the JV: the two sums the input-tax (ACTX) record claims. Header totals, not line items |
-| `input_tax_at` | When this app filed the ACTX. `submitted_at` set + `tax_amt > 0` + this NULL = VAT claim still owed (activity row's `input_tax_owed`) |
+| `input_tax_at` | When the ACTX was resolved: filed by this app, or marked keyed in Carmen. `submitted_at` set + `tax_amt > 0` + this NULL = VAT claim still owed (activity row's `input_tax_owed`, manual and email) |
+| `input_tax_by` | `VARCHAR(36)` — Carmen user id who filed it here or marked it keyed. NULL = the email job, or resolved before 20261029000000 |
+| `input_tax_keyed` | `BOOLEAN NOT NULL DEFAULT false` — true = keyed into Carmen by hand and marked here (no Carmen call); false = this app filed it |
 | `carmen_user_id` | |
 
 **Duplicate check:** `WHERE tenant_id=X AND bank_code=Z AND doc_no=N AND submitted_at IS NOT NULL AND deleted_at IS NULL`

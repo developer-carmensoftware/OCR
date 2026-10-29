@@ -6,10 +6,18 @@ wrong tax period or a guessed rate is a record someone has to go and correct in
 Carmen, which is worse than the record that was never created.
 """
 
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
+import pytest
+
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services.credit_card.input_tax import build_input_tax_payload, resolve_tax_profile
+from app.services.credit_card.input_tax import (
+    build_input_tax_payload,
+    claim_periods,
+    input_tax_sums,
+    resolve_tax_profile,
+)
 
 PROFILES = {
     "Data": [
@@ -240,6 +248,60 @@ def test_the_tax_period_is_not_among_them_and_still_follows_the_document():
     p = _build(doc_date="15/03/2026")
     assert p["Prefix"] == "vat202603"
     assert (p["FrDate"], p["ToDate"]) == ("2026-03-01", "2026-03-31")
+
+
+def test_a_late_filing_moves_the_period_but_not_the_tax_invoice_date():
+    """Filing late is the one place the period is chosen (CA-111). It is still the
+    document's tax invoice; only the month it is claimed in moves."""
+    p = _build(doc_date="15/09/2026", period=("2026", "11"))
+    assert p["Prefix"] == "vat202611"
+    assert (p["FrDate"], p["ToDate"]) == ("2026-11-01", "2026-11-30")
+    assert p["InvhTInvDt"] == "2026-09-15T00:00:00.000Z"
+
+
+def test_a_late_period_across_new_year_keeps_a_buddhist_era_invoice_in_its_own_year():
+    p = _build(doc_date="15/09/2569", period=("2027", "01"))
+    assert p["Prefix"] == "vat202701"
+    assert p["InvhTInvDt"] == "2026-09-15T00:00:00.000Z"
+
+
+def test_input_tax_sums_are_the_base_and_the_vat():
+    assert input_tax_sums(_rows(("1070", "1000", "70"), ("535", "500", "35"))) == (1500.0, 105.0)
+
+
+# ── claim_periods ─────────────────────────────────────────────────────────────
+
+
+def _utc(y, m, d, h=3, mi=0):
+    return datetime(y, m, d, h, mi, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("doc", "now", "expected"),
+    [
+        (date(2026, 9, 15), _utc(2026, 9, 20), ["2026-09"]),
+        (date(2026, 9, 15), _utc(2026, 12, 1), ["2026-09", "2026-10", "2026-11", "2026-12"]),
+        # November + 6 = May, across the new year.
+        (
+            date(2026, 11, 2),
+            _utc(2027, 5, 31),
+            ["2026-11", "2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05"],
+        ),
+        (date(2026, 11, 2), _utc(2027, 6, 1), []),  # one month past: closed
+        (date(2026, 12, 1), _utc(2026, 10, 29), ["2026-12"]),  # dated in the future
+        (None, _utc(2026, 10, 29), []),
+    ],
+    ids=["doc-month", "four-months", "exactly-six-after", "past-the-window", "future", "no-date"],
+)
+def test_the_claim_window_runs_from_the_document_month_to_six_after_it(doc, now, expected):
+    assert claim_periods(doc, now) == expected
+
+
+def test_the_claim_window_turns_over_at_thai_midnight_not_utc():
+    """16:59 UTC on 31 March is 23:59 in Bangkok, still March; 17:00 UTC is April."""
+    doc = date(2026, 9, 15)
+    assert len(claim_periods(doc, _utc(2027, 3, 31, 16, 59))) == 7
+    assert claim_periods(doc, _utc(2027, 3, 31, 17, 0)) == []
 
 
 # ── resolve_tax_profile ───────────────────────────────────────────────────────

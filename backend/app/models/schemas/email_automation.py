@@ -201,11 +201,18 @@ class ActivityRow(ReviewDocument):
     # says so in words rather than printing a raw id.
     posted_by_name: str | None = None
 
-    # A manual scan whose JV posted, which owed VAT, and whose input-tax record this app
-    # never filed — the session died on step 4, or step 4 was skipped. The row says so and
-    # offers to file it (`POST /activity/{id}/input-tax`). Always False for email rows,
-    # whose own failure note is `error_message`.
+    # A posted JV that owed VAT and whose input-tax record was never resolved: step 4 died or
+    # was skipped, the reviewer unticked the box, or the filing was refused. The row says so
+    # and offers to file it (`POST /activity/{card_id}/input-tax`). Email rows answer it from
+    # their card too since CA-111; one posted before that has no sums stamped and owes nothing
+    # we can name, so its `error_message` note is all it shows.
     input_tax_owed: bool = False
+
+    # The credit card behind the row — what the input-tax endpoints are keyed on. A manual
+    # row's `id` already is one; an email row's `id` is its ledger row, so this is the only
+    # way from it to the card. None for PMS days, unposted email rows, and duplicates (which
+    # never get a card).
+    card_id: str | None = None
 
 
 class ActivityPage(Page[ActivityRow]):
@@ -240,9 +247,27 @@ class ReviewStatus(BaseModel):
 
 
 class InputTaxOwedOut(BaseModel):
-    """Whether a posted manual scan still owes its input-tax record (the row's `input_tax_owed`)."""
+    """Whether a posted card still owes its input-tax record (the row's `input_tax_owed`) —
+    and, when it does, what the late-filing dialog shows.
+
+    `owed` alone when it does not: the wizard's draft-restore check asks only that.
+    `periods` are the months this claim may still be filed in, oldest first ("YYYY-MM"), the
+    first being the default; empty with `expired` once the 6-month window has passed.
+    """
 
     owed: bool
+    doc_no: str | None = None
+    doc_date: str | None = None  # DD/MM/YYYY, as everywhere else on the API
+    bank_code: str | None = None
+    branch_no: str | None = None
+    commis_amt: float | None = None
+    tax_amt: float | None = None
+    # The bank's registered identity — what posts when nobody overrides it, so the dialog
+    # seeds its fields with these rather than with the browser's own copy of the registry.
+    vendor_name: str | None = None
+    tax_id: str | None = None
+    periods: list[str] = Field(default_factory=list)
+    expired: bool = False
 
 
 class InputTaxOverrides(BaseModel):
@@ -252,8 +277,9 @@ class InputTaxOverrides(BaseModel):
     registered identity is missing or stale, and a profile resolved from a rate the
     document does not quite state. Everything else on that record is either the same
     detail lines the JV was built from or a fact about the document already editable
-    above it — the tax period included, which follows the document date and is corrected
-    by fixing that — so it has no field here.
+    above it — the tax period included, which at approve follows the document date and is
+    corrected by fixing that — so it has no field here. Filing late is the one place the
+    period is chosen (`LateInputTaxIn`).
 
     Deliberately not the whole ACTX body. `build_input_tax_payload` still assembles it,
     still sums the amounts off `details`, and still reads a named profile's rate and
@@ -264,6 +290,20 @@ class InputTaxOverrides(BaseModel):
     vendor_name: str | None = Field(None, max_length=200)
     tax_id: str | None = Field(None, max_length=20)
     profile_code: str | None = Field(None, max_length=20)
+
+
+class LateInputTaxIn(InputTaxOverrides):
+    """The late-filing dialog: the approve panel's corrections, plus the two things that only
+    make sense after the fact.
+
+    `branch_no` because a posted card has no document left to correct it on. `period`
+    because a claim filed late may belong in a later month than the document's: the Revenue
+    Code allows up to six months after it, and the server checks the month is one of the
+    `periods` it offered. Absent = the document's own month.
+    """
+
+    branch_no: str | None = Field(None, max_length=50)
+    period: str | None = Field(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
 class ApproveIn(BaseModel):
@@ -278,8 +318,9 @@ class ApproveIn(BaseModel):
 
     extracted: dict
     rows: list[dict] = Field(default_factory=list)
-    # Unchecked = the reviewer intends to key the VAT record by hand. Defaults on, which
-    # is what the machine path does unconditionally.
+    # Unchecked = not now: the JV posts alone and the queue row offers to file the VAT
+    # record later, or to mark it keyed by hand (CA-111). Defaults on, which is what the
+    # machine path does unconditionally.
     post_input_tax: bool = True
     # Absent from the auto-post path, which has nobody to correct anything.
     input_tax: InputTaxOverrides | None = None

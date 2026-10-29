@@ -143,6 +143,10 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
     commis_amt = Column(Numeric(14, 2), nullable=True)
     tax_amt = Column(Numeric(14, 2), nullable=True)
     input_tax_at = Column(DateTime(timezone=True), nullable=True)
+    # Who resolved it, and how: filed by this app, or marked as keyed into Carmen by hand —
+    # Carmen has no search on its register, so the second is a person's word (CA-111).
+    input_tax_by = Column(String(36), nullable=True)
+    input_tax_keyed = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     carmen_user_id = Column(String(36), nullable=True, index=True)
 
     task = relationship("OCRTask", back_populates="credit_card")

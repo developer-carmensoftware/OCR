@@ -1,13 +1,13 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-12 — CR: AI Transaction Review (AI JV Automation Queue)
-output: Carmen_Cloud_ERP_FRD-12_CR_AI_Transaction_Review_v1.2.docx
-Document Version: Version 1.2 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-12_CR_AI_Transaction_Review_v1.3.docx
+Document Version: Version 1.3 (As-Built Developer & Test Spec)
 Change Request ต่อ: FRD-01 Credit Card OCR · FRD Smart Credit Card Tax Ingestion & Auto-JV (Email) · FRD-11 PMS Interface
 Module ID: `credit_card_ocr`
 Status: Built, merged to main — คิวใช้งานจริงแล้วสำหรับแหล่ง email และ manual scan ส่วนแถว PMS แสดงในคิวแล้วแต่การ post รอ Carmen (ดู FRD-11)
-Source of truth: repo developer-carmensoftware/OCR @ 0f4da84c (28/10/2026) + branch chore/drop-email-queue-seen
-Date: 28 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ 0f4da84c (28/10/2026) + branch chore/drop-email-queue-seen + branch feat/ca-111-late-input-tax
+Date: 29 October 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 ---
 
@@ -20,6 +20,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 | 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว รวมสเปกคิวที่เดิมกระจายอยู่ใน Email FRD v3.0/v3.1 §4.2–4.3, §8.4c–8.6, §12.1–12.2 เข้ากับส่วนที่เพิ่มหลังจากนั้น (chip 5 ตัว, charged-means-reviewable, auto-post gate, แถว manual และแถว PMS) | Reviewed |
 | 1.1 | 28/10/2026 | Dev Team | ยุบ chip เหลือ 2 ตัว (Review, All) — Today / Posted / Not posted ย้ายไปเป็น dropdown ใน All, หน้าเปิดที่ Review ถ้ามีงาน ไม่งั้นไป All, ตัดจุดเตือน (dot) และ `POST /activity/seen` ออกทั้งหมด (07-human-in-the-loop.md §24) | |
 | 1.2 | 28/10/2026 | Dev Team | Drop ตารางของจุดเตือนหลัง deploy v1.1 (migration `20261028000000`) | |
+| 1.3 | 29/10/2026 | Dev Team | CA-111: แถว email ที่ post แล้วแต่ภาษีซื้อค้างก็มีปุ่ม Record input tax เหมือน manual — ปุ่มเปิด dialog แก้ผู้ขาย/เลขผู้เสียภาษี/profile/สาขา และเลือกงวดภาษีในกรอบ 6 เดือน พร้อมทางเลือก Keyed in Carmen already, แถวมี `card_id` (decision-log #48, FRD-09 v1.1) | |
 
 <!-- pagebreak -->
 
@@ -73,7 +74,7 @@ flowchart TB
 - **Approve and post:** synchronous กดแล้วเห็นผลจาก Carmen ในหน้าเดียวกัน ถ้า Carmen ปฏิเสธ เอกสารยังอยู่ในคิวให้แก้แล้วกดใหม่ได้
 - **Reject:** จบสถานะ พร้อมเหตุผลแบบไม่บังคับกรอก ไม่คืนเครดิต
 - **ปุ่มแก้สาเหตุ (fix button):** แถวที่หยุดเพราะการตั้งค่า (password, sender, tax ID, credential) มีปุ่มพาไปหน้าตั้งค่าในแอป แถวที่ mapping ขาดพาไปหน้า mapping
-- **Record input tax:** manual scan ที่ post JV แล้วแต่ยังไม่ได้ยื่นภาษีซื้อ (session หมดก่อนถึง step 4) ยื่นย้อนหลังได้จากแถว — รายละเอียดอยู่ใน FRD-09
+- **Record input tax:** แถวที่ post JV แล้วแต่ยังไม่ได้ยื่นภาษีซื้อ ทั้ง manual scan (session หมดก่อนถึง step 4 หรือกด Skip) และเอกสารอีเมล (ผู้ตรวจเอาติ๊กออก หรือการยื่นถูกปฏิเสธ) ยื่นย้อนหลังได้จากแถว หรือกด Keyed in Carmen already ถ้าคีย์เองแล้ว — รายละเอียดอยู่ใน FRD-09
 - **Backpressure:** BU ที่มีเอกสารรอตรวจครบ 50 ใบ อีเมลใหม่จะถูกคืนกลับไปในสภาพยังไม่อ่าน ไม่เสียเครดิต
 
 ## 2.2 Out-of-Scope (สิ่งที่ระบบไม่ทำ และผู้ใช้ต้องทำแทน)
@@ -145,7 +146,8 @@ flowchart TB
 | `jv_no` | Text | O | เลข JV ที่ Carmen คืนมา | JV2610-0012 |
 | `reviewed_by_name` / `reviewed_at` | Text / Datetime | O | ผู้อนุมัติหรือปฏิเสธ เก็บเป็นข้อความถาวร ไม่ใช่ FK | Somchai P. |
 | `posted_by_name` | Text | O | (manual) ผู้สแกน อ่านจาก session ณ ตอนแสดงผล — หายได้เมื่อ session ถูกลบ | Napat K. |
-| `input_tax_owed` | Boolean | O | (manual) JV post แล้วแต่ยังไม่ได้ยื่นภาษีซื้อ → แถวแสดงปุ่ม Record input tax | true |
+| `input_tax_owed` | Boolean | O | JV post แล้ว มี VAT และภาษีซื้อยังไม่ถูกยื่นหรือ mark ว่าคีย์เอง (manual และ email) → แถวแสดงปุ่ม Record input tax | true |
+| `card_id` | UUID | O | credit card ที่อยู่เบื้องหลังแถว — endpoint ภาษีซื้อใช้ค่านี้ (แถว email มี `id` เป็นของ ledger) ว่างสำหรับแถว PMS, แถวที่ยังไม่ post และเอกสารซ้ำ | 4b1e… |
 
 ## 4.3 เหตุผลบนแถวที่รอตรวจ (reason ladder)
 
@@ -210,7 +212,7 @@ flowchart TB
 | Approve / Reject (PMS) | Form Submit | `POST /api/v1/pms/days/{id}/approve` / `reject` — ดู FRD-11 |
 | Fix mapping / Open settings / Reconnect | Navigate | Fix mapping เปิดหน้า mapping ของแอปในแท็บเดิม ส่วน Open settings / Reconnect เปิด `/setting` ของ Carmen ในแท็บใหม่ ตาม §4.6 |
 | Open JV | External link | เปิด JV ใน Carmen (`/glJv/<jv_no>/show`) ในแท็บใหม่ เลข JV ในคอลัมน์ JV เป็นข้อความที่ copy ได้ ไม่ใช่ลิงก์ |
-| Record input tax | Confirm + Submit | (manual scan) ถามยืนยันก่อน เพราะอาจมีคนคีย์ภาษีซื้อเข้า Carmen เองไปแล้ว → `POST /api/v1/credit-card/activity/{card_id}/input-tax` ใช้ token ของผู้ใช้ — ดู FRD-09 |
+| Record input tax | Dialog + Submit | (manual และ email) เปิดแผงภาษีซื้อแบบเดียวกับ dialog ตรวจ: แก้ผู้ขาย/เลขผู้เสียภาษี/profile/สาขาได้ ยอดล็อกตาม JV เลือกงวดภาษีในกรอบ 6 เดือน → `POST /api/v1/credit-card/activity/{card_id}/input-tax` ใช้ token ของผู้ใช้ หรือกด Keyed in Carmen already → `POST /api/v1/credit-card/activity/{card_id}/input-tax/keyed` ไม่เรียก Carmen — ดู FRD-09 |
 | Mapping Settings | Navigate | เปิดหน้า GL mapping ในแท็บใหม่ |
 | Scan manually | Navigate | ไปที่ wizard `#/CreditCardOCR/manual` (FRD-01) |
 
@@ -226,7 +228,7 @@ flowchart TB
 | ตาราง | บทบาทในคิว | คอลัมน์ที่คิวใช้ |
 |---|---|---|
 | `email_documents` | แถวของแหล่ง email หนึ่งแถวต่อ (message × attachment) | `status`, `reason_code`, `error_message`, `review_payload`, `posting_started_at`, `reviewed_by`, `reviewed_by_name`, `reviewed_at`, `dismissed_at`, `jv_no`, `task_id` |
-| `credit_cards` | แถวของแหล่ง manual — เฉพาะแถวที่ไม่มี `email_documents` ชี้ถึง (anti-join) | `submitted_at` (post แล้วหรือยัง), `tax_amt` (ใช้คำนวณ `input_tax_owed`), `jv_no`, `carmen_user_id` |
+| `credit_cards` | แถวของแหล่ง manual — เฉพาะแถวที่ไม่มี `email_documents` ชี้ถึง (anti-join) และ card ของแถว email ที่ post แล้ว (query เดียวต่อหน้า) | `submitted_at` (post แล้วหรือยัง), `tax_amt` + `input_tax_at` (ใช้คำนวณ `input_tax_owed`), `jv_no`, `carmen_user_id` |
 | `pms_events` | แถวของแหล่ง PMS หนึ่งแถวต่อ BU × Data Bank day | `status`, `review_payload`, `reason_code`, `posting_started_at`, `reviewed_by_name`, `reviewed_at`, `jv_no` |
 | `email_ingest_settings` | สวิตช์ `auto_post` ต่อ BU (ค่าเริ่มต้น false) และ credential ที่ใช้ post | `auto_post`, credential ของ BU |
 
@@ -297,7 +299,7 @@ erDiagram
 | Carmen `POST /gljv` | Approve เอกสารอีเมล (และ auto-post ใน pipeline) | credential ที่ BU เก็บไว้ใน `email_ingest_settings` อ่านใหม่ทุกครั้งตอนกด |
 | Carmen `POST /inputTaxRec` | หลัง JV สำเร็จ ถ้าติ๊ก post input tax — ล้มเหลวได้โดยไม่ rollback JV | credential ของ BU |
 | Carmen mapping table + interface post (PMS) | Approve วันของ PMS — ดู FRD-11 | credential ของ BU |
-| Carmen `POST /inputTaxRec` (manual) | ปุ่ม Record input tax บนแถว manual | token ของผู้ใช้ที่กด เหมือนที่ wizard ใช้ |
+| Carmen `POST /inputTaxRec` (ยื่นย้อนหลัง) | ปุ่ม Record input tax บนแถว manual และ email | token ของผู้ใช้ที่กด เหมือนที่ wizard ใช้ |
 
 **ทำไมไม่ใช้ token ของผู้กด Approve:** JV ต้องถูกบันทึกเป็นของ BU ไม่ใช่ของพนักงานที่บังเอิญเปิดคิว และ session ที่หลุดไปจะใช้คิวเป็นช่องทาง post JV ในชื่อของ BU ไม่ได้ ระบบจึงไม่ post ผ่าน `proxy_gljv` (ซึ่งอ่าน token ของ session)
 

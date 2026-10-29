@@ -45,7 +45,7 @@ from app.services.credit_card.jv import (
 )
 from app.services.email_automation import credential
 from app.services.email_automation import ingest_settings as es
-from app.services.email_automation.ledger import _finish, _mark_submitted
+from app.services.email_automation.ledger import _finish, _mark_submitted, _stamp_input_tax
 from app.services.email_automation.pipeline import _post_input_tax
 from app.services.shared import carmen
 from app.services.shared.carmen import CarmenAPIError
@@ -353,6 +353,7 @@ async def approve_document(
         # `_run_document`'s identical call for why `total_row`, not `extracted.details`,
         # is what has anything to sum for this document type.
         ar_input_tax_details = [extracted.total_row] if extracted.total_row else []
+        tax_details = ar_input_tax_details if doc_type == DocType.AR_RECONCILE else None
         tax_note = (
             await _post_input_tax(
                 extracted,
@@ -360,7 +361,7 @@ async def approve_document(
                 config=config,
                 carmen_token=carmen_token,
                 overrides=input_tax,
-                details=ar_input_tax_details if doc_type == DocType.AR_RECONCILE else None,
+                details=tax_details,
             )
             if post_input_tax_record
             else None
@@ -377,6 +378,16 @@ async def approve_document(
             # The reviewer is the one who just posted this — telling them again in the
             # bell wastes the fact that they are sitting right here watching it happen.
             notify=False,
+        )
+        # Unticked counts as owed, not as "keyed by hand": the queue offers to file it later
+        # (CA-111). After `_finish` for the reason `_stamp_input_tax` gives.
+        await _stamp_input_tax(
+            tenant_id,
+            task_id,
+            extracted,
+            tax_details,
+            filed=post_input_tax_record and tax_note is None,
+            by=reviewer,
         )
         await _stamp_reviewer(ledger_id, reviewer, reviewer_name)
         logger.info(

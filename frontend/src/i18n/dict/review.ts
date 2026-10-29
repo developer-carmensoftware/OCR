@@ -214,11 +214,18 @@ export const en = {
   'review.actionRecordInputTax': 'Record input tax',
   'review.recordInputTaxTitle': 'Record input tax in Carmen?',
   // The "not already keyed" line is the point of the dialog: the app cannot see a record
-  // someone typed into Carmen by hand, and a second copy double-claims the VAT.
+  // someone typed into Carmen by hand, and a second copy double-claims the VAT. Hence the
+  // dialog's own way to say so (CA-111).
   'review.recordInputTaxBody':
-    'This files the input-tax (ACTX) record for {doc}, from the amounts posted on its JV.\n\nOnly continue if nobody has already keyed it into Carmen by hand.',
+    'This files the input-tax (ACTX) record for {doc}, from the amounts posted on its JV.\n\nIf somebody already keyed it into Carmen by hand, press "Keyed in Carmen already" instead: a second record claims the VAT twice.',
   'review.inputTaxRecorded': 'Input tax recorded for {doc}',
   'review.inputTaxRecordFailed': 'Input tax not recorded: {msg}',
+  'review.lateItxKeyed': 'Keyed in Carmen already',
+  'review.lateItxMarked': 'Input tax for {doc} marked as keyed in Carmen',
+  'review.lateItxGone': 'Nothing is left to record for {doc}',
+  'review.lateItxExpired':
+    'Past the 6-month input-tax claim window, so it can no longer be filed from here. If it is in Carmen already, mark it keyed.',
+  'review.itxLater': 'Not now: the queue offers to record it later',
   // The landing page for a BU that has never scanned anything. No word about email: most
   // BUs scan by hand, and the automation is introduced from Carmen's menu, which opens our
   // settings screen.
@@ -428,9 +435,15 @@ export const th: Record<keyof typeof en, string> = {
   'review.actionRecordInputTax': 'บันทึกภาษีซื้อ',
   'review.recordInputTaxTitle': 'บันทึกภาษีซื้อใน Carmen?',
   'review.recordInputTaxBody':
-    'ระบบจะบันทึกรายการภาษีซื้อ (ACTX) ของเอกสาร {doc} จากยอดที่ลงไว้ใน JV\n\nกดต่อเฉพาะเมื่อยังไม่มีใครคีย์รายการนี้ใน Carmen เอง',
+    'ระบบจะบันทึกรายการภาษีซื้อ (ACTX) ของเอกสาร {doc} จากยอดที่ลงไว้ใน JV\n\nถ้ามีคนคีย์รายการนี้ใน Carmen เองแล้ว ให้กด "คีย์ใน Carmen แล้ว" แทน ไม่เช่นนั้นภาษีซื้อจะถูกขอซ้ำ',
   'review.inputTaxRecorded': 'บันทึกภาษีซื้อของ {doc} แล้ว',
   'review.inputTaxRecordFailed': 'บันทึกภาษีซื้อไม่สำเร็จ: {msg}',
+  'review.lateItxKeyed': 'คีย์ใน Carmen แล้ว',
+  'review.lateItxMarked': 'บันทึกว่าภาษีซื้อของ {doc} คีย์ใน Carmen แล้ว',
+  'review.lateItxGone': 'ภาษีซื้อของ {doc} ไม่ค้างแล้ว',
+  'review.lateItxExpired':
+    'เลยกำหนดขอใช้ภาษีซื้อ 6 เดือนแล้ว จึงยื่นจากที่นี่ไม่ได้ ถ้ารายการนี้อยู่ใน Carmen แล้วให้กด "คีย์ใน Carmen แล้ว"',
+  'review.itxLater': 'ยังไม่ยื่นตอนนี้ ยื่นทีหลังได้จากคิว',
   'review.noScansTitle': 'ยังไม่มีการสแกน',
   'review.noScansBody':
     'ใบแจ้งยอดทุกใบที่สแกนจะมาปรากฏที่นี่ ทั้งที่ลงบัญชีแล้วและยังไม่ได้ลงบัญชี เพื่อให้เห็นว่าเครดิตแต่ละหน่วยใช้ไปกับอะไร',

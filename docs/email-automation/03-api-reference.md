@@ -61,8 +61,9 @@ stuck mid-flight is still findable. An unknown value falls back to `review`.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/v1/credit-card/activity?filter=&limit=&offset=` | `ActivityPage` — email documents **and** manual scans, newest first, plus `counts` per filter |
-| POST | `/api/v1/credit-card/activity/{id}/input-tax` | File the ACTX a posted manual scan still owes (`input_tax_owed`), from the sums stamped with its JV. 204 / 404 / 409 nothing left to file / 400 with the reason |
-| GET | `/api/v1/credit-card/activity/{id}/input-tax` | `{owed}`: whether that card still owes its ACTX, by the same rule as `input_tax_owed`. 404 for a deleted or another BU's card. The manual wizard asks before it offers a posted draft back |
+| POST | `/api/v1/credit-card/activity/{card_id}/input-tax` | File the ACTX a posted card still owes (`input_tax_owed`), manual or email (decision #48), from the sums stamped with its JV and the caller's own Carmen token. Optional body `LateInputTaxIn`: `vendor_name`, `tax_id`, `profile_code`, `branch_no`, `period` ("YYYY-MM", one of the GET's `periods`). 204 / 404 / 409 nothing left to file / 400 with the reason (incl. a period outside the claim window, or the window closed) / 422 malformed period |
+| POST | `/api/v1/credit-card/activity/{card_id}/input-tax/keyed` | "Keyed in Carmen already": settles it with no Carmen call (`input_tax_keyed`, `input_tax_by`). Still allowed after the claim window closes. 204 / 404 / 409 as above |
+| GET | `/api/v1/credit-card/activity/{card_id}/input-tax` | `{owed}` alone when nothing is owed — the manual wizard asks before it offers a posted draft back. When owed, also the late dialog's prefill: `doc_no`, `doc_date`, `bank_code`, `branch_no`, `commis_amt`, `tax_amt`, the bank's registered `vendor_name`/`tax_id`, `periods` (oldest = default) and `expired`. 404 for a deleted or another BU's card. `card_id` is on every activity row that has a card; an email row's own `id` is its ledger row |
 
 What `#/CreditCardOCR` actually lists, and a strictly wider question than
 `GET /email/documents` (which still exists and is still email-only). Each row carries
@@ -323,7 +324,7 @@ right there.
 | Status | When | What the row does |
 |---|---|---|
 | `200` | Posted | `posted`, `review_payload` cleared, `jv_no` stamped |
-| `200` + `tax_note` | JV posted, input-tax record did not | Still `posted` — the VAT is a separate errand, not a failure |
+| `200` + `tax_note` | JV posted, input-tax record did not | Still `posted` — the VAT is a separate errand, not a failure. The card is stamped owed, so the row offers to file it late or mark it keyed (decision #48); same for `post_input_tax: false` |
 | `400` | Carmen declined (`Code != 0`) — closed period, unknown dept | **Stays `pending_review`.** The message is Carmen's own; it is fixable on the screen |
 | `409` | Someone else in the BU approved or rejected it first | Gone from the queue |
 | `503` | Carmen unreachable | Stays `pending_review`. *Check whether the JV posted before approving again* |

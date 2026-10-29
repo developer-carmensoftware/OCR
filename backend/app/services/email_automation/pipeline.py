@@ -58,6 +58,7 @@ from app.services.email_automation.ledger import (
     _park_for_review,
     _possibly_posted,
     _review_flags,
+    _stamp_input_tax,
 )
 from app.services.shared import carmen
 from app.services.shared.carmen import (
@@ -730,12 +731,13 @@ async def _run_document(
         # per-scheme rows print no commission/VAT (dashes on the page) — only
         # `total_row` does — so that is what `_post_input_tax` sums instead.
         ar_input_tax_details = [extracted.total_row] if extracted.total_row else []
+        tax_details = ar_input_tax_details if doc_type == DocType.AR_RECONCILE else None
         tax_error = await _post_input_tax(
             extracted,
             bank_code=bank_code,
             config=config,
             carmen_token=carmen_token,
-            details=ar_input_tax_details if doc_type == DocType.AR_RECONCILE else None,
+            details=tax_details,
         )
 
         await _finish(
@@ -747,6 +749,9 @@ async def _run_document(
             jv_no=str(result.get("InternalMessage") or ""),
             error=tax_error,
         )
+        # After `_finish`, so a refused or failed claim becomes one the queue can file late
+        # only once the row's note is written (CA-111).
+        await _stamp_input_tax(tenant_id, task_id, extracted, tax_details, filed=tax_error is None)
         logger.info("[email] Posted %s (%s) for tenant %s", extracted.doc_no, filename, tenant_id)
         return "posted"
 
