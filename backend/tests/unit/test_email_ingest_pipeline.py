@@ -196,6 +196,7 @@ class _Patches:
         self.possibly_posted = AsyncMock(return_value=possibly_posted)
         self.mark_token_unverified = AsyncMock()
         self.post_input_tax = AsyncMock(return_value=tax_note)
+        self.stamp_input_tax = AsyncMock()
         # Exposed like every other collaborator so a test can assert the JV was *not*
         # posted. The patch is stopped by the time `_run` returns, so reaching for
         # `ingest.carmen.post_gljv` afterwards finds the real function again.
@@ -214,6 +215,7 @@ class _Patches:
             patch.object(pipeline, "_possibly_posted", self.possibly_posted),
             patch.object(ingest.credential, "mark_token_unverified", self.mark_token_unverified),
             patch.object(pipeline, "_post_input_tax", self.post_input_tax),
+            patch.object(pipeline, "_stamp_input_tax", self.stamp_input_tax),
             patch.object(pipeline, "finalize_extraction", AsyncMock(return_value=self.extracted)),
             patch.object(pipeline, "mark_task_failed", AsyncMock()),
             patch.object(pipeline, "_mark_submitted", self.mark_submitted),
@@ -311,6 +313,51 @@ async def test_happy_path_posts_and_records_ledger():
     assert notifications[0].type == "document_posted"
     assert notifications[0].payload["doc_no"] == "INV-001"
     assert notifications[0].payload["jv_no"] == "JV-999"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tax_note", "filed"),
+    [(None, True), ("Input tax not recorded: no active tax profile at 5.00%", False)],
+    ids=["filed", "refused"],
+)
+async def test_auto_post_stamps_what_a_late_filing_needs_after_the_row_is_finished(tax_note, filed):
+    """CA-111: the sums (and whether the claim was filed) go on the card, or a refused claim
+    is one nobody can file later — the extraction is gone once the row is finished. Stamped
+    after `_finish`, so the card owes nothing until the row's note is already written."""
+    db = _FakeDB()
+    seen_status: list[str] = []
+    with (
+        _patch_sessions(_session_factory(db)),
+        _Patches(
+            extracted=_extracted(),
+            config=_config(),
+            carmen_result={"Code": 0, "InternalMessage": "JV-999"},
+            tax_note=tax_note,
+        ) as p,
+    ):
+        p.stamp_input_tax.side_effect = lambda *a, **k: seen_status.append(db.added[0].status)
+        await ingest._process_attachment(
+            tenant_id=TENANT_ID,
+            message_id="<msg-1@bank.co.th>",
+            sender="no-reply@ktc.co.th",
+            people="no-reply@ktc.co.th",
+            owner_emails=[],
+            filename="statement.jpg",
+            blob=b"fake",
+            rules=RULES,
+            passwords=[],
+            carmen_token="dev-tok",
+            carmen_uri="https://hotel.carmenwork.com",
+            auto_post=True,
+            tax_summary=None,
+        )
+    p.stamp_input_tax.assert_awaited_once()
+    args, kwargs = p.stamp_input_tax.await_args
+    assert args[0] == TENANT_ID
+    assert args[3] is None  # a fee invoice sums its own detail lines
+    assert kwargs["filed"] is filed
+    assert seen_status == ["posted"]
 
 
 @pytest.mark.asyncio
@@ -3022,6 +3069,9 @@ def _approve_patches(db, *, carmen_result, carmen_side_effect=None, tax_note=Non
     post = AsyncMock(return_value=carmen_result, side_effect=carmen_side_effect)
     tax = AsyncMock(return_value=tax_note)
     mark = AsyncMock()
+    # The status the ledger row had when the card was stamped — `_finish` must come first.
+    stamped_after: list[str] = []
+    stamp = AsyncMock(side_effect=lambda *a, **k: stamped_after.append(db.row.status))
     with (
         _patch_sessions(_session_factory(db)),
         patch.object(ingest.es, "get_settings", AsyncMock(return_value=MagicMock())),
@@ -3033,8 +3083,11 @@ def _approve_patches(db, *, carmen_result, carmen_side_effect=None, tax_note=Non
         patch.object(review.carmen, "post_gljv", post),
         patch.object(review, "_post_input_tax", tax),
         patch.object(review, "_mark_submitted", mark),
+        patch.object(review, "_stamp_input_tax", stamp),
     ):
-        yield SimpleNamespace(post=post, tax=tax, mark=mark)
+        yield SimpleNamespace(
+            post=post, tax=tax, mark=mark, stamp=stamp, stamped_after=stamped_after
+        )
 
 
 @pytest.mark.asyncio
@@ -3069,6 +3122,9 @@ async def test_approve_posts_under_the_bus_credential_not_the_reviewers():
     # audit row into a raw UUID.
     assert row.reviewed_by_name == "somchai"
     p.mark.assert_awaited_once()
+    # The card gets the sums and the filing, credited to the reviewer (CA-111).
+    assert p.stamp.await_args.kwargs == {"filed": True, "by": "u-reviewer"}
+    assert p.stamped_after == ["posted"]
 
 
 @pytest.mark.asyncio
@@ -3296,8 +3352,9 @@ async def test_carmen_going_dark_tells_the_reviewer_to_check_before_retrying():
 
 @pytest.mark.asyncio
 async def test_input_tax_can_be_declined_without_blocking_the_jv():
-    """Unchecking the box means the reviewer intends to key the VAT record by hand. The
-    machine path has no such choice and always attempts it."""
+    """Unchecking the box means "not now". The machine path has no such choice and always
+    attempts it. Since CA-111 the card still gets its sums, unfiled, so the queue row owes
+    the record and offers to file it — or to mark it keyed by hand."""
     row = _pending_row()
     db = _ReviewDB(row)
     with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-2"}) as p:
@@ -3311,6 +3368,7 @@ async def test_input_tax_can_be_declined_without_blocking_the_jv():
         )
     p.tax.assert_not_awaited()
     assert row.status == "posted"
+    assert p.stamp.await_args.kwargs["filed"] is False
 
 
 @pytest.mark.asyncio
@@ -3321,7 +3379,9 @@ async def test_a_failed_input_tax_still_leaves_the_document_posted():
     row = _pending_row()
     db = _ReviewDB(row)
     note = "Input tax not recorded: profile missing"
-    with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-3"}, tax_note=note):
+    with _approve_patches(
+        db, carmen_result={"Code": 0, "InternalMessage": "JV-3"}, tax_note=note
+    ) as p:
         out = await review.approve_document(
             row.id,
             tenant_id=str(row.tenant_id),
@@ -3332,6 +3392,8 @@ async def test_a_failed_input_tax_still_leaves_the_document_posted():
     assert out["tax_note"] == note
     assert row.status == "posted"
     assert row.error_message == note
+    # Owed, so the row can file it later once the reason is fixed (CA-111).
+    assert p.stamp.await_args.kwargs["filed"] is False
 
 
 @pytest.mark.asyncio

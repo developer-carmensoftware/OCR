@@ -233,6 +233,8 @@ async def test_a_settlement_report_files_its_own_input_tax_record():
         )
     p.tax.assert_awaited_once()
     assert p.tax.call_args.kwargs["details"] == [total_row]
+    # The card is stamped from the same row, or a late filing would claim zero (CA-111).
+    assert p.stamp.await_args.args[3] == [total_row]
 
 
 @pytest.mark.asyncio
@@ -251,6 +253,7 @@ async def test_a_settlement_report_with_no_total_row_claims_nothing():
             row.id, tenant_id=str(row.tenant_id), reviewer="u", extracted=_extracted(), rows=[]
         )
     assert p.tax.call_args.kwargs["details"] == []
+    assert p.stamp.await_args.args[3] == []
 
 
 @pytest.mark.asyncio

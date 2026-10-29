@@ -311,8 +311,9 @@ class ApproveIn(BaseModel):
 
     extracted: dict
     rows: list[dict] = Field(default_factory=list)
-    # Unchecked = the reviewer intends to key the VAT record by hand. Defaults on, which
-    # is what the machine path does unconditionally.
+    # Unchecked = not now: the JV posts alone and the queue row offers to file the VAT
+    # record later, or to mark it keyed by hand (CA-111). Defaults on, which is what the
+    # machine path does unconditionally.
     post_input_tax: bool = True
     # Absent from the auto-post path, which has nobody to correct anything.
     input_tax: InputTaxOverrides | None = None
