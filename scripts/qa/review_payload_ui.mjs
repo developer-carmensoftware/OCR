@@ -14,12 +14,18 @@
 // E-08 the plaintext row parked before encryption still lists and opens
 // E-09 the backfill endpoint, dry run: counts the plaintext row, writes nothing
 // E-10 the PMS day's review screen shows its rows; reject it
+// E-12 the PMS day's queue row carries its line count and flags out of the payload
+// E-13 a row encrypted under another key lists with no figures, opens, and can be rejected
+// E-14 no uncaught error in the page through the whole run
+// C-01 (OLD_API_URL set) the backend from `main` — what a rollback serves — answers the
+//      queue and a document with encrypted rows in the table: 200, never 500
 //
 // Needs, as env (defaults in brackets):
 //   PLAYWRIGHT_CORE  path to a playwright-core package [the npx cache's]
 //   CHROME_EXE       a Chromium binary [ms-playwright chromium-1223]
 //   APP_URL          the frontend [http://localhost:3010], proxying /api to the BRANCH backend
 //   API_URL          that backend, for the job-token call [http://localhost:8010]
+//   OLD_API_URL      a backend run from `main` on the same database [unset: C-01 skipped]
 // Reads CARMEN_AUTHORIZATION and INTERNAL_JOB_TOKEN from backend/.env. Signs in through the
 // real SSO link (BU carmen). Screenshots go to .playwright-mcp/review-payload/.
 
@@ -33,6 +39,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const SHOTS = path.join(ROOT, '.playwright-mcp/review-payload')
 const APP = process.env.APP_URL || 'http://localhost:3010'
 const API = process.env.API_URL || 'http://localhost:8010'
+const OLD_API = process.env.OLD_API_URL
 const LOCAL = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData/Local')
 const PW =
   process.env.PLAYWRIGHT_CORE ||
@@ -49,7 +56,10 @@ const DOCS = {
   scb: 'E2E-SCB-ENC-02',
   kbank: 'E2E-KB-ENC-03',
   legacy: 'E2E-BAY-LEGACY-04',
+  foreign: 'E2E-BAY-FOREIGN-05',
 }
+const PMS_ROW = 'E2E-ENC · Daily' // the email rows' filenames say E2E-ENC too
+const pageErrors = []
 
 const results = []
 function check(id, name, ok, detail = '') {
@@ -108,6 +118,7 @@ async function main() {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
   await context.addInitScript(() => localStorage.setItem('lang', 'en'))
   page = await context.newPage()
+  page.on('pageerror', err => pageErrors.push(String(err)))
 
   // Sign in the way a Carmen user does: the menu's SSO link.
   const sso = new URLSearchParams({
@@ -130,6 +141,37 @@ async function main() {
   check('E-03', 'settlement report listed with its lines', kb?.line_count === 2, `lines=${kb?.line_count}`)
   check('E-03', 'plaintext row listed the same way', legacy?.total === 3000, `total=${legacy?.total}`)
   check('E-03', 'SCB listed', Boolean(rowOf(rows, DOCS.scb)))
+  const foreign = rowOf(rows, DOCS.foreign)
+  check('E-13', 'another key\'s row lists, with no figures, instead of failing the queue',
+    foreign?.status === 'pending_review' && foreign?.line_count === 0,
+    `status=${foreign?.status} lines=${foreign?.line_count}`)
+
+  // ── E-12 the PMS day's queue row ──────────────────────────────────────────
+  const pms = rows.find(r => r.source === 'pms' && r.attachment === PMS_ROW)
+  check('E-12', 'PMS row has its 2 lines and the missing-mapping flag on 729',
+    pms?.line_count === 2 && pms?.flags?.includes('mapping_missing') && pms?.unmapped?.includes('729'),
+    `lines=${pms?.line_count} flags=${pms?.flags} unmapped=${pms?.unmapped}`)
+
+  // ── C-01 the backend from main, reading encrypted rows ────────────────────
+  if (!OLD_API) {
+    console.log('SKIP C-01 (no OLD_API_URL)')
+  } else {
+    const old = (url) => fetch(`${OLD_API}${url}`, { headers: { Authorization: `Bearer ${token}` } })
+    const queue = await old('/api/v1/credit-card/activity?filter=all&limit=100')
+    const oldRows = (await queue.json().catch(() => ({}))).data || []
+    const oldBay = rowOf(oldRows, DOCS.bay)
+    check('C-01', 'old backend: queue answers 200 with the encrypted rows in it',
+      queue.status === 200 && Boolean(oldBay), `HTTP ${queue.status}`)
+    check('C-01', 'old backend: encrypted row degrades to no figures (not a 500)',
+      oldBay?.line_count === 0, `lines=${oldBay?.line_count}`)
+    check('C-01', 'old backend: the plaintext row still reads in full',
+      rowOf(oldRows, DOCS.legacy)?.line_count === 1)
+    const doc = await old(`/api/v1/email/documents/${oldBay?.id}`)
+    check('C-01', 'old backend: an encrypted document opens 200', doc.status === 200, `HTTP ${doc.status}`)
+    const list = await old('/api/v1/email/documents?limit=100')
+    check('C-01', 'old backend: the review list answers 200', list.status === 200, `HTTP ${list.status}`)
+  }
+
   await openQueue()
   await page.getByRole('tab', { name: /^Review/ }).click()
   await page.getByRole('row').filter({ hasText: DOCS.bay }).waitFor()
@@ -203,8 +245,21 @@ async function main() {
   const noAuth = await fetch(`${API}/api/v1/admin/review-payloads/encrypt?dry_run=true`, { method: 'POST' })
   check('E-09', 'refused without the job token / admin', noAuth.status === 401, `HTTP ${noAuth.status}`)
 
+  // ── E-13 another key's row: opens, and can be put away ────────────────────
+  const before = pageErrors.length
+  dialog = await openReview(DOCS.foreign)
+  check('E-13', 'its dialog opens without a page error', await dialog.isVisible() && pageErrors.length === before,
+    pageErrors.slice(before).join(' | '))
+  await shot('E-13-foreign-dialog')
+  await dialog.getByRole('button', { name: 'Reject' }).click()
+  await page.getByLabel('Reason (optional)').fill('E2E unreadable payload')
+  await page.getByRole('button', { name: 'Reject document' }).click()
+  await page.getByRole('tab', { name: /^Review/ }).waitFor({ timeout: 30000 })
+  await page.waitForTimeout(2000)
+  check('E-13', 'and can be rejected', rowOf(await activity(), DOCS.foreign)?.status === 'rejected')
+
   // ── E-10 the PMS day ──────────────────────────────────────────────────────
-  dialog = await openReview('E2E-ENC · Daily') // the email rows' filenames say E2E-ENC too
+  dialog = await openReview(PMS_ROW)
   const text = await dialog.innerText()
   check('E-10', 'PMS review shows the day\'s rows', text.includes('Room Revenue') && text.includes('Breakfast'))
   await shot('E-10-pms-dialog')
@@ -212,9 +267,10 @@ async function main() {
   await page.getByRole('button', { name: 'Reject day' }).click()
   await page.getByRole('tab', { name: /^Review/ }).waitFor({ timeout: 30000 })
   await page.waitForTimeout(2000)
-  const day = (await activity()).find(r => r.source === 'pms' && (r.attachment || '').includes('E2E-ENC'))
+  const day = (await activity()).find(r => r.source === 'pms' && r.attachment === PMS_ROW)
   check('E-10', 'PMS day rejected', day?.status === 'rejected', `status=${day?.status}`)
 
+  check('E-14', 'no uncaught page error through the run', pageErrors.length === 0, pageErrors.join(' | '))
   await browser.close()
 }
 

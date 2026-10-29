@@ -1,14 +1,15 @@
 """Review payloads encrypted at rest — the data half of the browser E2E (review_payload_ui.mjs).
 
-    python scripts/qa/review_payload_e2e.py seed     # 3 encrypted docs + 1 plaintext + 1 PMS day
+    python scripts/qa/review_payload_e2e.py seed     # 3 encrypted, 1 plaintext, 1 foreign-key, 1 PMS day
     python scripts/qa/review_payload_e2e.py check    # what each seeded row holds in the table
     python scripts/qa/review_payload_e2e.py clear    # remove everything seed wrote
 
 BU `carmen` on dev (dev.carmen4.com): it already has a posting credential and GL mappings for
 BAY / SCB / KBANK, so a seeded document can be approved for real. Not carmencloud, which QA
 uses. Seeding goes through the app's own models, so the column type encrypts exactly as the
-pipeline would — no LLM call, no credit. The plaintext row is written with raw SQL, the way a
-row parked before 2026-10-29 sits in the table.
+pipeline would — no LLM call, no credit. Two rows are written with raw SQL: the plaintext one,
+the way a row parked before 2026-10-29 sits in the table, and the foreign one, a token under a
+key this server does not hold (a rotated key, or a backend run with the CI dummy key).
 
 Every email row carries Message-ID `<e2e-enc-…@seed.local>` and every PMS day the interface
 `E2E-ENC`; `clear` removes those, their tasks and cards, and nothing else. **Approving a
@@ -27,6 +28,7 @@ import uuid
 from datetime import date
 from pathlib import Path
 
+from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]  # scripts/<qa|dev|ops>/this.py -> repo root
@@ -42,6 +44,7 @@ from sqlalchemy import delete, select, text  # noqa: E402
 from app.database import async_session  # noqa: E402
 from app.models.business import CreditCard, OCRTask  # noqa: E402
 from app.models.email_automation import EmailDocument  # noqa: E402
+from app.models.encrypted_json import read_stored  # noqa: E402
 from app.models.identity import Tenant  # noqa: E402
 from app.models.pms import PmsEvent  # noqa: E402
 from app.models.schemas import ExtractedCreditCardData  # noqa: E402
@@ -57,7 +60,9 @@ def _row(tx, pay, commis, tax):
     return ExtractedDetailRow(transaction=tx, pay_amt=pay, commis_amt=commis, tax_amt=tax, total=net)
 
 
-# label -> (bank, doc_no, doc_type, detail rows, total_row, plaintext?)
+# label -> (bank, doc_no, doc_type, detail rows, total_row, how it is stored)
+# "model" = through the column type (encrypted), "plain" = raw SQL plaintext, "foreign" = raw
+# SQL token under another key.
 DOCS = {
     # E-04/E-05: mapped for BU carmen (BAY's VS INTER *), so Approve is open as it stands.
     "bay": (
@@ -69,7 +74,7 @@ DOCS = {
             _row("VS INTER PREM", "5000.00", "75.00", "5.25"),
         ],
         None,
-        False,
+        "model",
     ),
     # E-06: rejected with a reason.
     "scb": (
@@ -78,7 +83,7 @@ DOCS = {
         "fee_invoice",
         [_row("VSA-INT", "8000.00", "120.00", "8.40")],
         None,
-        False,
+        "model",
     ),
     # E-07: a settlement report — the one doc_type SQL filters on.
     "kbank": (
@@ -90,7 +95,7 @@ DOCS = {
             ExtractedDetailRow(transaction="MC INTER NON-PREM", pay_amt="4120.00"),
         ],
         ExtractedDetailRow(commis_amt="582.99", tax_amt="40.81", total="28587.20"),
-        False,
+        "model",
     ),
     # E-08/E-09: parked before encryption shipped — plaintext in the table.
     "legacy": (
@@ -99,7 +104,16 @@ DOCS = {
         "fee_invoice",
         [_row("VS INTER NON-PREM", "3000.00", "45.00", "3.15")],
         None,
-        True,
+        "plain",
+    ),
+    # E-13: encrypted under a key this server does not hold — degrades, never a 500.
+    "foreign": (
+        "BAY",
+        "E2E-BAY-FOREIGN-05",
+        "fee_invoice",
+        [_row("VS INTER PREM", "2000.00", "30.00", "2.10")],
+        None,
+        "foreign",
     ),
 }
 
@@ -160,7 +174,7 @@ async def _tenant_id(db) -> uuid.UUID:
 async def seed() -> None:
     async with async_session() as db:
         tid = await _tenant_id(db)
-        for label, (bank, doc_no, doc_type, _, _, plaintext) in DOCS.items():
+        for label, (bank, doc_no, doc_type, _, _, stored) in DOCS.items():
             task_id, card_id, doc_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
             db.add(
                 OCRTask(
@@ -198,11 +212,14 @@ async def seed() -> None:
                     task_id=task_id,
                     bank_code=bank,
                     doc_no=doc_no,
-                    review_payload=None if plaintext else payload,
+                    review_payload=payload if stored == "model" else None,
                 )
             )
             await db.flush()
-            if plaintext:
+            if stored != "model":
+                if stored == "foreign":
+                    token = Fernet(Fernet.generate_key()).encrypt(json.dumps(payload).encode())
+                    payload = {"enc": token.decode(), "doc_type": doc_type}
                 await db.execute(
                     text("update email_documents set review_payload = cast(:p as jsonb) where id = :id"),
                     {"p": json.dumps(payload), "id": doc_id},
@@ -229,33 +246,49 @@ async def seed() -> None:
         print(f"  seeded pms     {PMS_NAME} 15/10/2026     id={day_id}")
 
 
+def _verdict(name: str, status: str, sql_null: bool, stored) -> tuple[str, bool]:
+    """(what the row holds, is that what it should hold)."""
+    if sql_null:
+        return "SQL NULL", True
+    if stored is None:
+        return "JSON null", False  # the plain JSON type's "cleared" — `none_as_null` regressed
+    if status != "pending_review":
+        return f"NOT CLEARED keys={sorted(stored)}", False  # put away, so nothing may remain
+    if "LEGACY" in name:
+        return f"plaintext keys={sorted(stored)}", True  # until the backfill runs
+    if "extracted" in stored or "rows" in stored or "enc" not in stored:
+        return f"PLAINTEXT keys={sorted(stored)}", False
+    readable = read_stored(stored) is not None
+    if "FOREIGN" in name:
+        return f"keys={sorted(stored)} (not ours: unreadable)", not readable
+    return f"keys={sorted(stored)} decrypts={readable}", readable
+
+
 async def check() -> int:
-    """Raw table contents of every seeded row. Exit 1 if any encrypted row leaks plaintext."""
+    """Raw table contents of every seeded row. Exit 1 if any row holds what it should not:
+    plaintext where it should be encrypted, a token our key cannot open, anything at all
+    once the row is put away, or JSON `null` where a cleared payload must be SQL NULL."""
     bad = 0
     async with async_session() as db:
         rows = (
             await db.execute(
                 text(
-                    "select 'email' as kind, doc_no as name, status, review_payload::text as p"
+                    "select 'email' as kind, doc_no as name, status,"
+                    " review_payload is null as sql_null, review_payload::text as p"
                     " from email_documents where message_id like '<e2e-enc-%@seed.local>'"
                     " union all"
-                    " select 'pms', event_id, status, review_payload::text from pms_events"
-                    " where event_id like :pms"
+                    " select 'pms', event_id, status, review_payload is null, review_payload::text"
+                    " from pms_events where event_id like :pms"
                 ),
                 {"pms": f"PMS/{PMS_NAME}/%"},
             )
         ).all()
-    for kind, name, status, raw in rows:
-        stored = json.loads(raw) if raw else None
-        keys = sorted(stored) if isinstance(stored, dict) else stored
-        legacy = name and "LEGACY" in name
-        leak = isinstance(stored, dict) and ("extracted" in stored or "rows" in stored)
-        if stored is not None and not legacy and (leak or "enc" not in stored):
-            bad += 1
-        print(f"  {kind:5} {name:34} {status:15} stored keys={keys}")
-    print("  OK — no seeded row stores its contents in plaintext (legacy excepted)" if not bad
-          else f"  {bad} row(s) store plaintext")
-    return 1 if bad else 0
+    for kind, name, status, sql_null, raw in rows:
+        holds, ok = _verdict(name, status, sql_null, json.loads(raw) if raw else None)
+        bad += not ok
+        print(f"  {'ok ' if ok else 'BAD'} {kind:5} {name:34} {status:15} {holds}")
+    print(f"  {len(rows)} rows, {bad} wrong")
+    return 1 if bad or not rows else 0
 
 
 async def clear() -> None:
