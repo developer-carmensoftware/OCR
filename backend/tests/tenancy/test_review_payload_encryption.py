@@ -1,7 +1,7 @@
 """Review payloads are encrypted at rest — against the real table.
 
 The unit tests pin the column type. These pin what only Postgres can show: what is actually
-stored, that the backfill (`encrypt_plaintext_review_payloads`) turns a row written before
+stored, that the backfill (`encrypt_plaintext_columns`) turns a row written before
 encryption into a token and leaves a cleared one alone, and that the one SQL filter on the
 email column (`ar_reconcile.latest_real_sample`) still finds an encrypted row by its readable
 `doc_type`.
@@ -21,9 +21,11 @@ from app.database import async_session
 from app.models.email_automation import EmailDocument
 from app.models.pms import PmsEvent
 from app.services.credit_card.ar_reconcile import latest_real_sample
-from app.services.shared.payload_encryption import encrypt_plaintext_review_payloads
+from app.services.shared.payload_encryption import encrypt_plaintext_columns
 
-from .conftest import run
+from .conftest import AUTH, run
+
+EMAIL, PMS = "email_documents.review_payload", "pms_events.review_payload"
 
 SETTLEMENT = {
     "extracted": {
@@ -101,9 +103,7 @@ def plaintext_rows(real_engine, tenants):
 def _backfill(tenant_id, *, dry_run=False):
     async def _go():
         async with async_session() as db:
-            return await encrypt_plaintext_review_payloads(
-                db, dry_run=dry_run, tenant_ids=[tenant_id]
-            )
+            return await encrypt_plaintext_columns(db, dry_run=dry_run, tenant_ids=[tenant_id])
 
     return run(_go())
 
@@ -115,7 +115,7 @@ def test_the_backfill_encrypts_what_was_written_in_plaintext(plaintext_rows, ten
     # A dry run counts and changes nothing. At least: the session's other suites seed
     # plaintext rows for this tenant too (test_read_isolation does).
     counted = _backfill(tenants.a, dry_run=True)
-    assert counted["email_documents"] >= 1 and counted["pms_events"] >= 1
+    assert counted[EMAIL] >= 1 and counted[PMS] >= 1
     assert run(_raw("email_documents", email_id)) == SETTLEMENT
 
     assert _backfill(tenants.a) == counted
@@ -138,7 +138,7 @@ def test_the_backfill_encrypts_what_was_written_in_plaintext(plaintext_rows, ten
     assert run(_through_the_app()) == (SETTLEMENT, PMS_DAY)
 
     # Idempotent: a second call finds nothing to do and changes nothing.
-    assert _backfill(tenants.a) == {"email_documents": 0, "pms_events": 0}
+    assert not any(_backfill(tenants.a).values())
     assert run(_raw("email_documents", email_id))["enc"] == stored["enc"]
 
 
@@ -346,7 +346,7 @@ def test_d07_a_payload_another_key_wrote_degrades_instead_of_failing(real_engine
     from app.services.credit_card import activity as activity_service
     from app.services.email_automation import ledger
 
-    from .conftest import AUTH, real_client, session_for
+    from .conftest import real_client, session_for
 
     doc_no = f"ENC-D07-{uuid.uuid4().hex[:8]}"
     foreign = Fernet(Fernet.generate_key()).encrypt(json.dumps(SETTLEMENT).encode()).decode()
@@ -375,7 +375,7 @@ def test_d07_a_payload_another_key_wrote_degrades_instead_of_failing(real_engine
         res = client.get(f"/api/v1/email/documents/{row_id}", headers=AUTH)
     assert res.status_code != 500, res.text
 
-    assert _backfill(tenants.a)["email_documents"] == 0  # it has "enc": not plaintext
+    assert _backfill(tenants.a)[EMAIL] == 0  # it has "enc": not plaintext
     assert run(_raw("email_documents", row_id))["enc"] == foreign
 
     # Put away, it is cleared like any other. It reads as None, so an ORM assignment of None
@@ -409,7 +409,7 @@ def test_d08_the_backfill_does_not_resurrect_a_row_cleared_while_it_ran(real_eng
                 return value
 
             db.scalar = read_then_finish
-            return await encrypt_plaintext_review_payloads(db, tenant_ids=[tenants.a])
+            return await encrypt_plaintext_columns(db, tenant_ids=[tenants.a])
 
     run(_race())
     assert run(_raw("email_documents", row_id)) is None
@@ -445,6 +445,200 @@ def test_d10_a_row_the_old_finish_left_as_json_null_is_not_plaintext(real_engine
     row_id = _received(real_engine, tenants.a, doc_no, status="rejected", payload_sql="null")
     assert run(_sql_null("email_documents", row_id)) is False  # JSON null, not SQL NULL
 
-    assert _backfill(tenants.a, dry_run=True)["email_documents"] == 0
+    assert _backfill(tenants.a, dry_run=True)[EMAIL] == 0
     _backfill(tenants.a)
     assert run(_sql_null("email_documents", row_id)) is False  # left exactly as it was
+
+
+# ── Corrections and bug-report screenshots (`EncryptedText`) ─────────────────
+
+CORR_NEW = "correction_feedback.corrected_value"
+SCREENSHOT = "bug_reports.screenshot_b64"
+PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+
+async def _text_cols(table, cols, where, params):
+    async with async_session() as db:
+        return (await db.execute(text(f"select {cols} from {table} where {where}"), params)).one()
+
+
+def _correction(client, doc_no, original, corrected, *, batch=False):
+    body = {
+        "doc_no": doc_no,
+        "bank_code": "KBANK",
+        "field_name": "merchant_id",
+        "original_value": original,
+        "corrected_value": corrected,
+    }
+    if batch:  # what the wizard sends on submit
+        return client.post(
+            "/api/v1/feedback/corrections", json={"corrections": [body]}, headers=AUTH
+        )
+    return client.post("/api/v1/feedback/correction", json=body, headers=AUTH)
+
+
+def test_d11_a_correction_is_stored_as_tokens_on_insert_and_on_conflict(tenants):
+    """Both ways the upsert writes — the INSERT and the ON CONFLICT DO UPDATE `set_` — go
+    through the column type, and the response still reads back what the user typed."""
+    from .conftest import real_client, session_for
+
+    doc_no = f"ENC-D11-{uuid.uuid4().hex[:8]}"
+    where, params = "tenant_id = :t and doc_no = :d", {"t": tenants.a, "d": doc_no}
+    with real_client(session_for(tenants.a)) as client:
+        first = _correction(client, doc_no, "451005282039001", "451005282039009")
+        assert first.status_code == 200, first.text
+        assert first.json()["corrected_value"] == "451005282039009"
+        raw = run(
+            _text_cols("correction_feedback", "original_value, corrected_value", where, params)
+        )
+        assert all(v.startswith("gAAAAA") for v in raw)
+        assert not any("4510052820390" in v for v in raw)
+
+        # Same scope again: the conflict path.
+        again = _correction(client, doc_no, "451005282039001", "451005282039002")
+        assert again.json()["corrected_value"] == "451005282039002"
+        assert again.json()["id"] == first.json()["id"]
+        raw2 = run(
+            _text_cols("correction_feedback", "original_value, corrected_value", where, params)
+        )
+        assert all(v.startswith("gAAAAA") for v in raw2) and raw2 != raw
+
+        # And the batch endpoint, which is what the wizard actually calls.
+        batch_doc = f"{doc_no}-B"
+        assert _correction(client, batch_doc, "", "00002", batch=True).json()["saved"] == 1
+        raw3 = run(
+            _text_cols(
+                "correction_feedback",
+                "original_value, corrected_value",
+                where,
+                {**params, "d": batch_doc},
+            )
+        )
+        assert all(v.startswith("gAAAAA") for v in raw3)  # an empty string is encrypted too
+
+
+def test_d12_a_bug_report_screenshot_is_stored_as_a_token(tenants):
+    from app.models.business import BugReport
+
+    from .conftest import real_client, session_for
+
+    body = {"module": "credit_card_ocr", "category": "bug", "description": "ENC-D12",
+            "screenshot_b64": PNG_B64, "screenshot_mime": "image/png"}  # fmt: skip
+    with real_client(session_for(tenants.a)) as client:
+        res = client.post("/api/v1/feedback/bug-report", json=body, headers=AUTH)
+    assert res.status_code == 201, res.text
+    report_id = res.json()["id"]
+
+    (raw,) = run(_text_cols("bug_reports", "screenshot_b64", "id = :id", {"id": report_id}))
+    assert raw.startswith("gAAAAA") and "iVBORw0KGgo" not in raw
+
+    async def _read():
+        async with async_session() as db:
+            return await db.scalar(
+                select(BugReport.screenshot_b64).where(BugReport.id == report_id)
+            )
+
+    assert run(_read()) == PNG_B64
+
+
+def test_d13_the_backfill_encrypts_plaintext_corrections_and_screenshots(real_engine, tenants):
+    """Rows written before: plaintext values, an empty one, and a NULL one (not counted)."""
+    from app.models.business import BugReport, CorrectionFeedback
+
+    doc_no = f"ENC-D13-{uuid.uuid4().hex[:8]}"
+
+    async def _seed():
+        async with real_engine.begin() as conn:
+            corr_id = await conn.scalar(
+                text(
+                    "insert into correction_feedback (tenant_id, doc_no, bank_code, field_name,"
+                    " original_value, corrected_value, created_at, updated_at) values"
+                    " (:t, :d, 'KBANK', 'merchant_id', '', '451005282039001', now(), now())"
+                    " returning id"
+                ),
+                {"t": tenants.a, "d": doc_no},
+            )
+            null_id = await conn.scalar(
+                text(
+                    "insert into correction_feedback (tenant_id, doc_no, bank_code, field_name,"
+                    " original_value, corrected_value, created_at, updated_at) values"
+                    " (:t, :d, 'KBANK', 'branch_no', '00001', null, now(), now()) returning id"
+                ),
+                {"t": tenants.a, "d": doc_no},
+            )
+            bug_id = await conn.scalar(
+                text(
+                    "insert into bug_reports (tenant_id, module_id, category, description,"
+                    " screenshot_b64, screenshot_mime, created_at, updated_at) values"
+                    " (:t, 'credit_card_ocr', 'bug', 'ENC-D13', :s, 'image/png', now(), now())"
+                    " returning id"
+                ),
+                {"t": tenants.a, "s": PNG_B64},
+            )
+        return corr_id, null_id, bug_id
+
+    corr_id, null_id, bug_id = run(_seed())
+
+    counted = _backfill(tenants.a, dry_run=True)
+    assert counted[CORR_NEW] >= 1 and counted[SCREENSHOT] >= 1
+    assert counted["correction_feedback.original_value"] >= 2  # '' and '00001' are both set
+    assert _backfill(tenants.a) == counted
+
+    (orig, new) = run(
+        _text_cols(
+            "correction_feedback", "original_value, corrected_value", "id = :i", {"i": corr_id}
+        )
+    )
+    assert orig.startswith("gAAAAA") and new.startswith("gAAAAA")
+    (orig_n, new_n) = run(
+        _text_cols(
+            "correction_feedback", "original_value, corrected_value", "id = :i", {"i": null_id}
+        )
+    )
+    assert orig_n.startswith("gAAAAA") and new_n is None  # NULL stays NULL
+    (shot,) = run(_text_cols("bug_reports", "screenshot_b64", "id = :i", {"i": bug_id}))
+    assert shot.startswith("gAAAAA")
+
+    async def _through_the_app():
+        async with async_session() as db:
+            corr = await db.get(CorrectionFeedback, corr_id)
+            bug = await db.get(BugReport, bug_id)
+            return corr.original_value, corr.corrected_value, bug.screenshot_b64
+
+    assert run(_through_the_app()) == ("", "451005282039001", PNG_B64)
+    assert not any(_backfill(tenants.a).values())  # idempotent
+
+
+def test_d14_a_text_token_another_key_wrote_reads_as_none_and_is_left_alone(real_engine, tenants):
+    from cryptography.fernet import Fernet
+
+    from app.models.business import CorrectionFeedback
+
+    foreign = Fernet(Fernet.generate_key()).encrypt(b"451005282039001").decode()
+
+    async def _seed():
+        async with real_engine.begin() as conn:
+            return await conn.scalar(
+                text(
+                    "insert into correction_feedback (tenant_id, doc_no, bank_code, field_name,"
+                    " original_value, corrected_value, created_at, updated_at) values"
+                    " (:t, :d, 'KBANK', 'merchant_id', :f, :f, now(), now()) returning id"
+                ),
+                {"t": tenants.a, "d": f"ENC-D14-{uuid.uuid4().hex[:8]}", "f": foreign},
+            )
+
+    corr_id = run(_seed())
+
+    async def _read():
+        async with async_session() as db:
+            row = await db.get(CorrectionFeedback, corr_id)
+            return row.original_value, row.corrected_value
+
+    assert run(_read()) == (None, None)
+    _backfill(tenants.a)
+    raw = run(
+        _text_cols(
+            "correction_feedback", "original_value, corrected_value", "id = :i", {"i": corr_id}
+        )
+    )
+    assert raw == (foreign, foreign)  # a token, so not plaintext: not rewritten

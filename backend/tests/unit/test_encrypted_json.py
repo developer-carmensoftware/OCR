@@ -1,4 +1,4 @@
-"""`EncryptedJSON` — the review payloads encrypted at rest.
+"""`EncryptedJSON` / `EncryptedText` — the columns encrypted at rest.
 
 Pins what is stored (a Fernet token, plus only the keys named readable), that what comes
 back is what went in, that a row written before encryption still reads, and that the one
@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
 
 from app.models.email_automation import EmailDocument
-from app.models.encrypted_json import EncryptedJSON, read_stored
+from app.models.encrypted_json import TOKEN_PREFIX, EncryptedJSON, EncryptedText, read_stored
 
 PG = postgresql.dialect()
 PAYLOAD = {
@@ -80,6 +80,33 @@ def test_scripts_reading_raw_sql_get_the_same_value_from_text_or_dict():
     assert read_stored(stored) == PAYLOAD
     assert read_stored(json.dumps(stored)) == PAYLOAD  # asyncpg hands JSONB over as text
     assert read_stored(json.dumps(PAYLOAD)) == PAYLOAD  # a plaintext row, as text
+
+
+def test_text_is_stored_as_a_bare_token_and_reads_back():
+    t = EncryptedText()
+    for value in ("451005282039001", "", "ค่าธรรมเนียม VISA"):
+        stored = t.process_bind_param(value, PG)
+        assert stored.startswith(TOKEN_PREFIX)
+        assert not value or value not in stored
+        assert t.process_result_value(stored, PG) == value
+
+
+def test_text_written_before_encryption_reads_as_it_stands():
+    """What tells a row from before apart: it does not start like a Fernet token. A base64
+    PNG starts `iVBOR`, a JPEG `/9j/`."""
+    t = EncryptedText()
+    for legacy in ("451005282039001", "", "iVBORw0KGgo", "/9j/4AAQ"):
+        assert t.process_result_value(legacy, PG) == legacy
+    assert t.process_bind_param(None, PG) is None
+    assert t.process_result_value(None, PG) is None
+
+
+def test_text_from_another_key_reads_as_none_and_none_is_always_a_change():
+    stored = EncryptedText().process_bind_param("451005282039001", PG)
+    with patch("app.models.encrypted_json.settings") as s:
+        s.session_encryption_key = Fernet.generate_key().decode()
+        assert EncryptedText().process_result_value(stored, PG) is None
+    assert EncryptedText().compare_values(None, None) is False
 
 
 def test_the_doc_type_filter_still_compiles_to_a_json_lookup():
