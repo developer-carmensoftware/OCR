@@ -373,14 +373,14 @@ async def rows_of(state: dict, case: str) -> list[dict]:
 
 
 def flags(row: dict) -> list[str]:
-    p = row["review_payload"]
-    p = json.loads(p) if isinstance(p, str) else (p or {})
-    return list(p.get("flags") or [])
+    return list(payload_of(row).get("flags") or [])
 
 
 def payload_of(row: dict) -> dict:
-    p = row["review_payload"]
-    return json.loads(p) if isinstance(p, str) else (p or {})
+    # Encrypted at rest since 2026-10-29; `read_stored` also takes a pre-encryption row.
+    from app.models.encrypted_json import read_stored
+
+    return read_stored(row["review_payload"]) or {}
 
 
 async def spend(since: datetime) -> dict:

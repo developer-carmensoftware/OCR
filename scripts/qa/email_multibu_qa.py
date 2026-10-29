@@ -2101,11 +2101,9 @@ async def phase_review(_args) -> None:
     else:
         r1 = b[used_bu]
         doc_id = doc[0]["id"]
-        payload = (
-            json.loads(doc[0]["review_payload"])
-            if isinstance(doc[0]["review_payload"], str)
-            else doc[0]["review_payload"]
-        )
+        from app.models.encrypted_json import read_stored  # encrypted at rest since 10-29
+
+        payload = read_stored(doc[0]["review_payload"])
         extracted = payload["extracted"]
         bank_code = doc[0]["bank_code"]
         async with async_session() as db:
@@ -2341,9 +2339,10 @@ async def phase_fixcheck(_args) -> None:
         from app.services.credit_card.accounting_config import get_accounting_config
         from app.services.credit_card.jv import build_jv_rows
 
+        from app.models.encrypted_json import read_stored  # encrypted at rest since 10-29
+
         doc_id, s4 = doc[0]["id"], b["S4"]
-        payload = doc[0]["review_payload"]
-        payload = json.loads(payload) if isinstance(payload, str) else payload
+        payload = read_stored(doc[0]["review_payload"])
         extracted = payload["extracted"]
         async with async_session() as db:
             config = await get_accounting_config(
@@ -2557,9 +2556,10 @@ async def phase_approve_real(args) -> None:
     from app.services.credit_card.accounting_config import get_accounting_config
     from app.services.credit_card.jv import build_jv_rows
 
+    from app.models.encrypted_json import read_stored  # encrypted at rest since 10-29
+
     d = doc[0]
-    payload = d["review_payload"]
-    payload = json.loads(payload) if isinstance(payload, str) else payload
+    payload = read_stored(d["review_payload"])
     extracted = payload["extracted"]
     async with async_session() as db:
         config = await get_accounting_config(db, cc["tenant_id"], d["bank_code"])

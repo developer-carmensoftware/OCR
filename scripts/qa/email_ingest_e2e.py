@@ -535,11 +535,12 @@ async def paid_run(box, report: Report, pdfs: dict[str, bytes]) -> None:
         got = row.get("status", "NO ROW")
         report.check("P18", p18.why, True, got in ("posted", "pending_review"))
         if got == "pending_review":
-            flags = await sql(
-                "select review_payload->'flags' as flags from email_documents where id = $1",
-                row["id"],
-            )
-            print(f"       held for review — flags={flags[0]['flags'] if flags else None!r}")
+            # Encrypted at rest since 10-29, so the flags are read in Python, not with ->.
+            from app.models.encrypted_json import read_stored
+
+            held = await sql("select review_payload from email_documents where id = $1", row["id"])
+            payload = read_stored(held[0]["review_payload"]) if held else None
+            print(f"       held for review — flags={(payload or {}).get('flags')!r}")
         else:
             print(f"       jv_no={row.get('jv_no')!r} note={row.get('error_message')!r}")
         await drop_catchall_rule()

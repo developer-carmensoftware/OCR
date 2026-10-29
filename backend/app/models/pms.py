@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from app.database import Base
 
+from .encrypted_json import EncryptedJSON
 from .mixins import TenantFKMixin, TimestampMixin, WriterMixin
 
 # JSONB on Postgres, plain JSON on SQLite (the unit-test engine).
@@ -50,7 +51,8 @@ class PmsEvent(Base, TenantFKMixin, TimestampMixin):
     # received → pending_review → posted | rejected; failed once the retries ran out.
     status = Column(String(20), nullable=False, default="received", server_default="received")
     # Set only while a person owes the day a decision; cleared on every terminal transition.
-    review_payload = Column(_JSON, nullable=True)
+    # Encrypted at rest — the day's revenue rows and amounts.
+    review_payload = Column(EncryptedJSON(), nullable=True)
     jv_no = Column(String(50), nullable=True)
     reason_code = Column(String(50), nullable=True)
     error_message = Column(Text, nullable=True)
