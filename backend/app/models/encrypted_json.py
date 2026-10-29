@@ -8,8 +8,9 @@ reads and writes goes through the column type (ORM attributes, `update().values(
 Stored as `{"enc": "<Fernet token>"}` in the same JSONB column, plus any `clear` keys
 copied out in plain text for SQL to filter on. That shape is why there is no migration:
 a row written before this existed has no `enc` key and is read back as it stands, so
-existing rows and a rolling deploy both keep working. `scripts/ops/encrypt_review_payloads.py`
-rewrites the plaintext rows that are still waiting once the new code is deployed.
+existing rows and a rolling deploy both keep working. `POST /api/v1/admin/review-payloads/encrypt`
+(`services/shared/payload_encryption.py`) rewrites the plaintext rows still waiting, once the
+new code is deployed.
 
 Same key as the session tokens, BU credentials and PDF passwords. A token it cannot
 decrypt (a rotated key) is logged and read as None, as `credential._decrypt` does — the
@@ -67,7 +68,11 @@ class EncryptedJSON(TypeDecorator):
         self.clear = clear
 
     def load_dialect_impl(self, dialect):
-        return dialect.type_descriptor(JSONB() if dialect.name == "postgresql" else JSON())
+        # `none_as_null`: a cleared payload is SQL NULL. The plain JSON type stored Python
+        # None as the JSON value `null`, so `_finish` "cleared" 77 dev rows to something
+        # `IS NOT NULL` still matched (found 2026-10-29).
+        impl = JSONB if dialect.name == "postgresql" else JSON
+        return dialect.type_descriptor(impl(none_as_null=True))
 
     def process_bind_param(self, value: Any, dialect) -> Any:
         if value is None:
@@ -79,3 +84,10 @@ class EncryptedJSON(TypeDecorator):
 
     def process_result_value(self, value: Any, dialect) -> Any:
         return read_stored(value)
+
+    def compare_values(self, x: Any, y: Any) -> bool:
+        # What the ORM asks to decide whether an assignment changed anything. None is
+        # ambiguous here — a token this key cannot open reads as None too — so two Nones are
+        # never "equal" and assigning None always writes NULL. Otherwise `_finish` clearing
+        # such a row looked like no change and left the ciphertext behind (E2E, 2026-10-29).
+        return x is not None and x == y

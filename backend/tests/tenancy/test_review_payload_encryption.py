@@ -46,6 +46,14 @@ async def _raw(table, row_id):
     return json.loads(value) if value is not None else None
 
 
+async def _sql_null(table, row_id):
+    """True only for SQL NULL — `_raw` cannot tell it from the JSON value `null`."""
+    async with async_session() as db:
+        return await db.scalar(
+            text(f"select review_payload is null from {table} where id = :id"), {"id": row_id}
+        )
+
+
 @pytest.fixture
 def plaintext_rows(real_engine, tenants):
     """One email document and one PMS day written the way they were before 2026-10-29,
@@ -147,3 +155,296 @@ def test_the_settlement_sample_still_finds_an_encrypted_report(plaintext_rows, t
     assert rows == [("VS INTER PREM", "25091.00")]
     assert (doc_no, doc_date) == ("210726E00035291", "21/07/2026")
     assert total_row == {"commis_amt": "582.99", "tax_amt": "40.81"}
+
+
+# ── Every way in and out of the column, on real rows ─────────────────────────
+#
+# The type decrypts in SQLAlchemy's result processing, so each *kind* of read is pinned once:
+# an ORM entity (`get_day`), a column select (`_already_pending`), a `.returning()` claim
+# (`_claim_for_review`, PMS `_claim`), and the JSON filter (`latest_real_sample`, above).
+# Writes: an ORM assignment (`_park_for_review`, PMS `recheck`), a Core `update().values()`
+# (PMS `_park`), and the clears (`_finish`).
+
+EXTRACTED = {"bank_code": "KBANK", "doc_date": "15/10/2026", "branch_no": "00000"}
+THAI = "ค่าธรรมเนียมบัตร VISA สาขาสยาม"
+PMS_BREAKFAST = json.dumps(["729", "Breakfast"])
+PMS_ROOM = json.dumps(["103", "Room Revenue"])
+
+
+def _received(real_engine, tenant_id, doc_no, *, payload_sql=None, status="received"):
+    """A ledger row as `_claim` leaves it, before the pipeline parks it."""
+    row_id = uuid.uuid4()
+
+    async def _go():
+        async with real_engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "insert into email_documents (id, tenant_id, message_id, attachment, status,"
+                    " bank_code, doc_no, review_payload, created_at, updated_at) values (:id, :t,"
+                    " :msg, 'statement.pdf', :status, 'KBANK', :doc, cast(:p as jsonb), now(),"
+                    " now())"
+                ),
+                {
+                    "id": row_id,
+                    "t": tenant_id,
+                    "msg": f"<{row_id}@enc.test>",
+                    "status": status,
+                    "doc": doc_no,
+                    "p": payload_sql,
+                },
+            )
+
+    run(_go())
+    return row_id
+
+
+def _extracted(doc_no, rows=1):
+    from app.models.schemas import ExtractedCreditCardData
+    from app.models.schemas.ocr import ExtractedDetailRow
+
+    return ExtractedCreditCardData(
+        **EXTRACTED,
+        doc_no=doc_no,
+        details=[
+            ExtractedDetailRow(transaction=f"{THAI} {i}", pay_amt="100.00") for i in range(rows)
+        ],
+    )
+
+
+def _park(row_id, doc_no, *, doc_type="ar_reconcile", rows=1):
+    from app.services.email_automation import ledger
+
+    run(
+        ledger._park_for_review(
+            row_id,
+            extracted=_extracted(doc_no, rows),
+            task_id=None,
+            bank_code="KBANK",
+            doc_no=doc_no,
+            flags=["warnings"],
+            doc_type=doc_type,
+        )
+    )
+
+
+def test_d03_the_pipeline_writer_parks_encrypted_and_the_duplicate_guard_reads_it(
+    real_engine, tenants
+):
+    """`_park_for_review` is what every parked email document goes through; `_already_pending`
+    reads it back with a column select and decides on `doc_type` in Python."""
+    from app.services.email_automation import ledger
+
+    doc_no = f"ENC-D03-{uuid.uuid4().hex[:8]}"
+    row_id = _received(real_engine, tenants.a, doc_no)
+    _park(row_id, doc_no)
+
+    stored = run(_raw("email_documents", row_id))
+    assert set(stored) == {"enc", "doc_type"}
+    assert THAI not in json.dumps(stored, ensure_ascii=False)
+    assert run(ledger._already_pending(str(tenants.a), "KBANK", doc_no, "ar_reconcile")) is True
+    assert run(ledger._already_pending(str(tenants.a), "KBANK", doc_no, "fee_invoice")) is False
+
+
+def test_d04_approve_claims_the_row_decrypted_and_finish_clears_it(real_engine, tenants):
+    """`_claim_for_review` hands approve its row via `.returning()`, and approve branches on
+    the `doc_type` in it. `_finish` then empties the column."""
+    from app.services.email_automation import ledger
+    from app.services.email_automation import review as email_review
+
+    doc_no = f"ENC-D04-{uuid.uuid4().hex[:8]}"
+    row_id = _received(real_engine, tenants.a, doc_no)
+    _park(row_id, doc_no)
+
+    async def _claim():
+        async with async_session() as db:
+            return await email_review._claim_for_review(db, row_id, str(tenants.a))
+
+    claimed = run(_claim())
+    assert claimed.review_payload["doc_type"] == "ar_reconcile"
+    assert claimed.review_payload["extracted"]["doc_no"] == doc_no
+    assert claimed.review_payload["extracted"]["details"][0]["transaction"] == f"{THAI} 0"
+
+    run(ledger._finish(row_id, status="rejected", notify=False))
+    # SQL NULL, not the JSON `null` the plain JSON type used to write (found 2026-10-29).
+    assert run(_sql_null("email_documents", row_id)) is True
+
+
+def test_d05_a_pms_day_parks_encrypted_reads_back_and_recheck_keeps_it_encrypted(
+    real_engine, tenants
+):
+    """PMS `_park` writes through a Core `update().values()`; `get_day` reads the ORM entity;
+    `recheck` rewrites the payload by assignment; `_claim` reads it via `.returning()`."""
+    from app.services.pms import process as pms_process
+    from app.services.pms import review as pms_review
+
+    interface = f"EncTest-{uuid.uuid4().hex[:6]}"
+    pk = uuid.uuid4()
+
+    async def _seed():
+        async with real_engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "insert into pms_events (id, tenant_id, event_id, type, payload, status)"
+                    " values (:id, :t, :event, 'PMS', cast(:hook as jsonb), 'received')"
+                ),
+                {
+                    "id": pk,
+                    "t": tenants.a,
+                    "event": f"PMS/{interface}/Daily/2026-10-15",
+                    "hook": json.dumps({"InterfaceName": interface, "DocDate": "2026-10-15"}),
+                },
+            )
+
+    run(_seed())
+    payload = {
+        "interface": interface,
+        "doc_type": "Daily",
+        "doc_date": "2026-10-15",
+        "key_columns": ["Code", "Description"],
+        "rows": [
+            {"key": PMS_ROOM, "values": {"Code": "103"}, "amount": "12500.00"},
+            {"key": PMS_BREAKFAST, "values": {"Code": "729"}, "amount": "830.00"},
+        ],
+        "mapped": {PMS_ROOM: {"dept": "GEN", "acc": "4010001", "name": "Room revenue"}},
+        "guessed": {},
+        "flags": ["mapping_missing"],
+        "missing": [PMS_BREAKFAST],
+        "ai": [],
+    }
+    run(pms_process._park(pk, payload))
+    assert set(run(_raw("pms_events", pk))) == {"enc"}
+
+    async def _day():
+        async with async_session() as db:
+            return await pms_review.get_day(db, tenants.a, pk)
+
+    day = run(_day())
+    assert [c["key"] for c in day["new_codes"]] == [PMS_BREAKFAST]
+    assert day["mapped_count"] == 1
+
+    table = {
+        PMS_ROOM: {"dept": "GEN", "acc": "4010001", "name": "Room revenue"},
+        PMS_BREAKFAST: {"dept": "GEN", "acc": "4020001", "name": "F&B"},
+    }
+    assert run(pms_review.recheck(tenants.a, interface, table)) == 1
+    assert set(run(_raw("pms_events", pk))) == {"enc"}  # rewritten, still encrypted
+
+    async def _claim():
+        async with async_session() as db:
+            return await pms_review._claim(db, tenants.a, pk)
+
+    claimed = run(_claim())
+    assert claimed.review_payload["flags"] == []
+    assert PMS_BREAKFAST in claimed.review_payload["mapped"]
+
+
+def test_d07_a_payload_another_key_wrote_degrades_instead_of_failing(real_engine, tenants):
+    """A rotated key, or a row written by a backend holding another one: the row still lists
+    (zeros), opening it does not 500, and the backfill leaves it alone."""
+    from cryptography.fernet import Fernet
+
+    from app.services.credit_card import activity as activity_service
+    from app.services.email_automation import ledger
+
+    from .conftest import AUTH, real_client, session_for
+
+    doc_no = f"ENC-D07-{uuid.uuid4().hex[:8]}"
+    foreign = Fernet(Fernet.generate_key()).encrypt(json.dumps(SETTLEMENT).encode()).decode()
+    row_id = _received(
+        real_engine,
+        tenants.a,
+        doc_no,
+        status="pending_review",
+        payload_sql=json.dumps({"enc": foreign, "doc_type": "fee_invoice"}),
+    )
+
+    async def _read():
+        async with async_session() as db:
+            payload = await db.scalar(
+                select(EmailDocument.review_payload).where(EmailDocument.id == row_id)
+            )
+            page = await activity_service.list_activity(db, tenants.a, "all", 200, 0)
+        return payload, page
+
+    payload, page = run(_read())
+    assert payload is None
+    row = next(r for r in page.data if r.doc_no == doc_no)
+    assert (row.total, row.line_count) == (0, 0)
+
+    with real_client(session_for(tenants.a)) as client:
+        res = client.get(f"/api/v1/email/documents/{row_id}", headers=AUTH)
+    assert res.status_code != 500, res.text
+
+    assert _backfill(tenants.a)["email_documents"] == 0  # it has "enc": not plaintext
+    assert run(_raw("email_documents", row_id))["enc"] == foreign
+
+    # Put away, it is cleared like any other. It reads as None, so an ORM assignment of None
+    # looked like no change and left the ciphertext behind (found by the E2E, 2026-10-29).
+    run(ledger._finish(row_id, status="rejected", notify=False))
+    assert run(_sql_null("email_documents", row_id)) is True
+
+
+def test_d08_the_backfill_does_not_resurrect_a_row_cleared_while_it_ran(real_engine, tenants):
+    """Between the backfill's read and its write, `_finish` empties the row (a reviewer
+    approved it). The write must not put the payload back on a finished document."""
+    doc_no = f"ENC-D08-{uuid.uuid4().hex[:8]}"
+    row_id = _received(
+        real_engine, tenants.a, doc_no, status="pending_review", payload_sql=json.dumps(SETTLEMENT)
+    )
+
+    async def _race():
+        async with async_session() as db:
+            read = db.scalar
+
+            async def read_then_finish(stmt, *a, **kw):
+                value = await read(stmt, *a, **kw)
+                async with real_engine.begin() as other:
+                    await other.execute(
+                        text(
+                            "update email_documents set review_payload = null, status = 'posted'"
+                            " where id = :id"
+                        ),
+                        {"id": row_id},
+                    )
+                return value
+
+            db.scalar = read_then_finish
+            return await encrypt_plaintext_review_payloads(db, tenant_ids=[tenants.a])
+
+    run(_race())
+    assert run(_raw("email_documents", row_id)) is None
+
+
+def test_d09_a_large_thai_payload_round_trips_through_postgres(real_engine, tenants):
+    """300 detail lines of Thai text — a big statement — stored as one token and read back
+    exactly, with nothing readable on the way."""
+    doc_no = f"ENC-D09-{uuid.uuid4().hex[:8]}"
+    row_id = _received(real_engine, tenants.a, doc_no)
+    _park(row_id, doc_no, doc_type="fee_invoice", rows=300)
+
+    stored = run(_raw("email_documents", row_id))
+    assert set(stored) == {"enc", "doc_type"}
+    assert "สาขาสยาม" not in json.dumps(stored, ensure_ascii=False)
+
+    async def _read():
+        async with async_session() as db:
+            return await db.scalar(
+                select(EmailDocument.review_payload).where(EmailDocument.id == row_id)
+            )
+
+    details = run(_read())["extracted"]["details"]
+    assert len(details) == 300
+    assert details[299]["transaction"] == f"{THAI} 299"
+
+
+def test_d10_a_row_the_old_finish_left_as_json_null_is_not_plaintext(real_engine, tenants):
+    """Before this type, `_finish` stored Python None as the JSON value `null` (77 such rows on
+    dev, 2026-10-29). There is nothing in one to encrypt: the backfill must neither count it
+    nor touch it."""
+    doc_no = f"ENC-D10-{uuid.uuid4().hex[:8]}"
+    row_id = _received(real_engine, tenants.a, doc_no, status="rejected", payload_sql="null")
+    assert run(_sql_null("email_documents", row_id)) is False  # JSON null, not SQL NULL
+
+    assert _backfill(tenants.a, dry_run=True)["email_documents"] == 0
+    _backfill(tenants.a)
+    assert run(_sql_null("email_documents", row_id)) is False  # left exactly as it was

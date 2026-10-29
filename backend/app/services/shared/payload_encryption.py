@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import cast, select, update
+from sqlalchemy import cast, func, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,9 +38,12 @@ async def encrypt_plaintext_review_payloads(
     """
     found: dict[str, int] = {}
     for model in (EmailDocument, PmsEvent):
+        stored = cast(model.review_payload, JSONB)
         plaintext = [
-            model.review_payload.isnot(None),
-            ~cast(model.review_payload, JSONB).has_key("enc"),
+            # An object, so not SQL NULL and not the JSON `null` the old `_finish` left on
+            # cleared rows — those hold nothing to encrypt.
+            func.jsonb_typeof(stored) == "object",
+            ~stored.has_key("enc"),
         ]
         if tenant_ids is not None:
             plaintext.append(model.tenant_id.in_(tenant_ids))

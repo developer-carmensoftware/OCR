@@ -47,6 +47,21 @@ def test_none_stays_none_both_ways():
     assert t.process_result_value(None, PG) is None
 
 
+def test_a_cleared_payload_is_sql_null_not_json_null():
+    """The plain JSON type wrote Python None as the JSON value `null`, which `IS NOT NULL`
+    still matches — `_finish` "cleared" rows into something SQL still saw as set."""
+    assert EncryptedJSON().load_dialect_impl(PG).none_as_null is True
+
+
+def test_assigning_none_is_always_a_change():
+    """A token another key wrote reads as None, so None-to-None may still be clearing
+    ciphertext — the ORM must write it. Real values compare as usual."""
+    t = EncryptedJSON()
+    assert t.compare_values(None, None) is False
+    assert t.compare_values(PAYLOAD, dict(PAYLOAD)) is True
+    assert t.compare_values(PAYLOAD, None) is False
+
+
 def test_a_row_written_before_encryption_reads_as_it_stands():
     """No `enc` key = a plaintext row from before this type, or from the old code during a
     rolling deploy. Read it, don't fail on it; the backfill encrypts it later."""
