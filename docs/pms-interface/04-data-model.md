@@ -21,7 +21,7 @@ columns are the same shape as `email_documents`.
 | `type` | `varchar(50) not null` | `20261007000000` | `InterfaceType`, which is always `PMS` today |
 | `payload` | `jsonb not null` | `20261007000000` | The hook as sent, in Carmen's field names. Processing reads `InterfaceName`, `DocType` and `DocDate` from it |
 | `status` | `varchar(20) not null default 'received'` | `20261009000000` | `received` → `pending_review` → `posted` \| `rejected`. `failed` once the retries ran out. See [02 · state machine](02-architecture.md#diagram-7--state-machine) |
-| `review_payload` | `jsonb` | `20261009000000` | Set only while the day is `pending_review`. **Cleared on every terminal transition**. Shape below |
+| `review_payload` | `jsonb` | `20261009000000` | Set only while the day is `pending_review`. **Cleared on every terminal transition**. Encrypted at rest since 2026-10-29: stored as `{"enc": <Fernet token>}` (email decision-log #49); the shape below is what it decrypts to |
 | `jv_no` | `varchar(50)` | `20261009000000` | Always `null` since path B, because the engine returns no number. Path A wrote the JvhSeq here |
 | `reason_code` | `varchar(50)` | `20261009000000` | Why the day stopped, or `already_posted`. [Taxonomy](#reason_code-taxonomy) |
 | `error_message` | `text` | `20261009000000` | Carmen's own words (`carmen_words`), the reviewer's reject reason, or our sentence; ≤ 500 |
