@@ -291,7 +291,7 @@ the primary key (1:1 with `tenants`).
 |---|---|
 | `ingest_tag` | Random 8-hex, nullable, partial-unique `WHERE ingest_tag is not null`. Issued once on first successful enable, never reissued |
 | `enabled` | Feature toggle |
-| `owner_emails`, `tax_ids`, `rules` | `jsonb`; `rules[].pdf_password_enc` is Fernet-encrypted |
+| `owner_emails`, `tax_ids`, `rules` | `jsonb`; `rules[].pdf_password_enc` is Fernet-encrypted; `owner_emails` (people's addresses) is stored as `{"enc": <Fernet>}` (`EncryptedJSON`) |
 | `carmen_token_enc`, `carmen_uri`, `carmen_token_fp`, `carmen_token_verified_at` | The per-BU Carmen posting credential — encrypted, never returned by any endpoint |
 | `gmail_confirm_code`/`_at`, `gmail_confirmed_at` | Gmail auto-forward handshake state |
 
@@ -430,6 +430,7 @@ One row per (Carmen ERP host, business unit) pair. Auto-registered on first logi
 | `name` | Display name (admin editable; defaults to `{host}/{bu_code}`) |
 | `plan` | free / pro / enterprise |
 | `is_active` | |
+| `contact_email` | `text`, encrypted at rest (`EncryptedText`). Read only by the admin Tenants page; nothing writes it |
 
 Partial unique index: `(host, bu_code) WHERE deleted_at IS NULL`.
 
@@ -566,6 +567,9 @@ Partial unique index `uq_credit_orders_one_open_per_tenant (tenant_id) WHERE sta
 
 #### `billing_documents`
 Immutable proforma / tax-invoice snapshot per order (`doc_type`), with full buyer+seller snapshots and VAT breakdown. `number` (e.g. `PF-202606-0001`, `IV-202606-0001`) comes from `document_sequences`. Frontend renders/prints as HTML — no server-side PDF.
+The contact person — `buyer_contact_name`, `buyer_tel`, `buyer_email` — is `text` encrypted at
+rest (`EncryptedText`, decision-log #49). The company fields stay plain: they are not personal
+data, and `ar_customer_profiles` matches and searches on them.
 
 #### `tenant_subscriptions`
 The tenant's document-allowance window. `status`: `active` / `lapsed` / `superseded`. Window-based enforcement (`period_start ≤ now < period_end`); annual subscriptions keep a year-long window but reset `docs_used` per month-cycle (`cycle_start`). Partial unique index: one `active` row per tenant. Daily `fn_lapse_expired_subscriptions` pg_cron job marks expiries.

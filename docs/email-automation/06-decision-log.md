@@ -1535,6 +1535,20 @@ JSON column for what a document leaves behind:
     queue use them in SQL, and they are what Carmen already holds.
   - **IP addresses in `audit_logs` / `consent_logs`:** they are legal evidence that has to read,
     and they already have their own retention.
-  - **Billing contact details:** the user's call, still open.
+  - **Company details** (`buyer_name`, `buyer_tax_id`, `buyer_address`, `buyer_branch`,
+    `ar_customer_profiles`): not personal data, and the AR-profile search runs `ilike` on them.
+- **A contact person's details, encrypted too** (the user's call, the same day):
+  - `billing_documents.buyer_contact_name` / `buyer_tel` / `buyer_email` and
+    `tenants.contact_email` (`EncryptedText`);
+  - `email_ingest_settings.owner_emails` (`EncryptedJSON`, a list).
+
+  Every reader goes through the ORM: the proforma, the AR remark sent to Carmen, the checkout
+  prefill, the sender check and the admin pages.
+- **That one needed a migration** (`20261029010000`, varchar → text). A token is at least 100
+  characters and does not fit `buyer_tel varchar(50)`.
+  - **Order:** the migration is pushed **before** the code that writes tokens serves.
+  - **Roll forward, not back:** code from before this reads a token as the value, so a
+    rollback after the backfill would print tokens on proformas and send them in the AR remark.
+    Review payloads, by contrast, degrade to zeros on old code.
 - **Deferred:** a retention window and an admin viewer for bug-report screenshots. Nothing
   produces one yet; both come with the screen that does.
