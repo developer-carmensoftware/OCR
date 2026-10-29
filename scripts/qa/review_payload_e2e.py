@@ -12,7 +12,8 @@ the way a row parked before 2026-10-29 sits in the table, and the foreign one, a
 key this server does not hold (a rotated key, or a backend run with the CI dummy key).
 
 Every email row carries Message-ID `<e2e-enc-…@seed.local>` and every PMS day the interface
-`E2E-ENC`; `clear` removes those, their tasks and cards, and nothing else. **Approving a
+`E2E-ENC`; the UI script's corrections a `doc_no` and its bug report a description starting
+`E2E-ENC`. `clear` removes those, their tasks and cards, and nothing else. **Approving a
 seeded document posts a real JV to Carmen dev** — that one is on purpose (E-05).
 
 Runs on the transaction pooler (6543) so it cannot crowd the session cap while a backend is up.
@@ -44,7 +45,7 @@ from sqlalchemy import delete, select, text  # noqa: E402
 from app.database import async_session  # noqa: E402
 from app.models.business import CreditCard, OCRTask  # noqa: E402
 from app.models.email_automation import EmailDocument  # noqa: E402
-from app.models.encrypted_json import read_stored  # noqa: E402
+from app.models.encrypted_json import TOKEN_PREFIX, read_stored, read_text  # noqa: E402
 from app.models.identity import Tenant  # noqa: E402
 from app.models.pms import PmsEvent  # noqa: E402
 from app.models.schemas import ExtractedCreditCardData  # noqa: E402
@@ -287,7 +288,25 @@ async def check() -> int:
         holds, ok = _verdict(name, status, sql_null, json.loads(raw) if raw else None)
         bad += not ok
         print(f"  {'ok ' if ok else 'BAD'} {kind:5} {name:34} {status:15} {holds}")
-    print(f"  {len(rows)} rows, {bad} wrong")
+    # E-15/E-16: what the UI script sent through /feedback — every value a token we can open.
+    async with async_session() as db:
+        texts = (
+            await db.execute(
+                text(
+                    "select 'correction', doc_no || ' ' || field_name, original_value"
+                    " from correction_feedback where doc_no like 'E2E-ENC-%'"
+                    " union all select 'correction', doc_no || ' ' || field_name, corrected_value"
+                    " from correction_feedback where doc_no like 'E2E-ENC-%'"
+                    " union all select 'bug', description, screenshot_b64"
+                    " from bug_reports where description like 'E2E-ENC%'"
+                )
+            )
+        ).all()
+    for kind, name, raw in texts:
+        ok = raw is not None and raw.startswith(TOKEN_PREFIX) and read_text(raw) is not None
+        bad += not ok
+        print(f"  {'ok ' if ok else 'BAD'} {kind:10} {name:30} token={ok} {len(raw or '')} chars")
+    print(f"  {len(rows) + len(texts)} values, {bad} wrong")
     return 1 if bad or not rows else 0
 
 
@@ -318,8 +337,23 @@ async def clear() -> None:
                 )
             )
         ).rowcount
+        n_corr = (
+            await db.execute(
+                text("delete from correction_feedback where tenant_id = :t and doc_no like 'E2E-ENC-%'"),
+                {"t": tid},
+            )
+        ).rowcount
+        n_bugs = (
+            await db.execute(
+                text("delete from bug_reports where tenant_id = :t and description like 'E2E-ENC%'"),
+                {"t": tid},
+            )
+        ).rowcount
         await db.commit()
-    print(f"  cleared {n_docs} documents, {n_cards} cards, {n_tasks} tasks, {n_pms} PMS days")
+    print(
+        f"  cleared {n_docs} documents, {n_cards} cards, {n_tasks} tasks, {n_pms} PMS days,"
+        f" {n_corr} corrections, {n_bugs} bug reports"
+    )
 
 
 if __name__ == "__main__":
