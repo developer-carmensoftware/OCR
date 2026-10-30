@@ -10,6 +10,8 @@
 // R-3 the mailbox purge endpoint answers a dry run with the job token (the real mailbox in
 //     backend/.env, counted only — nothing moves), and refuses without it
 // R-4 no uncaught page error
+// R-5 #/admin/jobs lists the purge run that moved mail (run `mailbox_purge_live.py --endpoint`
+//     against this backend first: a dry run or an empty run writes no row)
 //
 // Env: PLAYWRIGHT_CORE, CHROME_EXE [as review_payload_ui.mjs], APP_URL [http://localhost:3011],
 // API_URL [http://localhost:8011].
@@ -116,6 +118,14 @@ async function main() {
     JSON.stringify(dryBody))
   const refused = (await fetch(`${API}/api/v1/carmen/email-ingest/purge?dry_run=true`, { method: 'POST' })).status
   check('R-3', 'refused without the job token', refused === 401, `HTTP ${refused}`)
+
+  // ── R-5 the purge run on the admin Jobs page ──────────────────────────────
+  await page.goto(`${APP}/#/admin/jobs?job_name=email-mailbox-purge`)
+  const purgeRow = page.getByRole('row').filter({ hasText: 'email-mailbox-purge' }).first()
+  const shown = await purgeRow.waitFor({ timeout: 30000 }).then(() => true, () => false)
+  check('R-5', 'the admin Jobs page lists the purge run', shown,
+    shown ? (await purgeRow.innerText()).replace(/\s+/g, ' ').slice(0, 120) : 'no row')
+  await page.screenshot({ path: path.join(SHOTS, 'R-5-admin-jobs.png') })
 
   check('R-4', 'no uncaught page error', pageErrors.length === 0, pageErrors.join(' | '))
   await browser.close()
