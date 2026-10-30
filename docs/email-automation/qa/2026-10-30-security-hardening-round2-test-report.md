@@ -22,7 +22,7 @@ Still open:
   the user's admin login. It found **F-4**: slips load from MinIO, not the host the CSP
   allowed. That is fixed and the CSP enforced on `fix/csp-enforce-slip-host`; see
   [the slip viewer check](#the-slip-viewer-check-and-the-switch-to-enforcing).
-- `-xntb` serves `/openapi.json` as 404, because `EXPOSE_API_DOCS` is not set there.
+- ~~`-xntb` serves `/openapi.json` as 404, because `EXPOSE_API_DOCS` is not set there.~~ Set by the user the same day: `/openapi.json`, `/docs` and `/redoc` answer 200 and list the new routes.
 - On dev, the `updated_at` of the 364 rows the backfill encrypted was moved to 2026-10-30 (F-2).
 
 | Layer | What | Result |
@@ -165,7 +165,7 @@ run died on the script's own search before cleaning up; the next run cleaned up 
 
 | ID | What | Result |
 |---|---|---|
-| D-1 | the new routes on `-xntb` | `encryption/backfill` (now with `error_message`), `encryption/rotate` and `email-ingest/purge` answer. **`/openapi.json` is 404: `EXPOSE_API_DOCS` is not set on `-xntb`** |
+| D-1 | the new routes on `-xntb` | `encryption/backfill` (now with `error_message`), `encryption/rotate` and `email-ingest/purge` answer. `/openapi.json` was 404 until the user set `EXPOSE_API_DOCS=true` the same day; since then 200, listing `encryption/backfill`, `encryption/rotate` and `email-ingest/purge` |
 | D-2 | migrations, RLS, grants, crons | `20261030000000/100/200` recorded; 0 tables without RLS; 0 table and 0 routine grants to `anon`/`authenticated`; both crons active |
 | D-3 | backfill through `-xntb` | dry run 364 `error_message` → applied → recount 0 |
 | D-4 | rotation dry run | every column: stale 0, unreadable 0 |
@@ -220,10 +220,32 @@ two things before the switch:
 **Rollback:** rename the header back to `Content-Security-Policy-Report-Only` and redeploy the
 frontend.
 
+### After the deploy: QA, enforced for real
+
+Merged as #325 (`e6396487`); Vercel deployed QA at 07:50 UTC. Checked against the live
+deployment, with no route rewriting. Admin screens ran in the Playwright browser with the user's
+admin login.
+
+| Check | Result |
+|---|---|
+| Headers | `Content-Security-Policy` (enforced), no Report-Only; `img-src`/`frame-src` = `api-minio.carmenteam.com` |
+| PDF slip (AI-202610-0001) | renders from `api-minio`, no blocked frame, 0 violations |
+| Image slip (AI-202609-0017) | loads, 0 violations |
+| Slip-less order (AI-202609-0015) | "No slip uploaded yet", **no** `slip-url` request (`d4d195c7` live) |
+| All 19 admin pages | signed in, 0 violations |
+| `security_headers_ui.mjs` on the QA site | customer screens, review dialog and both PDF previews: 0 violations; headers right; framing refused. Its admin-page check fails there as on every QA run: a locally minted token is not `-xntb`'s. The row above covers those pages |
+| Proof it is enforced | Playwright's own string-`eval` (`waitForFunction`) is refused: there is no `'unsafe-eval'` |
+
+The Playwright browser once showed a blank `#/admin/login`. A fresh browser rendered the form
+under the same policy with 0 violations: the blank page was that tab, after the route tricks
+of the rehearsal, not the app.
+
+**Left: prod.** Once its frontend deploys, an admin opens one slip and a customer screen loads.
+
 ## After this branch
 
 - **Merge before the prod backfill.** F-2 matters on prod the first time the `error_message`
   backfill runs. (Merged as #324.)
-- **`EXPOSE_API_DOCS=true` on `-xntb`.** The dev deploy check reads `/openapi.json`.
-- ~~**Enforce the CSP** once the slip viewer is checked.~~ Done on `fix/csp-enforce-slip-host`.
-  After it deploys: open one slip on QA and one on prod.
+- ~~**`EXPOSE_API_DOCS=true` on `-xntb`.**~~ Done; the dev deploy check can read `/openapi.json` again.
+- ~~**Enforce the CSP** once the slip viewer is checked.~~ Done as #325, and verified on QA
+  after the deploy. Prod still needs its one-slip check.
