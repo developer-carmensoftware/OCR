@@ -104,6 +104,10 @@ class Settings(BaseSettings):
 
     # Application
     app_debug: bool = False
+    # /docs, /redoc and /openapi.json map the whole API for anyone who asks. Off unless
+    # an environment says otherwise: dev/QA set it (the deploy check reads /openapi.json),
+    # prod leaves it off. Not tied to app_debug, which is False on dev too.
+    expose_api_docs: bool = False
     # Empty default = no regex origin matching. NEVER default to ".*" — combined with
     # allow_credentials it would let any site call the API with cookies/auth.
     allowed_origin_regex: str = ""

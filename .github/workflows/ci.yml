@@ -141,6 +141,11 @@ jobs:
           supabase start
           supabase db reset
 
+      # supabase/tests/database/*.sql (pgTAP): every public table keeps RLS on, and the
+      # Data API's roles hold no grants — a new table without either fails here.
+      - name: Database security tests
+        run: supabase test db
+
   # ── Secret scanning ───────────────────────────────────────────────────────────
   # Run the gitleaks binary directly. The gitleaks-action wrapper requires a paid
   # license for GitHub organizations; the binary itself is free/open-source.
