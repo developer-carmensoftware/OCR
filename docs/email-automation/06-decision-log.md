@@ -1622,3 +1622,12 @@ JSON column for what a document leaves behind:
   way: the old values could only be guessed.
 - **The CSP holds when enforced** on every screen tested, PDF previews included. Only the admin
   slip viewer is left to check before the switch.
+
+**The CSP is enforced (2026-10-30, same day).** The slip viewer check on QA found that slips
+load from MinIO (`api-minio.carmenteam.com`, the presigned URL FileService returns), not the
+FileService host the policy allowed. All 11 slips would have been blocked. `img-src`/`frame-src`
+now name MinIO, and the header is `Content-Security-Policy`. Prod uses the same FileService, and
+its frontend calls `carmen-ocr-backend.onrender.com`, already in `connect-src` (the user's call;
+both confirmed before the switch). Before merging, the exact policy was served enforced on QA
+through a Playwright route: slips, the admin pages and the proforma loaded with 0 violations.
+Rolling back is renaming the header to `Content-Security-Policy-Report-Only`.
