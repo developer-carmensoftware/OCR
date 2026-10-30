@@ -13,7 +13,7 @@ All in `backend/app/config.py:193-206`, documented at `backend/.env.example:126-
 | `IMAP_PASSWORD` | `""` | |
 | `IMAP_FOLDER` | `INBOX` | Quoted automatically before use (`_quoted_folder()`) so a folder name containing a space works |
 | `IMAP_BATCH_SIZE` | `10` | Messages per poll, not per day. Sets the practical floor on the cron interval — see [Scheduling](#scheduling). The batch is taken from the **newest** matching UIDs, so held-back mail can never crowd out mail arriving now |
-| `IMAP_HOLD_DAYS` | `14` | How far back `SEARCH … SINCE` looks, i.e. the retry window for mail handed back unread (BU switched off, package lapsed, module disabled, out of credits). Switch back on inside the window and the backlog replays; past it a held message drops out of every poll and stays in the mailbox for a person to find. Raising it also lengthens how long unwanted mail is re-fetched each poll; lowering it below the longest plausible poller outage means real mail can age out |
+| `IMAP_HOLD_DAYS` | `14` | How far back `SEARCH … SINCE` looks, i.e. the retry window for mail handed back unread (BU switched off, package lapsed, module disabled, out of credits). Switch back on inside the window and the backlog replays; past it a held message drops out of every poll, and the daily `email-mailbox-purge` moves it — like every other message older than the window, processed or not — to the Trash (decision-log #50; Gmail empties the Trash after 30 days). Raising it also lengthens how long unwanted mail is re-fetched each poll; lowering it below the longest plausible poller outage means real mail can age out |
 | `CARMEN_DEV_TOKEN` | `""` | Read **only** when `APP_DEBUG=true`. Never used in production — one shared credential would post every BU's JVs under the same identity, exactly what the per-BU token exists to avoid |
 
 Shared vars this feature also depends on:
@@ -37,10 +37,13 @@ address).
 
 ## Scheduling
 
-**All three jobs are scheduled.** `20260817000000_email_ingest_cron.sql` schedules
+**All four jobs are scheduled.** `20260817000000_email_ingest_cron.sql` schedules
 `email-ingest` every 10 minutes and `email-confirm` every minute;
 `20260828000000_email_token_health_cron.sql` schedules `email-token-health` daily at 02:15
-UTC (09:15 ICT — before the working day, after the overnight commission mail). The SQL below
+UTC (09:15 ICT — before the working day, after the overnight commission mail);
+`20261030000100_email_mailbox_purge_cron.sql` schedules `email-mailbox-purge` daily at 04:00
+UTC, which calls `POST /api/v1/carmen/email-ingest/purge` (job token; `?dry_run=true` counts
+and moves nothing — run that by hand first in a new environment). The SQL below
 is what the migrations run — reproduced because it is also what you re-issue by hand when the
 launcher cache goes stale (see below), and it is documented as a docstring on
 `check_token_health()` (`routers/email_automation/settings_api.py`):
