@@ -518,6 +518,16 @@ async def sweep_forwarding_confirmations(_auth=Depends(require_maintenance_auth)
     return await ingest.sweep_confirmations()
 
 
+@router.post("/email-ingest/purge")
+async def purge_expired_mail(
+    dry_run: bool = Query(False),
+    _auth=Depends(require_maintenance_auth),
+):
+    """Move mail older than the hold window (`IMAP_HOLD_DAYS`, 14) to the Trash — daily, by
+    the `email-mailbox-purge` cron. `dry_run` only counts. See `imap.purge_expired`."""
+    return await ingest.purge_mailbox(dry_run=dry_run)
+
+
 @router.post("/email-ingest/health")
 async def check_token_health(
     db: AsyncSession = Depends(get_db),

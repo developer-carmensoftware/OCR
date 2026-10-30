@@ -387,7 +387,8 @@ def since_arg() -> str:
     `mark_done`), so that a BU switched off, out of package or with the module disabled loses
     nothing and replays its backlog the moment it is switched on again. What it must not
     do is accumulate for ever: past this many days a held message drops out of every
-    search, costing nothing more, and stays in the mailbox for a person to find.
+    search, costing nothing more — and `purge_expired` moves it to the Trash, since the
+    bank statements in it are nobody's to keep (decision-log #50).
 
     Matched on INTERNALDATE (arrival at our mailbox), which never moves — so a message's
     window is fixed the moment it arrives and cannot be extended by re-polling it.
@@ -638,6 +639,68 @@ def mark_done(uids: list[str]) -> None:
                 pass
     except Exception as exc:  # noqa: BLE001 — a flag we could not set is not an outage
         logger.error("[email] Could not mark %d message(s) done: %s", len(uids), exc)
+
+
+# ── Retention ─────────────────────────────────────────────────────────────────
+
+PURGE_CHUNK = 100  # UIDs per MOVE: one command line stays well inside any server's limit
+_LIST_LINE = re.compile(rb'^\((?P<flags>[^)]*)\) (?:"[^"]*"|NIL) (?P<name>.+)$')
+
+
+def _trash_folder(box: imaplib.IMAP4_SSL) -> str | None:
+    """The folder `LIST` marks `\\Trash` (RFC 6154) — `[Gmail]/Trash` on Gmail, whatever
+    the account's language calls it — quoted for a command. None if the server marks none."""
+    _, lines = box.list()
+    for line in lines or []:
+        # A name sent as a literal arrives as (b'(flags) "/" {13}', b'[Gmail]/Trash').
+        head, literal = (line, None) if isinstance(line, bytes) else (line[0], line[1])
+        m = _LIST_LINE.match(head or b"")
+        if m and b"\\trash" in m["flags"].lower():
+            return _quoted_folder((literal or m["name"]).decode().strip())
+    return None
+
+
+def purge_expired(dry_run: bool = False) -> int:
+    """Move every message that arrived before the hold window to the Trash; return how many.
+
+    `BEFORE since_arg()` is, to the day, the complement of the `SINCE since_arg()` every
+    poll searches — so this takes exactly the mail no poll can reach any more, processed or
+    not, and never one a poll could still pick up (decision-log #50: 14 days). Dedupe is
+    unaffected: a message past the window could not be searched again anyway.
+
+    To the Trash rather than gone: on Gmail, `\\Deleted` + `EXPUNGE` in a label only
+    archives, so the Trash is what actually deletes — Gmail empties it after 30 days. A
+    server with no `\\Trash` folder gets the plain `\\Deleted` + `EXPUNGE`, which deletes
+    there. Raises on failure; the caller records the failed run.
+    """
+    box = _connect()
+    try:
+        box.select(_quoted_folder(settings.imap_folder))
+        uids = _uid_search(box, "BEFORE", since_arg())
+        if dry_run or not uids:
+            return len(uids)
+        trash = _trash_folder(box)
+        # Asked now, not read from `box.capabilities`: imaplib fills that before login, and
+        # Gmail only advertises MOVE after it (measured on the dev mailbox, 2026-10-30).
+        _, caps = box.capability()
+        can_move = b"MOVE" in (caps[0] or b"").upper().split()
+        for i in range(0, len(uids), PURGE_CHUNK):
+            chunk = ",".join(uids[i : i + PURGE_CHUNK])
+            if trash and can_move:
+                box.uid("MOVE", chunk, trash)
+                continue
+            if trash:
+                box.uid("COPY", chunk, trash)
+            box.uid("STORE", chunk, "+FLAGS", "(\\Deleted)")
+        if not (trash and can_move):
+            box.expunge()
+        logger.info("[email] Moved %d message(s) past the hold window to the Trash", len(uids))
+        return len(uids)
+    finally:
+        try:
+            box.logout()
+        except OSError:
+            pass
 
 
 # ── Routing ───────────────────────────────────────────────────────────────────

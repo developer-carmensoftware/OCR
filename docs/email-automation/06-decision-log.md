@@ -1575,3 +1575,19 @@ JSON column for what a document leaves behind:
   pg_partman makes one a month and would not carry the setting.
 - **A pgTAP test in CI** keeps both layers in place, so the next new table cannot quietly lack
   RLS again (14 had, by 2026-10-30).
+
+**PR 2 — retention.**
+- **The ingest mailbox keeps 14 days** (the user chose the hold window itself, over 30 or 90).
+  Every message that arrived `BEFORE since_arg()` is moved to the Trash daily, processed or
+  not. That date is the exact complement of the poll's `SINCE`, so a message a poll could
+  still pick up is never touched, and dedupe is unaffected. It goes to the Trash and not
+  `\Deleted` + EXPUNGE, because on Gmail that in a label only archives. Gmail empties the
+  Trash after 30 days, which is the recovery window.
+- **Filenames and error text are kept 12 months; the rows are kept for good.**
+  `fn_scrub_old_filenames()` blanks `ocr_tasks.original_filename`/`error_message`,
+  `ap_invoices.original_filename` and the filename `credit_ledger.ref` of charge rows. Usage
+  counts, ledger amounts and every admin number are unchanged, and soft-delete-everywhere
+  stands. A scrubbed ledger row is no longer found by the Credits page's search on its
+  filename. Accepted.
+- **`correction_feedback` keeps everything** (user's call): its values are encrypted, and
+  the table is small.

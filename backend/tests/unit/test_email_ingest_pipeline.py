@@ -2228,6 +2228,106 @@ def test_a_poll_looks_no_further_back_than_the_hold_window(monkeypatch):
     )
 
 
+_GMAIL_LIST = [
+    b'(\\HasNoChildren) "/" "INBOX"',
+    b'(\\All \\HasNoChildren) "/" "[Gmail]/All Mail"',
+    b'(\\HasNoChildren \\Trash) "/" "[Gmail]/Trash"',
+]
+
+
+def _purging_box(monkeypatch, uids: bytes, *, listing=_GMAIL_LIST, move=True):
+    box = _searching_box(monkeypatch, uids)
+    box.list.return_value = ("OK", listing)
+    # What Gmail answers once logged in; `box.capabilities` (pre-login) lacks MOVE there.
+    box.capabilities = ("IMAP4REV1",)
+    box.capability.return_value = ("OK", [b"IMAP4rev1 UIDPLUS MOVE" if move else b"IMAP4rev1"])
+    return box
+
+
+def test_the_purge_takes_exactly_the_mail_no_poll_can_reach_any_more(monkeypatch):
+    """`BEFORE` the very date the poll searches `SINCE` — the two never select the same
+    message, so nothing a poll could still pick up is ever deleted (decision-log #50)."""
+    box = _purging_box(monkeypatch, b"3 4")
+    monkeypatch.setattr(ingest.settings, "imap_hold_days", 14)
+
+    assert imap.purge_expired() == 2
+
+    assert _uid_calls(box, "SEARCH") == [("BEFORE", imap.since_arg())]
+    # To the Trash — on Gmail, \\Deleted + EXPUNGE in a label only archives.
+    assert _uid_calls(box, "MOVE") == [("3,4", '"[Gmail]/Trash"')]
+    assert not _uid_calls(box, "STORE")
+    box.expunge.assert_not_called()
+
+
+def test_a_dry_run_counts_and_moves_nothing(monkeypatch):
+    box = _purging_box(monkeypatch, b"3 4 5")
+    assert imap.purge_expired(dry_run=True) == 3
+    assert not _uid_calls(box, "MOVE") and not _uid_calls(box, "STORE")
+    box.expunge.assert_not_called()
+
+
+def test_a_large_backlog_moves_in_chunks(monkeypatch):
+    box = _purging_box(monkeypatch, " ".join(str(n) for n in range(1, 251)).encode())
+    assert imap.purge_expired() == 250
+    moved = [len(args[0].split(",")) for args in _uid_calls(box, "MOVE")]
+    assert moved == [imap.PURGE_CHUNK, imap.PURGE_CHUNK, 50]
+
+
+def test_without_move_it_copies_to_the_trash_then_expunges(monkeypatch):
+    box = _purging_box(monkeypatch, b"3 4", move=False)
+    imap.purge_expired()
+    assert _uid_calls(box, "COPY") == [("3,4", '"[Gmail]/Trash"')]
+    assert _uid_calls(box, "STORE") == [("3,4", "+FLAGS", "(\\Deleted)")]
+    box.expunge.assert_called_once()
+
+
+def test_a_server_with_no_trash_folder_deletes_in_place(monkeypatch):
+    box = _purging_box(monkeypatch, b"3", listing=[b'(\\HasNoChildren) "/" "INBOX"'])
+    imap.purge_expired()
+    assert not _uid_calls(box, "MOVE") and not _uid_calls(box, "COPY")
+    assert _uid_calls(box, "STORE") == [("3", "+FLAGS", "(\\Deleted)")]
+    box.expunge.assert_called_once()
+
+
+def test_the_trash_is_found_when_its_name_comes_as_a_literal(monkeypatch):
+    box = _purging_box(
+        monkeypatch, b"3", listing=[(b'(\\HasNoChildren \\Trash) "/" {13}', b"[Gmail]/Trash")]
+    )
+    imap.purge_expired()
+    assert _uid_calls(box, "MOVE") == [("3", '"[Gmail]/Trash"')]
+
+
+@pytest.mark.asyncio
+async def test_the_purge_job_records_what_it_moved_and_what_failed(monkeypatch):
+    monkeypatch.setattr(ingest.settings, "imap_host", "imap.example")
+    record = AsyncMock()
+    monkeypatch.setattr(ingest, "_record_run", record)
+
+    monkeypatch.setattr(ingest, "purge_expired", MagicMock(return_value=0))
+    assert (await ingest.purge_mailbox())["messages"] == 0
+    record.assert_not_awaited()  # an empty day writes no row
+
+    monkeypatch.setattr(ingest, "purge_expired", MagicMock(return_value=7))
+    assert (await ingest.purge_mailbox(dry_run=True))["status"] == "dry_run"
+    record.assert_not_awaited()  # neither does a dry run
+    assert (await ingest.purge_mailbox())["messages"] == 7
+    assert record.await_args.kwargs == {"job_name": ingest.PURGE_JOB, "rows": 7}
+
+    monkeypatch.setattr(ingest, "purge_expired", MagicMock(side_effect=OSError("imap down")))
+    with pytest.raises(OSError):
+        await ingest.purge_mailbox()
+    assert record.await_args.kwargs["error"] == "imap down"
+
+
+@pytest.mark.asyncio
+async def test_the_purge_does_nothing_where_imap_is_off(monkeypatch):
+    monkeypatch.setattr(ingest.settings, "imap_host", "")
+    purge = MagicMock()
+    monkeypatch.setattr(ingest, "purge_expired", purge)
+    assert (await ingest.purge_mailbox())["status"] == "disabled"
+    purge.assert_not_called()
+
+
 def test_the_queue_is_the_done_flag_never_unseen(monkeypatch):
     """F-1 (2026-09-24 QA): with `SEARCH UNSEEN` as the queue, anybody who read the mailbox —
     a person in Gmail, a mail client, another deployment — made mail drop out of every poll

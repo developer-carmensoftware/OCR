@@ -82,6 +82,8 @@ from app.services.email_automation.imap import (
     gmail_confirm_code,
     gmail_confirm_link,
     mark_done,
+    purge_expired,
+    since_arg,
     tag_from_recipients,
     unique_names,
 )
@@ -110,6 +112,8 @@ CONFIRM_WINDOW_HOURS = 24
 
 # One poll at a time per process — see `run_ingest`.
 _poll_lock = asyncio.Lock()
+
+PURGE_JOB = "email-mailbox-purge"
 
 
 async def run_ingest(limit: int | None = None) -> dict:
@@ -285,6 +289,31 @@ async def sweep_confirmations() -> dict:
                 started, {"messages": len(messages)}, job_name="email-confirm", rows=confirmed
             )
         return {"checked": len(messages), "confirmed": confirmed, "waiting": len(waiting)}
+
+
+async def purge_mailbox(dry_run: bool = False) -> dict:
+    """Move mail past the hold window to the Trash (`imap.purge_expired`). Daily cron.
+
+    No lock against the poll: the poll searches `SINCE` the floor and this takes only what
+    arrived `BEFORE` it, so the two never touch the same message. A run that moved mail, or
+    failed, writes a `job_runs` row; a dry run or an empty one does not.
+    """
+    if not settings.imap_host:
+        return {"status": "disabled", "reason": "IMAP not configured"}
+    started = datetime.now(UTC)
+    try:
+        count = await asyncio.to_thread(purge_expired, dry_run)
+    except Exception as exc:
+        logger.exception("[email] Mailbox purge failed")
+        await _record_run(started, {"messages": 0}, error=str(exc), job_name=PURGE_JOB)
+        raise
+    if count and not dry_run:
+        await _record_run(started, {"messages": count}, job_name=PURGE_JOB, rows=count)
+    return {
+        "status": "dry_run" if dry_run else "completed",
+        "before": since_arg(),
+        "messages": count,
+    }
 
 
 async def _notify_pending(parked: dict[str, int]) -> None:
