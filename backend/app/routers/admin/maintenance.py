@@ -94,6 +94,22 @@ async def encrypt_plaintext_columns(
     return {"status": "dry_run" if dry_run else "completed", "plaintext_rows": found}
 
 
+@router.post("/encryption/rotate")
+async def rotate_encryption_key(
+    dry_run: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+    _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
+):
+    """Re-encrypt under `SESSION_ENCRYPTION_KEY` every token written under a key now listed
+    in `SESSION_ENCRYPTION_KEYS_OLD` — step 3 of docs/KEY_ROTATION.md. `dry_run` counts.
+    Repeat until every `stale` is 0, then drop the old key."""
+    from app.services.shared import payload_encryption
+
+    report = await payload_encryption.rotate_tokens(db, dry_run=dry_run)
+    logger.info("Key rotation (dry_run=%s): %s", dry_run, report)
+    return {"status": "dry_run" if dry_run else "completed", "columns": report}
+
+
 @router.get("/pricing/list")
 async def get_pricing_list(
     db: AsyncSession = Depends(get_db),

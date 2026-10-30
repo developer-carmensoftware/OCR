@@ -23,7 +23,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from app.database import Base
 
-from .encrypted_json import EncryptedJSON
+from .encrypted_json import EncryptedJSON, EncryptedText
 from .mixins import TenantFKMixin, TimestampMixin, WriterMixin
 
 # JSONB on Postgres, plain JSON on SQLite (the unit-test engine).
@@ -106,7 +106,10 @@ class EmailDocument(Base, TenantFKMixin, TimestampMixin):
     doc_no = Column(String(100), nullable=True)
     jv_no = Column(String(50), nullable=True)
     reason_code = Column(String(50), nullable=True)
-    error_message = Column(Text, nullable=True)
+    # Can name the addresses a refused mail carried (`sender_not_allowed`), which is how a
+    # reviewer spots a typo in a registered address — so encrypted, not masked (#50).
+    # reason_code is what SQL filters on; nothing compares this column in SQL.
+    error_message = Column(EncryptedText(), nullable=True)
     attempts = Column(Integer, nullable=False, default=0)
     # Set only while status == 'pending_review'; _finish clears it on every terminal
     # transition. This is the one place extracted line items touch disk, and it lasts

@@ -239,7 +239,7 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
     username = body.user or carmen_user_id
 
     try:
-        encrypted = encrypt_carmen_token(token, settings.session_encryption_key)
+        encrypted = encrypt_carmen_token(token)
     except Exception:
         logger.exception("Token encryption failed")
         raise HTTPException(status_code=500, detail="Session creation failed")

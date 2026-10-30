@@ -127,7 +127,7 @@ async def get_current_session(
         raise HTTPException(status_code=401, detail="Session not found or revoked")
 
     try:
-        carmen_token = decrypt_carmen_token(encrypted_token, settings.session_encryption_key)
+        carmen_token = decrypt_carmen_token(encrypted_token)
     except ValueError:
         logger.error("Failed to decrypt carmen token for session %s", session_id)
         raise HTTPException(
