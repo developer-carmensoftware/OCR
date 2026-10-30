@@ -82,7 +82,7 @@ def test_a_row_written_before_encryption_reads_as_it_stands():
 
 def test_a_token_from_another_key_reads_as_none():
     stored = EncryptedJSON().process_bind_param(PAYLOAD, PG)
-    with patch("app.models.encrypted_json.settings") as s:
+    with patch("app.utils.crypto.settings") as s:
         s.session_encryption_key = Fernet.generate_key().decode()
         assert EncryptedJSON().process_result_value(stored, PG) is None
 
@@ -115,7 +115,7 @@ def test_text_written_before_encryption_reads_as_it_stands():
 
 def test_text_from_another_key_reads_as_none_and_none_is_always_a_change():
     stored = EncryptedText().process_bind_param("451005282039001", PG)
-    with patch("app.models.encrypted_json.settings") as s:
+    with patch("app.utils.crypto.settings") as s:
         s.session_encryption_key = Fernet.generate_key().decode()
         assert EncryptedText().process_result_value(stored, PG) is None
     assert EncryptedText().compare_values(None, None) is False

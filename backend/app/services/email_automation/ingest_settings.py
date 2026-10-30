@@ -655,8 +655,6 @@ def _merge_rule(incoming: Any, previous: dict | None) -> dict:
         rule["merchant_id"] = digits_only(incoming.merchant_id) or None
     if incoming.pdf_password is not None:
         rule["pdf_password_enc"] = (
-            encrypt_carmen_token(incoming.pdf_password, app_settings.session_encryption_key)
-            if incoming.pdf_password
-            else None
+            encrypt_carmen_token(incoming.pdf_password) if incoming.pdf_password else None
         )
     return rule

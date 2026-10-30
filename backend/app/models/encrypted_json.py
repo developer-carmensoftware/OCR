@@ -18,8 +18,9 @@ as it stands, so existing rows and a rolling deploy both keep working.
 `POST /api/v1/admin/encryption/backfill` (`services/shared/payload_encryption.py`)
 rewrites those rows once the new code is deployed.
 
-Same key as the session tokens, BU credentials and PDF passwords. A token it cannot
-decrypt (a rotated key) is logged and read as None, as `credential._decrypt` does — the
+Same keys as the session tokens, BU credentials and PDF passwords (`app/utils/crypto.py`:
+`SESSION_ENCRYPTION_KEY`, plus any old key listed while a rotation is under way). A token
+none of them can decrypt is logged and read as None, as `credential._decrypt` does — the
 row then reads as empty rather than taking the request down with it.
 """
 
@@ -29,22 +30,18 @@ import json
 import logging
 from typing import Any
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import InvalidToken
 from sqlalchemy import JSON, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.types import TypeDecorator
 
-from app.config import settings
+from app.utils.crypto import fernet as _fernet  # primary + any old key mid-rotation
 
 logger = logging.getLogger(__name__)
 
 # How every Fernet token starts: version byte 0x80, then a big-endian timestamp whose top
 # bytes stay zero until 2106. What tells an `EncryptedText` token from a row from before.
 TOKEN_PREFIX = "gAAAAA"
-
-
-def _fernet() -> Fernet:
-    return Fernet(settings.session_encryption_key.encode())
 
 
 def _decrypt(token: str) -> bytes | None:

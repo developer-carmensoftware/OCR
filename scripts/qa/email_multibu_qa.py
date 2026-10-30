@@ -1601,6 +1601,13 @@ async def phase_poll(args) -> None:
 # ── phase: verify ────────────────────────────────────────────────────────────
 
 
+def _read_text(value):
+    """email_documents.error_message as the app reads it — encrypted at rest since 10-30."""
+    from app.models.encrypted_json import read_text
+
+    return read_text(value)
+
+
 async def phase_verify(_args) -> None:
     state = load_state()
     tag_by_tenant = {b["tenant_id"]: code for code, b in state["bus"].items()}
@@ -2307,7 +2314,7 @@ async def phase_fixcheck(_args) -> None:
     reason_ok = (
         bool(f6)
         and f6[0]["reason_code"] == "tax_id_mismatch"
-        and S4_TIN in (f6[0]["error_message"] or "")
+        and S4_TIN in (_read_text(f6[0]["error_message"]) or "")
     )
     note = (
         f"row={f6[0]['status'] + '/' + str(f6[0]['reason_code']) if f6 else 'NONE'}"
@@ -2628,7 +2635,7 @@ async def phase_approve_real(args) -> None:
         f" card_submitted={bool(card) and card[0]['submitted_at'] is not None}"
         f" posts={len(posts)} posted_as_tenant="
         f"{'carmencloud' if posts and posts[0].tenant_id == cc['tenant_id'] else '?'}"
-        f" input_tax_calls={len(taxes)} tax_note={after['error_message']!r}"
+        f" input_tax_calls={len(taxes)} tax_note={_read_text(after['error_message'])!r}"
         f" extracted_doc_no={d['doc_no']} body={resp.text[:200]}"
     )
     _r2_record(state, "R-JV", ok, note)

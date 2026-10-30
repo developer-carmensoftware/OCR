@@ -1591,3 +1591,21 @@ JSON column for what a document leaves behind:
   filename. Accepted.
 - **`correction_feedback` keeps everything** (user's call): its values are encrypted, and
   the table is small.
+
+**PR 3 — keys.**
+- **One `MultiFernet` behind everything encrypted at rest** (`app/utils/crypto.py`).
+  `SESSION_ENCRYPTION_KEY` encrypts; `SESSION_ENCRYPTION_KEYS_OLD` only decrypts. Before this,
+  the key could not change at all: swapping it blanks every encrypted value and 500s every
+  signed-in session. That was measured on the local stack, and it is why the runbook keeps both
+  keys through the re-encryption.
+- **Rotation is a runbook plus a tool** (`docs/KEY_ROTATION.md`, `POST
+  /api/v1/admin/encryption/rotate`):
+  1. deploy new + old;
+  2. re-encrypt until 0 stale;
+  3. drop the old.
+
+  The tool covers the encrypted columns, the session and BU credentials, and PDF passwords.
+  `secure_configs` is left out: nothing reads it.
+- **`email_documents.error_message` is encrypted, not masked** (the user's call). It names the
+  addresses a refused mail carried, which is how a reviewer spots a typo in a registered one
+  (the 2026-08-28 incident). Masking would lose that.

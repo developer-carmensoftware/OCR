@@ -6,6 +6,7 @@ import logging
 import re
 from pathlib import Path
 
+from cryptography.fernet import Fernet as _Fernet
 from pydantic_settings import BaseSettings
 
 _config_logger = logging.getLogger(__name__)
@@ -162,6 +163,9 @@ class Settings(BaseSettings):
     # Generate session_encryption_key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     ocr_jwt_secret: str = "dev-ocr-jwt-secret-change-in-production"
     session_encryption_key: str = _WEAK_FERNET_KEY
+    # Keys SESSION_ENCRYPTION_KEY replaced, comma-separated: they still decrypt, never
+    # encrypt. Set only while rotating (app/utils/crypto.py, docs/KEY_ROTATION.md).
+    session_encryption_keys_old: str = ""
     session_ttl_hours: float = 0.5
 
     # Admin Dashboard JWT — separate secret prevents token confusion attacks.
@@ -352,6 +356,17 @@ if not settings.app_debug and settings.ocr_jwt_secret in _WEAK_JWT_SECRETS:
         "OCR_JWT_SECRET is set to a known-weak default. "
         "Set a strong random secret in your .env before starting."
     )
+
+# Every environment: an old key that is not a Fernet key would only fail later, on the first
+# token written under it — at the worst moment, mid-rotation.
+for _old in (k.strip() for k in settings.session_encryption_keys_old.split(",") if k.strip()):
+    try:
+        _Fernet(_old.encode())
+    except (ValueError, TypeError) as exc:
+        raise RuntimeError(
+            "SESSION_ENCRYPTION_KEYS_OLD holds a value that is not a Fernet key "
+            "(comma-separate several; see docs/KEY_ROTATION.md)."
+        ) from exc
 
 if not settings.app_debug and settings.session_encryption_key == _WEAK_FERNET_KEY:
     raise RuntimeError(

@@ -299,6 +299,16 @@ class TestProductionStartupGuards:
         assert result.returncode != 0
         assert "ADMIN_JWT_SECRET" in result.stderr
 
+    def test_an_old_key_that_is_not_a_fernet_key_aborts_startup(self):
+        """Caught at boot, not on the first token mid-rotation."""
+        bad = self._import_config(
+            SESSION_ENCRYPTION_KEYS_OLD=f"{Fernet.generate_key().decode()},nope"
+        )
+        assert bad.returncode != 0
+        assert "SESSION_ENCRYPTION_KEYS_OLD" in bad.stderr
+        good = self._import_config(SESSION_ENCRYPTION_KEYS_OLD=Fernet.generate_key().decode())
+        assert good.returncode == 0, good.stderr
+
     def test_admin_secret_equal_to_ocr_secret_aborts_startup(self):
         shared = "x" * 48  # strong enough to clear the weak-secret guard
         result = self._import_config(OCR_JWT_SECRET=shared, ADMIN_JWT_SECRET=shared)

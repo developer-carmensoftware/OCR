@@ -37,7 +37,7 @@ def _decrypt(value: str | None) -> str | None:
     if not value:
         return None
     try:
-        return decrypt_carmen_token(value, app_settings.session_encryption_key)
+        return decrypt_carmen_token(value)
     except ValueError:
         logger.error("[email] Stored secret could not be decrypted — key rotated?")
         return None
@@ -142,7 +142,7 @@ async def set_token(
     if row is None:
         row = EmailIngestSettings(tenant_id=tenant.id)
         db.add(row)
-    row.carmen_token_enc = encrypt_carmen_token(token, app_settings.session_encryption_key)
+    row.carmen_token_enc = encrypt_carmen_token(token)
     row.carmen_uri = carmen_uri
     row.carmen_token_fp = fingerprint(token)
     row.carmen_token_verified_at = datetime.now(UTC)

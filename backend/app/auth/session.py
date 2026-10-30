@@ -78,15 +78,25 @@ def decode_session_jwt(token: str, secret: str) -> dict:
 # ── Fernet encryption ─────────────────────────────────────────────────────────
 
 
-def encrypt_carmen_token(plaintext: str, key: str) -> str:
-    f = Fernet(key.encode())
-    return f.encrypt(plaintext.encode()).decode()
+# `key=None` is the app's own keys (app/utils/crypto.py): encrypt under the primary, decrypt
+# under it or any old key still listed for a rotation. A key passed is that key alone.
 
 
-def decrypt_carmen_token(ciphertext: str, key: str) -> str:
+def _fernet(key: str | None):
+    if key is not None:
+        return Fernet(key.encode())
+    from app.utils.crypto import fernet  # here, so this module stays free of app.config
+
+    return fernet()
+
+
+def encrypt_carmen_token(plaintext: str, key: str | None = None) -> str:
+    return _fernet(key).encrypt(plaintext.encode()).decode()
+
+
+def decrypt_carmen_token(ciphertext: str, key: str | None = None) -> str:
     try:
-        f = Fernet(key.encode())
-        return f.decrypt(ciphertext.encode()).decode()
+        return _fernet(key).decrypt(ciphertext.encode()).decode()
     except InvalidToken as exc:
         raise ValueError("Carmen token decryption failed — key mismatch or tampered data") from exc
 
