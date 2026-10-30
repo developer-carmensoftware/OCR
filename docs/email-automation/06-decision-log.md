@@ -1552,3 +1552,26 @@ JSON column for what a document leaves behind:
     Review payloads, by contrast, degrade to zeros on old code.
 - **Deferred:** a retention window and an admin viewer for bug-report screenshots. Nothing
   produces one yet; both come with the screen that does.
+
+## 50. Security hardening, round 2 — headers, API map, RLS, retention, key rotation (2026-10-30)
+
+**Decided:** 2026-10-30, with the user, after the audit of 2026-10-29. **Admin MFA is deferred**
+(it adds a stack); everything else ships in three PRs, each with its own section here.
+
+**PR 1 — web and database surface.**
+- **Frontend headers from `frontend/vercel.json`.** Framing is refused outright
+  (`X-Frame-Options: DENY`, `frame-ancestors 'none'`): Carmen opens us by link, never embeds us.
+  `nosniff`, `Referrer-Policy`, `Permissions-Policy` and HSTS are enforced at once.
+- **The CSP starts as `Report-Only`.** The admin slip viewer frames a FileService presigned URL
+  whose host could not be confirmed on dev. A QA round with no reports comes first, then the
+  enforcing switch. The one inline script (theme before first paint) is allowed by its sha256,
+  and `securityHeaders.test.ts` keeps the two in step.
+- **`/docs`, `/redoc`, `/openapi.json` follow `EXPOSE_API_DOCS`**, not `app_debug`: `app_debug`
+  is False on dev as well, and dev's deploy check reads `/openapi.json`. Default off, so prod
+  publishes no map of the API.
+- **Two layers against the Data API, both explicit.** RLS is enabled and forced on every public
+  table, and `anon`/`authenticated` hold no privileges. A fresh database had been handing them
+  1078 table privileges by default. Partitions rely on their parent's RLS plus the revoke:
+  pg_partman makes one a month and would not carry the setting.
+- **A pgTAP test in CI** keeps both layers in place, so the next new table cannot quietly lack
+  RLS again (14 had, by 2026-10-30).
