@@ -304,3 +304,35 @@ class TestProductionStartupGuards:
         result = self._import_config(OCR_JWT_SECRET=shared, ADMIN_JWT_SECRET=shared)
         assert result.returncode != 0
         assert "ADMIN_JWT_SECRET" in result.stderr
+
+
+class TestApiDocsExposure:
+    """`/docs`, `/redoc` and `/openapi.json` publish a map of every endpoint. They are on
+    only where an environment asks (dev/QA), and off by default — prod sets nothing."""
+
+    @contextmanager
+    def _client(self, expose: bool):
+        from starlette.testclient import TestClient
+
+        from app.config import settings
+        from app.factory import create_app
+
+        with (
+            patch.object(settings, "expose_api_docs", expose),
+            patch("app.lifecycle.ensure_db", new_callable=AsyncMock),
+        ):
+            with TestClient(create_app()) as client:
+                yield client
+
+    @pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+    def test_off_by_default_is_not_found(self, path):
+        from app.config import Settings
+
+        assert Settings.model_fields["expose_api_docs"].default is False
+        with self._client(expose=False) as client:
+            assert client.get(path).status_code == 404
+
+    @pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+    def test_on_where_an_environment_asks(self, path):
+        with self._client(expose=True) as client:
+            assert client.get(path).status_code == 200
