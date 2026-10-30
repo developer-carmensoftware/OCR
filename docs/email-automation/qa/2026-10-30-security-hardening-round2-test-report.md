@@ -22,7 +22,7 @@ Still open:
   the user's admin login. It found **F-4**: slips load from MinIO, not the host the CSP
   allowed. That is fixed and the CSP enforced on `fix/csp-enforce-slip-host`; see
   [the slip viewer check](#the-slip-viewer-check-and-the-switch-to-enforcing).
-- `-xntb` serves `/openapi.json` as 404, because `EXPOSE_API_DOCS` is not set there.
+- ~~`-xntb` serves `/openapi.json` as 404, because `EXPOSE_API_DOCS` is not set there.~~ Set by the user the same day: `/openapi.json`, `/docs` and `/redoc` answer 200 and list the new routes.
 - On dev, the `updated_at` of the 364 rows the backfill encrypted was moved to 2026-10-30 (F-2).
 
 | Layer | What | Result |
@@ -165,7 +165,7 @@ run died on the script's own search before cleaning up; the next run cleaned up 
 
 | ID | What | Result |
 |---|---|---|
-| D-1 | the new routes on `-xntb` | `encryption/backfill` (now with `error_message`), `encryption/rotate` and `email-ingest/purge` answer. **`/openapi.json` is 404: `EXPOSE_API_DOCS` is not set on `-xntb`** |
+| D-1 | the new routes on `-xntb` | `encryption/backfill` (now with `error_message`), `encryption/rotate` and `email-ingest/purge` answer. `/openapi.json` was 404 until the user set `EXPOSE_API_DOCS=true` the same day; since then 200, listing `encryption/backfill`, `encryption/rotate` and `email-ingest/purge` |
 | D-2 | migrations, RLS, grants, crons | `20261030000000/100/200` recorded; 0 tables without RLS; 0 table and 0 routine grants to `anon`/`authenticated`; both crons active |
 | D-3 | backfill through `-xntb` | dry run 364 `error_message` → applied → recount 0 |
 | D-4 | rotation dry run | every column: stale 0, unreadable 0 |
@@ -224,6 +224,6 @@ frontend.
 
 - **Merge before the prod backfill.** F-2 matters on prod the first time the `error_message`
   backfill runs. (Merged as #324.)
-- **`EXPOSE_API_DOCS=true` on `-xntb`.** The dev deploy check reads `/openapi.json`.
+- ~~**`EXPOSE_API_DOCS=true` on `-xntb`.**~~ Done; the dev deploy check can read `/openapi.json` again.
 - ~~**Enforce the CSP** once the slip viewer is checked.~~ Done on `fix/csp-enforce-slip-host`.
   After it deploys: open one slip on QA and one on prod.
