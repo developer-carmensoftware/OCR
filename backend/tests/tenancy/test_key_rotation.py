@@ -52,7 +52,8 @@ def _seed(real_engine, tenant_id):
                 text(
                     "insert into email_documents (id, tenant_id, message_id, attachment, status,"
                     " review_payload, error_message, created_at, updated_at) values (:id, :t, :m,"
-                    " 'r.pdf', 'pending_review', cast(:p as jsonb), :e, now(), now())"
+                    " 'r.pdf', 'pending_review', cast(:p as jsonb), :e, now(), now() - interval"
+                    " '80 days')"
                 ),
                 {
                     "id": ids["doc"],
@@ -244,7 +245,7 @@ def seeded(real_engine, tenants):
 
 
 def test_a_rotation_moves_every_token_to_the_new_key_and_loses_nothing(
-    seeded, tenants, monkeypatch
+    seeded, real_engine, tenants, monkeypatch
 ):
     ids = seeded
 
@@ -262,6 +263,16 @@ def test_a_rotation_moves_every_token_to_the_new_key_and_loses_nothing(
         assert n["stale"] >= 1 and n["unreadable"] == 0, col
     assert _rotate(tenants.c) == counted
     assert all(c["stale"] == 0 for c in _rotate(tenants.c, dry_run=True).values())  # done
+
+    async def _doc_age():
+        async with real_engine.connect() as conn:
+            return await conn.scalar(
+                text("select now() - updated_at from email_documents where id = :i"),
+                {"i": ids["doc"]},
+            )
+
+    # fn_purge_email_documents keys its 90-day clock on updated_at: a rotation is not an edit.
+    assert run(_doc_age()).days >= 79
 
     # OLD dropped: everything still reads, under NEW alone.
     monkeypatch.setattr(settings, "session_encryption_keys_old", "")

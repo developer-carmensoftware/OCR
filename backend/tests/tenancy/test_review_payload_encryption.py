@@ -906,16 +906,23 @@ def test_d19_the_backfill_encrypts_an_error_message_written_in_plaintext(real_en
     async def _plain():
         async with real_engine.begin() as conn:
             await conn.execute(
-                text("update email_documents set error_message = :m where id = :i"),
+                text(
+                    "update email_documents set error_message = :m,"
+                    " updated_at = now() - interval '80 days' where id = :i"
+                ),
                 {"m": message, "i": row_id},
             )
 
     run(_plain())
+    (before,) = run(_text_cols("email_documents", "updated_at", "id = :i", {"i": row_id}))
     assert _backfill(tenants.a, dry_run=True)["email_documents.error_message"] >= 1
     _backfill(tenants.a)
 
     (raw,) = run(_text_cols("email_documents", "error_message", "id = :i", {"i": row_id}))
     assert raw.startswith("gAAAAA") and "exampel" not in raw
+    # The 90-day retention clock (fn_purge_email_documents) runs on updated_at: encrypting a
+    # value is not an edit, and must not give the addresses in it another 90 days.
+    assert run(_text_cols("email_documents", "updated_at", "id = :i", {"i": row_id})) == (before,)
 
     async def _read():
         async with async_session() as db:

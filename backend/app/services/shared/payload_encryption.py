@@ -14,6 +14,10 @@ script, for two reasons found the hard way:
 The UPDATE re-checks that a value is still plaintext, so a row `_finish` cleared, or another
 call encrypted, in the meantime is left alone. Idempotent: a second call finds nothing.
 
+Both writers here keep `updated_at` as it stands (`_keep_updated_at`): re-encrypting a value
+is not an edit, and `fn_purge_email_documents` runs its 90-day scrub and 2-year delete on
+`updated_at` — the ORM's `onupdate` would otherwise restart that clock for every row touched.
+
 `rotate_tokens` is the other half of a key rotation (docs/KEY_ROTATION.md): every token the
 primary key cannot open, re-encrypted under it — the columns above plus the secrets stored
 as bare tokens (session and BU credentials, PDF passwords).
@@ -70,6 +74,11 @@ def _tenant_col(model):
     return model.id if model is Tenant else model.tenant_id
 
 
+def _keep_updated_at(model) -> dict:
+    """`SET updated_at = updated_at`: naming the column stops the ORM's `onupdate` firing."""
+    return {"updated_at": model.updated_at}
+
+
 async def encrypt_plaintext_columns(
     db: AsyncSession, *, dry_run: bool = False, tenant_ids: list[uuid.UUID] | None = None
 ) -> dict[str, int]:
@@ -93,7 +102,11 @@ async def encrypt_plaintext_columns(
             # Read through the column type (a plaintext value comes back as it stands), then
             # written back through it — which is what encrypts it.
             value = await db.scalar(select(col).where(pk == row_id))
-            await db.execute(update(model).where(pk == row_id, *plaintext).values({col.key: value}))
+            await db.execute(
+                update(model)
+                .where(pk == row_id, *plaintext)
+                .values({col.key: value, **_keep_updated_at(model)})
+            )
         await db.commit()
     return found
 
@@ -181,7 +194,7 @@ async def rotate_tokens(
                 await db.execute(
                     update(model)
                     .where(pk == row_id, raw == type_coerce(value, coerce))
-                    .values({col.key: type_coerce(new, coerce)})
+                    .values({col.key: type_coerce(new, coerce), **_keep_updated_at(model)})
                 )
         if not dry_run:
             await db.commit()
