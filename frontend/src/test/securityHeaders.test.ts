@@ -25,7 +25,11 @@ async function sha256(text: string): Promise<string> {
 
 describe('security headers', () => {
   it('allow every inline script in index.html by its exact hash, and nothing inline besides', async () => {
-    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1])
+    // Parsed, not regex-matched: any inline script — whatever its attributes or case — needs
+    // a hash; a script with `src` falls under script-src 'self' instead. A script element's
+    // textContent is its raw text, exactly what the browser hashes.
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const scripts = [...doc.querySelectorAll('script:not([src])')].map(s => s.textContent ?? '')
     expect(scripts.length).toBeGreaterThan(0)
     for (const body of scripts) {
       expect(csp).toContain(`'sha256-${await sha256(body)}'`)
