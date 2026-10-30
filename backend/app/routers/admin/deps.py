@@ -101,4 +101,9 @@ def require_maintenance_auth(
     admin = decode_admin_principal(token)
     if not admin.has_perm("configs:write"):
         raise HTTPException(status_code=403, detail="Permission denied: configs:write")
+    # Every route behind this acts on every BU at once (encryption backfill and rotation,
+    # the mailbox purge, summary rebuilds), so a BU-scoped admin may not start one, whatever
+    # its permissions (decision-log #50).
+    if not admin.is_global:
+        raise HTTPException(status_code=403, detail="A global admin is required for this job")
     return admin
