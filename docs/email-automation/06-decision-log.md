@@ -1609,3 +1609,16 @@ JSON column for what a document leaves behind:
 - **`email_documents.error_message` is encrypted, not masked** (the user's call). It names the
   addresses a refused mail carried, which is how a reviewer spots a typo in a registered one
   (the 2026-08-28 incident). Masking would lose that.
+
+**Verification addendum (2026-10-30, after the merge).** A full retest
+([report](qa/2026-10-30-security-hardening-round2-test-report.md)) settled two more rules.
+- **Maintenance jobs need a global admin** (the user's call). `require_maintenance_auth` used to
+  accept any admin with `configs:write`. Every route behind it acts on every BU at once, so an
+  admin scoped to one BU now gets 403. The job token is unchanged.
+- **Re-encrypting is not an edit: the backfill and the rotation keep `updated_at`.**
+  `fn_purge_email_documents` runs its 90-day scrub and 2-year delete on `updated_at`. Through the
+  ORM's `onupdate`, every run had been restarting that clock for every row it touched. The dev
+  backfill had already moved 364 rows to 2026-10-30 when this was found, and they were left that
+  way: the old values could only be guessed.
+- **The CSP holds when enforced** on every screen tested, PDF previews included. Only the admin
+  slip viewer is left to check before the switch.
