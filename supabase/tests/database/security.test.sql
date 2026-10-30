@@ -4,7 +4,7 @@
 -- to anon/authenticated, fails the PR instead of waiting for the next audit.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(2);
+select plan(3);
 
 select is_empty(
     $$ select c.relname
@@ -23,6 +23,19 @@ select is_empty(
         where table_schema = 'public'
           and grantee in ('anon', 'authenticated') $$,
     'anon and authenticated hold no privilege on any public table'
+);
+
+-- The `alter default privileges … revoke` half: a table a later migration creates (as
+-- postgres, like every migration) must start with nothing for those roles too. Created after
+-- the two checks above — it has no RLS — and gone with the rollback.
+create table public.__security_probe (id int);
+select is_empty(
+    $$ select grantee || ': ' || privilege_type
+         from information_schema.role_table_grants
+        where table_schema = 'public'
+          and table_name = '__security_probe'
+          and grantee in ('anon', 'authenticated') $$,
+    'a table created later hands anon and authenticated nothing (default privileges)'
 );
 
 select * from finish();

@@ -22,7 +22,9 @@
 // admin dashboard's read-only pages (a read-only admin token minted from backend/.env).
 //
 // Env: PLAYWRIGHT_CORE, CHROME_EXE [as review_payload_ui.mjs], APP_URL [http://localhost:3011],
-// DOCS_DIR [~/Desktop/demo-mock-docs] (scb_card_report.pdf, ap_tax_invoice.pdf).
+// DOCS_DIR [~/Desktop/demo-mock-docs] (scb_card_report.pdf, ap_tax_invoice.pdf),
+// CSP_ENFORCE=1 when the preview sends the same policy as `Content-Security-Policy` — the
+// rehearsal for enforcing it: then a violation is a blocked resource, not only a report.
 
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -35,6 +37,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const SHOTS = path.join(ROOT, '.playwright-mcp/security-headers')
 const APP = process.env.APP_URL || 'http://localhost:3011'
 const DOCS = process.env.DOCS_DIR || path.join(os.homedir(), 'Desktop/demo-mock-docs')
+const ENFORCE = process.env.CSP_ENFORCE === '1'
 const LOCAL = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData/Local')
 const PW =
   process.env.PLAYWRIGHT_CORE ||
@@ -90,10 +93,17 @@ async function visit(name, hash, after) {
   console.log(`  ${name.padEnd(22)} ${mine.length ? mine.map(v => `${v.directive} ← ${v.blocked}`).join(' | ') : 'no violation'}`)
 }
 
+const exercised = { review: false, manualPreview: false, apPreview: false }
+
+/** Choose a file, then wait for the blob: preview the CSP's frame-src/img-src must allow. */
 async function upload(file) {
   const input = page.locator('input[type="file"]').first()
   await input.setInputFiles(path.join(DOCS, file))
-  await page.waitForTimeout(3000) // the preview builds a blob: URL and frames it
+  // The review step keeps the document folded behind "View Document".
+  const view = page.getByRole('button', { name: 'View Document' })
+  if (await view.waitFor({ timeout: 15000 }).then(() => true, () => false)) await view.click()
+  return page.locator('iframe[src^="blob:"], img[src^="blob:"]').first()
+    .waitFor({ timeout: 15000 }).then(() => true, () => false)
 }
 
 async function main() {
@@ -110,8 +120,15 @@ async function main() {
   })
   await context.exposeFunction('__csp_push', v => violations.push({ screen, ...v }))
   // Choosing a file on the manual scan / AP pages starts an extraction straight away — a
-  // real LLM call and a credit. Stop it in the browser: the screens load, nothing is read.
-  await context.route(/\/api\/v1\/[^?]*\/extract/, route => route.abort())
+  // real LLM call and a credit. Answer it in the browser with an empty reading instead: it
+  // never reaches the backend, and the wizard moves on to the step that frames the document's
+  // blob: preview (the processing state shows skeletons only). The GL suggestions that step
+  // may ask for are LLM calls too: refused.
+  await context.route(/\/api\/v1\/credit-card\/extract/, route =>
+    route.fulfill({ json: [{ doc_no: 'E2E-CSP-1', bank_name: 'SCB', details: [] }] }))
+  await context.route(/\/api\/v1\/ap-invoice\/extract/, route =>
+    route.fulfill({ json: { vendorName: 'E2E CSP Vendor', items: [] } }))
+  await context.route(/\/api\/v1\/[^?]*\/suggest/, route => route.abort())
   page = await context.newPage()
 
   // ── H-1 the headers on the document ───────────────────────────────────────
@@ -121,7 +138,8 @@ async function main() {
   check('H-1', 'nosniff, Referrer-Policy, HSTS, Permissions-Policy',
     h['x-content-type-options'] === 'nosniff' && h['referrer-policy'] === 'strict-origin-when-cross-origin' &&
       /max-age=\d+/.test(h['strict-transport-security'] || '') && Boolean(h['permissions-policy']))
-  check('H-1', 'CSP served (Report-Only)', Boolean(h['content-security-policy-report-only']))
+  check('H-1', `CSP served (${ENFORCE ? 'enforced' : 'Report-Only'})`,
+    Boolean(h[ENFORCE ? 'content-security-policy' : 'content-security-policy-report-only']))
 
   // ── H-2 every screen ──────────────────────────────────────────────────────
   const sso = new URLSearchParams({ token: envVar('CARMEN_AUTHORIZATION'), bu: 'carmen', uri: 'https://dev.carmen4.com' })
@@ -130,14 +148,22 @@ async function main() {
   })
   await visit('home', '#/')
   await visit('queue', '#/CreditCardOCR', async () => {
-    const review = page.getByRole('button', { name: 'Review' }).first()
-    if (await review.isVisible({ timeout: 5000 }).catch(() => false)) {
+    // isVisible() does not wait, so it answered before the list loaded: wait for the button.
+    const review = page.getByRole('button', { name: 'Review', exact: true }).first()
+    if (await review.waitFor({ timeout: 15000 }).then(() => true, () => false)) {
       await review.click()
-      await page.getByRole('dialog').first().waitFor({ timeout: 30000 }).catch(() => {})
+      exercised.review = await page.getByRole('dialog').first()
+        .waitFor({ timeout: 30000 }).then(() => true, () => false)
     }
   })
-  await visit('manual-scan-preview', '#/CreditCardOCR/manual', () => upload('scb_card_report.pdf'))
-  await visit('ap-invoice-preview', '#/APInvoice', () => upload('ap_tax_invoice.pdf'))
+  await visit('manual-scan-preview', '#/CreditCardOCR/manual', async () => {
+    exercised.manualPreview = await upload('scb_card_report.pdf')
+  })
+  await visit('ap-invoice-preview', '#/APInvoice', async () => {
+    exercised.apPreview = await upload('ap_tax_invoice.pdf')
+  })
+  check('H-2', 'the review dialog and both blob: previews were on screen when swept',
+    Object.values(exercised).every(Boolean), JSON.stringify(exercised))
   await visit('mapping', '#/CreditCardOCR/mapping')
   await visit('email-settings', `#/CreditCardOCR/email-settings?${sso}`)
   await visit('pricing-checkout', '#/pricing', async () => {

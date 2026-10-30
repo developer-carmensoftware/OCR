@@ -102,3 +102,12 @@ def test_maintenance_auth_refuses_a_signed_token_without_the_permission():
 def test_maintenance_auth_accepts_configs_write():
     admin = require_maintenance_auth(authorization=f"Bearer {_token()}")
     assert admin is not None and admin.admin_id == "a-1"
+
+
+def test_maintenance_auth_refuses_a_bu_scoped_admin_even_with_configs_write():
+    """Every route behind it acts on every BU at once — the encryption backfill and key
+    rotation, the mailbox purge, summary rebuilds. An admin scoped to one BU must not start
+    one (decision-log #50)."""
+    with pytest.raises(HTTPException) as exc:
+        require_maintenance_auth(authorization=f"Bearer {_token(tenant_scope='t-42')}")
+    assert exc.value.status_code == 403

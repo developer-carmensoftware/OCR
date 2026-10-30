@@ -20,9 +20,11 @@ from app.auth.session import decrypt_carmen_token
 from app.config import settings
 from app.database import async_session
 from app.models.billing import BillingDocument
+from app.models.business import BugReport, CorrectionFeedback
 from app.models.email_automation import EmailDocument, EmailIngestSettings
 from app.models.identity import Tenant
-from app.services.shared.payload_encryption import rotate_tokens
+from app.models.pms import PmsEvent
+from app.services.shared.payload_encryption import COLUMNS, SECRET_COLUMNS, rotate_tokens
 
 from .conftest import run
 
@@ -38,8 +40,11 @@ def _old(value: str) -> str:
     return Fernet(OLD.encode()).encrypt(value.encode()).decode()
 
 
+PMS_DAY = {"rows": [{"key": "103", "description": "Room revenue", "amount": 12500.0}]}
+
+
 def _seed(real_engine, tenant_id):
-    ids = {k: uuid.uuid4() for k in ("doc", "order", "bill", "session")}
+    ids = {k: uuid.uuid4() for k in ("doc", "order", "bill", "session", "pms")}
 
     async def _go():
         async with real_engine.begin() as conn:
@@ -47,7 +52,8 @@ def _seed(real_engine, tenant_id):
                 text(
                     "insert into email_documents (id, tenant_id, message_id, attachment, status,"
                     " review_payload, error_message, created_at, updated_at) values (:id, :t, :m,"
-                    " 'r.pdf', 'pending_review', cast(:p as jsonb), :e, now(), now())"
+                    " 'r.pdf', 'pending_review', cast(:p as jsonb), :e, now(), now() - interval"
+                    " '80 days')"
                 ),
                 {
                     "id": ids["doc"],
@@ -68,17 +74,54 @@ def _seed(real_engine, tenant_id):
             await conn.execute(
                 text(
                     "insert into billing_documents (id, tenant_id, order_id, doc_type, number,"
-                    " issue_date, buyer_tel, pack_code, credits, subtotal, vat_rate, vat_amount,"
-                    " total, currency, created_at, updated_at) values (:id, :t, :o, 'proforma', :n,"
-                    " now(), :tel, 'pack_small', 500, 1200, 7, 84, 1284, 'THB', now(), now())"
+                    " issue_date, buyer_contact_name, buyer_tel, buyer_email, pack_code, credits,"
+                    " subtotal, vat_rate, vat_amount, total, currency, created_at, updated_at)"
+                    " values (:id, :t, :o, 'proforma', :n, now(), :name, :tel, :email,"
+                    " 'pack_small', 500, 1200, 7, 84, 1284, 'THB', now(), now())"
                 ),
                 {
                     "id": ids["bill"],
                     "t": tenant_id,
                     "o": ids["order"],
                     "n": f"ROT-{ids['bill'].hex[:8]}",
+                    "name": _old("คุณวิภา หมุนกุญแจ"),
                     "tel": _old("0812345678"),
+                    "email": _old("rotate@example.co.th"),
                 },
+            )
+            await conn.execute(
+                text(
+                    "insert into pms_events (id, tenant_id, event_id, type, payload, status,"
+                    " review_payload) values (:id, :t, :ev, 'PMS', '{}', 'pending_review',"
+                    " cast(:p as jsonb))"
+                ),
+                {
+                    "id": ids["pms"],
+                    "t": tenant_id,
+                    "ev": f"PMS/Rot/Daily/{ids['pms']}",
+                    "p": json.dumps({"enc": _old(json.dumps(PMS_DAY))}),
+                },
+            )
+            ids["corr"] = await conn.scalar(
+                text(
+                    "insert into correction_feedback (tenant_id, doc_no, bank_code, field_name,"
+                    " original_value, corrected_value, created_at, updated_at) values (:t, :d,"
+                    " 'KBANK', 'merchant_id', :o, :c, now(), now()) returning id"
+                ),
+                {
+                    "t": tenant_id,
+                    "d": f"ROT-{ids['pms'].hex[:8]}",
+                    "o": _old("4510"),
+                    "c": _old("4511"),
+                },
+            )
+            ids["bug"] = await conn.scalar(
+                text(
+                    "insert into bug_reports (tenant_id, module_id, category, description,"
+                    " screenshot_b64, created_at, updated_at) values (:t, 'credit_card_ocr', 'bug',"
+                    " 'ROT', :s, now(), now()) returning id"
+                ),
+                {"t": tenant_id, "s": _old("iVBORw0KGgo")},
             )
             await conn.execute(
                 text("update tenants set contact_email = :e where id = :t"),
@@ -120,6 +163,9 @@ def _app_reads(tenant_id, ids):
             bill = await db.get(BillingDocument, ids["bill"])
             tenant = await db.get(Tenant, tenant_id)
             cfg = await db.get(EmailIngestSettings, tenant_id)
+            pms = await db.get(PmsEvent, ids["pms"])
+            corr = await db.get(CorrectionFeedback, ids["corr"])
+            bug = await db.get(BugReport, ids["bug"])
             session_tok = await db.scalar(
                 text("select carmen_token_encrypted from ocr_sessions where id = :id"),
                 {"id": ids["session"]},
@@ -127,6 +173,10 @@ def _app_reads(tenant_id, ids):
             return {
                 "payload": doc.review_payload,
                 "error": doc.error_message,
+                "pms": pms.review_payload,
+                "correction": (corr.original_value, corr.corrected_value),
+                "screenshot": bug.screenshot_b64,
+                "buyer": (bill.buyer_contact_name, bill.buyer_email),
                 "tel": bill.buyer_tel,
                 "contact": tenant.contact_email,
                 "owners": cfg.owner_emails,
@@ -141,6 +191,10 @@ def _app_reads(tenant_id, ids):
 EXPECTED = {
     "payload": PAYLOAD,
     "error": "this mail carries ap@exampel.co.th",
+    "pms": PMS_DAY,
+    "correction": ("4510", "4511"),
+    "screenshot": "iVBORw0KGgo",
+    "buyer": ("คุณวิภา หมุนกุญแจ", "rotate@example.co.th"),
     "tel": "0812345678",
     "contact": "ops@example.co.th",
     "owners": OWNERS,
@@ -168,6 +222,11 @@ def seeded(real_engine, tenants):
     async def _forget():
         async with real_engine.begin() as conn:
             await conn.execute(text("delete from email_documents where id = :i"), {"i": ids["doc"]})
+            await conn.execute(text("delete from pms_events where id = :i"), {"i": ids["pms"]})
+            await conn.execute(
+                text("delete from correction_feedback where id = :i"), {"i": ids["corr"]}
+            )
+            await conn.execute(text("delete from bug_reports where id = :i"), {"i": ids["bug"]})
             await conn.execute(
                 text("delete from billing_documents where id = :i"), {"i": ids["bill"]}
             )
@@ -186,7 +245,7 @@ def seeded(real_engine, tenants):
 
 
 def test_a_rotation_moves_every_token_to_the_new_key_and_loses_nothing(
-    seeded, tenants, monkeypatch
+    seeded, real_engine, tenants, monkeypatch
 ):
     ids = seeded
 
@@ -196,19 +255,24 @@ def test_a_rotation_moves_every_token_to_the_new_key_and_loses_nothing(
     assert _app_reads(tenants.c, ids) == EXPECTED
 
     counted = _rotate(tenants.c, dry_run=True)
-    for col in (
-        "email_documents.review_payload",
-        "email_documents.error_message",
-        "billing_documents.buyer_tel",
-        "tenants.contact_email",
-        "email_ingest_settings.owner_emails",
-        "email_ingest_settings.carmen_token_enc",
-        "email_ingest_settings.rules",
-        "ocr_sessions.carmen_token_encrypted",
-    ):
-        assert counted[col]["stale"] >= 1, col
+    # Every column the rotation knows — COLUMNS, SECRET_COLUMNS and the rules — was seeded
+    # under OLD, so every one must report something stale. A column added to the app later
+    # without a seed here fails this, which is the point.
+    assert len(counted) == len(COLUMNS) + len(SECRET_COLUMNS) + 1
+    for col, n in counted.items():
+        assert n["stale"] >= 1 and n["unreadable"] == 0, col
     assert _rotate(tenants.c) == counted
     assert all(c["stale"] == 0 for c in _rotate(tenants.c, dry_run=True).values())  # done
+
+    async def _doc_age():
+        async with real_engine.connect() as conn:
+            return await conn.scalar(
+                text("select now() - updated_at from email_documents where id = :i"),
+                {"i": ids["doc"]},
+            )
+
+    # fn_purge_email_documents keys its 90-day clock on updated_at: a rotation is not an edit.
+    assert run(_doc_age()).days >= 79
 
     # OLD dropped: everything still reads, under NEW alone.
     monkeypatch.setattr(settings, "session_encryption_keys_old", "")

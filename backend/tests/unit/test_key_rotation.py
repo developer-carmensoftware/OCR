@@ -60,6 +60,17 @@ def test_rewrite_rotates_only_what_the_primary_cannot_open(rotating):
     assert pe._rewrite("text", None) == (None, 0)
 
 
+def test_two_old_keys_at_once_both_rotate_to_the_primary(monkeypatch):
+    """A rotation started before the last one finished: both old keys listed."""
+    older = Fernet.generate_key().decode()
+    monkeypatch.setattr(settings, "session_encryption_key", NEW)
+    monkeypatch.setattr(settings, "session_encryption_keys_old", f"{OLD},{older}")
+    for key in (OLD, older):
+        rotated, bad = pe._rewrite("text", _under(key))
+        assert bad == 0 and Fernet(NEW.encode()).decrypt(rotated.encode()) == b"secret"
+    assert decrypt_carmen_token(_under(older)) == "secret"
+
+
 def test_rewrite_keeps_the_readable_keys_of_a_json_payload(rotating):
     stored = {"enc": _under(OLD), "doc_type": "ar_reconcile"}
     new, bad = pe._rewrite("json", stored)

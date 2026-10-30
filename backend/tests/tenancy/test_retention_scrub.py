@@ -16,6 +16,7 @@ from sqlalchemy import text
 from .conftest import run
 
 OLD, RECENT = "now() - interval '13 months'", "now() - interval '1 month'"
+EDGE = "now() - interval '11 months 3 weeks'"  # just inside the 12 months: kept
 
 
 def _seed(real_engine, tenant_id):
@@ -24,6 +25,7 @@ def _seed(real_engine, tenant_id):
         for k in (
             "old_task",
             "new_task",
+            "edge_task",
             "old_ap",
             "new_ap",
             "old_charge",
@@ -37,6 +39,7 @@ def _seed(real_engine, tenant_id):
             for key, when, status, error in (
                 ("old_task", OLD, "failed", "LLM said no about invoice_somchai.pdf"),
                 ("new_task", RECENT, "failed", "LLM said no about invoice_recent.pdf"),
+                ("edge_task", EDGE, "failed", "LLM said no about invoice_edge.pdf"),
             ):
                 await conn.execute(
                     text(
@@ -99,6 +102,12 @@ def test_old_filenames_and_errors_are_scrubbed_and_every_number_stays(real_engin
     assert _one(real_engine, task, ids["new_task"]) == (
         "new_task_somchai.pdf",
         "LLM said no about invoice_recent.pdf",
+        3,
+    )
+    # The boundary: three weeks short of 12 months is still kept.
+    assert _one(real_engine, task, ids["edge_task"]) == (
+        "edge_task_somchai.pdf",
+        "LLM said no about invoice_edge.pdf",
         3,
     )
 

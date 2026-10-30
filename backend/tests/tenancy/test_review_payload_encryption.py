@@ -894,3 +894,41 @@ def test_d18_the_backfill_encrypts_contacts_written_in_plaintext(real_engine, te
         ["ap@example.co.th"],
     )
     assert not any(_backfill(tenants.b).values())  # idempotent
+
+
+def test_d19_the_backfill_encrypts_an_error_message_written_in_plaintext(real_engine, tenants):
+    """Encrypted since 2026-10-30 (#323): a refused mail's addresses written before that sit in
+    plaintext until the backfill — which must count, encrypt and leave them readable."""
+    doc_no = f"ENC-D19-{uuid.uuid4().hex[:8]}"
+    message = "None of this BU's registered addresses appear — this mail carries ap@exampel.co.th"
+    row_id = _received(real_engine, tenants.a, doc_no, status="skipped")
+
+    async def _plain():
+        async with real_engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "update email_documents set error_message = :m,"
+                    " updated_at = now() - interval '80 days' where id = :i"
+                ),
+                {"m": message, "i": row_id},
+            )
+
+    run(_plain())
+    (before,) = run(_text_cols("email_documents", "updated_at", "id = :i", {"i": row_id}))
+    assert _backfill(tenants.a, dry_run=True)["email_documents.error_message"] >= 1
+    _backfill(tenants.a)
+
+    (raw,) = run(_text_cols("email_documents", "error_message", "id = :i", {"i": row_id}))
+    assert raw.startswith("gAAAAA") and "exampel" not in raw
+    # The 90-day retention clock (fn_purge_email_documents) runs on updated_at: encrypting a
+    # value is not an edit, and must not give the addresses in it another 90 days.
+    assert run(_text_cols("email_documents", "updated_at", "id = :i", {"i": row_id})) == (before,)
+
+    async def _read():
+        async with async_session() as db:
+            return await db.scalar(
+                select(EmailDocument.error_message).where(EmailDocument.id == row_id)
+            )
+
+    assert run(_read()) == message
+    assert _backfill(tenants.a)["email_documents.error_message"] == 0  # idempotent

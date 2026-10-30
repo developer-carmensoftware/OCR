@@ -41,7 +41,9 @@ stack, 2026-10-30. Rotate in four steps instead.
    - `unreadable` counts tokens that no key you hold opens. Nothing can recover them, and they
      are left as they are. Expect 0; anything else means a key that wrote data is missing from
      the list.
-   - The call also takes an admin token with `configs:write`.
+   - The call also takes a **global** admin token with `configs:write`. An admin scoped to one
+     BU gets 403, because this job rewrites every BU's data.
+   - It does not move `updated_at`: the `email_documents` retention clock runs on it.
 
 4. **Drop the old key.** Remove `SESSION_ENCRYPTION_KEYS_OLD` and redeploy. Then check once: a
    signed-in screen, a queue document's review dialog, and the email settings page should all
