@@ -17,9 +17,11 @@ both now fixed on the branch. Each fix has a test that fails without it.
 It also found **one defect in the test harness**:
 - **F-3:** the CSP sweep had silently skipped the review dialog and both PDF previews.
 
-Three things are still open:
-- The admin slip viewer has never been tested on QA with the CSP. It needs a QA admin session
-  and an order with a slip.
+Still open:
+- ~~The admin slip viewer has never been tested on QA with the CSP.~~ Tested the same day, with
+  the user's admin login. It found **F-4**: slips load from MinIO, not the host the CSP
+  allowed. That is fixed and the CSP enforced on `fix/csp-enforce-slip-host`; see
+  [the slip viewer check](#the-slip-viewer-check-and-the-switch-to-enforcing).
 - `-xntb` serves `/openapi.json` as 404, because `EXPOSE_API_DOCS` is not set there.
 - On dev, the `updated_at` of the 364 rows the backfill encrypted was moved to 2026-10-30 (F-2).
 
@@ -186,9 +188,42 @@ FileService presigned URL; `vercel.json` allows `https://api-oneapp.carmenteam.c
 unconfirmed. **The check before the enforcing PR:** sign in to `#/admin` on QA, open an order
 with an uploaded slip, and check the browser console for CSP reports.
 
+### The slip viewer check, and the switch to enforcing
+
+**Run on QA, 2026-10-30.** Playwright browser, with the user's admin login. Every order in "To
+Post" was opened.
+
+**F-4: the CSP allowed the wrong host for slips.**
+- **The host:** every slip the browser loads comes from **`https://api-minio.carmenteam.com`**,
+  the presigned MinIO URL FileService hands the backend. It never comes from
+  `api-oneapp.carmenteam.com`, the FileService host the policy allowed.
+- **What it broke:** all 5 PDF slips violated `frame-src` and all 6 image slips (jpg/png)
+  violated `img-src`. Enforced as written, no admin could have seen a slip.
+- **The other 4 orders:** they have no slip at all (`slip_uploaded_at` null), and their panel
+  rightly reads "No slip uploaded yet". Opening each still fired a `slip-url` request that
+  could only 404: a red console error that looks like a missing file. That request is gone too
+  (`d4d195c7`).
+
+**Fixed on `fix/csp-enforce-slip-host`** (`e268d9f7`): `img-src` and `frame-src` allow
+`api-minio`, and the header is now `Content-Security-Policy`, i.e. enforced. The user confirmed
+two things before the switch:
+- prod uses the same FileService/MinIO;
+- prod's frontend calls `carmen-ocr-backend.onrender.com`, already in `connect-src`.
+
+| Check | Result |
+|---|---|
+| QA, **this exact policy enforced** (served through a Playwright route), real data | PDF slip renders in Chrome's viewer from `api-minio`; image slip loads 1600×1600; a slip-less order reads "No slip uploaded yet"; 12 admin pages signed in; proforma renders: **0 violations**. A probe inline script is blocked (`enforce`) |
+| Local, the enforced build (`security_headers_ui.mjs`) | 8/8, 0 violations, dialog and both previews reached |
+| `securityHeaders.test.ts` | enforced key, slip host in `img-src` and `frame-src`. Fails on the old `vercel.json` |
+| Slip-less order, local | no `slip-url` request, no console error |
+
+**Rollback:** rename the header back to `Content-Security-Policy-Report-Only` and redeploy the
+frontend.
+
 ## After this branch
 
 - **Merge before the prod backfill.** F-2 matters on prod the first time the `error_message`
-  backfill runs.
+  backfill runs. (Merged as #324.)
 - **`EXPOSE_API_DOCS=true` on `-xntb`.** The dev deploy check reads `/openapi.json`.
-- **Enforce the CSP** once the slip viewer is checked.
+- ~~**Enforce the CSP** once the slip viewer is checked.~~ Done on `fix/csp-enforce-slip-host`.
+  After it deploys: open one slip on QA and one on prod.

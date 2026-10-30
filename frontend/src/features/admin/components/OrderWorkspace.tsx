@@ -389,12 +389,17 @@ export default function OrderWorkspace({
     dispatch({ type: 'RESET' })
 
     let alive = true
-    getOrderSlipUrl(order.id)
-      .then(r => alive && dispatch({ type: 'SET_SLIP_URL', url: r.signed_url }))
-      .catch(
-        (e: Error & { status?: number }) =>
-          alive && dispatch({ type: 'SET_SLIP_ERR', missing: e.status === 404 })
-      )
+    // No slip, nothing to ask for: the request could only 404 (the panel shows
+    // orev.slip.none either way), and every 404 is a red console error that looks like a
+    // slip gone missing from storage.
+    if (order.slip_uploaded_at) {
+      getOrderSlipUrl(order.id)
+        .then(r => alive && dispatch({ type: 'SET_SLIP_URL', url: r.signed_url }))
+        .catch(
+          (e: Error & { status?: number }) =>
+            alive && dispatch({ type: 'SET_SLIP_ERR', missing: e.status === 404 })
+        )
+    }
     fetchAdminOrderDocuments(order.id)
       .then(docs => {
         if (!alive) return
@@ -414,7 +419,7 @@ export default function OrderWorkspace({
     return () => {
       alive = false
     }
-  }, [order.id, order.tenant_id, order.status])
+  }, [order.id, order.tenant_id, order.status, order.slip_uploaded_at])
 
   const company = order.buyer_name || order.tenant_name || '—'
   const priorReject = history.some(o => o.id !== order.id && o.status === 'void')

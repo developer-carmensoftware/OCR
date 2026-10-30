@@ -1,9 +1,8 @@
 // The headers Vercel serves (vercel.json) against the page they protect (index.html).
 //
 // The CSP allows index.html's one inline script by its sha256. Editing that script without
-// updating the hash would get it refused once the CSP is enforced (it is Report-Only until
-// then) — the theme flash comes back and nobody connects it to a header. This test is what
-// connects them.
+// updating the hash gets it refused — the CSP is enforced (decision-log #50) — and the theme
+// flash comes back with nobody connecting it to a header. This test is what connects them.
 //
 // Both files are read through Vite (`?raw`), not node:fs, as mockPaths.test.ts does.
 import { describe, expect, it } from 'vitest'
@@ -16,7 +15,8 @@ const config = JSON.parse(vercelJson) as {
 const headers = Object.fromEntries(
   config.headers.find(h => h.source === '/(.*)')!.headers.map(h => [h.key, h.value])
 )
-const csp = headers['Content-Security-Policy-Report-Only'] ?? headers['Content-Security-Policy']
+const csp = headers['Content-Security-Policy']
+const directive = (name: string) => csp.split(';').find(d => d.trim().startsWith(`${name} `)) ?? ''
 
 async function sha256(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
@@ -40,6 +40,19 @@ describe('security headers', () => {
   it('refuse to be framed, by any site', () => {
     expect(headers['X-Frame-Options']).toBe('DENY')
     expect(csp).toContain("frame-ancestors 'none'")
+  })
+
+  it('enforce the CSP, not merely report it', () => {
+    expect(csp).toBeTruthy()
+    expect(headers['Content-Security-Policy-Report-Only']).toBeUndefined()
+  })
+
+  it('let the admin slip viewer load slips from MinIO, as an image or a framed PDF', () => {
+    // FileService hands the backend a presigned MinIO URL; the browser loads the slip from
+    // there, never from the FileService host. Found on QA 2026-10-30: 5 PDF and 6 image
+    // slips, every one from this host — leave it out and no admin can see a slip.
+    expect(directive('img-src')).toContain('https://api-minio.carmenteam.com')
+    expect(directive('frame-src')).toContain('https://api-minio.carmenteam.com')
   })
 
   it('send the headers that need no policy decision', () => {

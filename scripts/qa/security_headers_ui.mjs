@@ -8,10 +8,9 @@
 //   node scripts/qa/security_headers_ui.mjs
 //
 // H-1 the page is served with the enforced headers (X-Frame-Options DENY, nosniff,
-//     Referrer-Policy, HSTS) and the CSP
-// H-2 every screen loads without one CSP violation — the CSP is Report-Only, so a violation
-//     blocks nothing yet; this is the list that has to be empty before it is enforced
-//     (`securitypolicyviolation` events, report and enforce dispositions alike)
+//     Referrer-Policy, HSTS) and the CSP, enforced (decision-log #50)
+// H-2 every screen loads without one CSP violation — the CSP is enforced, so a violation is
+//     a resource the browser refused: a broken screen (`securitypolicyviolation` events)
 // H-3 the page refuses to be framed
 // H-4 the violation listener works: a script the CSP does not allow is reported (otherwise
 //     H-2's zero would prove nothing)
@@ -22,9 +21,9 @@
 // admin dashboard's read-only pages (a read-only admin token minted from backend/.env).
 //
 // Env: PLAYWRIGHT_CORE, CHROME_EXE [as review_payload_ui.mjs], APP_URL [http://localhost:3011],
-// DOCS_DIR [~/Desktop/demo-mock-docs] (scb_card_report.pdf, ap_tax_invoice.pdf),
-// CSP_ENFORCE=1 when the preview sends the same policy as `Content-Security-Policy` — the
-// rehearsal for enforcing it: then a violation is a blocked resource, not only a report.
+// DOCS_DIR [~/Desktop/demo-mock-docs] (scb_card_report.pdf, ap_tax_invoice.pdf).
+// The admin slip viewer is not swept here: a slip needs an order with one and an admin of the
+// backend that holds it (checked on QA by hand, 2026-10-30 — slips come from api-minio).
 
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -37,7 +36,6 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const SHOTS = path.join(ROOT, '.playwright-mcp/security-headers')
 const APP = process.env.APP_URL || 'http://localhost:3011'
 const DOCS = process.env.DOCS_DIR || path.join(os.homedir(), 'Desktop/demo-mock-docs')
-const ENFORCE = process.env.CSP_ENFORCE === '1'
 const LOCAL = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData/Local')
 const PW =
   process.env.PLAYWRIGHT_CORE ||
@@ -138,8 +136,8 @@ async function main() {
   check('H-1', 'nosniff, Referrer-Policy, HSTS, Permissions-Policy',
     h['x-content-type-options'] === 'nosniff' && h['referrer-policy'] === 'strict-origin-when-cross-origin' &&
       /max-age=\d+/.test(h['strict-transport-security'] || '') && Boolean(h['permissions-policy']))
-  check('H-1', `CSP served (${ENFORCE ? 'enforced' : 'Report-Only'})`,
-    Boolean(h[ENFORCE ? 'content-security-policy' : 'content-security-policy-report-only']))
+  check('H-1', 'CSP served, enforced (not Report-Only)',
+    Boolean(h['content-security-policy']) && !h['content-security-policy-report-only'])
 
   // ── H-2 every screen ──────────────────────────────────────────────────────
   const sso = new URLSearchParams({ token: envVar('CARMEN_AUTHORIZATION'), bu: 'carmen', uri: 'https://dev.carmen4.com' })
@@ -202,7 +200,7 @@ async function main() {
     violations.some(v => v.screen === 'probe' && v.directive.startsWith('script-src')))
 
   // ── H-3 framing ───────────────────────────────────────────────────────────
-  // X-Frame-Options is enforced now (frame-ancestors waits with the rest of the CSP).
+  // Refused twice over: X-Frame-Options DENY and the CSP's frame-ancestors 'none'.
   await page.setContent(`<iframe id="f" src="${APP}/"></iframe>`)
   await page.waitForTimeout(3000)
   const framed = await page.frames().find(f => f.url().startsWith(APP))?.evaluate(() => document.title).catch(() => null)
