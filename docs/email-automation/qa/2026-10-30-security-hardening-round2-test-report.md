@@ -220,10 +220,32 @@ two things before the switch:
 **Rollback:** rename the header back to `Content-Security-Policy-Report-Only` and redeploy the
 frontend.
 
+### After the deploy: QA, enforced for real
+
+Merged as #325 (`e6396487`); Vercel deployed QA at 07:50 UTC. Checked against the live
+deployment, with no route rewriting. Admin screens ran in the Playwright browser with the user's
+admin login.
+
+| Check | Result |
+|---|---|
+| Headers | `Content-Security-Policy` (enforced), no Report-Only; `img-src`/`frame-src` = `api-minio.carmenteam.com` |
+| PDF slip (AI-202610-0001) | renders from `api-minio`, no blocked frame, 0 violations |
+| Image slip (AI-202609-0017) | loads, 0 violations |
+| Slip-less order (AI-202609-0015) | "No slip uploaded yet", **no** `slip-url` request (`d4d195c7` live) |
+| All 19 admin pages | signed in, 0 violations |
+| `security_headers_ui.mjs` on the QA site | customer screens, review dialog and both PDF previews: 0 violations; headers right; framing refused. Its admin-page check fails there as on every QA run: a locally minted token is not `-xntb`'s. The row above covers those pages |
+| Proof it is enforced | Playwright's own string-`eval` (`waitForFunction`) is refused: there is no `'unsafe-eval'` |
+
+The Playwright browser once showed a blank `#/admin/login`. A fresh browser rendered the form
+under the same policy with 0 violations: the blank page was that tab, after the route tricks
+of the rehearsal, not the app.
+
+**Left: prod.** Once its frontend deploys, an admin opens one slip and a customer screen loads.
+
 ## After this branch
 
 - **Merge before the prod backfill.** F-2 matters on prod the first time the `error_message`
   backfill runs. (Merged as #324.)
 - ~~**`EXPOSE_API_DOCS=true` on `-xntb`.**~~ Done; the dev deploy check can read `/openapi.json` again.
-- ~~**Enforce the CSP** once the slip viewer is checked.~~ Done on `fix/csp-enforce-slip-host`.
-  After it deploys: open one slip on QA and one on prod.
+- ~~**Enforce the CSP** once the slip viewer is checked.~~ Done as #325, and verified on QA
+  after the deploy. Prod still needs its one-slip check.
