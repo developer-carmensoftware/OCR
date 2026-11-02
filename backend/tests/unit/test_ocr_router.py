@@ -339,6 +339,39 @@ class TestExtractCard:
         mock_consume.assert_awaited_once_with(increment=3)
         mock_refund.assert_awaited_once_with("credit", increment=2)
 
+    @patch("app.routers.credit_card.ocr.refund_document", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.consume_document", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.get_correction_hints", new_callable=AsyncMock)
+    @patch("app.routers.credit_card.ocr.create_task")
+    def test_extract_refunds_every_file_when_task_rows_fail(
+        self,
+        mock_create_task,
+        mock_get_hints,
+        mock_consume,
+        mock_refund,
+        mock_session,
+    ):
+        """Task rows can't be written → no file was read by the LLM → all 3 charges go back."""
+        ctx_mock, db_mock = mock_session
+        mock_get_hints.return_value = {}
+        mock_consume.return_value = "credit"
+        mock_create_task.side_effect = RuntimeError("db down")
+
+        jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+        with (
+            patch("app.routers.credit_card.ocr.async_session", return_value=ctx_mock),
+            make_test_client(db_mock) as client,
+            pytest.raises(RuntimeError),
+        ):
+            client.post(
+                f"{BASE_URL}/extract?bank_code=KBANK",
+                files=[("files", (f"r{i}.jpg", jpeg, "image/jpeg")) for i in range(3)],
+                headers=AUTH_HEADERS,
+            )
+
+        mock_consume.assert_awaited_once_with(increment=3)
+        mock_refund.assert_awaited_once_with("credit", increment=3)
+
     @patch("app.routers.credit_card.ocr.consume_document", new_callable=AsyncMock)
     def test_extract_rejects_batch_over_file_cap(self, mock_consume, mock_session):
         """Over the cap → 422 before anything is read or charged (OOM + billing guard)."""

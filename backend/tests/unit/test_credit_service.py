@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.exceptions import InsufficientCredits, ValidationError
-from app.models.enums import CreditLedgerReason, SubscriptionStatus
+from app.exceptions import ConflictError, InsufficientCredits, ValidationError
+from app.models.enums import CreditLedgerReason, CreditOrderStatus, SubscriptionStatus
 from app.models.orm import CreditLedger, TenantSubscription
 from app.services.shared import credits as credit_service
 from tests.conftest import set_context
@@ -254,6 +254,53 @@ class TestGrantCredits:
         # The upsert leaves the purchased counter alone for a grant.
         params = db.execute.call_args[0][0].compile().params
         assert params["credits_purchased"] == 0
+
+
+# ── topup_order — an order is credited once, from an open status only ────────
+
+
+def _order(status):
+    order = MagicMock()
+    order.tenant_id = "t-001"
+    order.status = status
+    order.id = "o-1"
+    return order
+
+
+class TestTopupOrder:
+    @pytest.mark.parametrize(
+        "status", [CreditOrderStatus.PAID, CreditOrderStatus.COMPLETE, CreditOrderStatus.VOID]
+    )
+    async def test_closed_order_is_never_credited_again(self, status):
+        """PAID and COMPLETE (posted to Carmen AR) were credited already; VOID never
+        will be. Flipping any of them back to PAID would grant the pack a second time."""
+        db = AsyncMock()
+        db.add = MagicMock()
+        order = _order(status)
+        db.execute.side_effect = [_result(scalar=MagicMock(credits=100)), _result(scalar=order)]
+
+        with pytest.raises(ConflictError):
+            await credit_service.topup_order(db, "t-001", "p100", "o-1", "admin@x")
+
+        assert order.status == status
+        db.add.assert_not_called()
+
+    @pytest.mark.parametrize("status", [CreditOrderStatus.IN_PROGRESS, CreditOrderStatus.ON_HOLD])
+    async def test_open_order_is_credited_and_marked_paid(self, status):
+        db = AsyncMock()
+        db.add = MagicMock()
+        order = _order(status)
+        db.execute.side_effect = [
+            _result(scalar=MagicMock(credits=100, code="p100")),
+            _result(scalar=order),
+            _result(scalar=100),  # grant_credits' RETURNING balance
+        ]
+
+        balance = await credit_service.topup_order(db, "t-001", "p100", "o-1", "admin@x")
+
+        assert balance == 100
+        assert order.status == CreditOrderStatus.PAID
+        assert db.add.call_args[0][0].ref == "o-1"
 
 
 # ── get_active_subscription — display-reset on cycle roll ────────────────────

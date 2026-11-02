@@ -29,7 +29,7 @@ async def log_correction(
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """Log a user correction. Atomic UPSERT — unique per (tenant, doc_no, field_name)."""
+    """Log a user correction. Atomic UPSERT — unique per (tenant, bank_code, doc_no, field_name)."""
     if feedback.original_value == feedback.corrected_value:
         return CorrectionFeedbackResponse(
             id=-1,
