@@ -1,13 +1,13 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-10 — CR: AI JV Automation — Payment Gateway Fee Invoices
-output: Carmen_Cloud_ERP_FRD-10_CR_Payment_Gateway_v1.0.docx
-Document Version: Version 1.0 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-10_CR_Payment_Gateway_v1.1.docx
+Document Version: Version 1.1 (As-Built Developer & Test Spec)
 Change Request ต่อ: FRD-01 Credit Card OCR (ใช้ได้ทั้ง wizard และ Email Automation)
 Module ID: `credit_card_ocr`
 Status: Built, merged to main, in production use — Jira CA-4 (subtask CA-68 ถึง CA-73)
-Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026)
-Date: 27 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026)
+Date: 2 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 ---
 
@@ -18,6 +18,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
 | 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุม layout 5 แบบ, การกระจาย VAT จากท้ายใบ, การตรวจกับยอดรวมที่พิมพ์, การตรวจจับผู้ออกเอกสาร, รูปแบบวันที่ไทย, JV source และ QA matrix | Reviewed |
+| 1.1 | 02/11/2026 | Dev Team | ตรวจกับโค้ด ณ `2be6d7c9` แล้วแก้: กรอบคำแนะนำ "settlement receivable" ใช้เฉพาะ `/mapping/suggest-payment-types` (§12); `credit_suggest_group()` อยู่ใน `utils/bank_detect.py` (F-07); GHL ไม่มี keyword "GHL" ในข้อความ ตรวจจับจาก keyword ไทย/อังกฤษ หรือจากคำตอบของ model ที่เป็น "GHL" ตรงตัวเท่านั้น (§4.1) — โค้ดของ CR นี้ไม่เปลี่ยนตั้งแต่ `945c63ea` | |
 
 <!-- pagebreak -->
 
@@ -84,7 +85,7 @@ flowchart TB
 | F-04 | BAY normaliser | ใช้แถว TOTAL กระจาย VAT/NET ตรวจ gross | `_normalize_bay_statement()` |
 | F-05 | Label cleaning | ตัดวันที่และบรรทัดที่สองออกจากชื่อรายการ | `postprocess.py` (`_DATE_IN_LABEL`) |
 | F-06 | Thai date parsing | ชื่อเดือนไทย, ปี พ.ศ., ปี 2 หลัก | `utils/date_parsing.py` |
-| F-07 | Gateway GL framing | กรอบคำแนะนำบัญชีของกลุ่ม gateway | `credit_suggest_group()` + `_CREDIT_CONTEXTS` ใน `llm/prompts/mapping.py` |
+| F-07 | Gateway GL framing | กรอบคำแนะนำบัญชีของกลุ่ม gateway | `credit_suggest_group()` ใน `utils/bank_detect.py` + `_CREDIT_CONTEXTS` ใน `llm/prompts/mapping.py` |
 | F-08 | JV source | รหัส source ของ JV ต่อผู้ออก | `BANK_SOURCE_MAP` (`shared/constants/banks.ts` และฝั่ง backend ใน `credit_card/jv.py`) |
 | F-09 | Extraction warnings | คำเตือนเป็น code แล้วหน้าจอแปลเป็น EN/TH | `ExtractionWarning` + `i18n/dict/warn.ts` |
 
@@ -98,7 +99,7 @@ flowchart TB
 | Code | ผู้ออก | ประเภท | JV Source | Keyword ที่ใช้ตรวจจับ |
 |---|---|---|---|---|
 | KTC | Krungthai Card (บัตรกรุงไทย) | Fee invoice | `AICCKTC` | บัตรกรุงไทย / KRUNGTHAI CARD |
-| GHL | GHL (NTT DATA Payment) | Fee invoice | `AICCGHL` | เอ็นทีที เดต้า / NTT DATA / GHL |
+| GHL | GHL (NTT DATA Payment) | Fee invoice | `AICCGHL` | เอ็นทีที เดต้า / NTT DATA (คำว่า "GHL" ใช้ได้เฉพาะเมื่อ model ตอบ bank_name เป็น "GHL" ตรงตัว เพราะสั้นเกินจะค้นในข้อความ) |
 | PAYPAL | PayPal Thailand | Fee invoice | `AICCPAYPAL` | เพย์พาล / PAYPAL |
 | SIAMPAY | SiamPay (Asia Pay Thailand) | Fee invoice | `AICCSPAY` | สยามเพย์ / ASIA PAY / SIAMPAY |
 | BAY | ธนาคารกรุงศรีอยุธยา | Bank statement | `AICCBAY` | กรุงศรี / KRUNGSRI / BANK OF AYUDHYA |
@@ -336,7 +337,7 @@ flowchart TB
 |---|---|---|
 | POST | `/api/v1/credit-card/extract` | `bank_code` รับ `KTC`, `GHL`, `PAYPAL`, `SIAMPAY`, `BAY` เพิ่ม (ไม่ส่ง = ตรวจจับเอง) ผลลัพธ์มี `warnings` เป็นรายการ `{ code, params }` |
 | GET | `/api/v1/carmen/bank-codes` | คืนผู้ออกใหม่ทั้ง 5 สำหรับ rule ของ Email Automation |
-| POST | `/api/v1/credit-card/mapping/suggest` | ผู้ออกกลุ่ม gateway ใช้กรอบคำแนะนำ "settlement receivable" |
+| POST | `/api/v1/credit-card/mapping/suggest-payment-types` | ผู้ออกกลุ่ม gateway ใช้กรอบคำแนะนำ "settlement receivable" สำหรับบัญชีฝั่ง payment type (`/mapping/suggest` ของ field คงที่ใช้กรอบเดียวกันทุกผู้ออก) |
 
 ตัวอย่างคำเตือนในผลลัพธ์ของ `/extract`:
 

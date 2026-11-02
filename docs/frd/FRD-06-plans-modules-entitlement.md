@@ -1,12 +1,12 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-06 — Plans, Modules & Entitlement
-output: Carmen_Cloud_ERP_FRD-06_Plans_Modules_Entitlement_v1.1.docx
-Document Version: Version 1.1 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-06_Plans_Modules_Entitlement_v1.2.docx
+Document Version: Version 1.2 (As-Built Developer & Test Spec)
 Scope: Cross-cutting — แคตตาล็อกแพ็กเกจ การเปิด/ปิด module ต่อ tenant และการตั้งค่าระดับระบบ
 Status: Built, merged to main, in production use
-Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026)
-Date: 27 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026)
+Date: 2 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 ความสัมพันธ์กับฉบับอื่น: FRD-04 อธิบายว่าเครดิตถูกหักอย่างไร FRD-05 อธิบายว่าแพ็กถูกซื้ออย่างไร ส่วนฉบับนี้อธิบายว่า "tenant นี้มีสิทธิ์ใช้ฟีเจอร์ไหนได้บ้าง" ซึ่งเป็นการตรวจที่เกิดขึ้นก่อนทั้งสองเรื่องนั้นเสมอ
 ---
@@ -17,6 +17,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 |---|---|---|---|---|
 | 1.0 | 25/08/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุมแคตตาล็อก module การเปิด-ปิดต่อ tenant แบบ opt-out และกลไก system config ทั่วไป | Reviewed |
 | 1.1 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — ตาราง modules มี 4 แถว: เพิ่ม `cc_ar_reconcile` (สร้าง 09/09/2026 แล้วปิดเมื่อ 22/09/2026 เมื่อรวมเข้ากับ credit-card flow) และ `pms_interface` (09/10/2026 มีไว้ให้ `llm_usage_logs` อ้างถึงเท่านั้น ไม่คิดเครดิต); Email Automation ต้องมีแพ็กสัญญาที่ active (ข้อยกเว้นของ "ไม่ผูก module กับแพ็ก"); แคตตาล็อกแพ็ก Lite และ Micro; path ตามโครงสร้างหลัง refactor | Reviewed |
+| 1.2 | 02/11/2026 | Dev Team | ตรวจกับโค้ด ณ `2be6d7c9` แล้วแก้: การสลับ module ต้องมีสิทธิ์ `modules:write` ไม่ใช่กลุ่ม quotas; เมื่อปิด Credit Card OCR, Email Ingest ไม่ได้ตอบ 403 และไม่สร้างแถวที่มีเหตุผล module_disabled แต่คืนเมลกลับเป็นยังไม่อ่าน ไม่หักเครดิต แล้วอ่านใหม่เมื่อเปิด module กลับ (EC-03, §11.2, TC-SHR-01); Billing ไม่มีกติกาการซื้อทับแล้ว; อ้างอิง Email FRD แทน FRD-03 | |
 
 <!-- pagebreak -->
 
@@ -202,8 +203,8 @@ erDiagram
 |---|---|
 | Credit Card OCR (FRD-01) | `assert_module_enabled(Module.CREDIT_CARD_OCR)` |
 | AP Invoice (FRD-02) | `assert_module_enabled(Module.AP_INVOICE)` |
-| Email Ingest (FRD-03) | `assert_module_enabled(Module.CREDIT_CARD_OCR)` — **ใช้ module เดียวกับ Credit Card OCR ไม่มี module แยกของตัวเอง** |
-| Billing (FRD-05) | อ่านแคตตาล็อกแพ็กเกจตอนแสดงหน้าเลือกซื้อและตอนตรวจกติกาการซื้อทับ |
+| Email Ingest (Email FRD) | `assert_module_enabled(Module.CREDIT_CARD_OCR)` — **ใช้ module เดียวกับ Credit Card OCR ไม่มี module แยกของตัวเอง** · ถ้าถูกปิด เมลถูกคืนกลับเป็นยังไม่อ่าน (`_HOLD` ใน `email_automation/pipeline.py`) |
+| Billing (FRD-05) | อ่านแคตตาล็อกแพ็กเกจตอนแสดงหน้าเลือกซื้อและตอนสร้างออเดอร์ (ไม่มีกติกาการซื้อทับแล้ว ตั้งแต่ CA-105) |
 | Admin console | เรียกสลับสิทธิ์ และอ่านสรุปสิทธิ์ทั้งแบบรายเทนแนนต์และแบบภาพรวม |
 
 # 8. Workflow
@@ -291,7 +292,7 @@ sequenceDiagram
 |---|---|---|---|---|
 | EC-01 | module_disabled | admin ปิด module ให้ tenant นี้โดยเฉพาะ | 403 | ติดต่อผู้ดูแลระบบ |
 | EC-02 | no_row_default_allow | tenant ไม่เคยถูกตั้งค่าอะไรเลย | 200 (ปกติ) | ไม่ต้องทำอะไร — พฤติกรรมที่ถูกต้อง |
-| EC-03 | shared_module_side_effect | admin ปิด Credit Card OCR โดยตั้งใจจะปิดแค่ wizard | **403 — Email Ingest หยุดทำงานไปด้วย** | **ต้องรู้ก่อนปิดว่าสองอย่างผูกกัน** — ไม่มีทางปิดแยกจากกันในระบบปัจจุบัน |
+| EC-03 | shared_module_side_effect | admin ปิด Credit Card OCR โดยตั้งใจจะปิดแค่ wizard | **wizard ได้ 403 และ Email Ingest หยุดไปด้วย** — เมลของ tenant นี้ถูกคืนเป็นยังไม่อ่าน ไม่มีแถวเอกสาร ไม่หักเครดิต และถูกอ่านใหม่เมื่อเปิด module กลับ | **ต้องรู้ก่อนปิดว่าสองอย่างผูกกัน** — ไม่มีทางปิดแยกจากกันในระบบปัจจุบัน |
 | EC-04 | module_not_found | admin สั่งเปิด/ปิด module ด้วยรหัสที่ไม่มีในแคตตาล็อก | NotFoundError | ตรวจรหัส module |
 | EC-05 | invalid_tenant_id | รหัส tenant ที่ส่งมาไม่ใช่ UUID | NotFoundError | ตรวจรหัส tenant |
 | EC-06 | db_error_on_check | ฐานข้อมูลมีปัญหาชั่วคราวตอนตรวจสิทธิ์ | **fail-open — งานเดินต่อ** | ไม่ต้องทำอะไร — ตรวจย้อนได้จาก log ระดับ error |
@@ -329,7 +330,7 @@ sequenceDiagram
 ## 11.2 Acceptance Criteria
 
 - **Pass Scenario (ค่าเริ่มต้น):** tenant ใหม่ที่ไม่เคยถูกตั้งค่าอะไรเลย ต้องเรียกทั้ง Credit Card OCR, AP Invoice และ Email Ingest ได้ทั้งหมด
-- **Pass Scenario (ปิดสิทธิ์):** เมื่อ admin ปิด Credit Card OCR ให้ tenant หนึ่งราย ทั้ง wizard และ Email Ingest ของ tenant นั้นต้องได้ 403 ทันที โดยที่ tenant อื่นไม่ได้รับผลกระทบ
+- **Pass Scenario (ปิดสิทธิ์):** เมื่อ admin ปิด Credit Card OCR ให้ tenant หนึ่งราย wizard ของ tenant นั้นต้องได้ 403 ทันที และ Email Ingest ต้องคืนเมลของ tenant นั้นกลับเป็นยังไม่อ่านโดยไม่หักเครดิต โดยที่ tenant อื่นไม่ได้รับผลกระทบ
 - **Pass Scenario (เปิดกลับ):** เมื่อเปิดกลับ ต้องใช้งานได้ทันทีโดยไม่ต้องรอ cache หมดอายุหรือ restart
 - **Fail Scenario:** การปิด AP Invoice ต้องไม่มีผลต่อ Credit Card OCR หรือ Email Ingest เลย เพราะทั้งสองกลุ่มเป็นคนละ module_id กัน
 
@@ -341,7 +342,7 @@ sequenceDiagram
 |---|---|---|
 | GET | `/api/v1/credits/packs` | แคตตาล็อกแพ็กเกจที่เปิดขาย (รายละเอียดใน FRD-05 §12.1) |
 | GET | `/api/v1/admin/quotas/overview` | สรุปสิทธิ์และการใช้งานข้ามเทนแนนต์ · จำกัดช่วงวันที่ไม่เกิน 92 วัน |
-| PUT | `/api/v1/admin/tenants/{tenant_id}/modules/{module_id}` | สลับสิทธิ์ · body { "enabled": true/false } · ต้องมีสิทธิ์เขียนในกลุ่ม quotas |
+| PUT | `/api/v1/admin/tenants/{tenant_id}/modules/{module_id}` | สลับสิทธิ์ · body { "enabled": true/false } · ต้องมีสิทธิ์ `modules:write` |
 | GET | `/api/v1/admin/tenants/{tenant_id}` | รายละเอียด tenant รวมรายการ module ที่เปิดและปิด (ดู FRD-08 Admin Console) |
 
 ## 12.1 Status Codes
@@ -369,7 +370,7 @@ sequenceDiagram
 
 | Test Case ID | Scenario & Pre-conditions | Test Steps | Expected Result & วิธีตรวจผล | Pass Criteria |
 |---|---|---|---|---|
-| TC-SHR-01 | **Regression test สำคัญ:** ปิด Credit Card OCR กระทบ Email Ingest | 1. admin ปิด credit_card_ocr 2. รันรอบ email ingest ของ tenant นั้น | เอกสารของ tenant นี้ถูก skip หรือ fail ด้วยเหตุผล module_disabled | **Fail ถ้า Email Ingest ยังทำงานได้** |
+| TC-SHR-01 | **Regression test สำคัญ:** ปิด Credit Card OCR กระทบ Email Ingest | 1. admin ปิด credit_card_ocr 2. รันรอบ email ingest ของ tenant นั้น | เมลของ tenant นี้ยังเป็นยังไม่อ่านในกล่อง ไม่มีแถวใหม่ใน `email_documents` ไม่มีการหักเครดิต · เปิด module กลับแล้วรันรอบถัดไป เมลถูกอ่านตามปกติ | **Fail ถ้า Email Ingest ยังอ่านเอกสาร หรือหักเครดิต หรือเมลหายไป** |
 | TC-SHR-02 | ปิด AP Invoice ไม่กระทบ Credit Card OCR | 1. admin ปิด ap_invoice 2. เรียก extract ของ Credit Card OCR | 200 — ไม่ได้รับผลกระทบ | สอง module แยกกันจริง |
 | TC-SHR-03 | ปิด AP Invoice ไม่กระทบ Email Ingest | 1. admin ปิด ap_invoice 2. รันรอบ email ingest | ทำงานตามปกติ | Email Ingest ผูกกับ Credit Card OCR เท่านั้น |
 
