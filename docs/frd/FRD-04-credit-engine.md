@@ -2,6 +2,7 @@
 eyebrow: Carmen Cloud ERP
 title: FRD-04 — Credit & Document Consumption Engine
 output: Carmen_Cloud_ERP_FRD-04_Credit_Engine_v1.2.docx
+iso-wp: SD
 Document Version: Version 1.2 (As-Built Developer & Test Spec)
 Scope: Cross-cutting — ทุก module ที่เรียก LLM ใช้กลไกนี้
 Status: Built, merged to main, in production use

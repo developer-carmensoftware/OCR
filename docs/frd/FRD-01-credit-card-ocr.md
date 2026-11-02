@@ -2,6 +2,7 @@
 eyebrow: Carmen Cloud ERP
 title: FRD-01 — Credit Card OCR (AI JV Automation – Bank)
 output: Carmen_Cloud_ERP_FRD-01_Credit_Card_OCR_v2.1.docx
+iso-wp: SD
 Document Version: Version 2.1 (As-Built Developer & Test Spec)
 Module ID: `credit_card_ocr`
 Status: Built, merged to main, in production use

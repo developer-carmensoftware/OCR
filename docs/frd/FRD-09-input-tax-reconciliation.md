@@ -2,6 +2,7 @@
 eyebrow: Carmen Cloud ERP
 title: FRD-09 — AI Input Tax Reconciliation (ACTX)
 output: Carmen_Cloud_ERP_FRD-09_Input_Tax_Reconciliation_v1.2.docx
+iso-wp: SD
 Document Version: Version 1.2 (As-Built Developer & Test Spec)
 Module ID: `credit_card_ocr` (ไม่มี module แยก และไม่คิดเครดิตเพิ่ม เพราะไม่มีการเรียก LLM)
 Status: Built, merged to main, in production use

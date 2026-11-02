@@ -19,7 +19,8 @@
 //   --iso     build the ISO/IEC 29110 work-product copy instead (TEMPLATE_ISO29110_carmen -
 //             ai ocr.dotx, STYLE_GUIDE v1.0): TH SarabunPSK, black headings, E7E6E6 table
 //             heads, 3/2/2.5/2 cm margins, the control page + "ประวัติการแก้ไข", a closing
-//             "เอกสารอ้างอิง", and the name RS_carmen - ai ocr_<topic>_v<version>.docx.
+//             "เอกสารอ้างอิง", and the name <WP>_carmen - ai ocr_<topic>_v<version>.docx, where
+//             <WP> is `iso-wp:` (RS default, SD for an FRD, TR for the traceability record).
 //             <topic> is `output` without its Carmen_Cloud_ERP_ prefix, or `iso-topic:`.
 //             Another FRD is listed as a reference when this one names it: by its FRD-nn
 //             number, or by the regex in its `iso-ref:`.
@@ -45,7 +46,7 @@ const PAGE_W = ISO ? 9071 : 9746 // A4 minus the margins (ISO 3 cm left, 2 cm ri
 // Latin-only Consolas runs are scaled down to match it.
 const SZ = ISO ? { body: 32, cell: 28, h: [40, 36, 32] } : { body: 21, cell: 20, h: [30, 25, 22] }
 const INK = c => (ISO ? '000000' : c) // the ISO template is black throughout
-const META_SKIP = ['eyebrow', 'title', 'output', 'check-ignore', 'iso-topic', 'iso-ref']
+const META_SKIP = ['eyebrow', 'title', 'output', 'check-ignore', 'iso-topic', 'iso-ref', 'iso-wp']
 const CHROME = path.join(process.env.LOCALAPPDATA || '', 'ms-playwright/chromium-1223/chrome-win64/chrome.exe')
 const MERMAID = 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js'
 const ROOT = path.resolve(__dirname, '../..')
@@ -69,7 +70,9 @@ function parse(src) {
     const line = lines[i]
     let m
     if (!line.trim()) { i++; continue }
-    if ((m = line.match(/^<!--\s*widths:\s*([\d,\s]+)-->/))) { widths = m[1].split(',').map(Number); i++; continue }
+    // `widths!:` = exactly these percentages, for a table of short IDs beside long paths,
+    // where reserving room for the longest token would squeeze the ID column
+    if ((m = line.match(/^<!--\s*widths(!?):\s*([\d,\s]+)-->/))) { widths = m[2].split(',').map(Number); widths.exact = !!m[1]; i++; continue }
     if (/^<!--\s*pagebreak\s*-->/.test(line)) { blocks.push({ t: 'break' }); i++; continue }
     if (/^<!--/.test(line)) { while (!lines[i].includes('-->')) i++; i++; continue }
     if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { blocks.push({ t: 'h', level: m[1].length, text: m[2], line: i + 1 }); i++; continue }
@@ -229,6 +232,11 @@ function minWidth(rows, c) {
 }
 
 function colWidths(rows, pct) {
+  if (pct && pct.exact && pct.length === rows[0].length) {
+    const w = pct.map(p => Math.floor(PAGE_W * p / 100))
+    w[w.length - 1] += PAGE_W - w.reduce((a, b) => a + b, 0)
+    return w
+  }
   const n = rows[0].length
   const weight = pct && pct.length === n ? pct : rows[0].map((_, c) => Math.max(4, Math.min(60, ...rows.map(r => (r[c] || '').length))))
   // Each column first gets room for its longest unbreakable token, scaled down when those
@@ -268,8 +276,16 @@ function grid(rows, widths) {
 
 // ── ISO/IEC 29110 work-product shell (--iso) ─────────────────────────────────
 
+// The work products this repo writes, by their code in the template's 01–23 list (`iso-wp:`,
+// default RS). An FRD is filed as SD: its requirements live in the slim RS of docs/iso/.
+const WP = {
+  RS: ['Requirements Specification', 'ข้อกำหนดความต้องการ'],
+  SD: ['Software Design', 'เอกสารออกแบบซอฟต์แวร์'],
+  TR: ['Traceability Record', 'บันทึกการสอบกลับ'],
+}
+const isoWp = m => (WP[m['iso-wp']] ? m['iso-wp'] : 'RS')
 const isoVersion = m => ((m['Document Version'] || '').match(/\d+(\.\d+)+/) || ['0.1'])[0]
-const isoName = m => `RS_carmen - ai ocr_${m['iso-topic'] || m.output.replace(/^Carmen_Cloud_ERP_/, '').replace(/_v[\d.]+\.docx$/, '')}_v${isoVersion(m)}`
+const isoName = m => `${isoWp(m)}_carmen - ai ocr_${m['iso-topic'] || (m.output || '').replace(/^Carmen_Cloud_ERP_/, '').replace(/_v[\d.]+\.docx$/, '')}_v${isoVersion(m)}`
 
 // The template's first page: title, the one-line identity, the control table. Reviewer and
 // approver come from ROLES_carmen - ai ocr, which this repo does not hold, so they stay
@@ -279,8 +295,8 @@ function isoCover(meta, rev) {
   const last = rev[rev.length - 1] || []
   const label = (k, v) => [new d.TextRun({ text: k, bold: true }), new d.TextRun(v)]
   return [
-    P([new d.TextRun(`Requirements Specification – ${m.title} (RS) – ข้อกำหนดความต้องการ`)], { heading: d.HeadingLevel.TITLE }),
-    P([...label('โครงการ: ', 'carmen - ai ocr  |  '), ...label('รหัสเอกสาร: ', 'RS  |  '), ...label('เวอร์ชัน: ', `${isoVersion(m)}  |  `), ...label('มาตรฐาน: ', 'ISO/IEC 29110-5-1-2 (Basic Profile) – กระบวนการ SI')]),
+    P([new d.TextRun(`${WP[isoWp(m)][0]} – ${m.title} (${isoWp(m)}) – ${WP[isoWp(m)][1]}`)], { heading: d.HeadingLevel.TITLE }),
+    P([...label('โครงการ: ', 'carmen - ai ocr  |  '), ...label('รหัสเอกสาร: ', `${isoWp(m)}  |  `), ...label('เวอร์ชัน: ', `${isoVersion(m)}  |  `), ...label('มาตรฐาน: ', 'ISO/IEC 29110-5-1-2 (Basic Profile) – กระบวนการ SI')]),
     grid([
       ['รายการ', 'ข้อมูล'],
       ['วันที่เอกสาร', last[1] || ''],
@@ -419,25 +435,29 @@ function toDocx({ meta, blocks }, refs = []) {
     },
     sections: [ISO ? {
       properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1417, right: 1134, bottom: 1134, left: 1701, header: 709, footer: 567 } } },
-      headers: { default: new d.Header(hf(new d.TextRun({ text: `carmen - ai ocr  |  RS  |  v${isoVersion(m)}`, size: 24 }), d.AlignmentType.RIGHT)) },
+      headers: { default: new d.Header(hf(new d.TextRun({ text: `carmen - ai ocr  |  ${isoWp(m)}  |  v${isoVersion(m)}`, size: 24 }), d.AlignmentType.RIGHT)) },
       footers: { default: new d.Footer(hf(new d.TextRun({ children: ['ISO/IEC 29110-5-1-2 (Basic Profile)  –  หน้า ', d.PageNumber.CURRENT], size: 24 }), d.AlignmentType.CENTER)) },
       children: kids,
     } : { properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 } } }, children: kids }],
   })
 }
 
-// Other FRDs in the same folder that this one names, listed under "เอกสารอ้างอิง".
+// Other documents in docs/frd and docs/iso that this one names, listed under "เอกสารอ้างอิง".
 function related(file, src) {
-  const dir = path.dirname(file)
+  const me = path.resolve(file)
   const self = Object.fromEntries(parse(src).meta)
-  const others = fs.readdirSync(dir).filter(n => /^FRD-.*\.md$/.test(n) && n !== path.basename(file))
-    .map(n => Object.fromEntries(parse(fs.readFileSync(path.join(dir, n), 'utf8')).meta))
+  const others = ['docs/frd', 'docs/iso']
+    .map(dir => path.join(ROOT, dir))
+    .filter(dir => fs.existsSync(dir))
+    .flatMap(dir => fs.readdirSync(dir).filter(n => n.endsWith('.md')).map(n => path.join(dir, n)))
+    .filter(p => p !== me)
+    .map(p => Object.fromEntries(parse(fs.readFileSync(p, 'utf8')).meta))
     .filter(m => {
-      const id = m['iso-ref'] || (m.title.match(/^FRD-\d+/) || [])[0]
+      const id = m['iso-ref'] || ((m.title || '').match(/^FRD-\d+/) || [])[0]
       return id && new RegExp(`(${id})(?!\\d)`).test(src)
     })
   return [
-    `\`docs/frd/${path.basename(file)}\` — ต้นฉบับ markdown ของเอกสารนี้ เขียนจากโค้ด ${self['Source of truth'] || 'repo developer-carmensoftware/OCR'}`,
+    `\`${path.relative(ROOT, me).replace(/\\/g, '/')}\` — ต้นฉบับ markdown ของเอกสารนี้ เขียนจากโค้ด ${self['Source of truth'] || 'repo developer-carmensoftware/OCR'}`,
     ...others.map(m => `${isoName(m)} — ${m.title}`),
   ]
 }

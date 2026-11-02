@@ -2,6 +2,7 @@
 eyebrow: Carmen Cloud ERP
 title: FRD-12 — CR: AI Transaction Review (AI JV Automation Queue)
 output: Carmen_Cloud_ERP_FRD-12_CR_AI_Transaction_Review_v1.4.docx
+iso-wp: SD
 Document Version: Version 1.4 (As-Built Developer & Test Spec)
 Change Request ต่อ: FRD-01 Credit Card OCR · FRD Smart Credit Card Tax Ingestion & Auto-JV (Email) · FRD-11 PMS Interface
 Module ID: `credit_card_ocr`

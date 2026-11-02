@@ -2,6 +2,7 @@
 eyebrow: Carmen Cloud ERP
 title: Smart Credit Card Tax Ingestion & Auto-JV (Email Automation – AI JV)
 output: Carmen Cloud ERP - FRD - Smart Credit Card Tax Ingestion & Auto-JV v4.2.docx
+iso-wp: SD
 iso-topic: FRD-Email_Smart_CC_Tax_Ingestion_Auto-JV
 iso-ref: Email FRD|Smart Credit Card Tax Ingestion
 Module Name: General Ledger (GL) & Account Payable (AP) — module id `credit_card_ocr`

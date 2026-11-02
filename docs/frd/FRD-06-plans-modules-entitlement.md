@@ -2,6 +2,7 @@
 eyebrow: Carmen Cloud ERP
 title: FRD-06 — Plans, Modules & Entitlement
 output: Carmen_Cloud_ERP_FRD-06_Plans_Modules_Entitlement_v1.2.docx
+iso-wp: SD
 Document Version: Version 1.2 (As-Built Developer & Test Spec)
 Scope: Cross-cutting — แคตตาล็อกแพ็กเกจ การเปิด/ปิด module ต่อ tenant และการตั้งค่าระดับระบบ
 Status: Built, merged to main, in production use

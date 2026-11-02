@@ -2,6 +2,7 @@
 eyebrow: Carmen Cloud ERP
 title: FRD-10 — CR: AI JV Automation — Payment Gateway Fee Invoices
 output: Carmen_Cloud_ERP_FRD-10_CR_Payment_Gateway_v1.1.docx
+iso-wp: SD
 Document Version: Version 1.1 (As-Built Developer & Test Spec)
 Change Request ต่อ: FRD-01 Credit Card OCR (ใช้ได้ทั้ง wizard และ Email Automation)
 Module ID: `credit_card_ocr`

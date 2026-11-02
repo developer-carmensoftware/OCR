@@ -2,6 +2,7 @@
 eyebrow: Carmen Cloud ERP
 title: FRD-05 — Billing & Purchase
 output: Carmen_Cloud_ERP_FRD-05_Billing_Purchase_v1.2.docx
+iso-wp: SD
 Document Version: Version 1.2 (As-Built Developer & Test Spec)
 Scope: การซื้อแพ็กเกจ ออเดอร์ เอกสารทางบัญชี การชำระเงิน และการอนุมัติ
 Status: Built, merged to main, in production use

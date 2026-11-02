@@ -2,6 +2,7 @@
 eyebrow: Carmen Cloud ERP
 title: FRD-02 — AP Invoice Import (AI AP Invoice Automation)
 output: Carmen_Cloud_ERP_FRD-02_AP_Invoice_v1.2.docx
+iso-wp: SD
 Document Version: Version 1.2 (As-Built Developer & Test Spec)
 Module ID: `ap_invoice`
 Status: Built, merged to main, in production use

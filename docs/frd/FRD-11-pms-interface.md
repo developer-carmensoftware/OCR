@@ -2,6 +2,7 @@
 eyebrow: Carmen Cloud ERP
 title: FRD-11 — PMS Interface Automation
 output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.2.docx
+iso-wp: SD
 Document Version: Version 1.2 (As-Built Developer & Test Spec)
 Module ID: `pms_interface` (ใช้บันทึก LLM usage เท่านั้น ไม่คิดเครดิต)
 Status: Built, merged to main (PR #284, #286, #287, #292, #293, #301–#303) — รอ Carmen เปิด setting GET ใต้ `/api/interface` (CA-116) ก่อนหน้านั้นทุกวันจะหยุดที่ `carmen_config_unreadable`
