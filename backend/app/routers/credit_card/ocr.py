@@ -132,7 +132,8 @@ async def extract_card(
                 )
                 task_records.append((filename, file_bytes, str(task.id)))
     except Exception:
-        await refund_document(charged)
+        # Every file was charged and none reached the LLM: give all of them back.
+        await refund_document(charged, increment=len(file_data))
         raise
 
     # Phase 3 & 4: process each file in parallel with task status tracking.
