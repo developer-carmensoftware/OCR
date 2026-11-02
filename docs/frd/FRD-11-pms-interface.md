@@ -1,12 +1,13 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-11 — PMS Interface Automation
-output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.1.docx
-Document Version: Version 1.1 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.2.docx
+iso-wp: SD
+Document Version: Version 1.2 (As-Built Developer & Test Spec)
 Module ID: `pms_interface` (ใช้บันทึก LLM usage เท่านั้น ไม่คิดเครดิต)
 Status: Built, merged to main (PR #284, #286, #287, #292, #293, #301–#303) — รอ Carmen เปิด setting GET ใต้ `/api/interface` (CA-116) ก่อนหน้านั้นทุกวันจะหยุดที่ `carmen_config_unreadable`
-Source of truth: repo developer-carmensoftware/OCR @ b2e70358 (28/10/2026) + branch feat/pms-review-one-table
-Date: 28 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026) — dialog ตารางเดียว merge แล้วใน PR #315
+Date: 2 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-10-07, interfacePostGL/REVENUE
 ---
@@ -19,6 +20,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 |---|---|---|---|---|
 | 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว (path B ตาม decision-log #43 และหน้าตั้งค่าของ Carmen ตาม #44, #45) ครอบคลุม hook, การอ่านวันจาก Data Bank, AI แนะนำบัญชีเฉพาะแถวใหม่, การอนุมัติที่เขียน mapping table ของ Carmen แล้วให้ engine ของ Carmen post และสิ่งที่ยังรอจาก Carmen | Reviewed |
 | 1.1 | 28/10/2026 | Dev Team | Dialog ตรวจเหลือตารางเดียวแบบหน้า mapping ของ Carmen (Code, Description, DeptCode, AccCode, AccDesc): แถวใหม่อยู่บน แถวที่ map แล้วอ่านอย่างเดียว ไม่แสดงยอด ตัดช่องติ๊ก Checked, ป้าย Unsure, เหตุผลของ AI และหมายเหตุที่บอกชื่อ PMS setting ของ Carmen — กด Approve ได้เมื่อแถวใหม่ทุกแถวมีบัญชี (decision-log #47) | |
+| 1.2 | 02/11/2026 | Dev Team | ตรวจกับโค้ด ณ `2be6d7c9` แล้วแก้: ข้อยกเว้นของ #45 — ถ้ามีวันที่ค้างที่ `carmen_forbidden` token ใหม่จากหน้าจอ Carmen แทน credential เดิมแม้ยังใช้ได้ (`stopped_by_permission`) (§2.1, §5); ข้อความแถวที่ post แล้วคือ "Reviewed and posted by {name}"; `pms_events.review_payload` ถูกเข้ารหัส (#319) และทุกตารางเปิด RLS (#321) | |
 
 <!-- pagebreak -->
 
@@ -55,7 +57,7 @@ flowchart TB
 ## 2.1 In-Scope (ขอบเขตการทำงานของระบบ)
 
 - **รับ hook ของ Carmen** `{InterfaceType, InterfaceName, DocType, DocDate}` ที่ `POST /api/v1/pms/events` ยืนยันตัวตนด้วย API key ของ BU × PMS นั้น เก็บเป็นหนึ่งแถวต่อ BU × วัน ตอบทันทีโดยไม่รอการประมวลผล
-- **Settings API สำหรับหน้า PMS setting ของ Carmen** (decision-log #44): อ่าน/ตั้ง auto-post, ออก key ใหม่ และเพิกถอน key ต่อ BU × PMS ทุกการเขียนจาก Carmen เก็บ token ของผู้ใช้เป็น credential ของ BU (ยกเว้นเมื่อ BU มี credential ที่ยังใช้ได้อยู่แล้ว ตาม #45)
+- **Settings API สำหรับหน้า PMS setting ของ Carmen** (decision-log #44): อ่าน/ตั้ง auto-post, ออก key ใหม่ และเพิกถอน key ต่อ BU × PMS ทุกการเขียนจาก Carmen เก็บ token ของผู้ใช้เป็น credential ของ BU (ยกเว้นเมื่อ BU มี credential ที่ยังใช้ได้อยู่แล้ว ตาม #45 — **แต่ถ้ามีวันของ BU ที่ค้างที่ `carmen_forbidden` token ใหม่แทนที่เสมอ** เพราะ credential เดิมพิสูจน์แล้วว่าไม่มีสิทธิ์พอสำหรับงาน PMS และการแก้ของสาเหตุนี้คือให้ผู้ใช้ที่มีสิทธิ์กดบันทึกหน้า PMS setting)
 - **ประมวลผลหนึ่งวัน:** อ่าน PMS setting และ INI ของ section REVENUE, อ่านวันจาก Data Bank, อ่าน mapping table, หาแถวใหม่, ให้ AI แนะนำบัญชี แล้วพักรอคน หรือให้ engine post
 - **ลองใหม่อัตโนมัติ** สำหรับสาเหตุที่อาจหายเอง (ยังไม่มี credential, Carmen ล่ม, Data Bank ยังไม่มีวันนั้น) สูงสุด 3 ครั้ง และปลุกวันที่รอเมื่อมี credential ใหม่
 - **ตรวจในคิว:** หนึ่งแถวต่อวัน และ dialog ตรวจที่ `#/CreditCardOCR/review?pms=<id>`
@@ -120,7 +122,7 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 | Document | `PMS <วันที่>` เหนือ `<InterfaceName> · <DocType>` |
 | Message (รอตรวจ) | "AI suggested mapping: 103, 729" (รหัสของแถวใหม่ที่ AI แนะนำ) หรือ "Mapping missing: …" (แถวใหม่ที่ AI แนะนำไม่ได้) |
 | Message (หยุดเพราะด่าน) | ข้อความของ reason code (ดู §9) — ไม่มีปุ่มแก้สาเหตุ เพราะทุกสาเหตุแก้บนหน้าจอของ Carmen |
-| Message (post แล้ว) | "Posted by <name>" หรือ "Carmen had already posted it" เมื่อ Carmen post วันนั้นเองไปก่อน |
+| Message (post แล้ว) | "Reviewed and posted by {name}" หรือ "Carmen had already posted it" เมื่อ Carmen post วันนั้นเองไปก่อน |
 | Chip | `pending_review` → Review, `posted` → Posted, `rejected`/`failed` → Not posted, `received` ไม่แสดง (กำลังอ่านอยู่ไม่กี่วินาที) |
 
 ## 4.3 Dialog ตรวจ — `#/CreditCardOCR/review?pms=<id>`
@@ -148,7 +150,7 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 | Button / Trigger | Action Type | Business Logic / System Behavior |
 |---|---|---|
 | Carmen ส่ง hook | API | ยืนยัน key (401 ถ้าไม่ผ่าน ไม่บอกว่าข้อไหน), body ≤ 16 KB (413), `PmsEventIn` (422), PMS ตรงกับ key (403) → insert ใหม่ = 202 แล้วเริ่มประมวลผลเบื้องหลัง / วันเดิม = 200 `duplicate: true` และถ้าวันนั้นยังไม่ post และไม่มีคนกำลังอนุมัติ จะรีเซ็ตเป็น `received` แล้วอ่านใหม่ |
-| Generate key (หน้าจอ Carmen) | API | `POST /api/v1/carmen/pms/keys` — พิสูจน์ token กับ Carmen ของ BU, สร้าง tenant ถ้ายังไม่มี (พร้อมเครดิตทดลอง), เก็บ credential ตาม #45, ปลุกวันที่รอ, ออก key ใหม่และเพิกถอน key เดิม |
+| Generate key (หน้าจอ Carmen) | API | `POST /api/v1/carmen/pms/keys` — พิสูจน์ token กับ Carmen ของ BU, สร้าง tenant ถ้ายังไม่มี (พร้อมเครดิตทดลอง), เก็บ credential ตาม #45 (แทนที่เสมอถ้ามีวันค้างที่ `carmen_forbidden`), ปลุกวันที่รอ, ออก key ใหม่และเพิกถอน key เดิม |
 | Auto-post (หน้าจอ Carmen) | API | `PUT /api/v1/carmen/pms/settings` — แทนที่ค่า auto-post ของ PMS นั้น และทำเรื่อง credential เหมือนข้างบน |
 | Review (แถวคิว) | Open dialog | `GET /api/v1/pms/days/{id}` |
 | เปลี่ยนบัญชี / Undo | Edit | เปลี่ยนแผนกหรือบัญชีของแถวใหม่ (ป้าย AI หายไป) หรือ Undo กลับไปค่าของ AI — Approve เปิดเมื่อแถวใหม่ทุกแถวมีแผนกและบัญชี |
@@ -173,7 +175,7 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 | `type` | varchar(50) | `InterfaceType` (`PMS`) |
 | `payload` | jsonb | hook ตามที่ Carmen ส่ง |
 | `status` | varchar(20) | `received` → `pending_review` → `posted` / `rejected`, หรือ `failed` เมื่อลองครบ |
-| `review_payload` | jsonb | มีค่าเฉพาะตอน `pending_review` — ล้างทุกครั้งที่จบสถานะ |
+| `review_payload` | jsonb (เข้ารหัส) | มีค่าเฉพาะตอน `pending_review` — ล้างทุกครั้งที่จบสถานะ · เก็บเป็น `{"enc": <Fernet token>}` ไม่มี key ใดอ่านได้ด้วย SQL ตรง ๆ แอปถอดรหัสให้เอง (`EncryptedJSON`) |
 | `jv_no` | varchar(50) | ว่างเสมอ เพราะ engine ไม่คืนเลข JV |
 | `reason_code` / `error_message` | varchar(50) / text | เหตุที่หยุด (§9) และข้อความของ Carmen หรือเหตุผลของผู้ reject |
 | `attempts` | int | จำนวนครั้งที่ประมวลผล — ครบ 3 แล้วเป็น `failed` |
@@ -495,6 +497,8 @@ stateDiagram-v2
 ## 10.3 Data Minimization & Privacy
 
 - `review_payload` ถูกล้างทุกครั้งที่จบสถานะ ตัวเลขของวันยังอยู่ที่ Data Bank ของ Carmen
+- ระหว่างรอตรวจ `review_payload` ถูกเข้ารหัสในฐานข้อมูลด้วยกุญแจเดียวกับ session (`app/utils/crypto.py`) แถวเก่าที่ยังไม่เข้ารหัสแปลงได้ด้วย `POST /api/v1/admin/encryption/backfill` และหมุนกุญแจได้ตาม `docs/KEY_ROTATION.md`
+- `pms_events`, `pms_settings` และ `api_keys` เปิด row level security และ role `anon` / `authenticated` ของ Supabase ไม่มีสิทธิ์ใด ๆ
 - Data Bank เก็บยอดรวมตามรหัสรายการ ไม่มีข้อมูลแขกรายคน ข้อมูลที่ส่งให้ LLM จึงเป็นยอดรวมเท่านั้น และทุกคำขอส่ง `data_collection: deny`
 
 ## 10.4 Observability

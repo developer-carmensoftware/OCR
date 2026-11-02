@@ -1,12 +1,15 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: Smart Credit Card Tax Ingestion & Auto-JV (Email Automation – AI JV)
-output: Carmen Cloud ERP - FRD - Smart Credit Card Tax Ingestion & Auto-JV v4.1.docx
+output: Carmen Cloud ERP - FRD - Smart Credit Card Tax Ingestion & Auto-JV v4.2.docx
+iso-wp: SD
+iso-topic: FRD-Email_Smart_CC_Tax_Ingestion_Auto-JV
+iso-ref: Email FRD|Smart Credit Card Tax Ingestion
 Module Name: General Ledger (GL) & Account Payable (AP) — module id `credit_card_ocr`
-Document Version: Version 4.1 (As-Built Developer & Test Spec)
+Document Version: Version 4.2 (As-Built Developer & Test Spec)
 Status: Built, merged to main, live-tested end to end — หน้าตั้งค่าอยู่ในแอปตั้งแต่ 01/10/2026
-Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026)
-Date: 28 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026)
+Date: 2 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 check-ignore: AIAGENT+<tag>@carmensoftware.com, E-TAX_INVOICE_CARD_*, KB1P554V2_SUM_<merchant_id>_<date>.pdf, SUM_<merchant_id>, TAX_SUMMARY_BY_TAX_ID_CSV_*
 สิ่งที่เปลี่ยนในฉบับนี้เมื่อเทียบกับ v3.1: *หน้าตั้งค่าย้ายจาก Carmen มาอยู่ในแอป (`#/CreditCardOCR/email-settings`) และใช้ token เดียวจากลิงก์เมนูของ Carmen เป็น credential สำหรับ post; KBANK มีโหมด Detailed Credit Card AR Reconciliation ที่อ่าน settlement report แทนใบกำกับค่าธรรมเนียม; คิวตรวจย้ายไปอธิบายใน FRD-12 และภาษีซื้อใน FRD-09 — ดู Revision History 4.0*
@@ -30,6 +33,7 @@ check-ignore: AIAGENT+<tag>@carmensoftware.com, E-TAX_INVOICE_CARD_*, KB1P554V2_
 | 3.1 | 08/09/2026 | Dev Team | **(feat/auto-post-single-writer)** — ลบ PUT /api/v1/email/settings/auto-post และช่องตั้งค่าแยกบนหน้า Review Queue ทิ้งทั้งคู่ auto_post กลายเป็น field หนึ่งใน PUT /settings ที่มีพฤติกรรม merge (ไม่ส่ง = คงค่าเดิม) เป็นข้อยกเว้นเดียวของ endpoint นี้ที่ปกติเป็น full-replace | Dev Team |
 | 4.0 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — (1) หน้าตั้งค่าเป็นของแอป `#/CreditCardOCR/email-settings` เปิดจากเมนูของ Carmen ผ่าน SSO (decision-log #34) (2) token ในลิงก์ของเมนูเป็น credential สำหรับ post ตัวเดียว (#35, #38) และไม่แทนที่ credential ที่ยังใช้ได้ (#45) (3) KBANK: สวิตช์ Detailed Credit Card AR Reconciliation พร้อม merchant ID อ่าน settlement report เป็น JV เดียว ตรวจกับ tax summary CSV ในไฟล์ zip เดียวกัน (#28, #31, #36, #37) (4) คิวของ mailbox ใช้ keyword `$OcrDone` แทน `\Seen` (5) `+tag` ต้องอยู่บนที่อยู่ของเราเป๊ะ (6) near-duplicate (F-7) (7) rule ที่ปิดอยู่ให้ผล `ingest_paused` (8) retention ของ `email_documents` (9) sweep ยืนยัน Gmail เปิดตาม `settings_saved_at` (#46) (10) สเปกคิวย้ายไป FRD-12 และภาษีซื้อไป FRD-09 | Reviewed |
 | 4.1 | 28/10/2026 | Dev Team | ตาราง `email_queue_seen` (§6.3 เดิม) ถูก drop พร้อมจุดเตือนของคิว (FRD-12 v1.1–v1.2) Retention เลื่อนเป็น §6.3 และ `dismissed_at` ไม่มีผู้อ่านแล้ว | |
+| 4.2 | 02/11/2026 | Dev Team | ตรวจกับโค้ด ณ `2be6d7c9` แล้วแก้: ตัวอย่าง "เปิด auto_post อย่างเดียว" ใน §12.6 / TC-AUT-02 / TC-AUT-04 ผิด — PUT ที่ส่งแค่ `{uri, bu, auto_post}` ปิด BU และล้าง rule กับ tax ID เพราะ payload เป็น full-replace มีแค่ `auto_post` ที่ merge; ตัวอย่าง TC-DUP-03 ใช้เลขสั้นกว่า 8 ตัวซึ่งไม่มีวันเตือน; migration ล่าสุด; cron `email-mailbox-purge` + `POST /email-ingest/purge` ย้ายเมลเก่ากว่า 14 วันไปถังขยะ (#322); `review_payload`, `error_message`, `owner_emails` ถูกเข้ารหัส (#319, #320) และการหมุนกุญแจ (#323); หลัง post, card ถูก stamp ยอดภาษีซื้อจึงยื่นย้อนหลังจากคิวได้ (CA-111, FRD-09); รหัส 422 `invalid` / `no_settlement_layout` | |
 
 <!-- pagebreak -->
 
@@ -83,7 +87,7 @@ flowchart TB
 - **Auto Integration to AP Input Tax Reconciliation:** ยื่นภาษีซื้อต่อจาก JV — ล้มเหลวได้โดยไม่ rollback JV (FRD-09)
 - **หน้าตั้งค่าในแอป (ใหม่ v4.0):** ที่อยู่สำหรับ forward, การเปิดใช้, post โดยไม่ต้องตรวจ, bank rules, tax ID ของบริษัท, อีเมลของบริษัท และสถานะ credential
 - **Gmail forwarding confirmation:** ระบบกดลิงก์ยืนยันของ Gmail ให้เอง — sweep ทุกนาทีเปิด mailbox เฉพาะ BU ที่เพิ่งบันทึกค่าตั้งภายใน 24 ชั่วโมง (#46)
-- **Retention:** แถวของ ledger ถูกล้างข้อมูลส่วนบุคคลและลบตามอายุ (§6.3)
+- **Retention:** แถวของ ledger ถูกล้างข้อมูลส่วนบุคคลและลบตามอายุ (§6.3) และเมลในกล่องเก็บไว้ไม่เกิน 14 วัน (`IMAP_HOLD_DAYS`) — cron `email-mailbox-purge` ย้ายเมลที่เก่ากว่านั้นไปถังขยะทุกวัน
 
 ## 2.2 Out-of-Scope (สิ่งที่อยู่นอกเหนือขอบเขต)
 
@@ -186,7 +190,7 @@ rule อื่นจะอ้างไฟล์ทั้งสองแบบข
 
 # 6. Database Schema & Tables
 
-ฐานข้อมูล: PostgreSQL (Supabase) — DDL หลักจาก `20260803000000_email_automation.sql` และ migration ต่อเนื่อง (ล่าสุด `20261021000000_email_settings_saved_at.sql`)
+ฐานข้อมูล: PostgreSQL (Supabase) — DDL หลักจาก `20260803000000_email_automation.sql` และ migration ต่อเนื่อง (ล่าสุดที่แตะตารางของ email: `20261028000000_drop_email_queue_seen.sql`, cron ของการล้างกล่องเมล: `20261030000100_email_mailbox_purge_cron.sql`, การเข้ารหัส: `20261029010000`)
 
 ## 6.1 email_ingest_settings — หนึ่งแถวต่อ BU
 
@@ -196,7 +200,7 @@ rule อื่นจะอ้างไฟล์ทั้งสองแบบข
 | `tenant_id` (PK) | BU |
 | `ingest_tag` | tag ใน `+tag` — nullable, unique เมื่อมีค่า, ออกครั้งเดียว |
 | `enabled` / `enabled_at` | เปิดใช้ และเวลาที่เปิดล่าสุด — เมลที่มาถึงก่อน `enabled_at` เป็น `ingest_paused` |
-| `owner_emails` / `tax_ids` / `rules` | ค่าตั้งของ §4 — รหัส PDF ใน rules เข้ารหัส Fernet |
+| `owner_emails` / `tax_ids` / `rules` | ค่าตั้งของ §4 — รหัส PDF ใน rules เข้ารหัส Fernet · `owner_emails` ทั้งรายการถูกเข้ารหัส (`EncryptedJSON`) |
 | `carmen_token_enc` / `carmen_uri` / `carmen_token_fp` | credential สำหรับ post (Fernet), origin ของ Carmen, fingerprint 8 hex |
 | `carmen_token_verified_at` | ยืนยันล่าสุดเมื่อไร — ล้างเฉพาะเมื่อ Carmen ปฏิเสธจริง (401/403) ค่า null คือสิ่งที่อนุญาตให้ token จากลิงก์แทนที่ (#45) |
 | `gmail_confirmed_at` (+ `gmail_confirm_code`, `gmail_confirm_at`) | Gmail ยืนยันการ forward แล้ว |
@@ -211,8 +215,8 @@ rule อื่นจะอ้างไฟล์ทั้งสองแบบข
 | `message_id` / `attachment` | key ของการกันประมวลผลซ้ำ (unique ร่วมกับ `tenant_id`) |
 | `status` | `received` / `pending_review` / `posted` / `rejected` / `failed` / `skipped` |
 | `task_id` / `bank_code` / `doc_no` / `jv_no` | งาน OCR, ธนาคาร (บันทึกแม้ล้มเหลว เพื่อจับว่าธนาคารเปลี่ยนรูปแบบเอกสาร), เลขที่, เลข JV |
-| `reason_code` / `error_message` | สาเหตุ (§9) และรายละเอียด |
-| `review_payload` | มีค่าเฉพาะตอน `pending_review` — ล้างทุกครั้งที่จบสถานะ |
+| `reason_code` / `error_message` | สาเหตุ (§9) และรายละเอียด · `error_message` ถูกเข้ารหัส (`EncryptedText`) เพราะอาจมีที่อยู่อีเมลของเมลที่ถูกปฏิเสธ |
+| `review_payload` | มีค่าเฉพาะตอน `pending_review` — ล้างทุกครั้งที่จบสถานะ · เข้ารหัสเป็น `{"enc": <Fernet token>, "doc_type": …}` เหลือแค่ `doc_type` ที่อ่านด้วย SQL ได้ |
 | `posting_started_at` | claim ของ approve/reject (FRD-12) |
 | `reviewed_by` / `reviewed_by_name` / `reviewed_at` | ผู้อนุมัติหรือปฏิเสธ |
 | `dismissed_at` | ไม่มีผู้อ่านหรือผู้เขียนแล้วตั้งแต่ FRD-12 v1.1 — เก็บไว้เป็นประวัติ |
@@ -227,6 +231,8 @@ rule อื่นจะอ้างไฟล์ทั้งสองแบบข
 | `pending_review` | ไม่แตะ — มีเพดาน 50 ใบต่อ BU |
 
 ปลอดภัยต่อการกันซ้ำเพราะ 90 วันยาวกว่าช่วงที่ IMAP ค้นย้อน (14 วัน) มาก
+
+**กล่องเมล (`email-mailbox-purge`, ทุกวัน 04:00 UTC):** ย้ายเมลที่มาถึงก่อน `since_arg()` — คือเก่ากว่า `IMAP_HOLD_DAYS` (14 วัน) ซึ่งเป็นส่วนกลับของช่วงที่ poll ค้นพอดี — ไปถังขยะของ Gmail (ซึ่งลบเองหลัง 30 วัน) เรียกผ่าน `POST /api/v1/carmen/email-ingest/purge?dry_run=` · ผลข้างเคียง: เมลที่ถูกคืนเพราะคิวเต็ม 50 ใบ (EC ของ backlog cap) ถ้าค้างเกิน 14 วันจะหายไปจากกล่อง
 
 ## 6.5 Dedupe Key — 4 ชั้น
 
@@ -282,7 +288,7 @@ erDiagram
 | `GET /taxProfile` | tax profile ก่อนยื่นภาษีซื้อ (FRD-09) |
 | `POST /gljv` | post JV — เมื่อ auto_post เปิดและไม่มี flag หรือเมื่อคนกด Approve |
 | `POST /inputTaxRec` | ยื่นภาษีซื้อ — ล้มเหลวได้โดยไม่กระทบ JV |
-| Shared IMAP mailbox (Gmail) | poll ทุก 10 นาที (`email-ingest`), ยืนยันการ forward (`email-confirm`) |
+| Shared IMAP mailbox (Gmail) | poll ทุก 10 นาที (`email-ingest`), ยืนยันการ forward (`email-confirm`), ย้ายเมลเก่ากว่า 14 วันไปถังขยะทุกวัน (`email-mailbox-purge`) |
 | Vision LLM (OpenRouter) | อ่านเอกสาร 1 ครั้งต่อไฟล์ ยกเว้น settlement report ของ KBANK ที่อ่านจาก text layer ก่อน (ถ้าอ่านไม่ได้จึงใช้ LLM) |
 
 **Credential ที่ใช้ post:** credential เดียวของ BU (`carmen_token_enc`) ทั้งสองเส้นทาง ไม่ใช่ token ของคนกด Approve อ่านใหม่ทุกครั้ง และใช้ร่วมกับ PMS Interface (FRD-11)
@@ -491,7 +497,7 @@ flowchart TB
 | EC-11 | unreadable_document | อ่านได้แต่ไม่มียอดที่ post ได้ | ไม่คืน | pending_review | รวมยอด |
 | EC-12 | carmen_unauthorized | ไม่มี credential / host หรือ Carmen ตอบ 401/403 (credential ถูก mark) | ไม่คืน | pending_review | รวมยอด |
 | EC-13 | carmen_rejected | Carmen ตอบ Code ≠ 0 หรือ transport ล้มเหลว (ให้เช็คใน Carmen ก่อนกดซ้ำ) | ไม่คืน | pending_review | รวมยอด |
-| EC-14 | (ไม่มี) | JV สำเร็จ แต่ภาษีซื้อล้มเหลว | เสีย | posted + หมายเหตุ | — |
+| EC-14 | (ไม่มี) | JV สำเร็จ แต่ภาษีซื้อล้มเหลว | เสีย | posted + หมายเหตุ | ยื่นย้อนหลังได้จากปุ่ม Record input tax ในคิว — card ถูก stamp ยอดภาษีซื้อหลัง post (`_stamp_input_tax`, FRD-09) |
 | EC-15 | (ไม่มีแถว) | BU มีเอกสารรอตรวจครบ 50 ใบ | ไม่เสีย | — | ไม่ |
 | EC-16 | rejected_by_reviewer | คนกด Reject | ไม่คืน | rejected | ไม่ |
 | EC-17 | (flag `tin_unverified`) | settlement report ไม่มีแถว CSV ที่ตรง merchant ID | ไม่คืน | pending_review | รวมยอด |
@@ -527,6 +533,8 @@ stateDiagram-v2
 - Settings API: ตรวจรูปแบบ token ก่อน I/O, rate limit 20 ครั้ง/60 วินาทีต่อ IP และ 300 ครั้ง/60 วินาทีรวม, cache การปฏิเสธ 30 วินาที (ไม่ cache การยอมรับ)
 - รหัส PDF ของ BU หนึ่งไม่ถูกลองกับไฟล์ของ BU อื่น — tag ยืนยันเจ้าของก่อนเปิดไฟล์
 - credential ที่ใช้ post เป็นของ BU ไม่ใช่ของผู้กด Approve
+- `review_payload`, `error_message` และ `owner_emails` ถูกเข้ารหัสในฐานข้อมูลด้วยกุญแจเดียวกัน (`app/utils/crypto.py`, MultiFernet ของ `SESSION_ENCRYPTION_KEY` + `SESSION_ENCRYPTION_KEYS_OLD`) — แถวเก่าแปลงด้วย `POST /api/v1/admin/encryption/backfill` และหมุนกุญแจด้วย `POST /api/v1/admin/encryption/rotate` ตาม `docs/KEY_ROTATION.md` ห้ามเทียบคอลัมน์เหล่านี้กับค่าตรง ๆ ใน SQL
+- ทุกตารางเปิด row level security และ role `anon` / `authenticated` ของ Supabase ไม่มีสิทธิ์ใด ๆ
 - หัวเมลที่ใช้ route คือหัวที่ mail server เขียน (Delivered-To, Received…for) ไม่ใช่ To:/From:/Cc: ที่ผู้ส่งเขียนเองได้
 
 ## 10.2 Performance & Processing Speed
@@ -544,7 +552,8 @@ stateDiagram-v2
 
 ## 10.4 Data Minimization & Retention
 
-- ไม่เก็บเนื้อไฟล์แนบ ไม่เก็บ message body ไม่เก็บ line item หลังจบสถานะ — `review_payload` เป็นข้อยกเว้นชั่วคราวระหว่างรอคน
+- ไม่เก็บเนื้อไฟล์แนบ ไม่เก็บ message body ไม่เก็บ line item หลังจบสถานะ — `review_payload` เป็นข้อยกเว้นชั่วคราวระหว่างรอคน และถูกเข้ารหัสระหว่างนั้น
+- เมลในกล่องเก็บไม่เกิน 14 วัน (`email-mailbox-purge`, §6.3)
 - Retention ตาม §6.3 (PDPA: มีวันสิ้นสุดของข้อมูลผู้ส่ง ชื่อไฟล์ และชื่อผู้ตรวจ) — ledger นี้เป็นข้อยกเว้นของ "ไม่ hard-delete" เพราะ Carmen เป็นระบบหลักของ JV
 
 # 11. Developer Implementation Checklist & Acceptance Criteria
@@ -590,6 +599,7 @@ stateDiagram-v2
 | POST | `/email-ingest/run` | poll — pg_cron ทุก 10 นาที (internal job token) |
 | POST | `/email-ingest/confirmations` | ยืนยัน Gmail — pg_cron ทุกนาที (เฉพาะ BU ที่เพิ่งบันทึกค่าตั้ง) |
 | POST | `/email-ingest/health` | ตรวจ credential รายวัน |
+| POST | `/email-ingest/purge?dry_run=` | ย้ายเมลเก่ากว่า `IMAP_HOLD_DAYS` (14) ไปถังขยะ — pg_cron `email-mailbox-purge` ทุกวัน 04:00 UTC (job token หรือ admin ระดับ global) · `dry_run=true` แค่นับ |
 
 คิวตรวจ (`/api/v1/email/*`, `/api/v1/credit-card/activity*`) ใช้ session JWT — ดู FRD-12 §12
 
@@ -629,6 +639,8 @@ endpoint การตั้งค่าใช้ Carmen token ของผู้
 | reserved_tax_id | tax_ids[i] | เลขนั้นเป็นของธนาคาร ไม่ใช่ของลูกค้า |
 | required | rules[i].filename_patterns หรือ tax_ids | ขาดค่าที่บังคับ |
 | unsupported_bank | rules[i].bank_code | ไม่มีในตาราง banks ที่ active |
+| invalid | rules[i].doc_type หรือ rules[i].merchant_id | `doc_type` ไม่อยู่ในรายการที่รู้จัก หรือ merchant ID ของ rule settlement report สั้นกว่า 6 หลัก |
+| no_settlement_layout | rules[i].doc_type | rule แบบ settlement report กับธนาคารที่ไม่มี layout ของ settlement report (หรือไม่ระบุธนาคาร) |
 | duplicate_bank | rules[i].bank_code | มี 2 rule ที่ระบุธนาคารเดียวกัน |
 | not_entitled | enabled | เปิดใช้โดยไม่มีแพ็กเกจรายเดือนที่ยัง active |
 | token_rejected | token | Carmen ตอบไม่ใช่ 200 สำหรับ token นี้ |
@@ -666,7 +678,11 @@ payload แทนที่ค่าตั้งทั้งหมด (ส่ง�
 PUT /settings
 { "uri": "...", "bu": "hq", "enabled": true, "tax_ids": [...], "rules": [...] }
 
-// เปิด auto_post อย่างเดียว
+// เปิด auto_post — ต้องส่งค่าตั้งปัจจุบันทั้งชุดด้วย
+PUT /settings
+{ "uri": "...", "bu": "hq", "enabled": true, "tax_ids": [...], "rules": [...], "auto_post": true }
+
+// ผิด: ส่งแค่ auto_post — enabled กลายเป็น false และ tax_ids / rules / owner_emails ถูกล้างเป็นค่าว่าง
 PUT /settings
 { "uri": "...", "bu": "hq", "auto_post": true }
 ```
@@ -705,7 +721,7 @@ Category 5 เดิม (Review Queue, Approve & Reject) ย้ายไปอ�
 |---|---|---|---|---|
 | TC-DUP-01 | เลขที่ซ้ำกับที่ post แล้ว | 1. ส่งเอกสารเดิมหลัง post | `pending_review` "Already posted to Carmen" | ไม่ post ซ้ำ ไม่คืนเครดิต |
 | TC-DUP-02 | ซ้ำกับใบที่รออยู่ | 1. ส่งเลขเดิมก่อนใบแรกถูก approve | ใบที่สอง `failed` `duplicate_document` | มีแถวรอตรวจแถวเดียว |
-| TC-DUP-03 | อาจซ้ำ (v4.0) | 1. post เลข IV-00213 2. ส่งเอกสารวันเดียวกันที่อ่านเป็น IV-0213 | `pending_review` "Possibly already posted to Carmen as IV-00213" | ไม่ auto-post |
+| TC-DUP-03 | อาจซ้ำ (v4.0) | 1. post เลข 041125E00023869 2. ส่งเอกสารวันเดียวกันที่อ่านเป็น 041125E00023869767 (เลขหนึ่งอยู่ในอีกเลข และทั้งคู่ยาวอย่างน้อย 8 ตัว) | `pending_review` "Possibly already posted to Carmen as 041125E00023869" | ไม่ auto-post · เลขที่สั้นกว่า 8 ตัว หรือต่างกันแค่ตัวเดียว (เช่น IV-00213 กับ IV-0213) ต้องไม่เตือน |
 | TC-MAP-01 | AI แนะนำ mapping | 1. ส่งเอกสารที่มี payment type ใหม่ | flag `mapping_guessed` — ไม่เขียนลง config | หลัง Approve จึงถูกบันทึก |
 | TC-MAP-02 | mapping ยังขาดแม้หลัง AI | 1. ส่งเอกสารที่ AI แนะนำไม่ได้ | flag `mapping_missing` พร้อมชื่อ field | ไม่ auto-post |
 
@@ -716,9 +732,9 @@ Category 5 เดิม (Review Queue, Approve & Reject) ย้ายไปอ�
 | TC-PST-01 | ความถูกต้องของเดบิต-เครดิต | 1. Approve เอกสารที่ค่าธรรมเนียม 15,400.00 VAT 1,078.00 | Dr Commission 15,400.00, Dr Input Tax 1,078.00, Cr ตาม payment type รวม 16,478.00 | Dr = Cr |
 | TC-PST-02 | Carmen ปฏิเสธตอน auto-post | 1. จำลอง Code ≠ 0 | `pending_review` `carmen_rejected` | อยู่ในคิวให้แก้ |
 | TC-PST-03 | Transport error ตอน post | 1. จำลอง timeout | `pending_review` พร้อมข้อความให้เช็ค Carmen | ไม่คืนเครดิต |
-| TC-SYNC-01 | ภาษีซื้อล้มเหลวหลัง JV | 1. จำลอง `POST /inputTaxRec` ล้มเหลว | `posted` พร้อมหมายเหตุ | JV ไม่ถูก rollback |
+| TC-SYNC-01 | ภาษีซื้อล้มเหลวหลัง JV | 1. จำลอง `POST /inputTaxRec` ล้มเหลว 2. เปิดแถวในคิว | `posted` พร้อมหมายเหตุ · แถวมีปุ่ม Record input tax (card ถูก stamp ยอดแล้ว) | JV ไม่ถูก rollback · ยื่นย้อนหลังได้ (FRD-09) |
 | TC-CRD-01 | extraction ล้มเหลว | 1. จำลอง OpenRouter ล่ม | `failed` `unreadable_document` | คืนเครดิต 1 ครั้งพอดี |
-| TC-SEC-01 | ความปลอดภัยของรหัสและ credential | 1. ตรวจ DB 2. เรียก GET /settings | ciphertext ใน DB, response มีแค่ `has_password` | ไม่มี plaintext |
+| TC-SEC-01 | ความปลอดภัยของรหัสและ credential | 1. ตรวจ DB 2. เรียก GET /settings | ciphertext ใน DB (รหัส PDF, credential, `owner_emails`, `review_payload` ของแถวที่รอตรวจ, `error_message`), response มีแค่ `has_password` | ไม่มี plaintext |
 | TC-SEC-02 | SSRF | 1. host ที่ resolve เป็น private IP | 422 `invalid_uri` | ไม่ยิงคำขอออก |
 
 ## 13.5 Category 5: Auto-post Switch & Backpressure
@@ -726,9 +742,9 @@ Category 5 เดิม (Review Queue, Approve & Reject) ย้ายไปอ�
 | Test Case ID | Scenario & Pre-conditions | Test Steps | Expected Result & วิธีตรวจผล | Pass Criteria |
 |---|---|---|---|---|
 | TC-AUT-01 | ค่าเริ่มต้น | 1. BU ใหม่ | `auto_post = false` | Fail ถ้าเริ่มเป็น true |
-| TC-AUT-02 | เปิดผ่าน PUT /settings | 1. PUT `{uri, bu, auto_post: true}` | เอกสารสะอาด post เอง | เอกสารที่มี flag ยังพัก |
+| TC-AUT-02 | เปิดผ่าน PUT /settings | 1. PUT ค่าตั้งปัจจุบันทั้งชุดพร้อม `auto_post: true` (แบบที่หน้าตั้งค่าส่ง) | เอกสารสะอาด post เอง · ค่าตั้งอื่นไม่เปลี่ยน | เอกสารที่มี flag ยังพัก |
 | TC-AUT-03 | ไม่ส่ง auto_post = คงเดิม | 1. เปิดไว้ 2. บันทึก rule โดยไม่ส่ง auto_post | ยังเป็น true | Fail ถ้าถูกรีเซ็ต |
-| TC-AUT-04 | ส่ง false = ปิดจริง | 1. PUT `auto_post: false` | เป็น false | แยกจาก TC-AUT-03 |
+| TC-AUT-04 | ส่ง false = ปิดจริง | 1. PUT ค่าตั้งปัจจุบันทั้งชุดพร้อม `auto_post: false` | เป็น false · ค่าตั้งอื่นไม่เปลี่ยน | แยกจาก TC-AUT-03 |
 | TC-BP-01 | backlog cap | 1. รอตรวจครบ 50 ใบ 2. ส่งเมลใหม่ | ไม่มีแถวที่ 51 ไม่เสียเครดิต | เมลยังไม่ถูก mark `$OcrDone` |
 | TC-BP-02 | backlog ลดลง | 1. ตรวจจนเหลือน้อยกว่า 50 | เมลที่ค้างถูกประมวลผลรอบถัดไป | ไม่ต้องแทรกแซง |
 

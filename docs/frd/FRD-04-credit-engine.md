@@ -1,12 +1,13 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-04 — Credit & Document Consumption Engine
-output: Carmen_Cloud_ERP_FRD-04_Credit_Engine_v1.1.docx
-Document Version: Version 1.1 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-04_Credit_Engine_v1.2.docx
+iso-wp: SD
+Document Version: Version 1.2 (As-Built Developer & Test Spec)
 Scope: Cross-cutting — ทุก module ที่เรียก LLM ใช้กลไกนี้
 Status: Built, merged to main, in production use
-Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026)
-Date: 27 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026)
+Date: 2 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 check-ignore: purchase_block_reason
 เอกสารที่อ้างถึงฉบับนี้: FRD-01 Credit Card OCR §8.4, FRD-02 AP Invoice §8.4, FRD Smart Credit Card Tax Ingestion (Email) §8.4 — ทั้งสามฉบับอธิบายว่า "จุดชาร์จเครดิต" อยู่ตรงไหนใน flow ของตัวเอง ส่วนฉบับนี้อธิบายว่าเมื่อถึงจุดนั้นแล้วเกิดอะไรขึ้น — PMS Interface (FRD-11) ไม่ผ่านจุดนี้เลย
@@ -18,6 +19,7 @@ check-ignore: purchase_block_reason
 |---|---|---|---|---|
 | 1.0 | 25/08/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุมลำดับการหักสองกระเป๋า การคืน การรีเซ็ตรอบ ledger และการจัดการโดย admin | Reviewed |
 | 1.1 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — ลบกติกาการซื้อทับ (`purchase_block_reason` ถูกลบเมื่อ 14/09/2026, CA-105: เปลี่ยนแพ็กได้ทุกทิศพร้อมคำเตือนฝั่งหน้าจอ ดู FRD-05); เพิ่ม AI Status API (`GET /api/v1/carmen/ai-status`) ที่ Carmen ใช้เลือก popup ขายของ อ่านจากเครดิตทดลองที่ใช้ไป; ระบุว่า PMS Interface ไม่หักเครดิต; path ตามโครงสร้างหลัง refactor (`services/shared/credits.py`) | Reviewed |
+| 1.2 | 02/11/2026 | Dev Team | ตรวจกับโค้ด ณ `2be6d7c9` แล้วแก้: `credits_purchased` / `paid` ขยับจากการคืนเครดิตและการปรับยอดบวกด้วย ไม่ใช่เฉพาะการซื้อ (บันทึกเป็นข้อจำกัดที่รู้แล้ว); ลบ "รายปี→รายเดือนถูกปฏิเสธ" (EC-16) และ Purchase guard ที่ค้างอยู่ (§2.1) ซึ่งขัดกับ CA-105; สถานะสัญญามี `lapsed`; ตัวอย่าง `plan_code` เป็นรหัสจริง (`sub_growth`); `credit_ledger.ref` ถูกล้างหลัง 12 เดือน (#322) | |
 
 <!-- pagebreak -->
 
@@ -60,10 +62,10 @@ flowchart LR
 - **Batch charging:** หักได้ครั้งละหลายหน่วยในคำสั่งเดียว (n ไฟล์ หรือ n หน้า) โดยทั้ง n หน่วยมาจากกระเป๋าเดียวกัน
 - **Monthly cycle reset:** สัญญารายปีเปิดหน้าต่างใช้งานยาว 1 ปี แต่โควตาเอกสารรีเซ็ตทุกเดือน — การรีเซ็ตเกิดขึ้นตอนที่มีคนใช้ครั้งแรกของรอบใหม่ ไม่ใช่ตอนเที่ยงคืนสิ้นเดือน
 - **Refund on failure:** คืนสิ่งที่หักไปตามกระเป๋าที่หักจริง — คืน allowance กลับเป็นโควตา คืนเครดิตกลับเป็นเครดิต
-- **Append-only ledger:** ทุกการเปลี่ยนแปลงของ credit balance ถูกบันทึกพร้อมยอดคงเหลือหลังทำรายการและเหตุผล
+- **Ledger:** ทุกการเปลี่ยนแปลงของ credit balance ถูกบันทึกเป็นแถวใหม่พร้อมยอดคงเหลือหลังทำรายการและเหตุผล — แถวไม่ถูกลบหรือแก้ยอด มีเพียง `ref` ที่ถูกล้างเมื่อเกิน 12 เดือน (§10.3)
 - **Signup grant:** tenant ใหม่ได้เครดิตทดลอง 30 หน่วยครั้งเดียว ผูกกับ transaction ที่สร้าง tenant
 - **Admin operations:** เติมเครดิตตามแพ็ก ปรับยอดด้วยมือ (บวกหรือลบ) และดู ledger ย้อนหลัง
-- **Purchase guard:** กติกาว่า tenant ที่มีแพ็กเกจอยู่แล้วซื้อแพ็กไหนได้บ้าง
+- **ไม่มี purchase guard แล้ว:** tenant ที่มีแพ็กเกจอยู่แล้วซื้อแพ็กไหนก็ได้ หน้าจอแค่เตือนเมื่อโควตาจะลดหรือเดือนที่จ่ายล่วงหน้าจะหาย (CA-105, EC-15)
 
 ## 2.2 Out-of-Scope
 
@@ -107,7 +109,7 @@ flowchart LR
 |---|---|---|
 | `tenant_id` | uuid PK | 1 แถวต่อ 1 tenant สร้างอัตโนมัติเมื่อมีการให้เครดิตครั้งแรก |
 | `balance` | integer | ยอดคงเหลือที่ใช้ได้จริง ห้ามติดลบ — การปรับที่จะทำให้ติดลบถูกปฏิเสธ |
-| `credits_purchased` | integer | **หมายถึงเงินที่รับมาจริง** เครดิตทดลองตอนสมัครจึงไม่นับเข้าช่องนี้ เพราะเครดิตที่ซื้อคือหนี้สินรับล่วงหน้า ส่วนเครดิตที่แจกไม่ใช่ — ทั้งสองแยกจากกันไม่ได้แล้วในช่อง balance เหตุผลของรายการใน ledger จึงเป็นที่เดียวที่ความต่างนี้ยังอยู่ |
+| `credits_purchased` | integer | ตั้งใจให้หมายถึงเงินที่รับมาจริง เครดิตทดลองตอนสมัครจึงไม่นับเข้าช่องนี้ — **แต่ในโค้ดปัจจุบัน ทุกการให้เครดิตที่เป็นบวกนับเข้าช่องนี้ ยกเว้น `signup_grant`** คือ top-up, การคืนเครดิต (`refund`) และการปรับยอดบวกของ admin (`admin_adjust`) ด้วย (ข้อจำกัดที่รู้แล้ว ดู `paid` ใน §12) เหตุผลของรายการใน ledger จึงเป็นที่เดียวที่แยกเงินที่รับจริงได้ |
 | `credits_consumed` | integer | ยอดสะสมที่ถูกใช้ไป นับเฉพาะที่หักจากกระเป๋านี้ ไม่รวมที่หักจาก allowance |
 
 ## 4.2 tenant_subscriptions (สัญญาและโควตาต่อรอบ)
@@ -120,10 +122,10 @@ flowchart LR
 | `period_start / period_end` | timestamptz | หน้าต่างของสัญญา คำนวณเป็น now() ถึง now() + เทอม − 1 วัน ที่ลบหนึ่งวันเพื่อให้สัญญาต่อเนื่องกันไม่ทับกันที่วันรอยต่อ (สัญญารายเดือนที่เริ่ม 24 มิ.ย. สิ้นสุด 23 ก.ค.) |
 | `cycle_start` | timestamptz | จุดเริ่มของรอบเดือนปัจจุบัน ใช้ตรวจว่ารอบหมุนไปหรือยัง |
 | `billing_period` | varchar | monthly หรือ annual — เป็นตัวกำหนดความยาวหน้าต่าง |
-| `status` | enum | active / superseded — มี unique index บังคับว่าแต่ละ tenant มี active ได้แถวเดียว |
+| `status` | enum | active / lapsed (หมดหน้าต่างแล้ว) / superseded (ถูกแพ็กใหม่แทน) — มี unique index บังคับว่าแต่ละ tenant มี active ได้แถวเดียว |
 | `source_order_id` | uuid FK | ออเดอร์ที่ทำให้สัญญานี้เกิด ใช้ตามรอยกลับไปที่การชำระเงิน |
 
-## 4.3 credit_ledger (สมุดบันทึกที่เขียนอย่างเดียว)
+## 4.3 credit_ledger (สมุดบันทึกการเคลื่อนไหวของเครดิต)
 
 | Field | Type | ความหมายและ business logic |
 |---|---|---|
@@ -131,7 +133,7 @@ flowchart LR
 | `balance_after` | integer | **ยอดคงเหลือหลังทำรายการนั้น** ทำให้ตรวจย้อนหลังได้โดยไม่ต้องบวกสะสมทั้งตาราง และจับได้ทันทีถ้ามีใครแก้ balance นอกทางที่ควร |
 | `reason` | enum | topup · consumption · admin_adjust · refund · signup_grant |
 | `pack_code` | varchar FK | แพ็กที่ใช้ ถ้ารายการนั้นมาจากการเติม |
-| `ref` | text | ตัวอ้างอิงตามบริบท — ชื่อไฟล์ที่กำลังประมวลผล หรือรหัสออเดอร์ |
+| `ref` | text | ตัวอ้างอิงตามบริบท — ชื่อไฟล์ที่กำลังประมวลผล หรือรหัสออเดอร์ · แถว consumption / refund ที่เกิน 12 เดือนถูกล้างเป็น null โดย cron `scrub-old-filenames` |
 | `note` | text | ข้อความอิสระ เช่นเหตุผลที่ admin ปรับยอด |
 
 **ข้อสังเกตที่สำคัญต่อการตรวจสอบ:** การหักและการคืน allowance ไม่ถูกบันทึกใน ledger เลย ledger บันทึกเฉพาะการเคลื่อนไหวของ credit balance — ประวัติการใช้ allowance ดูได้จาก docs_used ซึ่งเป็นตัวเลขปัจจุบันเท่านั้น ไม่มีประวัติรายรายการ
@@ -210,7 +212,7 @@ Engine นี้ไม่เรียกระบบภายนอกเลย 
 |---|---|
 | Credit Card OCR (FRD-01) | หัก n หน่วยตามจำนวนไฟล์ · คืนเป็นรายไฟล์ที่ล้มเหลว |
 | AP Invoice (FRD-02) | หัก n หน่วยตามจำนวนหน้า · คืนทั้งก้อนเมื่อล้มเหลว |
-| Email Ingest (FRD-03) | หัก 1 หน่วยต่อ 1 เอกสารแนบ · คืนเมื่อ extraction ไม่สำเร็จ |
+| Email Ingest (Email FRD) | หัก 1 หน่วยต่อ 1 เอกสารแนบ · คืนเมื่อ extraction ไม่สำเร็จ |
 | Auth / session bootstrap | ให้เครดิตทดลองใน transaction เดียวกับที่สร้าง tenant |
 | Billing (FRD-05) | เรียกเติมเครดิตและเปิดสัญญาเมื่อออเดอร์ถูกอนุมัติ |
 | Admin console | ปรับยอด ดู ledger และดูสรุปสัญญาหลาย tenant |
@@ -340,7 +342,7 @@ stateDiagram-v2
 | EC-13 | order_already_paid | เติมเครดิตจากออเดอร์ที่ปิดไปแล้ว | ConflictError · แถวถูกล็อกไว้ก่อนตรวจ จึงกันการเติมซ้ำพร้อมกันได้ | ตรวจสถานะออเดอร์ |
 | EC-14 | pack_not_found | รหัสแพ็กไม่มีอยู่จริง | NotFoundError | ตรวจรหัสแพ็ก |
 | EC-15 | plan_change_loss (v1.1) | มีแพ็กอยู่แล้วและซื้อแพ็กที่โควตาน้อยกว่า หรือเปลี่ยนรายปีเป็นรายเดือน | ไม่ถูกปฏิเสธ — หน้าจอเตือนว่าโควตาจะลด / เดือนที่จ่ายล่วงหน้าจะหายไป และยืนยันอีกครั้งตอนอัปโหลดสลิป | ผู้ซื้อตัดสินใจเอง |
-| EC-16 | annual_to_monthly_blocked | ถือรายปีอยู่แล้วจะเปลี่ยนเป็นรายเดือนกลางเทอม | ถูกปฏิเสธพร้อมเหตุผล | เลือกแพ็กรายปี หรือรอหมดเทอม |
+| EC-16 | annual_to_monthly | ถือรายปีอยู่แล้วจะเปลี่ยนเป็นรายเดือนกลางเทอม | ไม่ถูกปฏิเสธตั้งแต่ CA-105 — ได้คำเตือนแบบเดียวกับ EC-15 | ยืนยันเมื่อยอมรับว่าเดือนที่จ่ายล่วงหน้าจะหาย |
 | EC-17 | balance_read_failed | อ่านยอดคงเหลือไม่ได้ | คืนค่า 0 แทนที่จะพัง | **หน้าจออาจแสดง 0 ทั้งที่ยังมีเครดิต** — ลองรีเฟรช |
 
 # 10. Non-Functional & Technical Requirements
@@ -360,7 +362,7 @@ stateDiagram-v2
 ## 10.3 Audit Trail
 
 - ทุกการเคลื่อนไหวของ credit balance มีแถวใน ledger พร้อมยอดคงเหลือหลังทำรายการ
-- การหักบันทึกชื่อไฟล์ที่กำลังประมวลผลเป็น ref ทำให้ตามได้ว่าเครดิตหน่วยไหนหายไปกับเอกสารใบไหน
+- การหักบันทึกชื่อไฟล์ที่กำลังประมวลผลเป็น ref ทำให้ตามได้ว่าเครดิตหน่วยไหนหายไปกับเอกสารใบไหน — ภายใน 12 เดือน หลังจากนั้น cron `scrub-old-filenames` (ทุกวัน 04:20 UTC) ล้าง ref ของแถว consumption / refund เพื่อไม่เก็บชื่อไฟล์นานเกินจำเป็น ยอดและเหตุผลยังอยู่ แต่ค้นแถวเก่าด้วยชื่อไฟล์ในหน้า admin ไม่ได้แล้ว
 - **ข้อจำกัดที่ต้องรู้:** การใช้ allowance ไม่มีประวัติรายรายการ มีแต่ตัวเลขปัจจุบัน
 
 ## 10.4 ตัวเลขที่ตั้งไว้
@@ -419,7 +421,7 @@ Engine นี้ถูกเรียกจากภายในเป็นห�
   "usage": {
     "credit_balance": 120,
     "subscription": {
-      "plan_code": "PRO",
+      "plan_code": "sub_growth",
       "doc_allowance": 500,
       "docs_used": 137,
       "docs_remaining": 363,
@@ -500,7 +502,7 @@ Carmen ส่ง token ของผู้ใช้ (`Authorization: <token>` ไ
 
 | Field | ความหมาย |
 |---|---|
-| `paid` | true = มีแพ็กสัญญาที่ยังไม่หมดอายุ หรือเคยซื้อ top-up |
+| `paid` | true = มีแพ็กสัญญาที่ยังไม่หมดอายุ หรือ `credits_purchased` > 0 — **ข้อจำกัดที่รู้แล้ว:** `credits_purchased` ขยับจากการคืนเครดิตและการปรับยอดบวกด้วย tenant ทดลองที่สแกนแล้วได้เครดิตคืนจึงขึ้น `paid = true` ได้ทั้งที่ไม่เคยจ่าย |
 | `trial.used` / `trial.total` | เครดิตทดลองที่ใช้ไป (ไม่นับเอกสารที่ได้เครดิตคืน) / ทั้งหมด (`SIGNUP_GRANT_CREDITS` = 30) — เป็น null เมื่อ `paid` เป็น true เพราะเมื่อมีเครดิตที่ซื้อแล้ว 30 − balance ไม่มีความหมาย |
 | `modules` | จำนวนเอกสารต่อ product ตั้งแต่เริ่มใช้ (`ap_invoice`, `jv`) — product ที่ไม่เคยใช้ไม่มี key |
 

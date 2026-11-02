@@ -1,12 +1,13 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-09 — AI Input Tax Reconciliation (ACTX)
-output: Carmen_Cloud_ERP_FRD-09_Input_Tax_Reconciliation_v1.1.docx
-Document Version: Version 1.1 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-09_Input_Tax_Reconciliation_v1.2.docx
+iso-wp: SD
+Document Version: Version 1.2 (As-Built Developer & Test Spec)
 Module ID: `credit_card_ocr` (ไม่มี module แยก และไม่คิดเครดิตเพิ่ม เพราะไม่มีการเรียก LLM)
 Status: Built, merged to main, in production use
-Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026) + branch feat/ca-111-late-input-tax
-Date: 29 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026) — CA-111 merge แล้วใน PR #317 และ #318
+Date: 2 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 ---
 
@@ -18,6 +19,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 |---|---|---|---|---|
 | 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุมสามเส้นทางที่ยื่นภาษีซื้อ (wizard step 4, email automation, ปุ่มยื่นย้อนหลังในคิว), กติกาการเลือกผู้ขาย/tax profile/งวดภาษี, การกันยื่นซ้ำ และ QA matrix | Reviewed |
 | 1.1 | 29/10/2026 | Dev Team | CA-111: ยื่นย้อนหลังได้ทั้ง manual และ email (email stamp ยอดลง card หลัง post), ปุ่มในคิวเปิด dialog แก้ผู้ขาย/เลขผู้เสียภาษี/profile/สาขา, เลือกงวดภาษีในกรอบ 6 เดือน, ปุ่ม Keyed in Carmen already, คอลัมน์ `input_tax_by` / `input_tax_keyed` (decision-log #48) | |
+| 1.2 | 02/11/2026 | Dev Team | ตรวจกับโค้ด ณ `2be6d7c9` แล้วแก้: status code ของเส้นทาง wizard (`/carmen/input-tax`) — ต่อ Carmen ไม่ติด 503, timeout 504, Carmen ตอบ HTTP error ส่งสถานะต่อ ส่วนเส้นทางยื่นย้อนหลังได้ 503 เสมอ (§12.3); `test_cc_input_tax.py` มี 27 กรณี; CA-111 merge เข้า main แล้ว (#317, #318) | |
 
 <!-- pagebreak -->
 
@@ -372,7 +374,7 @@ sequenceDiagram
 
 - ยอดภาษีซื้อมาจากยอดชุดเดียวกับ JV เสมอ (Σ `commis_amt`, Σ `tax_amt`) ไม่มีเส้นทางที่ผู้ใช้แก้ยอดของภาษีซื้อแยกจาก JV
 - ทุกเส้นทางที่มี card id ล็อกแถว (`FOR UPDATE`) ตลอดการเรียก Carmen การกดสองครั้งจึงเรียงลำดับกัน และครั้งที่สองถูกปฏิเสธ
-- กติกาฝั่ง browser และฝั่ง server ตรึงไว้ด้วย test ชุดเดียวกัน (`test_cc_input_tax.py` 22 กรณี และ `InputTaxReconciliation.test.tsx`)
+- กติกาฝั่ง browser และฝั่ง server ตรึงไว้ด้วย test ชุดเดียวกัน (`test_cc_input_tax.py` 27 กรณี และ `InputTaxReconciliation.test.tsx`)
 
 ## 10.2 Security & Privacy
 
@@ -401,10 +403,10 @@ sequenceDiagram
 | เสร็จ | stamp `commis_amt`, `tax_amt` พร้อม JV และ `input_tax_at` เมื่อยื่นสำเร็จ |
 | เสร็จ | ปุ่ม Record input tax ในคิว และการเช็คก่อนเสนอกู้ draft |
 | เสร็จ | Branch default `00000` ทั้งสองฝั่ง |
-| ส่งทดสอบ | Email stamp ยอดและเลขที่/วันที่/สาขาลง card หลัง `_finish` (`_stamp_input_tax`) |
-| ส่งทดสอบ | แถว email มี `card_id` และ `input_tax_owed` จาก card |
-| ส่งทดสอบ | Dialog ยื่นย้อนหลัง: แก้ผู้ขาย/เลขผู้เสียภาษี/profile/สาขา, เลือกงวดในกรอบ 6 เดือน, Keyed in Carmen already |
-| ส่งทดสอบ | คอลัมน์ `input_tax_by`, `input_tax_keyed` (migration `20261029000000`) |
+| merge แล้ว (#317) · ส่งทดสอบ | Email stamp ยอดและเลขที่/วันที่/สาขาลง card หลัง `_finish` (`_stamp_input_tax`) |
+| merge แล้ว (#317) · ส่งทดสอบ | แถว email มี `card_id` และ `input_tax_owed` จาก card |
+| merge แล้ว (#317) · ส่งทดสอบ | Dialog ยื่นย้อนหลัง: แก้ผู้ขาย/เลขผู้เสียภาษี/profile/สาขา, เลือกงวดในกรอบ 6 เดือน, Keyed in Carmen already |
+| merge แล้ว (#317) · ส่งทดสอบ | คอลัมน์ `input_tax_by`, `input_tax_keyed` (migration `20261029000000`) |
 
 ## 11.2 Acceptance Criteria
 
@@ -459,7 +461,9 @@ POST /api/v1/carmen/input-tax?credit_card_id=4b1e…
 | 404 | card ไม่ใช่ของ BU หรือถูกลบแล้ว | ไม่ยื่น |
 | 409 | ยื่นแล้ว (หรือ Keyed แล้ว), JV ยังไม่ post หรือ card ไม่มียอดที่เก็บไว้ | ไม่ยื่นซ้ำ ตรวจใน Carmen |
 | 422 | `period` รูปแบบไม่ใช่ YYYY-MM | แก้ค่าที่ส่ง |
-| 503 | ติดต่อ Carmen ไม่ได้ | ลองใหม่ภายหลัง |
+| 503 | ติดต่อ Carmen ไม่ได้ — เส้นทางยื่นย้อนหลังได้ 503 เสมอเมื่อ Carmen ล้มเหลว · เส้นทาง wizard ได้ 503 เมื่อต่อไม่ติด | ลองใหม่ภายหลัง |
+| 504 | เส้นทาง wizard เท่านั้น: Carmen ไม่ตอบภายในเวลา — ไม่รู้ว่ารายการเข้าไปแล้วหรือยัง | ตรวจทะเบียนภาษีซื้อใน Carmen ก่อนยื่นซ้ำ |
+| สถานะของ Carmen | เส้นทาง wizard เท่านั้น: Carmen ตอบ HTTP error สถานะนั้นถูกส่งต่อมาตรง ๆ | แสดงข้อความของ Carmen |
 
 # 13. Test Cases & QA Matrix
 

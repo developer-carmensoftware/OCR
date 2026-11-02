@@ -1,13 +1,14 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-12 — CR: AI Transaction Review (AI JV Automation Queue)
-output: Carmen_Cloud_ERP_FRD-12_CR_AI_Transaction_Review_v1.3.docx
-Document Version: Version 1.3 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-12_CR_AI_Transaction_Review_v1.4.docx
+iso-wp: SD
+Document Version: Version 1.4 (As-Built Developer & Test Spec)
 Change Request ต่อ: FRD-01 Credit Card OCR · FRD Smart Credit Card Tax Ingestion & Auto-JV (Email) · FRD-11 PMS Interface
 Module ID: `credit_card_ocr`
 Status: Built, merged to main — คิวใช้งานจริงแล้วสำหรับแหล่ง email และ manual scan ส่วนแถว PMS แสดงในคิวแล้วแต่การ post รอ Carmen (ดู FRD-11)
-Source of truth: repo developer-carmensoftware/OCR @ 0f4da84c (28/10/2026) + branch chore/drop-email-queue-seen + branch feat/ca-111-late-input-tax
-Date: 29 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026) — รวม #314 (drop email_queue_seen) และ #317/#318 (CA-111)
+Date: 2 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 ---
 
@@ -21,6 +22,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 | 1.1 | 28/10/2026 | Dev Team | ยุบ chip เหลือ 2 ตัว (Review, All) — Today / Posted / Not posted ย้ายไปเป็น dropdown ใน All, หน้าเปิดที่ Review ถ้ามีงาน ไม่งั้นไป All, ตัดจุดเตือน (dot) และ `POST /activity/seen` ออกทั้งหมด (07-human-in-the-loop.md §24) | |
 | 1.2 | 28/10/2026 | Dev Team | Drop ตารางของจุดเตือนหลัง deploy v1.1 (migration `20261028000000`) | |
 | 1.3 | 29/10/2026 | Dev Team | CA-111: แถว email ที่ post แล้วแต่ภาษีซื้อค้างก็มีปุ่ม Record input tax เหมือน manual — ปุ่มเปิด dialog แก้ผู้ขาย/เลขผู้เสียภาษี/profile/สาขา และเลือกงวดภาษีในกรอบ 6 เดือน พร้อมทางเลือก Keyed in Carmen already, แถวมี `card_id` (decision-log #48, FRD-09 v1.1) | |
+| 1.4 | 02/11/2026 | Dev Team | ตรวจกับโค้ด ณ `2be6d7c9` แล้วแก้: แถว `received` ไปอยู่ Not posted ทันที ไม่มีเกณฑ์ 1 ชั่วโมง และป้ายคือ "Unfinished" / "ค้างอยู่" ไม่ใช่ Stuck (§4.4, EC-14); `QUEUE_CHIPS` อยู่ใน `api/emailReview.ts`; `review_payload` และ `error_message` ถูกเข้ารหัส (#319, #320); endpoint input-tax ของคิวตาม CA-111 (§12); เมลที่ถูกคืนเพราะคิวเต็มถูกย้ายไปถังขยะหลัง 14 วัน (#322, EC-13, TC-Q-45); ชื่อไฟล์ของแถว manual กลายเป็น `'scrubbed'` หลัง 12 เดือน | |
 
 <!-- pagebreak -->
 
@@ -98,7 +100,7 @@ flowchart TB
 |---|---|---|---|
 | F-01 | Activity Table API | รายการรวมสามแหล่ง แบ่งตาม filter พร้อมจำนวนและ pagination | `routers/credit_card/activity.py` + `services/credit_card/activity.py` (`list_activity`) |
 | F-02 | Chip bucket (SQL) | นิยามเดียวว่าแถวไหนอยู่ bucket ไหน ใช้ทั้งตอน list และตอนนับ | `_chip_expr()`, `_pms_chip_expr()` |
-| F-03 | Two chips + All dropdown | Review กับ All บนแถบ, Today / Posted / Not posted อยู่ใน dropdown ของ All | `ReviewQueue.tsx` (`QUEUE_CHIPS`, `ALL_SCOPES`) |
+| F-03 | Two chips + All dropdown | Review กับ All บนแถบ, Today / Posted / Not posted อยู่ใน dropdown ของ All | `ReviewQueue.tsx` · ค่าคงที่ `QUEUE_CHIPS`, `ALL_SCOPES` อยู่ใน `features/credit-card/api/emailReview.ts` |
 | F-04 | Review flags + auto-post gate | คำนวณเหตุผลของเอกสารครั้งเดียวตอนพัก และใช้เป็นด่าน auto-post ด้วย | `email_automation/ledger.py` `_review_flags()` |
 | F-05 | Park-or-finish | ตัดสินว่าการปฏิเสธหลังอ่านเอกสารจะพักไว้ในคิวหรือจบสถานะ | `email_automation/pipeline.py` `_park_or_finish()` |
 | F-06 | Review Queue API (email) | อ่านเอกสารที่รอตรวจ, approve, reject และสถานะของหน้า | `routers/email_automation/review.py` |
@@ -173,7 +175,7 @@ flowchart TB
 | `failed` | Failed | red | เหลือเฉพาะกรณีที่ระบบพังจริง ดู §8.3 |
 | `rejected` | Rejected | red | คำไม่ซ้ำกับ Failed เพราะเป็นการตัดสินใจของคน ไม่ใช่ความผิดพลาด |
 | `skipped` | Skipped | grey | ไม่เสียเครดิต — กฎของ BU เองบอกว่า "ไม่ใช่ไฟล์นี้" |
-| `received` | Stuck | amber | แถวที่ค้างที่ `received` เกิน 1 ชั่วโมง = pipeline ไม่ได้ทำต่อจนจบ |
+| `received` | Unfinished (ค้างอยู่) | amber | แถวที่ยังอยู่ที่ `received` = pipeline หยิบไปแล้วแต่ยังไม่จบ — ไปอยู่ Not posted ทันที ไม่มีเกณฑ์เวลา จึงรวมแถวที่กำลังประมวลผลอยู่ไม่กี่วินาทีด้วย |
 | `scanned` | Not posted | red | manual scan ที่เสียเครดิตแล้วไม่ได้ post |
 
 ## 4.5 Review dialog (เอกสารอีเมล) — `#/CreditCardOCR/review?id=<id>`
@@ -236,7 +238,7 @@ flowchart TB
 
 | Column | ความหมาย |
 |---|---|
-| `review_payload` | jsonb มีค่าเฉพาะตอน `pending_review` เก็บ `extracted`, `flags`, `unmapped`, `guessed`, `suggested`, `doc_type` — ล้างเป็น null ทุกครั้งที่จบสถานะ ไม่เก็บแถว JV (คำนวณสดเสมอ) และไม่เก็บ credential |
+| `review_payload` | jsonb **เข้ารหัส** (`{"enc": <Fernet token>, "doc_type": …}` — อ่านด้วย SQL ได้แค่ `doc_type` ส่วน key อื่นเช่น `extracted` ได้ null แอปถอดรหัสให้เอง) มีค่าเฉพาะตอน `pending_review` เก็บ `extracted`, `flags`, `unmapped`, `guessed`, `suggested`, `doc_type` — ล้างเป็น null ทุกครั้งที่จบสถานะ ไม่เก็บแถว JV (คำนวณสดเสมอ) และไม่เก็บ credential |
 | `posting_started_at` | claim ของการ approve/reject แบบ compare-and-set หมดอายุใน 5 นาที (`POSTING_CLAIM_TTL`) ป้องกันสองคนกด Approve พร้อมกันแล้ว post ซ้ำ (migration `20260925000000_email_documents_posting_claim.sql`) |
 | `reviewed_by` / `reviewed_by_name` / `reviewed_at` | carmen_user_id และชื่อของผู้ตัดสิน — เก็บชื่อเป็นข้อความเพราะ `ocr_sessions` ถูกลบหลัง 90 วัน และหลักฐานว่าใครอนุมัติ JV ต้องอ่านเป็นชื่อได้แม้ผ่านไปหนึ่งปี |
 | `dismissed_at` | แถวที่จบแล้วซึ่งเคยถูกเก็บออกจากมุมมอง ปัจจุบันใช้เพียงหยุดนับเป็นแถวผิดปกติ ไม่ได้ซ่อนแถว |
@@ -468,8 +470,8 @@ flowchart TB
 | EC-10 | JV สำเร็จ แต่ภาษีซื้อล้มเหลว | สถานะ `posted`, เก็บหมายเหตุใน `error_message`, ไม่ rollback | แถว Posted มีหมายเหตุต่อท้าย |
 | EC-11 | process ตายระหว่าง approve | claim หมดอายุใน 5 นาที แล้ว approve ใหม่ได้ | ภายใน 5 นาทีได้ 409 |
 | EC-12 | เปิด `?id=` ของเอกสารที่ไม่ใช่ของ BU หรือจบแล้ว | 404 แบบเดียวกันทั้งสองกรณี (ไม่บอกว่ามีอยู่จริง) | "This document is not waiting for review" |
-| EC-13 | BU มีเอกสารรอครบ 50 ใบ | อีเมลใหม่ถูกคืนในสภาพยังไม่อ่าน ไม่สร้างแถว ไม่เสียเครดิต | จำนวนบน Review หยุดที่ 50 |
-| EC-14 | แถวค้างที่ `received` เกิน 1 ชั่วโมง | ไปอยู่ Not posted พร้อมป้าย Stuck | ป้าย Stuck ที่ All → Not posted |
+| EC-13 | BU มีเอกสารรอครบ 50 ใบ | อีเมลใหม่ถูกคืนในสภาพยังไม่อ่าน ไม่สร้างแถว ไม่เสียเครดิต — **แต่เมลที่ค้างในกล่องเกิน 14 วัน (`IMAP_HOLD_DAYS`) ถูก cron `email-mailbox-purge` ย้ายไปถังขยะทุกวัน** BU ที่ปล่อยคิวเต็มนานกว่านั้นจะเสียเมลเหล่านั้น | จำนวนบน Review หยุดที่ 50 |
+| EC-14 | แถวอยู่ที่ `received` (pipeline ยังไม่จบหรือหยุดกลางทาง) | ไปอยู่ Not posted ทันทีพร้อมป้าย Unfinished — ไม่มีเกณฑ์เวลา | ป้าย Unfinished / ค้างอยู่ ที่ All → Not posted |
 | EC-15 | payload ของแถวหายระหว่างแสดง (race) | แถวยังแสดงด้วยค่าศูนย์ ไม่ทำให้ทั้งหน้าพัง | ตัวเลขเป็น 0 |
 | EC-16 | filter ใน URL ไม่รู้จัก (bookmark เก่า) | หน้าจอไม่สนใจค่า แล้วเลือก chip เริ่มต้นเอง ส่วน API fallback เป็น `all` ไม่ตอบ 400 | Review หรือ All |
 | EC-17 | bookmark เก่าที่ชี้ chip ที่ถูกยุบ (`?filter=success`) | เปิด All แล้วตั้ง dropdown เป็นค่านั้น | All กรองเป็น Posted |
@@ -506,7 +508,9 @@ stateDiagram-v2
 - ทุก query กรอง `tenant_id` ใน WHERE ไม่ใช่ตรวจหลัง fetch — endpoint รายละเอียดคืน line item จึงต้องตอบ "ไม่ใช่ของคุณ" กับ "ไม่มีอยู่" เหมือนกัน
 - post ด้วย credential ของ BU เท่านั้น (§7)
 - ไม่มี role gate: ทุก session ของ BU อนุมัติได้ ระบบบันทึกชื่อผู้ตัดสินเป็นข้อความถาวร
-- `review_payload` เป็นข้อยกเว้นของหลัก "ไม่เก็บ line item" — มีอยู่เฉพาะระหว่างที่คนยังต้องตัดสินใจ และถูกล้างทันทีที่จบสถานะ
+- `review_payload` เป็นข้อยกเว้นของหลัก "ไม่เก็บ line item" — มีอยู่เฉพาะระหว่างที่คนยังต้องตัดสินใจ และถูกล้างทันทีที่จบสถานะ ระหว่างนั้นถูกเข้ารหัสในฐานข้อมูล (`email_documents` และ `pms_events`) ด้วยกุญแจเดียวกับ session (`app/utils/crypto.py`) — แถวเก่าแปลงได้ด้วย `POST /api/v1/admin/encryption/backfill` และหมุนกุญแจตาม `docs/KEY_ROTATION.md` ค่าที่ถอดไม่ได้หลังหมุนกุญแจอ่านเป็นค่าว่าง
+- `email_documents.error_message` (เหตุผลของ reject และหมายเหตุภาษีซื้อ) และ `email_ingest_settings.owner_emails` ถูกเข้ารหัสเช่นกัน — ห้ามเทียบคอลัมน์เหล่านี้กับค่าตรง ๆ ใน SQL
+- ทุกตารางเปิด row level security และ role `anon` / `authenticated` ของ Supabase ไม่มีสิทธิ์ใด ๆ
 
 ## 10.3 Performance & Capacity
 
@@ -518,8 +522,8 @@ stateDiagram-v2
 ## 10.4 Audit Trail
 
 - `reviewed_by`, `reviewed_by_name`, `reviewed_at` ทุกครั้งที่ approve/reject — ยังอ่านเป็นชื่อได้หลังจาก session ถูกลบ
-- เหตุผลของ reject เก็บใน `error_message` และแสดงบนแถว ("Rejected by <name>: <reason>")
-- ทุกแถวของอีเมล รวมทั้งแถวที่ skip เก็บใน ledger ตามนโยบาย retention §6.3
+- เหตุผลของ reject เก็บใน `error_message` (เข้ารหัส) และแสดงบนแถว ("Rejected by <name>: <reason>")
+- ทุกแถวของอีเมล รวมทั้งแถวที่ skip เก็บใน ledger ตามนโยบาย retention §6.3 · แถว manual scan ที่เกิน 12 เดือนแสดงชื่อไฟล์เป็น `'scrubbed'` (cron `scrub-old-filenames`)
 
 ## 10.5 Internationalization
 
@@ -565,8 +569,9 @@ chip, ป้ายสถานะ, เหตุผล และปุ่มท�
 | Method | Path | หมายเหตุ |
 |---|---|---|
 | GET | `/api/v1/credit-card/activity?filter=&limit=&offset=` | filter: `today` \| `review` \| `success` \| `unposted` \| `all` (ค่าเริ่มต้น `all`), limit 1–100 (ค่าเริ่มต้น 25) |
-| GET | `/api/v1/credit-card/activity/{card_id}/input-tax` | → `{ owed }` ใช้ก่อน wizard เสนอกู้ draft |
-| POST | `/api/v1/credit-card/activity/{card_id}/input-tax` | ยื่นภาษีซื้อที่ manual scan ยังค้าง → 204 (FRD-09) |
+| GET | `/api/v1/credit-card/activity/{card_id}/input-tax` | → `{ owed: false }` หรือเมื่อค้าง: `owed` พร้อมค่าตั้งต้นของ dialog ยื่นย้อนหลัง (เลขที่ วันที่ ผู้ขาย เลขผู้เสียภาษี สาขา ยอด) และ `periods` / `expired` ของกรอบ 6 เดือน (FRD-09) |
+| POST | `/api/v1/credit-card/activity/{card_id}/input-tax` | ยื่นภาษีซื้อที่ยังค้าง ทั้งแถว manual scan และแถว email → 204 (FRD-09) |
+| POST | `/api/v1/credit-card/activity/{card_id}/input-tax/keyed` | บันทึกว่าคีย์ภาษีซื้อใน Carmen เองแล้ว ("Keyed in Carmen already") → 204 (FRD-09) |
 | GET | `/api/v1/email/documents/{id}` | เอกสารที่รอตรวจหนึ่งใบ พร้อม `extracted`, `suggested`, `doc_type`, `ar_jv` |
 | GET | `/api/v1/email/documents?tab=&limit=&offset=` | มุมมองแบบแท็บรุ่นแรก (`review` \| `posted` \| `problem` \| `skipped`) — API ยังให้บริการ แต่หน้าจอปัจจุบันไม่ได้เรียก (หน้าคิวใช้ `/activity`) |
 | GET | `/api/v1/email/status` | `enabled`, `auto_post`, `entitled`, `ingest_address`, `blockers`, `counts` — API ยังให้บริการ แต่หน้าจอปัจจุบันไม่ได้เรียก |
@@ -676,4 +681,4 @@ chip, ป้ายสถานะ, เหตุผล และปุ่มท�
 | TC-Q-42 | แถว manual ไม่ซ้ำกับแถวอีเมล | ประมวลผลเอกสารอีเมลหนึ่งใบ | ปรากฏเป็นแถว email แถวเดียว | ไม่มีแถว manual ของ task เดียวกัน |
 | TC-Q-43 | manual scan ทิ้งกลางทาง | สแกนแล้วปิดที่ step 3 | แถว `scanned` อยู่ใต้ All → Not posted | ไม่มีปุ่มบนแถว |
 | TC-Q-44 | วันของ PMS ที่รอตรวจ | มี `pms_events` สถานะ `pending_review` | แถว "PMS <วันที่>" ที่ Review ปุ่ม Review เปิด dialog ของ PMS | URL เป็น `?pms=<id>` |
-| TC-Q-45 | Backpressure | BU มี 50 ใบรอ แล้วส่งเมลใหม่ | ไม่มีแถวที่ 51 ไม่เสียเครดิต | เมลยังไม่ถูกอ่านใน mailbox |
+| TC-Q-45 | Backpressure | BU มี 50 ใบรอ แล้วส่งเมลใหม่ | ไม่มีแถวที่ 51 ไม่เสียเครดิต | เมลยังไม่ถูกอ่านใน mailbox (ภายใน 14 วัน — หลังจากนั้น `email-mailbox-purge` ย้ายไปถังขยะ) |

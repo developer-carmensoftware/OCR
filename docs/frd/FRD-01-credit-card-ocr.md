@@ -1,12 +1,13 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-01 — Credit Card OCR (AI JV Automation – Bank)
-output: Carmen_Cloud_ERP_FRD-01_Credit_Card_OCR_v2.0.docx
-Document Version: Version 2.0 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-01_Credit_Card_OCR_v2.1.docx
+iso-wp: SD
+Document Version: Version 2.1 (As-Built Developer & Test Spec)
 Module ID: `credit_card_ocr`
 Status: Built, merged to main, in production use
-Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026)
-Date: 27 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026)
+Date: 2 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 หมายเหตุเรื่องชื่อเรียก: *wizard มี 4 ขั้นตามหน้าจอจริง (Upload, Review, Accounting, Input Tax) ตั้งแต่ v2.0 หน้าแรกของโมดูลคือคิวตรวจ (FRD-12) และ wizard อยู่ที่ `#/CreditCardOCR/manual`*
 ---
@@ -19,6 +20,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 |---|---|---|---|---|
 | 1.0 | 25/08/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุม extract / mapping / submit / correction learning พร้อม gate ladder, error matrix และ QA matrix | Reviewed |
 | 2.0 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — หน้าแรกของโมดูลเป็นคิวตรวจ และ wizard ย้ายไป `/manual`; GL mapping แยกตามธนาคาร; Description ต่อธนาคารพร้อม tag 3 ตัว (ไม่เติมวันที่ให้อัตโนมัติ); Branch ค่าเริ่มต้น 00000; ส่วน Settlement ของ KBANK บนหน้า mapping; JV source `AICC*` (CA-110); key กันซ้ำมี `doc_type`; JV ถือว่าสำเร็จเฉพาะ `Code: 0` และเก็บเลข JV กับยอดภาษีซื้อ; คำเตือนเป็น code ที่แปล EN/TH; AI แนะนำบัญชีลูกหนี้ตามแบรนด์บัตร; path ในตาราง feature ตามโครงสร้างหลัง refactor 25–28/09; แยกเนื้อหา input tax, payment gateway และคิวไปไว้ FRD-09/10/12 | Reviewed |
+| 2.1 | 02/11/2026 | Dev Team | ตรวจกับโค้ด ณ `2be6d7c9` แล้วแก้: mapping ไม่ครบ ปุ่ม Confirm ไม่ถูก disable แต่เปิด modal เตือนพร้อมรายชื่อ field (Gate 8, EC-14, TC-PST-03); Carmen timeout = 504 ไม่ใช่ 503 (EC-18, §12.2); key ของ `correction_feedback` มี `bank_code`; เงื่อนไขของ correction hint (TC-EXT-06); เพิ่ม `input_tax_by` / `input_tax_keyed` (CA-111), การเข้ารหัสค่าที่ผู้ใช้แก้ (#320), การลบชื่อไฟล์และ error หลัง 12 เดือน (#322), RLS / CSP / การหมุนกุญแจ (#321, #323, #325) | |
 
 <!-- pagebreak -->
 
@@ -149,7 +151,7 @@ flowchart LR
 |---|---|---|
 | `status` | enum | pending → processing → completed / failed |
 | `charged_docs` | smallint | จำนวนเครดิตที่ถูกหักจริงสำหรับงานนี้ ปกติ 1 และเป็น 0 เมื่อ consume_document() fail-open (เกิดจาก DB error ชั่วคราว ไม่ใช่เครดิตหมด) |
-| `error_message` | text | ข้อความ error ตรง ๆ จาก exception ที่ทำให้ล้มเหลว — เป็นสิ่งที่หน้า #/admin/extractions แสดง |
+| `error_message` | text | ข้อความ error ตรง ๆ จาก exception ที่ทำให้ล้มเหลว — เป็นสิ่งที่หน้า #/admin/extractions แสดง · ถูกล้างเป็น null เมื่อเกิน 12 เดือน (ชื่อไฟล์กลายเป็น `'scrubbed'`) โดย cron `scrub-old-filenames` |
 | `ocr_engine` | varchar | model ที่ใช้จริงกับงานนี้ |
 | `carmen_user_id` | varchar | ผู้ใช้ Carmen ที่กดอัปโหลด ใช้แยกสถิติรายคนในหน้า #/admin/user-usage |
 
@@ -189,7 +191,7 @@ flowchart LR
 | แก้ค่าในตาราง Step 2 | Inline edit | ค่าที่แก้ถูกส่งเข้า POST /api/v1/feedback/corrections เพื่อใช้เป็น hint ครั้งต่อไป — field ที่ไม่ผ่าน validation (เช่น Branch No.) ถูกข้ามเฉพาะ field นั้น ไม่ทิ้งทั้งชุด |
 | Next → Review | Navigate | ขอ AI mapping ให้ field คงที่และ payment type ที่พบ (ใช้ mapping ของธนาคารของเอกสาร) |
 | Edit Mapping / Go to Mapping Settings | Navigate | เปิดหน้า mapping (`#/CreditCardOCR/mapping`) ในแท็บใหม่ เมื่อ mapping ไม่ครบ |
-| Confirm and Submit | Form submit | POST /api/v1/carmen/gljv — ปุ่มถูก disable เมื่อ mapping ไม่ครบ หรือ Dr ≠ Cr หรือกำลังส่งอยู่ สำเร็จเมื่อ Carmen ตอบ `Code: 0` เท่านั้น |
+| Confirm and Submit | Form submit | POST /api/v1/carmen/gljv — ปุ่มถูก disable เมื่อไม่มีบรรทัด หรือ Dr ≠ Cr หรือกำลังส่งอยู่ ถ้า mapping ไม่ครบ ปุ่มยังกดได้ แต่จะเปิด modal เตือนพร้อมรายชื่อ field ที่ขาด (รวม File Prefix) ให้เลือก Go to Mapping Settings หรือ Close โดยไม่ส่งอะไร สำเร็จเมื่อ Carmen ตอบ `Code: 0` เท่านั้น |
 | Add Input Tax / Skip | Form submit | Step 4 — ดู FRD-09 |
 | Restore / Discard (draft) | Modal | เสนอกู้งานค้างครั้งเดียวตอนเข้าหน้าจอ ไม่กู้อัตโนมัติ เพราะเครื่องอาจใช้ร่วมกันหลายคน |
 | Save (หน้า mapping) | Form submit | PUT /api/v1/config/accounting สำหรับธนาคารที่เลือก |
@@ -205,8 +207,8 @@ flowchart LR
 | ตาราง | บทบาทใน module นี้ |
 |---|---|
 | `ocr_tasks` | 1 แถวต่อ 1 ไฟล์ที่อัปโหลด เก็บสถานะ ผลลัพธ์ และจำนวนเครดิตที่หัก |
-| `credit_cards` | draft ของเอกสารที่อ่านสำเร็จ — submitted_at เป็น null คือยังไม่ส่ง Carmen คอลัมน์ใหม่ตั้งแต่ v1.0: `jv_no` (เลข JV ที่ Carmen คืน), `doc_type` (`fee_invoice` / `ar_reconcile`), `commis_amt`, `tax_amt`, `input_tax_at` (FRD-09) |
-| `correction_feedback` | ค่าที่ผู้ใช้แก้ ใช้คำนวณ hint รอบถัดไป unique ต่อ (tenant, doc_no, field_name) |
+| `credit_cards` | draft ของเอกสารที่อ่านสำเร็จ — submitted_at เป็น null คือยังไม่ส่ง Carmen คอลัมน์ใหม่ตั้งแต่ v1.0: `jv_no` (เลข JV ที่ Carmen คืน), `doc_type` (`fee_invoice` / `ar_reconcile`), `commis_amt`, `tax_amt`, `input_tax_at`, `input_tax_by`, `input_tax_keyed` (FRD-09) |
+| `correction_feedback` | ค่าที่ผู้ใช้แก้ ใช้คำนวณ hint รอบถัดไป unique ต่อ (tenant, bank_code, doc_no, field_name) · `original_value` / `corrected_value` ถูกเข้ารหัสในฐานข้อมูล |
 | `bu_accounting_configs` | การตั้งค่าบัญชีของ BU (1 แถวต่อ tenant) — file_prefix, file_source, branch และ `bank_descriptions` (Description ต่อธนาคาร) |
 | `bu_accounting_mapping_entries` | แถว mapping (field → แผนก/บัญชี) **มี `bank_code` ตั้งแต่ 24/09/2026** — แถวที่ไม่มีธนาคารถูกย้ายไปให้ธนาคารที่ BU ใช้จริงแล้วเลิกใช้ (01/10/2026) |
 | `banks` | รายการธนาคารที่ระบบรู้จัก เป็น FK ของ credit_cards.bank_code — `settlement_grouping` บอกว่าธนาคารใดมี layout settlement |
@@ -456,10 +458,10 @@ flowchart TB
 
 | Gate | เงื่อนไข | ตรวจที่ไหน | ถ้าไม่ผ่าน |
 |---|---|---|---|
-| 8 | mapping ครบทุก field ที่ JV ต้องใช้ (ของธนาคารนั้น) | UI (AccountingReview) | ปุ่มยืนยันถูก disable + แสดงรายชื่อ field ที่ขาด |
+| 8 | mapping ครบทุก field ที่ JV ต้องใช้ (ของธนาคารนั้น) และมี File Prefix | UI (AccountingReview) | กดยืนยันแล้วได้ modal เตือนพร้อมรายชื่อ field ที่ขาด ไม่มีอะไรถูกส่ง |
 | 9 | ทุกบรรทัด gross = commission + tax + net และ Σ Dr = Σ Cr (tolerance 0.01) | UI (AccountingReview) | ปุ่มยืนยันถูก disable + ชี้บรรทัดที่ไม่สมดุล |
 | 10 | เอกสารนี้ยังไม่ถูก submit (ล็อกแถวก่อนตรวจ) | Backend (POST /gljv) | DuplicateDocumentError → 409 |
-| 11 | Carmen ตอบ `Code: 0` (Carmen ตอบ HTTP 200 พร้อมคำตัดสินใน body) | Backend + UI | Code อื่น: ไม่ stamp อะไร draft ยังส่งใหม่ได้ และ UI แสดงข้อความของ Carmen / ติดต่อไม่ได้: 503 |
+| 11 | Carmen ตอบ `Code: 0` (Carmen ตอบ HTTP 200 พร้อมคำตัดสินใน body) | Backend + UI | Code อื่น: ไม่ stamp อะไร draft ยังส่งใหม่ได้ และ UI แสดงข้อความของ Carmen / ต่อไม่ติด: 503 · timeout: 504 · Carmen ตอบ HTTP error: ส่งสถานะของ Carmen ต่อ |
 | ✔ | ผ่านทุก gate | — | stamp submitted_at และ jv_no, อัปเดต doc_no/company/bank/branch, เก็บ commis_amt/tax_amt สำหรับภาษีซื้อ, บันทึก audit SUBMIT |
 
 **เปลี่ยนจาก v1.0:** เดิมถือว่าสำเร็จเมื่อ `Code ≥ 0` ทำให้ JV ที่ Carmen ปฏิเสธถูก mark ว่า submit แล้ว และการส่งใหม่เจอ "already submitted" แทนข้อความจริงของ Carmen ตอนนี้ stamp เฉพาะ `Code: 0`
@@ -513,11 +515,11 @@ Gate 1–5 เป็นการตรวจที่ยังไม่ได้
 | EC-11 | llm_parse_error | model ตอบกลับมาเป็นข้อความที่ parse เป็น JSON ไม่ได้ | 422 | **คืน** | ลองใหม่ หรือเลือกธนาคารให้ตรงกว่าเดิม |
 | EC-12 | partial_batch_failure | อัปโหลด 5 ไฟล์ สำเร็จ 3 ล้มเหลว 2 | 503 (error แรก) | **คืน 2** — ที่สำเร็จไม่คืน | ส่งเฉพาะไฟล์ที่ล้มเหลวใหม่ |
 | EC-13 | duplicate_on_extract | เลขที่ + วันที่ + ชนิดเอกสารนี้เคย post แล้ว | 200 (is_duplicate) | ไม่คืน | ตรวจใน Carmen ว่ามีจริงหรือไม่ |
-| EC-14 | mapping_incomplete | mapping ของธนาคารนั้นยังไม่ครบ ปุ่มยืนยันถูกปิด | — (UI) | ไม่คืน | ไปตั้งค่า Mapping ให้ครบ |
+| EC-14 | mapping_incomplete | mapping ของธนาคารนั้นยังไม่ครบ กดยืนยันแล้วได้ modal เตือน | — (UI) | ไม่คืน | ไปตั้งค่า Mapping ให้ครบ |
 | EC-15 | jv_imbalanced | Dr ≠ Cr หรือบรรทัดใดบรรทัดหนึ่งไม่สอดคล้องกัน | — (UI) | ไม่คืน | กลับไปแก้ตัวเลขใน Step 2 |
 | EC-16 | duplicate_on_submit | กดยืนยันซ้ำ หรือมีแถวอื่นที่ post เลขที่เดียวกันไปแล้ว | 409 | ไม่คืน | ตรวจใน Carmen ก่อน |
 | EC-17 | carmen_rejected | Carmen ตอบ Code ที่ไม่ใช่ 0 (ผิด business rule เช่น งวดปิดแล้ว) | 200 + ข้อความ Carmen | ไม่คืน | แก้ตามข้อความแล้วส่งใหม่ — draft ยังไม่ถูก mark ว่า submit |
-| EC-18 | carmen_unreachable | timeout หรือต่อไม่ติดระหว่าง post JV | 503 | ไม่คืน | **ตรวจ Carmen ก่อนส่งซ้ำ** — ระบบไม่รู้ว่า JV เข้าไปแล้วหรือยัง |
+| EC-18 | carmen_unreachable | ต่อไม่ติด หรือ timeout ระหว่าง post JV | 503 (ต่อไม่ติด) / 504 (timeout) | ไม่คืน | **ตรวจ Carmen ก่อนส่งซ้ำ** — ระบบไม่รู้ว่า JV เข้าไปแล้วหรือยัง |
 | EC-19 | input_tax_failed | JV ลงแล้วแต่ POST /inputTaxRec ล้มเหลว | — | ไม่คืน | **JV ไม่ถูก rollback** — ยื่นใหม่จาก Step 4 หรือจากปุ่มในคิว (FRD-09) |
 | EC-20 | credit_fail_open | DB มีปัญหาชั่วคราวตอนหักเครดิต ระบบปล่อยผ่านเพื่อไม่ให้งานสะดุด | 200 | ไม่เสีย (charged_docs = 0) | ไม่ต้องทำอะไร — ตรวจย้อนได้จาก charged_docs |
 | EC-21 | bank_switch_unsaved | สลับธนาคารบนหน้า mapping ขณะมีการแก้ค้าง | — (UI) | — | ยืนยันทิ้งหรือบันทึกก่อน |
@@ -555,6 +557,9 @@ stateDiagram-v2
 - ทุก request ที่ยิงไป OpenRouter แนบ `provider.data_collection = "deny"` บังคับที่ระดับโค้ด ไม่พึ่งการตั้งค่าใน dashboard ของผู้ให้บริการ และ production จะ log CRITICAL ถ้าค่านี้ไม่ใช่ deny
 - SSRF gate บน carmen_uri ทุกครั้งก่อนยิงออก — ปฏิเสธ loopback และ private IP
 - Rate limit แบบ sliding window ทั้งต่อ IP และเพดานรวมทั้งระบบสำหรับ endpoint ที่มีต้นทุนสูง
+- ค่าที่ผู้ใช้แก้ใน `correction_feedback` (`original_value`, `corrected_value`) ถูกเข้ารหัสในฐานข้อมูล ด้วยกุญแจเดียวกับ session (`app/utils/crypto.py`) ซึ่งหมุนกุญแจได้ตาม `docs/KEY_ROTATION.md`
+- ทุกตารางเปิด row level security และ role `anon` / `authenticated` ของ Supabase ไม่มีสิทธิ์ใด ๆ แอปเชื่อมต่อด้วย role ของตัวเอง
+- หน้าเว็บส่ง security header (CSP แบบบังคับ, `X-Frame-Options: DENY`, HSTS) จาก `frontend/vercel.json`
 
 ## 10.2 Performance & Capacity
 
@@ -566,7 +571,7 @@ stateDiagram-v2
 ## 10.3 Audit Trail & Logging
 
 - บันทึก audit action EXTRACT ตอนเริ่มอัปโหลด (พร้อมชื่อไฟล์และ IP) และ SUBMIT ตอน post JV สำเร็จ (คีย์ด้วย doc_no ที่คนจะค้นจริง)
-- ทุกงานถูกบันทึกใน ocr_tasks รวมทั้งที่ล้มเหลว พร้อม error_message เพื่อให้เห็น pattern เวลาธนาคารเปลี่ยนรูปแบบเอกสาร
+- ทุกงานถูกบันทึกใน ocr_tasks รวมทั้งที่ล้มเหลว พร้อม error_message เพื่อให้เห็น pattern เวลาธนาคารเปลี่ยนรูปแบบเอกสาร — เก็บไว้ 12 เดือน หลังจากนั้น cron `scrub-old-filenames` ล้าง error_message, ตั้งชื่อไฟล์เป็น `'scrubbed'` และล้าง `credit_ledger.ref` ของแถว consumption/refund (จำนวนและยอดยังอยู่)
 - การใช้ token และค่าใช้จ่ายต่อ call ถูกบันทึกแยกสำหรับหน้า #/admin/llm-logs
 - เลข JV ที่ Carmen คืนถูกเก็บใน `credit_cards.jv_no` แถวในคิวจึงลิงก์ไป JV ใน Carmen ได้
 
@@ -631,7 +636,7 @@ stateDiagram-v2
 | GET | `/api/v1/carmen/gl-prefix` | proxy prefix ของเลข JV · ล้มเหลวแบบนุ่มนวล (คืน Data ว่าง) |
 | POST | `/api/v1/carmen/gljv` | ส่ง JV · query credit_card_id, doc_no, company_name, bank_code, branch_no, commis_amt, tax_amt |
 | POST | `/api/v1/carmen/input-tax` | ส่งภาษีซื้อ แยก transaction จาก JV (FRD-09) |
-| POST | `/api/v1/feedback/correction` | บันทึกการแก้ 1 field · upsert ต่อ (tenant, doc_no, field_name) |
+| POST | `/api/v1/feedback/correction` | บันทึกการแก้ 1 field · upsert ต่อ (tenant, bank_code, doc_no, field_name) |
 | POST | `/api/v1/feedback/corrections` | บันทึกหลาย field ใน transaction เดียว |
 
 ## 12.1 Auth Model
@@ -649,7 +654,8 @@ stateDiagram-v2
 | 413 | ไฟล์ใหญ่เกิน 5 MB |
 | 422 | จำนวนไฟล์เกิน หรือ LLM ตอบมาในรูปแบบที่ parse ไม่ได้ |
 | 429 | ยิงถี่เกินเพดาน หรือคิว LLM เต็ม (มี Retry-After) |
-| 503 | LLM หรือ Carmen ไม่ตอบ |
+| 503 | LLM ไม่ตอบ หรือต่อ Carmen ไม่ติด |
+| 504 | Carmen ไม่ตอบภายในเวลา (timeout) — ไม่รู้ว่า JV เข้าไปแล้วหรือยัง ตรวจใน Carmen ก่อนส่งซ้ำ |
 
 <!-- pagebreak -->
 
@@ -678,7 +684,7 @@ stateDiagram-v2
 | TC-EXT-03 | LLM ต่อไม่ติดทั้งหมด. Pre: จำลอง OpenRouter ล่ม | 1. อัปโหลด 2 ไฟล์ | HTTP 503, task ทั้งสอง = failed, คืนเครดิตครบ 2 | คืนพอดี ไม่คืนซ้ำ |
 | TC-EXT-04 | LLM ตอบเป็นข้อความที่ไม่ใช่ JSON | 1. จำลอง response ที่ parse ไม่ได้ | HTTP 422, task = failed, error_message มีสาเหตุ, คืนเครดิต | คืนเครดิต |
 | TC-EXT-05 | consume_document เจอ DB error ชั่วคราว | 1. จำลอง DB ล่มเฉพาะช่วงหักเครดิต | ระบบไม่ block งาน, ocr_tasks.charged_docs = 0 | งานสำเร็จและตรวจย้อนได้ว่าไม่ได้หัก |
-| TC-EXT-06 | Correction hint ถูกใช้จริง. Pre: มี correction ของ field เดียวกัน error rate > 10% | 1. อัปโหลดเอกสารธนาคารเดิม | prompt ที่ส่งไป LLM มี hint ของ field นั้น ตรวจที่ log ของ request | hint ถูกฉีดเข้า prompt |
+| TC-EXT-06 | Correction hint ถูกใช้จริง. Pre: เลือกธนาคารตอนอัปโหลด, BU มีเอกสารของธนาคารนั้นที่ submit แล้วอย่างน้อย 10 ใบ และ correction ของ field เดียวกันภายใน 90 วันมี error rate > 10% | 1. อัปโหลดเอกสารธนาคารเดิม | prompt ที่ส่งไป LLM มี hint ของ field นั้น ตรวจที่ log ของ request | hint ถูกฉีดเข้า prompt |
 | TC-EXT-07 | Cross-tenant leak ของ hint. Pre: tenant A มี correction จำนวนมาก | 1. เข้าเป็น tenant B แล้วอัปโหลด | hint ของ B ต้องไม่มีข้อมูลจาก A | **Fail ถ้ามีข้อมูลข้าม tenant** |
 | TC-EXT-08 | คำเตือนแปลตามภาษา (v2.0) | 1. อัปโหลดเอกสารที่ยอดไม่ตรงกับยอดรวม 2. สลับ EN/TH | แบนเนอร์แสดงข้อความภาษาที่เลือก พร้อมตัวเลขผลต่าง | ไม่มีข้อความภาษาอังกฤษค้างในโหมดไทย |
 
@@ -700,7 +706,7 @@ stateDiagram-v2
 |---|---|---|---|---|
 | TC-PST-01 | ความถูกต้องของเดบิต-เครดิต. Pre: เอกสาร gross 16,478.00 = commission 15,400.00 + tax 1,078.00 + net 0 | 1. ผ่านถึง Step 3 2. เปิดดู JV ใน Carmen | Σ Dr = Σ Cr และตรงกับเอกสาร ตรวจที่ Carmen ตาม jv_no | สมดุลสมบูรณ์ |
 | TC-PST-02 | **Regression test สำคัญ:** บรรทัดไม่สอดคล้อง. Pre: แก้ให้ pay_amt ≠ commission + tax + total | 1. ไปที่ Step 3 | ปุ่มยืนยันถูก disable และแบนเนอร์ชี้เลขบรรทัดที่ผิด | **Fail ถ้ากดยืนยันได้** |
-| TC-PST-03 | mapping ไม่ครบ | 1. ลบ mapping ของ field หนึ่งแล้วไป Step 3 | ปุ่มถูก disable พร้อมรายชื่อ field ที่ขาด | บล็อกได้ถูกต้อง |
+| TC-PST-03 | mapping ไม่ครบ | 1. ลบ mapping ของ field หนึ่งแล้วไป Step 3 2. กด Confirm | modal เตือนแสดงรายชื่อ field ที่ขาด มีปุ่ม Go to Mapping Settings / Close | ไม่มี JV ถูกส่ง |
 | TC-PST-04 | กดยืนยันซ้อนสองครั้ง (double-click) | 1. กด Confirm รัว ๆ | ครั้งแรกสำเร็จ ครั้งที่สอง 409 · ตรวจที่ Carmen ต้องมี JV ใบเดียว | **Fail ถ้ามี JV สองใบ** |
 | TC-PST-05 | เอกสารซ้ำข้ามช่องทาง. Pre: เอกสารเดียวกันเคยถูก post โดย Email Ingest | 1. อัปโหลดเอกสารเดิมผ่าน wizard | is_duplicate = true และไม่สร้าง draft — key ไม่มี bank_code จึงจับได้แม้ธนาคารถูกระบุต่างกัน | **Fail ถ้าสร้าง draft ใหม่ได้** |
 | TC-PST-06 | Carmen ปฏิเสธ JV | 1. จำลอง Carmen ตอบ Code ที่ไม่ใช่ 0 | ข้อความของ Carmen, submitted_at ยังเป็น null, draft ยังอยู่ให้แก้แล้วส่งใหม่ได้ | ไม่คืนเครดิต และไม่ขึ้น "already submitted" |
