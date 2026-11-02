@@ -16,6 +16,14 @@
 //             have must not reach a customer document. Exits 1 on a miss. A name that
 //             is legitimately not ours (a Carmen endpoint) goes in `check-ignore:`.
 //
+//   --iso     build the ISO/IEC 29110 work-product copy instead (TEMPLATE_ISO29110_carmen -
+//             ai ocr.dotx, STYLE_GUIDE v1.0): TH SarabunPSK, black headings, E7E6E6 table
+//             heads, 3/2/2.5/2 cm margins, the control page + "ประวัติการแก้ไข", a closing
+//             "เอกสารอ้างอิง", and the name RS_carmen - ai ocr_<topic>_v<version>.docx.
+//             <topic> is `output` without its Carmen_Cloud_ERP_ prefix, or `iso-topic:`.
+//             Another FRD is listed as a reference when this one names it: by its FRD-nn
+//             number, or by the regex in its `iso-ref:`.
+//
 // Markdown subset: front matter (cover), # ## ### headings, paragraphs, - / 1. lists
 // (two levels), | tables (<!-- widths: 20,30,50 --> before one overrides the column
 // split), ``` code, ```mermaid <n> | <caption>, > **Label:** note, <!-- pagebreak -->,
@@ -29,9 +37,15 @@ const { execFileSync } = require('child_process')
 const d = require('docx')
 /* global mermaid -- lives in the page that renders the diagrams */
 
-const FONT = 'Leelawadee'
+const ISO = process.argv.includes('--iso')
+const FONT = ISO ? 'TH SarabunPSK' : 'Leelawadee'
 const MONO = 'Consolas'
-const PAGE_W = 9746 // A4 minus 0.75" margins, in DXA
+const PAGE_W = ISO ? 9071 : 9746 // A4 minus the margins (ISO 3 cm left, 2 cm right; else 0.75"), in DXA
+// half-points. TH SarabunPSK is small for its size: 16 pt reads like 11 pt elsewhere, so the
+// Latin-only Consolas runs are scaled down to match it.
+const SZ = ISO ? { body: 32, cell: 28, h: [40, 36, 32] } : { body: 21, cell: 20, h: [30, 25, 22] }
+const INK = c => (ISO ? '000000' : c) // the ISO template is black throughout
+const META_SKIP = ['eyebrow', 'title', 'output', 'check-ignore', 'iso-topic', 'iso-ref']
 const CHROME = path.join(process.env.LOCALAPPDATA || '', 'ms-playwright/chromium-1223/chrome-win64/chrome.exe')
 const MERMAID = 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js'
 const ROOT = path.resolve(__dirname, '../..')
@@ -133,7 +147,7 @@ function runs(text, base = {}) {
   while ((m = re.exec(text))) {
     plain(text.slice(last, m.index))
     if (m[2] !== undefined) out.push(...runs(m[2], { ...base, bold: true }))
-    else if (m[3] !== undefined) out.push(new d.TextRun({ text: m[3], ...base, font: MONO }))
+    else if (m[3] !== undefined) out.push(new d.TextRun({ text: m[3], ...base, font: MONO, ...(ISO && { size: Math.round((base.size || SZ.body) * 0.69) }) }))
     else if (m[4] !== undefined) out.push(...runs(m[4], { ...base, italics: true }))
     else out.push(...runs(m[5], base))
     last = re.lastIndex
@@ -188,7 +202,12 @@ async function renderDiagrams(blocks) {
   }
   for (const b of todo) {
     const { w, h } = JSON.parse(fs.readFileSync(b.file + '.json', 'utf8'))
-    const k = Math.min(1, 624 / w, 860 / h) // 6.5" wide, ~9" tall at 96 dpi
+    // 6.5" wide, ~9" tall at 96 dpi. ISO's text block is 6.3" by 9.9" and its 20pt headings take
+    // more of it, so a tall diagram leaves room for the headings and caption above it — unless
+    // that would shrink its text below 60%; then readable wins and it takes a page of its own.
+    const fit = H => Math.min(1, (ISO ? 604 : 624) / w, H / h)
+    let k = fit(ISO ? 740 : 860)
+    if (k < 0.6) k = fit(860)
     if (k < 0.6) console.warn(`diagram ${b.num} is drawn at ${Math.round(k * 100)}% — its text will be hard to read; split it or use TB`)
     b.png = fs.readFileSync(b.file + '.png')
     b.w = Math.round(w * k)
@@ -206,7 +225,7 @@ const P = (children, opts = {}) => new d.Paragraph({ children, ...opts })
 function minWidth(rows, c) {
   const tokens = rows.flatMap(r => (r[c] || '').replace(/<br\s*\/?>|\*\*|`/g, ' ').split(/\s+/))
   const longest = Math.max(0, ...tokens.filter(t => !/[\u0E00-\u0E7F]/.test(t)).map(t => Math.min(t.length, 26)))
-  return longest * 110 + 200 // ~5.5pt a character at 10pt, plus the cell margins
+  return longest * (ISO ? 120 : 110) + 200 // ~5.5pt a character at 10pt (ISO 14pt Sarabun), plus the cell margins
 }
 
 function colWidths(rows, pct) {
@@ -225,33 +244,100 @@ function colWidths(rows, pct) {
 }
 
 function cell(text, width, header) {
-  const paras = text.split(/<br\s*\/?>/).map(t => P(runs(t, { size: 20, bold: header || undefined }), { spacing: { before: 20, after: 20, line: 240 } }))
+  const paras = text.split(/<br\s*\/?>/).map(t => P(runs(t, { size: SZ.cell, bold: header || undefined }), { spacing: { before: 20, after: 20, line: 240 } }))
   return new d.TableCell({
     width: { size: width, type: d.WidthType.DXA },
     margins: { top: 60, bottom: 60, left: 90, right: 90 },
-    shading: header ? { fill: 'DCE6F1', type: d.ShadingType.CLEAR, color: 'auto' } : undefined,
+    shading: header ? { fill: ISO ? 'E7E6E6' : 'DCE6F1', type: d.ShadingType.CLEAR, color: 'auto' } : undefined,
     children: paras,
   })
 }
 
-function toDocx({ meta, blocks }) {
+function grid(rows, widths) {
+  return new d.Table({
+    width: { size: PAGE_W, type: d.WidthType.DXA },
+    columnWidths: widths,
+    borders: { top: B, bottom: B, left: B, right: B, insideHorizontal: B, insideVertical: B },
+    rows: rows.map((r, ri) => new d.TableRow({
+      tableHeader: ri === 0,
+      cantSplit: true,
+      children: widths.map((w, c) => cell(r[c] || '', w, ri === 0)),
+    })),
+  })
+}
+
+// ── ISO/IEC 29110 work-product shell (--iso) ─────────────────────────────────
+
+const isoVersion = m => ((m['Document Version'] || '').match(/\d+(\.\d+)+/) || ['0.1'])[0]
+const isoName = m => `RS_carmen - ai ocr_${m['iso-topic'] || m.output.replace(/^Carmen_Cloud_ERP_/, '').replace(/_v[\d.]+\.docx$/, '')}_v${isoVersion(m)}`
+
+// The template's first page: title, the one-line identity, the control table. Reviewer and
+// approver come from ROLES_carmen - ai ocr, which this repo does not hold, so they stay
+// placeholders until a person signs; the cover fields the FRD had become further rows.
+function isoCover(meta, rev) {
+  const m = Object.fromEntries(meta)
+  const last = rev[rev.length - 1] || []
+  const label = (k, v) => [new d.TextRun({ text: k, bold: true }), new d.TextRun(v)]
+  return [
+    P([new d.TextRun(`Requirements Specification – ${m.title} (RS) – ข้อกำหนดความต้องการ`)], { heading: d.HeadingLevel.TITLE }),
+    P([...label('โครงการ: ', 'carmen - ai ocr  |  '), ...label('รหัสเอกสาร: ', 'RS  |  '), ...label('เวอร์ชัน: ', `${isoVersion(m)}  |  `), ...label('มาตรฐาน: ', 'ISO/IEC 29110-5-1-2 (Basic Profile) – กระบวนการ SI')]),
+    grid([
+      ['รายการ', 'ข้อมูล'],
+      ['วันที่เอกสาร', last[1] || ''],
+      ['ผู้จัดทำ', last[2] || '[ระบุผู้จัดทำ]'],
+      ['ผู้ทบทวน', '[ระบุผู้ทบทวน]'],
+      ['ผู้อนุมัติ', '[ระบุผู้อนุมัติ]'],
+      ['สถานะ', 'Draft'],
+      ...meta.filter(([k]) => ![...META_SKIP, 'Document Version', 'Date', 'Template'].includes(k)).map(([k, v]) => [k === 'Status' ? 'สถานะระบบ' : k, v]),
+    ], [2835, 6236]),
+    P([]),
+  ]
+}
+
+// The FRD's 5-column history in the template's 4 columns; "Approved By" joins the details.
+function isoHistory(rows) {
+  return [
+    P([new d.TextRun('ประวัติการแก้ไข')], { heading: d.HeadingLevel.HEADING_1 }),
+    grid([['เวอร์ชัน', 'วันที่', 'ผู้แก้ไข', 'รายละเอียด'], ...rows.map(r => [r[0], r[1], r[2], r[3] + (r[4] ? ` (Approved By: ${r[4]})` : '')])], [1134, 1531, 1531, 4875]),
+    P([]),
+  ]
+}
+
+function isoRefs(blocks, refs) {
+  const n = 1 + Math.max(0, ...blocks.filter(b => b.t === 'h' && b.level === 1).map(b => parseInt(b.text, 10) || 0))
+  return [
+    P([new d.TextRun(`${n}. เอกสารอ้างอิง`)], { heading: d.HeadingLevel.HEADING_1 }),
+    ...refs.map(t => P(runs(t), { numbering: { reference: 'bullets', level: 0 }, spacing: { after: 60, line: 276 } })),
+  ]
+}
+
+function toDocx({ meta, blocks }, refs = []) {
   const kids = []
   const m = Object.fromEntries(meta)
-  kids.push(P([new d.TextRun({ text: m.eyebrow || 'Carmen Cloud ERP', bold: true, color: '6B7280', size: 28 })], { spacing: { before: 500, after: 60 } }))
-  kids.push(P([new d.TextRun({ text: m.title, bold: true, color: '1F4E79', size: 38 })], { spacing: { after: 200 } }))
-  for (const [k, v] of meta) {
-    if (['eyebrow', 'title', 'output', 'check-ignore'].includes(k)) continue
-    kids.push(P([new d.TextRun({ text: k + ': ', bold: true }), ...runs(v)], { spacing: { before: 0, after: 120, line: 276 } }))
+  // ISO: the history table moves onto the control page as "ประวัติการแก้ไข"
+  const revAt = ISO ? blocks.findIndex(b => b.t === 'h' && /Revision History/i.test(b.text)) : -1
+  const rev = revAt >= 0 && blocks[revAt + 1] && blocks[revAt + 1].t === 'table' ? blocks[revAt + 1].rows.slice(1) : null
+  if (ISO) kids.push(...isoCover(meta, rev || []))
+  else {
+    kids.push(P([new d.TextRun({ text: m.eyebrow || 'Carmen Cloud ERP', bold: true, color: '6B7280', size: 28 })], { spacing: { before: 500, after: 60 } }))
+    kids.push(P([new d.TextRun({ text: m.title, bold: true, color: '1F4E79', size: 38 })], { spacing: { after: 200 } }))
+    for (const [k, v] of meta) {
+      if (META_SKIP.includes(k)) continue
+      kids.push(P([new d.TextRun({ text: k + ': ', bold: true }), ...runs(v)], { spacing: { before: 0, after: 120, line: 276 } }))
+    }
+    kids.push(P([], { spacing: { after: 120 } }))
   }
-  kids.push(P([], { spacing: { after: 120 } }))
 
   let numInstance = 0
   let breakBefore = false
-  for (const b of blocks) {
+  for (const [bi, b] of blocks.entries()) {
+    if (bi === revAt) { kids.push(...(rev ? isoHistory(rev) : [])); continue }
+    if (rev && bi === revAt + 1) continue
     if (b.t === 'h') {
       const heading = [d.HeadingLevel.HEADING_1, d.HeadingLevel.HEADING_2, d.HeadingLevel.HEADING_3][b.level - 1]
-      const spacing = [{ before: 320, after: 140 }, { before: 260, after: 120 }, { before: 200, after: 100 }][b.level - 1]
-      kids.push(P(runs(b.text), { heading, spacing, keepNext: true, pageBreakBefore: breakBefore }))
+      // ISO takes its spacing from the template's heading styles
+      const spacing = ISO ? undefined : [{ before: 320, after: 140 }, { before: 260, after: 120 }, { before: 200, after: 100 }][b.level - 1]
+      kids.push(P(runs(b.text, ISO ? { size: SZ.h[b.level - 1] } : {}), { heading, spacing, keepNext: true, pageBreakBefore: breakBefore }))
       breakBefore = false
     } else if (b.t === 'p') {
       kids.push(P(runs(b.text), { spacing: { before: 0, after: 120, line: 276 } }))
@@ -279,28 +365,17 @@ function toDocx({ meta, blocks }) {
           width: { size: PAGE_W, type: d.WidthType.DXA },
           margins: { top: 80, bottom: 80, left: 120, right: 120 },
           shading: { fill: 'F5F5F5', type: d.ShadingType.CLEAR, color: 'auto' },
-          children: b.lines.map(ln => P([new d.TextRun({ text: ln || ' ', font: MONO, size: 16, color: '1F2937' })], { spacing: { before: 0, after: 0, line: 240 } })),
+          children: b.lines.map(ln => P([new d.TextRun({ text: ln || ' ', font: MONO, size: 16, color: INK('1F2937') })], { spacing: { before: 0, after: 0, line: 240 } })),
         })] })],
       }))
       kids.push(P([], { spacing: { after: 120 } }))
     } else if (b.t === 'table') {
-      const widths = colWidths(b.rows, b.widths)
-      const n = widths.length
-      kids.push(new d.Table({
-        width: { size: PAGE_W, type: d.WidthType.DXA },
-        columnWidths: widths,
-        borders: { top: B, bottom: B, left: B, right: B, insideHorizontal: B, insideVertical: B },
-        rows: b.rows.map((r, ri) => new d.TableRow({
-          tableHeader: ri === 0,
-          cantSplit: true,
-          children: Array.from({ length: n }, (_, c) => cell(r[c] || '', widths[c], ri === 0)),
-        })),
-      }))
+      kids.push(grid(b.rows, colWidths(b.rows, b.widths)))
       kids.push(P([], { spacing: { after: 120 } }))
     } else if (b.t === 'mermaid') {
       kids.push(P([
-        new d.TextRun({ text: `Diagram ${b.num}: `, bold: true, color: '6B7280', size: 18 }),
-        new d.TextRun({ text: b.caption, italics: true, color: '6B7280', size: 18 }),
+        new d.TextRun({ text: `Diagram ${b.num}: `, bold: true, color: INK('6B7280'), size: ISO ? 28 : 18 }),
+        new d.TextRun({ text: b.caption, italics: true, color: INK('6B7280'), size: ISO ? 28 : 18 }),
       ], { keepNext: true, spacing: { before: 200, after: 60, line: 276 } }))
       // The alt text keeps the mermaid source, as the first FRDs did, so the diagram can
       // always be recovered from the .docx alone.
@@ -312,10 +387,23 @@ function toDocx({ meta, blocks }) {
     }
   }
 
+  if (ISO) kids.push(...isoRefs(blocks, refs))
+
   const head = (id, name, size, color, extra = {}) => ({ id, name, basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { font: FONT, bold: true, color, size }, paragraph: extra })
   const lvl = (level, format, text, left) => ({ level, format, text, alignment: d.AlignmentType.LEFT, style: { paragraph: { indent: { left, hanging: 260 } } } })
+  // The .dotx's styles: Title 24, H1 20 (18/6), H2 18 (12/6), H3 16 (12/4), all bold black
+  const isoHead = (size, before, after) => ({ run: { font: FONT, bold: true, italics: false, color: '000000', size }, paragraph: { spacing: { before, after, line: 240 }, keepNext: true, keepLines: true } })
+  const hf = (run, alignment) => ({ children: [P([run], { alignment, spacing: { before: 0, after: 0, line: 240 } })] })
   return new d.Document({
-    styles: {
+    styles: ISO ? {
+      default: {
+        document: { run: { font: FONT, size: SZ.body }, paragraph: { spacing: { after: 120, line: 276 } } },
+        title: isoHead(48, 0, 240),
+        heading1: isoHead(40, 360, 120),
+        heading2: isoHead(36, 240, 120),
+        heading3: isoHead(32, 240, 80),
+      },
+    } : {
       default: { document: { run: { font: FONT, size: 21 }, paragraph: { spacing: { after: 120, line: 276 } } } },
       paragraphStyles: [
         head('Heading1', 'Heading 1', 30, '1F4E79', { outlineLevel: 0 }),
@@ -329,8 +417,29 @@ function toDocx({ meta, blocks }) {
         { reference: 'numbers', levels: [lvl(0, d.LevelFormat.DECIMAL, '%1.', 460), lvl(1, d.LevelFormat.LOWER_LETTER, '%2.', 920)] },
       ],
     },
-    sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 } } }, children: kids }],
+    sections: [ISO ? {
+      properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1417, right: 1134, bottom: 1134, left: 1701, header: 709, footer: 567 } } },
+      headers: { default: new d.Header(hf(new d.TextRun({ text: `carmen - ai ocr  |  RS  |  v${isoVersion(m)}`, size: 24 }), d.AlignmentType.RIGHT)) },
+      footers: { default: new d.Footer(hf(new d.TextRun({ children: ['ISO/IEC 29110-5-1-2 (Basic Profile)  –  หน้า ', d.PageNumber.CURRENT], size: 24 }), d.AlignmentType.CENTER)) },
+      children: kids,
+    } : { properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 } } }, children: kids }],
   })
+}
+
+// Other FRDs in the same folder that this one names, listed under "เอกสารอ้างอิง".
+function related(file, src) {
+  const dir = path.dirname(file)
+  const self = Object.fromEntries(parse(src).meta)
+  const others = fs.readdirSync(dir).filter(n => /^FRD-.*\.md$/.test(n) && n !== path.basename(file))
+    .map(n => Object.fromEntries(parse(fs.readFileSync(path.join(dir, n), 'utf8')).meta))
+    .filter(m => {
+      const id = m['iso-ref'] || (m.title.match(/^FRD-\d+/) || [])[0]
+      return id && new RegExp(`(${id})(?!\\d)`).test(src)
+    })
+  return [
+    `\`docs/frd/${path.basename(file)}\` — ต้นฉบับ markdown ของเอกสารนี้ เขียนจากโค้ด ${self['Source of truth'] || 'repo developer-carmensoftware/OCR'}`,
+    ...others.map(m => `${isoName(m)} — ${m.title}`),
+  ]
 }
 
 // ── --check: every backticked name must exist in the code ────────────────────
@@ -401,9 +510,10 @@ async function main() {
     if (args.includes('--check')) continue
     const doc = parse(src)
     await renderDiagrams(doc.blocks)
-    const name = Object.fromEntries(doc.meta).output || path.basename(f, '.md') + '.docx'
+    const m = Object.fromEntries(doc.meta)
+    const name = ISO ? isoName(m) + '.docx' : m.output || path.basename(f, '.md') + '.docx'
     fs.mkdirSync(out, { recursive: true })
-    fs.writeFileSync(path.join(out, name), await d.Packer.toBuffer(toDocx(doc)))
+    fs.writeFileSync(path.join(out, name), await d.Packer.toBuffer(toDocx(doc, ISO ? related(f, src) : [])))
     console.log('wrote', path.join(out, name))
   }
   process.exit(failed ? 1 : 0)
