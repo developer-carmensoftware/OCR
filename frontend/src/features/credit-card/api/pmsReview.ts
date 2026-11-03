@@ -4,8 +4,8 @@
  *
  * Carmen's engine posts it, by the BU's PMS setting in Carmen (decision-log #43): debit,
  * credit and totals are never computed here, and the screen shows no amounts. The response
- * still carries each row's amount, the AI's confidence and reason, and the setting and counter
- * account Carmen posts with; nothing reads them.
+ * still carries each row's amount, the AI's confidence and reason, and the setting Carmen posts
+ * with; nothing reads them.
  */
 
 import { apiFetch } from '@/shared/api/client'

@@ -17,12 +17,11 @@ from app.services.pms import carmen_config as cfg
 from app.services.pms import review
 from app.services.pms.process import PostRefused
 from app.services.shared.carmen import CarmenAPIError
-from tests.unit.test_pms_carmen_config import COMANCHE_INI, DAY, TABLE
+from tests.unit.test_pms_carmen_config import COLUMNS, DAY, TABLE, TABLE_COLUMNS
 
-SPEC = cfg.spec_of(cfg.parse_ini(COMANCHE_INI))
-ROWS = cfg.rows_of(DAY, SPEC)
+ROWS = cfg.rows_of(DAY, "Transaction", COLUMNS)
 KEY = {r["values"]["Description"]: r["key"] for r in ROWS}
-MAPPED = cfg.table_of(TABLE, SPEC.columns)
+MAPPED = cfg.table_of(TABLE, COLUMNS)
 GUESS = {
     KEY["Room Charge - VAT"]: {"dept": "GEN", "acc": "2012003", "confidence": "high", "why": "tax"}
 }
@@ -32,8 +31,7 @@ PAYLOAD = {
     "doc_date": "2025-10-20",
     "setting_code": "Comanche.PMS",
     "post_type": "REVENUE",
-    "counter": {"dept": "GEN", "acc": "1021001", "name": "A/R - Guest Ledger"},
-    "key_columns": SPEC.columns,
+    "key_columns": COLUMNS,
     "rows": ROWS,
     "mapped": {k: v for k, v in MAPPED.items() if k in {r["key"] for r in ROWS}},
     "guessed": GUESS,
@@ -89,7 +87,11 @@ class _Approve:
             ),
             "release": patch.object(review, "_release", AsyncMock()),
             "target": patch.object(review, "_target", AsyncMock(return_value=target)),
-            "read": patch.object(review.carmen, "get_pms_mapping", mock(table)),
+            "read": patch.object(
+                review.carmen,
+                "get_pms_mapping",
+                mock(table if isinstance(table, Exception) else (table, TABLE_COLUMNS)),
+            ),
             "put": patch.object(review.carmen, "put_pms_mapping", mock(put or {"Code": 0})),
             "masters": patch.object(
                 review.mapping, "masters", AsyncMock(return_value=(ACCOUNTS, DEPTS))
@@ -280,7 +282,7 @@ async def test_get_day_lists_the_rows_carmen_cannot_place_and_what_the_others_ma
     assert day["mapped_count"] == 1
     assert day["rows"][0] == {**ROWS[0], "dept": "103", "acc": "4010001", "name": "Room Revenue"}
     assert (day["setting_code"], day["post_type"]) == ("Comanche.PMS", "REVENUE")
-    assert day["counter"]["acc"] == "1021001"
+    assert "counter" not in day
 
 
 @pytest.mark.asyncio

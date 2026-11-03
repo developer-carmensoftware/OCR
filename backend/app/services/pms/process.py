@@ -5,11 +5,13 @@ Two ways in, one function. The webhook starts `process_event` the moment it stor
 restart, a Carmen outage or a missing credential left at `received`. A claim on
 `processed_at` keeps the two from working the same day at once.
 
-**Carmen posts; we map** (decision-log #43). The BU's PMS setting in Carmen says where a
-day's rows are, what keys its mapping table, and how debit and credit are told apart — each
-PMS differently — and Carmen's engine (`interfacePostGL`) posts the day by it. This module
-decides nothing about sides or totals. It finds the day's rows Carmen's mapping table has no
-account for, lets the AI suggest one, and asks the engine to post once nothing is missing.
+**Carmen posts; we map** (decision-log #43). The BU's PMS setting in Carmen says how debit
+and credit are told apart and which account takes the counter line — each PMS differently —
+and Carmen's engine (`interfacePostGL`) posts the day by it. This module decides nothing
+about sides or totals. It reads Carmen's list of the BU's interfaces and the mapping table
+(the setting itself is out of the menu token's reach, decision-log #51), finds the day's rows
+the table has no account for, lets the AI suggest one, and asks the engine to post once
+nothing is missing.
 
 A day with a row the table cannot place parks at `pending_review` with what the review
 needs in `review_payload`. So does every day of a PMS whose auto-post is off (the default;
@@ -113,20 +115,18 @@ def _refusal(exc: carmen.CarmenAPIError, other: str) -> str:
 async def post_day(section: dict, doc_date: str, databank_id: Any, carmen_token: str) -> str:
     """Ask Carmen's engine to post one Data Bank day. Returns `posted` or `already_posted`.
 
-    `section` is the payload's `{"setting_code", "post_type", "counter": {"dept", "acc"}}`.
+    `section` is the payload's `{"setting_code", "post_type"}`. The counter account is left
+    to the engine, which takes it from the setting (decision-log #51).
     Raises `PostRefused` with Carmen's words (`Mapping is incomplete.`, a closed period, …),
     or `carmen.CarmenAPIError` when Carmen could not be reached or refused the credential.
     Asking again is safe: the engine refuses a day it has already posted.
     """
-    counter = section.get("counter") or {}
     result = await carmen.post_pms_gl(
         section["post_type"],
         {
             "Code": section["setting_code"],
             "DateFrom": doc_date,
             "DateTo": doc_date,
-            "DeptCode": counter.get("dept") or "",
-            "AccCode": counter.get("acc") or "",
             "id": [databank_id],
         },
         carmen_token,
@@ -235,7 +235,7 @@ async def _process(claimed) -> str:
     uri_ctx = current_carmen_uri.set(uri)
     try:
         try:
-            section = cfg.find_section(await carmen.get_pms_settings(token), name)
+            section = cfg.find_section(await carmen.get_interfaces(token), itype, name)
         except carmen.CarmenAPIError as exc:
             return await _retry_or_fail(pk, attempts, "carmen_config_unreadable", exc.detail)
         if section is None:
@@ -243,46 +243,60 @@ async def _process(claimed) -> str:
                 pk,
                 attempts,
                 "pms_setting_missing",
-                f"Carmen has no active PMS posting setting for {name} with a Revenue section.",
+                f"Carmen has no PMS interface {name} posting Revenue to GL.",
             )
-        try:
-            spec = cfg.spec_of(section.config)
-        except cfg.UnsupportedFormat as exc:
+        if section.file_type.lower() != "json":
             await _write(
                 pk,
                 status="failed",
                 reason_code="unsupported_pms_format",
-                error_message=f"{section.setting_code} describes {exc}; only a JSON object is read.",
+                error_message=f"{section.setting_code} sends {section.file_type or 'an unnamed'} "
+                "files; only JSON is read.",
             )
             return "failed"
+
+        try:
+            current, table_columns = await carmen.get_pms_mapping(
+                section.setting_code, section.post_type, token
+            )
+        except carmen.CarmenAPIError as exc:
+            return await _retry_or_fail(pk, attempts, "carmen_config_unreadable", exc.detail)
+        columns = cfg.key_columns(table_columns)
+        if not columns:
+            return await _retry_or_fail(
+                pk,
+                attempts,
+                "carmen_config_unreadable",
+                f"Carmen's {section.setting_code} mapping table names no key columns.",
+            )
 
         try:
             found = await carmen.get_databank_day(itype, name, doc_type, doc_date, token)
         except carmen.CarmenAPIError as exc:
             reason = _refusal(exc, "databank_unreachable")
             return await _retry_or_fail(pk, attempts, reason, carmen_words(exc))
-        databank = cfg.newest_day(found, spec.json_keys)
-        if databank is None:
+        if not found:
             return await _retry_or_fail(
                 pk,
                 attempts,
                 "day_not_found",
                 f"Carmen's Data Bank has no {name} {doc_type} for {doc_date} yet.",
             )
-        try:
-            rows = cfg.rows_of(databank["FileData"], spec)
-        except cfg.UnreadableDay as exc:
+        newest = cfg.newest_day(found, columns)
+        if newest is None:
             await _write(
-                pk, status="failed", reason_code="unreadable_day", error_message=str(exc)[:500]
+                pk,
+                status="failed",
+                reason_code="unreadable_day",
+                error_message=f"No list in the Data Bank's {name} {doc_date} has exactly the "
+                f"rows keyed by {', '.join(columns)}.",
             )
             return "failed"
+        databank, json_keys = newest
+        rows = cfg.rows_of(databank["FileData"], json_keys, columns)
 
-        try:
-            current = await carmen.get_pms_mapping(section.setting_code, section.post_type, token)
-        except carmen.CarmenAPIError as exc:
-            return await _retry_or_fail(pk, attempts, "carmen_config_unreadable", exc.detail)
-        table = cfg.table_of(current, spec.columns)
-        new = cfg.new_keys(rows, table, spec.use_mapping)
+        table = cfg.table_of(current, columns)
+        new = cfg.new_keys(rows, table)
         guessed: dict[str, dict] = {}
         if new:
             try:
@@ -302,12 +316,7 @@ async def _process(claimed) -> str:
             "doc_date": doc_date,
             "setting_code": section.setting_code,
             "post_type": section.post_type,
-            "counter": {
-                "dept": section.counter_dept,
-                "acc": section.counter_acc,
-                "name": section.counter_name,
-            },
-            "key_columns": spec.columns,
+            "key_columns": columns,
             "rows": rows,
             # Carmen's accounts for the keys this day uses, as they were when it was read.
             "mapped": {k: table[k] for k in dict.fromkeys(r["key"] for r in rows) if k in table},
