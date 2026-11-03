@@ -7,7 +7,7 @@
 //
 // P-01..03 preflight + the success path · S-01..04 setup · A-01..07 processing · B-01..10 the review ·
 // C-01..04 re-read, auto-post, repeat · D-01..05 reject, resend, already posted ·
-// E-01..03 hygiene · T-01..03 teardown (always). The cases: the plan of 2026-11-03, in
+// F-01 the JV number in the queue · E-01..03 hygiene · T-01..03 teardown (always). The cases: the plan of 2026-11-03, in
 // changelog/2026-11-03.md.
 //
 // Needs, as env (defaults in brackets):
@@ -571,6 +571,20 @@ async function run() {
     const stillD = keyOf(pyJson('state'), BU_B, DAY_D)
     check('D-05', 'a repeat hook for a posted day changes nothing', r.status === 200 && r.json?.duplicate &&
       stillD?.status === 'posted' && jvsOf(DAY_D).length === 0, `status=${stillD?.status}`)
+
+    // ── F-01 — the JV number: a posted day with the seq post_day named in P-03 ─────
+    // Comanche refuses (ask K), so no day reaches `posted` with a JV through the flow yet;
+    // the row is stored the way `_process` stores one, and the queue must make it a link.
+    const seeded = py('seed-posted').out.trim().split('\n').pop()
+    await signIn(BU)
+    await chip('Posted')
+    const fRow = page.getByRole('row').filter({ hasText: '30/06/2024' }).filter({ hasText: 'Comanche · Daily' })
+    const fText = (await fRow.innerText().catch(() => '')).replace(/\s+/g, ' ')
+    const href = await fRow.getByRole('link', { name: /Open JV/ }).getAttribute('href').catch(() => null)
+    check('F-01', 'a posted PMS day shows its JV number, and Open JV links to that JV in Carmen',
+      /^\d+$/.test(seeded) && fText.includes(seeded) && !!href && href.includes(`/glJv/${seeded}/show`),
+      `jv_no=${seeded} href=${href} row="${fText.slice(0, 120)}"`)
+    await shot('F-01-open-jv')
   } finally {
     await browser.close()
   }
