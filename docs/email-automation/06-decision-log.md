@@ -1631,3 +1631,42 @@ its frontend calls `carmen-ocr-backend.onrender.com`, already in `connect-src` (
 both confirmed before the switch). Before merging, the exact policy was served enforced on QA
 through a Playwright route: slips, the admin pages and the proforma loaded with 0 violations.
 Rolling back is renaming the header to `Content-Security-Policy-Report-Only`.
+
+## 51. PMS processing reads Carmen's interface list, and derives the rest (2026-11-03)
+
+**Decided:** 2026-11-03, with the user, in a grilling session (CA-119, CA-116 ask A). It
+replaces how #43 *reads* Carmen's config; what #43 decided (Carmen's engine posts, by
+Carmen's own config, and the mapping lives in Carmen's table) is unchanged.
+
+**What changed at Carmen.** Ask A was a menu-token twin of `interfacePost/Setting/GL`, the
+setting whose INI says where a day's rows are and what keys the mapping. It never came:
+`/api/interface/interfacePost/Setting/*` still answers 404, so every day parked at
+`carmen_config_unreadable`. Carmen added `GET /api/interface/interfaceThirdParties` instead:
+the BU's interfaces and their sections, one row each,
+`{InterfaceType, InterfaceName, PostToModule, DocType, PostType, From}` (dev, 2026-11-03:
+Comanche → GL → REVENUE and STATISTIC, both `Json`, `From: CarmenApi`; CarmenAI → AR). It
+carries no setting code, no INI and no counter account.
+
+**Decision: derive what the list lacks, don't wait for more.**
+
+| Need | From |
+|---|---|
+| The PMS has an active REVENUE → GL section | a list row matching the hook's `InterfaceType` and `InterfaceName` (case-insensitive), `PostToModule` GL, `DocType` REVENUE. The list is **not** the BU's settings (an active `test.PMS` is absent, an inactive `CarmenAI.PMS` present) nor its licence (`test` is licensed): it is Carmen's register of third-party integrations, with the active sections. Which BU uses which PMS is our key, from Get token (#44) |
+| The setting's code | `{InterfaceName}.{InterfaceType}`, Carmen's own rule (Noon, 2026-10-15) |
+| The file format | `PostType`; anything but `Json` fails `unsupported_pms_format` |
+| What keys the mapping | the mapping table's own `Columns`, less `DeptCode`/`AccCode`/`AccDesc` (Comanche: Code, Description). A table with none, or Carmen's 303 for a setting it lacks, parks `carmen_config_unreadable` |
+| Where the day's rows are | the **one** `FileData` list whose entries all carry every key column (Comanche: `Transaction`; `Statistic` has no `Code`). None or several fails `unreadable_day` |
+| The amount (shown to the AI only) | `Amount`, Comanche's field name |
+| The counter account | not sent. Carmen's engine takes it from its own setting — **proven** 2026-11-03: a post with no counter on `test.PMS` made JV 1594, carrying GEN/1021001 lines we never sent |
+
+- **REVENUE only**, as decided on 2026-10-14. STATISTIC is listed but not posted.
+- **`From` is not read yet.** `From` says how the third party's data reaches Carmen (the user, 2026-11-03): `CarmenApi` = the third party sends it into Carmen (the Data Bank, then our hook); `PartnerApi` = Carmen fetches it from the third party itself; `null` = a user imports the file. A hook means the day is in the Data Bank, whichever way it got there, so processing does not filter on it; a `PartnerApi` PMS sends no hook and needs its own flow (not built).
+- **The Settings API does not check `pms` against the list.** A name Carmen does not list
+  shows as `pms_setting_missing` on the day, which is where it is fixed.
+- **Days already stuck at `carmen_config_unreadable` are left alone.** The daily token check
+  re-proves the credential, which wakes them (#42's sweep), and they park for review.
+
+**Ceiling.** A PMS whose Data Bank fields are not named like its mapping columns matches no
+list: its days fail `unreadable_day`, and are never keyed by a guess, because Approve writes
+the table back whole. Such a PMS needs the INI after all, which means asking Carmen to put
+`JsonKeys` and `Mapping_MapCode` on the list's row.

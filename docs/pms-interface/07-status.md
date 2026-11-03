@@ -17,51 +17,49 @@ lists it.
 | [CA-114](https://carmen-ac.atlassian.net/browse/CA-114) | Done | Prefactor: shared key dialogs; pin a page to English | Shipped, then **undone by #44**: the dialogs are back in `features/admin`, `FixedLanguage` is deleted |
 | [CA-117](https://carmen-ac.atlassian.net/browse/CA-117) | Done | `#/pms`, the BU's self-service keys page, opened from Carmen's menu by SSO | Shipped, then **deleted by #44**: Carmen's PMS setting screen sets keys and auto-post through `/api/v1/carmen/pms` |
 | [CA-121](https://carmen-ac.atlassian.net/browse/CA-121) | Done | An SSO link opened in an already-open tab kept the previous BU | Fixed |
-| [CA-119](https://carmen-ac.atlassian.net/browse/CA-119) | In Progress | Processing: hook → JV, billing gate, payload retention | Path A merged (#286, #287) and live on QA. **Path B built: Draft PR #292**, blocked on Carmen's setting GET. Retention purge not built |
-| [CA-116](https://carmen-ac.atlassian.net/browse/CA-116) | To Do | [Carmen + us] Agree on the data schema, volume and corrections | Most of it settled (#41, #43). **One blocker left: the setting GET.** See [Carmen asks](#what-carmen-still-owes) |
+| [CA-119](https://carmen-ac.atlassian.net/browse/CA-119) | In Progress | Processing: hook → JV, billing gate, payload retention | Path B merged (#292, #293) and on QA. **Unblocked 2026-11-03 (decision-log #51):** processing reads `interfaceThirdParties` in place of the setting GET. Retention purge not built |
+| [CA-116](https://carmen-ac.atlassian.net/browse/CA-116) | To Do | [Carmen + us] Agree on the data schema, volume and corrections | Most of it settled (#41, #43, #51). Ask A answered by `interfaceThirdParties` (2026-11-03), and ask I by its `From` (CarmenApi / PartnerApi / null). See [Carmen asks](#what-carmen-still-owes) |
 | [CA-115](https://carmen-ac.atlassian.net/browse/CA-115) | To Do | [Carmen] Menu link to `#/pms`, a key field in PMS settings, sending hooks | **The hook is sent:** on dev, a Data Bank Add fired our hook about 10 s later (sandbox, 2026-10-14; it carried no valid key, so it got 401). One hook from `carmencloud` arrived on 2026-10-09. **Changed by #44:** no menu link any more. Carmen's PMS setting screen calls our Settings API (auto-post, Generate key) and sends the key it gets back. Contract: [`PMS_INTEGRATION.md` §6](../PMS_INTEGRATION.md#6-settings-api--your-pms-setting-screen) |
 | [CA-118](https://carmen-ac.atlassian.net/browse/CA-118) | To Do | Release CA-93 to prod | Phase 1 is on QA only. Open: the prod release scope (prod has lacked migrations since 2026-09-02), `TRUST_PROXY` on QA, and now path B's deploy-then-push order |
 | [CA-120](https://carmen-ac.atlassian.net/browse/CA-120) | To Do | The first real end to end with Carmen | Blocked on CA-115 and CA-118 (and CA-119 path B). A simulated pre-run passed on 2026-10-07 |
 
 Dependency chain: CA-113 → CA-117 → CA-118 → CA-120 ← CA-115; CA-116 → CA-119 → CA-120.
 
-## What blocks the merge
+## Ask A, answered another way (2026-11-03)
 
-**`GET /api/interface/interfacePost/Setting/GL` (or `Setting/{code}/GL`) answers 404 with the
-menu token.** The route exists only for Carmen's web JWT, which we never hold. Without it,
-processing cannot learn:
-- which setting posts the day (its `Code`), and whether it is `IsActive`;
-- the REVENUE section's INI: where the rows are (`JsonKeys`), what keys the mapping table
-  (`Mapping_MapCode`), and the amount field;
-- the counter account, which the post requires today.
+**Until 2026-11-03 every day stopped at `carmen_config_unreadable`:**
+`GET /api/interface/interfacePost/Setting/GL` (or `Setting/{code}/GL`) answers 404 with the menu
+token, and the route still does not exist under `/api/interface` (Swagger 3.241).
 
-So every day stops at `carmen_config_unreadable`. Hard-coding the counter (`GEN/1021001`)
-would not unblock anything, because the INI is still unread.
+Carmen added `GET /api/interface/interfaceThirdParties` instead: the BU's interfaces and their
+sections, without the INI or the counter. Decision-log #51 derives the rest:
 
-On 2026-10-15 Carmen's developer said the setting GET looked hard to add. If Carmen will not
-add it, the user has to choose between two options:
-- keep each PMS's layout on our side, which bends #43's "no rules of our own";
-- or Carmen exposes the INI some other way.
+- **Which setting, and whether it is active:** the list's row for the hook's PMS × GL ×
+  REVENUE, with the code `{InterfaceName}.{InterfaceType}`.
+- **What keys the mapping:** the mapping table's own `Columns`.
+- **Where the rows are:** the one `FileData` list that carries those columns.
+- **The counter account:** not sent. Carmen's engine reads it from its setting.
 
-Our code calls `{interface}/interfacePost/Setting/GL` already (`carmen._PMS_CONFIG_PATH`), so
-the day Carmen adds it, nothing changes here.
+Read live on dev, 2026-11-03: `Comanche.PMS`, key `[Code, Description]`, `Transaction`; 2025-10-20
+gives 32 rows, 21 new keys against Carmen's 33-row table.
 
 ## What Carmen still owes
 
 | # | Ask | State |
 |---|---|---|
-| A | **The setting GET under `/api/interface`** (above) | **Open. The blocker** |
+| A | **The setting GET under `/api/interface`** | **Answered another way** 2026-11-03: `interfaceThirdParties` plus decision-log #51 |
 | — | The mapping GET under `/api/interface` | **Done** 2026-10-15 |
 | B | A token that lasts for unattended calls | **Settled** 2026-10-15: the menu token does not expire. Still to confirm: minting a new token does not revoke the old one |
 | C | `Inf.PMS.DataBank` View for the menu user, per BU | Configuration, not code. `carmencloud`'s menu user got 403 (2026-10-14) |
-| D | The JV number in `interfacePostGL`'s answer | **In progress (Carmen agreed 2026-10-20; we wait).** Today a post answers `{"Result":true,"Code":1,"RecordCount":1,"UserMessage":"Posting complete."}` with no number, so the queue has no Open JV (`/glJv/{seq}/show`), and the menu token gets 401 on `glJv/search`, so we cannot look it up. Asked for **`JvhSeq` and `JvhNo`** on `Result:true`. `JvhSeq` opens the JV: it is the same number the email path stores from `/gljv`'s `InternalMessage`. `JvhNo` is the voucher number an accountant sees in Carmen (e.g. `25100008`). Not asked: `Prefix`, and several JVs per post (we post one day at a time, `DateFrom` = `DateTo`) |
+| D | The JV number in `interfacePostGL`'s answer | **Answered 2026-11-03.** `ViewPostResult` gained `Id: integer[]` (Swagger 3.241), not `JvhSeq`/`JvhNo`. Empty at 11:52 and 13:30; **filled by 15:13** (E2E P-03: `Id: [1598]` for JV 1598, since voided). Our side, next PR: `post_day` returns `Id[0]` (one day, one JV), `_process` and `review.approve` write it to `jv_no`, and the queue's Open JV works with no UI change. The voucher number (`JvhNo`) is not in it |
 | E | What a repeat hook means: Add vs AddOrUpdate | Partly seen: Carmen fires the hook on a Data Bank **Add** (sandbox, 2026-10-14). AddOrUpdate unknown. We re-read any unposted day either way |
 | F | Is the gross Summary line intended? (2 × Guest Ledger to the counter) | Open. The nets per account equal the old rule |
-| G | The counter when not sent: "not sent" means omitted, or `""`? | Carmen plans to fill it from its config after 2026-10-19. Ask which form it takes |
+| G | The counter when not sent: "not sent" means omitted, or `""`? | We **omit** it (decision-log #51). To prove on `test.PMS` that the engine then fills it; if it answers "Account code is empty", the post retries once with `GEN/1021001` (the user's fallback, built only if needed) |
 | — | Data Bank test row Id 146 (breaks `POST …/PMS/search/…` with a 500) | Asked 2026-10-08. Unknown whether it was deleted. We don't call search |
 | H | **The PMS setting screen calls our Settings API** (#44): auto-post and Generate key per BU × PMS, sending the non-expiring token, and `pms` exactly as the hook's `InterfaceName` | Open. Replaces CA-115's menu link. From Carmen's **server** (CORS admits only our app), within 20 calls a minute per source IP. Contract: [`PMS_INTEGRATION.md` §6](../PMS_INTEGRATION.md#6-settings-api--your-pms-setting-screen) |
-| I | **A list of the PMS kinds** (the same for every BU): which send a hook with a Data Bank day, and which Carmen's own post API fetches | Open (Carmen offered it, 2026-10-16). The second kind gets its own plan once it exists |
+| I | **A list of the PMS kinds**: which send a hook with a Data Bank day, and which Carmen's own post API fetches | **Answered 2026-11-03** by `interfaceThirdParties`'s `From`: `CarmenApi` = the third party sends the day into Carmen (our hook flow); `PartnerApi` = Carmen fetches it from the third party (no Data Bank, no hook: **to build**, needs a trigger and a read-before-post from Carmen); `null` = a user imports the file (does it land in the Data Bank and fire the hook? ask) |
 | J | **Tell users on the PMS setting screen that the AI reads the day's figures** to suggest accounts | Open. A PMS-only BU never sees our consent popup any more (accepted, decision-log #44) |
+| K | **Comanche.PMS refuses to post**: every Comanche day answers `Result:false` *"Line No. 30,31 has no DrCr value."*, with or without a counter (2024-07-01 and 2025-10-20, 2026-11-03). The same data (lines 30–31: 933 Refund 35,000.00, Guest Ledger 101,452.80) posts fine on `test.PMS`, so it is Comanche.PMS's own setting | **Open. Blocks every real Comanche post.** Our side records Carmen's words on the day (`carmen_rejected`) and keeps it in the queue |
 
 Questions from path A that path B made moot: which posting path (Carmen's engine),
 debit/credit by `TransactionType` (Carmen's config), and Draft vs Normal (the engine's own JVs
@@ -69,11 +67,9 @@ are Normal).
 
 ## What we still owe
 
-- **Merge #292 once A lands**, in this order: deploy, then `db push`
-  ([05-operations.md](05-operations.md#releasing-path-b-pr-292)). Add the batched release note
-  and bump `VERSION` (MINOR). `feat/pms-carmen-settings` (#44) is stacked on it and merges
-  with it: its migration `20261016000000` revokes every key, so Carmen's screen (H) must be
-  ready to generate new ones.
+- **Ship decision-log #51:** deploy the backend (`-xntb`). No migration. Days stuck at
+  `carmen_config_unreadable` wake on the next daily token check and park for review. The
+  release note and `VERSION` (MINOR) stay batched.
 - **The JV number, once Carmen ships D:** `post_day` (`services/pms/process.py`) returns the
   answer's `JvhSeq`, and `_process` and `review.approve` write it to `pms_events.jv_no` instead
   of `None`. The queue's Open JV already reads `jv_no`, so the UI needs no change. Add a
@@ -106,7 +102,7 @@ Things to add to the tickets. Nothing below has been posted yet.
     PUT replaces the table; the post's answer codes;
   - the 2026-10-15 Discord answers: the mapping GET was added, the token does not expire, the
     counter plan;
-  - the one ask left: the setting GET.
+  - ask A, answered by `interfaceThirdParties` (decision-log #51); ask I, answered by its `From`.
 - **CA-120.** Two acceptance criteria are stale:
   - "picks a JV prefix on `#/pms`" no longer exists;
   - "a JV that Carmen shows with source PMS": the engine's JVs carry Carmen's own source and

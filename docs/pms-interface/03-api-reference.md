@@ -99,7 +99,6 @@ checks:
   "reason_code": null,          // set when the pipeline stopped it (carmen_rejected, …)
   "error_message": null,        // Carmen's own words, for those
   "setting_code": "Comanche.PMS", "post_type": "REVENUE",
-  "counter": {"dept": "GEN", "acc": "1021001", "name": "…"},
   "key_columns": ["Code", "Description"],
   "rows": [                     // every row of the day, in file order; Carmen's account where it has one
     {"key": "[\"100\",\"Room Charge\"]", "values": {"Code": "100", "Description": "Room Charge"},
@@ -147,17 +146,18 @@ it is read again.
 
 All under `{carmen_uri}/Carmen.API/api/interface`, with the BU's menu token.
 
-| Call | Function | Answer we rely on | State, 2026-10-16 |
+| Call | Function | Answer we rely on | State, 2026-11-03 |
 |---|---|---|---|
 | `GET /{type}/{name}/{docType}/Date/{docDate}` | `carmen.get_databank_day` | a list of `ViewDataBank` rows (`Id`, `FileData`, `LastModified`, …), or an empty body | works. Needs `Inf.PMS.DataBank` View on the menu user (403 otherwise) |
-| `GET /interfacePost/Setting/GL` | `carmen.get_pms_settings` | every GL interface setting with its `Configuration` | **404 with the menu token.** The route exists only for the web JWT. **This blocks the merge** |
-| `GET /interfacePost/mapping/{code}/{postType}/GL` | `carmen.get_pms_mapping` | a .NET DataTable: `{"Rows": [{Code, Description, DeptCode, AccCode, AccDesc, …}]}` | **works since 2026-10-15** (Carmen added it; 33 rows for Comanche) |
+| `GET /interfaceThirdParties` | `carmen.get_interfaces` | the BU's interfaces × sections: `[{InterfaceType, InterfaceName, PostToModule, DocType, PostType, From}]`, e.g. `{"PMS", "Comanche", "GL", "REVENUE", "Json", "CarmenApi"}` | **works since 2026-11-03** (Carmen added it in place of the setting GET, which is still 404 with the menu token). Carmen's register of third-party integrations, not the BU's settings. `From` says how the third party's data reaches Carmen (the user, 2026-11-03): `CarmenApi` = the third party sends it into Carmen (the Data Bank, then our hook); `PartnerApi` = Carmen fetches it from the third party itself; `null` = a user imports the file (decision-log #51) |
+| `GET /interfacePost/mapping/{code}/{postType}/GL` | `carmen.get_pms_mapping` | a .NET DataTable: `{"Columns": [{ColumnName}…], "Rows": [{Code, Description, DeptCode, AccCode, AccDesc, …}]}`. `Columns` less the account columns is the mapping key. A setting Carmen lacks answers `303` `Code -400 "Configuration is missing"`, which we raise | **works since 2026-10-15** (Carmen added it; 33 rows for Comanche) |
 | `PUT /interfacePost/mapping/{code}/{postType}/GL` | `carmen.put_pms_mapping` | body `[{<key columns>, DeptCode, AccCode}]`. **Replaces the whole table** | works with the menu token (sandbox, 2026-10-14) |
 | `POST /interfacePostGL/{postType}` | `carmen.post_pms_gl` | see below | works with the menu token |
 | account codes, departments | `carmen.get_account_codes`, `get_departments` | the BU's chart, for the AI and the approve checks | works |
 
 **`interfacePostGL/REVENUE`.** Body:
-`{"Code": "Comanche.PMS", "DateFrom": d, "DateTo": d, "DeptCode": counter, "AccCode": counter, "id": [databankId]}`.
+`{"Code": "Comanche.PMS", "DateFrom": d, "DateTo": d, "id": [databankId]}`. No `DeptCode`/`AccCode`:
+the counter account is Carmen's setting, and the engine reads it from there (decision-log #51).
 
 | Carmen answers | Means | We record |
 |---|---|---|
@@ -165,10 +165,12 @@ All under `{carmen_uri}/Carmen.API/api/interface`, with the BU's menu token.
 | `303` `{"Code": -200, "UserMessage": "Already Posted."}` | posted before (its own Post button, or an earlier approve) | `posted` + `already_posted` |
 | `303` `{"Code": -500, "UserMessage": "Mapping is incomplete."}` | a row has no account | parked `carmen_rejected` (pipeline) · `400` (approve) |
 | `303` `{"Code": -400, "UserMessage": "Configuration is missing"}` | no `Code` sent | the same |
-| `200` `{"Result": false, "ErrorList": […]}` | e.g. "Account code is empty" when the counter is missing | the same. **Only `Result: true` counts as posted** |
+| `200` `{"Result": false, "ErrorList": […]}` | e.g. "Account code is empty" if the engine cannot find the counter | the same. **Only `Result: true` counts as posted** |
 | `401` / `403` | the token is dead, or lacks a permission | `carmen_unauthorized` / `carmen_forbidden` |
 
 The 303s come back as values, not errors: `_json_or_raise` raises only at ≥ 400.
 
 We measured these on Carmen's `test.PMS` sandbox on 2026-10-14 and 10-15, and voided the JVs afterwards.
-`Code` and the counter are both required. `id` is optional: a date range alone also posts.
+`Code` is required. On 2026-10-15 the counter was too; since then Carmen fills it from its
+setting when it is not sent (proven 2026-11-03: JV 1594 on `test.PMS`). `id` is optional: a date
+range alone also posts.
