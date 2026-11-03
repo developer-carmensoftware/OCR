@@ -37,7 +37,14 @@ FULL = [
     }
     for r in ROWS
 ]
-POSTED = {"Result": True, "RecordCount": 1, "Code": 1, "UserMessage": "Posting complete."}
+# The engine's answer since ask D (2026-11-03): `Id` names the JV it made.
+POSTED = {
+    "Result": True,
+    "RecordCount": 1,
+    "Code": 1,
+    "UserMessage": "Posting complete.",
+    "Id": [1599],
+}
 AUTO = SimpleNamespace(auto_post=True)
 
 
@@ -133,7 +140,8 @@ async def test_a_fully_mapped_day_of_an_auto_post_bu_goes_to_carmens_engine():
     assert run.db.get.await_args.args[1] == (run.claimed.tenant_id, "comanche")
     assert run.last["status"] == "posted"
     assert run.last["review_payload"] is None
-    assert (run.last["jv_no"], run.last["reason_code"]) == (None, None)
+    # The JV's seq, from the answer's `Id`: what the queue's Open JV opens.
+    assert (run.last["jv_no"], run.last["reason_code"]) == ("1599", None)
     post_type, body, token = run.m["post"].await_args.args
     assert post_type == "REVENUE" and token == "tok"
     assert body == {
@@ -148,7 +156,18 @@ async def test_a_fully_mapped_day_of_an_auto_post_bu_goes_to_carmens_engine():
 async def test_a_day_carmen_has_already_posted_is_posted():
     run = _Run(settings=AUTO, post={"Code": -200, "UserMessage": "Already Posted."})
     assert await run() == "posted"
-    assert run.last["reason_code"] == "already_posted"
+    assert (run.last["reason_code"], run.last["jv_no"]) == ("already_posted", None)
+
+
+@pytest.mark.asyncio
+async def test_an_answer_without_an_id_posts_without_a_jv_link():
+    """Carmen's answer before ask D: the day posts all the same, with no JV to link."""
+    run = _Run(settings=AUTO, post={k: v for k, v in POSTED.items() if k != "Id"})
+    assert await run() == "posted"
+    assert (run.last["status"], run.last["jv_no"]) == ("posted", None)
+    run = _Run(settings=AUTO, post={**POSTED, "Id": []})
+    assert await run() == "posted"
+    assert run.last["jv_no"] is None
 
 
 @pytest.mark.asyncio

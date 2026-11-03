@@ -221,7 +221,9 @@ async def approve(
                 ) from exc
 
         try:
-            outcome = await post_day(payload, payload["doc_date"], payload["databank_id"], token)
+            outcome, jv_no = await post_day(
+                payload, payload["doc_date"], payload["databank_id"], token
+            )
         except PostRefused as exc:
             raise ValidationError(f"Carmen didn't post the day: {exc}") from exc
         except carmen.CarmenAPIError as exc:
@@ -236,7 +238,7 @@ async def approve(
                 .where(PmsEvent.id == event_pk)
                 .values(
                     status="posted",
-                    jv_no=None,
+                    jv_no=jv_no,
                     review_payload=None,
                     reason_code="already_posted" if outcome == "already_posted" else None,
                     error_message=None,
@@ -250,7 +252,7 @@ async def approve(
         if chosen:
             fresh = {**table, **{k: {**v, "name": ""} for k, v in chosen.items()}}
             await recheck(tenant_id, payload.get("interface") or "", fresh)
-        return {"jv_no": None, "already_posted": outcome == "already_posted"}
+        return {"jv_no": jv_no, "already_posted": outcome == "already_posted"}
     finally:
         if uri_ctx is not None:
             current_carmen_uri.reset(uri_ctx)
