@@ -73,9 +73,8 @@ day it does nothing and writes no `job_runs` row.
 #44, stacked on #292) re-keys `pms_settings` and revokes every live key, so it ships in the
 same release: after it, Carmen's PMS setting screen must generate each BU's key again.
 
-1. Carmen exposes the setting GET under `/api/interface`
-   ([07-status.md](07-status.md#what-blocks-the-merge)). Until then, merging only moves every
-   day to `carmen_config_unreadable`.
+1. ~~Carmen exposes the setting GET under `/api/interface`.~~ It never came; since
+   2026-11-03 processing reads `interfaceThirdParties` and derives the rest (decision-log #51).
 2. Merge #292 (with its changelog). Add the batched release note in `releaseNotes.ts`, and
    bump `VERSION` (MINOR) with it.
 3. **Deploy the backend.**
@@ -117,15 +116,17 @@ select reason_code, status, count(*) from pms_events
 | Carmen gets `403 This key is for PMS '…'` | the hook's `InterfaceName` is not the PMS the key was generated for | Carmen sends each PMS's hook with that PMS's own key |
 | Carmen gets `422` naming `DocDate` | a number or `dd/MM/yyyy` sent as the date | [`PMS_INTEGRATION.md` §3](../PMS_INTEGRATION.md#3-request-body) |
 | Carmen gets `429` | more than 120/min from one IP, or QA's shared bucket | Pace a backfill under 2/s; fix `TRUST_PROXY` on QA |
-| Every day stops at `carmen_config_unreadable` | the menu token cannot read `interfacePost/Setting/GL` | **Expected until Carmen adds the GET.** Nothing to do per day: the wake rule retries once a credential is re-proven |
+| A day stops at `carmen_config_unreadable` | Carmen did not answer `interfaceThirdParties` or the mapping table (`303 Configuration is missing`: no setting `{InterfaceName}.PMS`), or the table names no key column | Read the day's error. Fix the setting in Carmen; the wake rule retries once a credential is re-proven |
+| A day fails `unreadable_day` | no list in the Data Bank day carries every key column of Carmen's mapping table (or two do): the PMS names its fields unlike the table's columns, or the row is junk | Read the day's error. A PMS laid out unlike Comanche needs Carmen's INI (decision-log #51's ceiling). A repeat hook re-reads the day |
 | `carmen_forbidden` with "Permission Name = Inf.PMS.DataBank \| Action = View" | the menu user's role in Carmen lacks Data Bank View | The BU's Carmen admin grants it, then saves the PMS setting in Carmen. That save replaces the held token even if it still answers (#45) |
 | `carmen_unauthorized` with "SecurityToken has Expired" | the stored token died | Save the PMS setting in Carmen (or open email settings from Carmen's menu). The days wake on their own |
 | `no_credential` | no write from Carmen's PMS setting yet (keys made before #44, or an admin-only setup) | Save the PMS setting in Carmen: a write stores the token when none is held (#45) |
-| `pms_setting_missing` | no **active** PMS setting whose `InterfaceName` matches the hook's, or its REVENUE section is inactive or has no config | Fix it in Carmen's interface settings, then have Carmen re-send the day |
+| `pms_setting_missing` | Carmen's `interfaceThirdParties` has no row for this PMS × GL × REVENUE: no **active** setting whose `InterfaceName` matches the hook's | Fix it in Carmen's interface settings, then have Carmen re-send the day |
 | `unsupported_pms_format` | the setting's file is CSV, fixed-width or another layout | Code change in `carmen_config.spec_of`; until then, post in Carmen |
 | `day_not_found` | the hook came before the Data Bank row had rows, or the day is empty | It retries 3 times, 10 minutes apart. After that, have Carmen re-send the hook |
 | Approve → `503` "Couldn't read Carmen's … mapping" | Carmen down, or the token | Nothing was written. Try again |
 | Approve → `400` "Carmen didn't post the day: …" | Carmen's verdict: a closed period, "Mapping is incomplete.", "Account code is empty" (the counter) | Read Carmen's words. The accounts may already be in Carmen's table; approving again is safe |
+| "Line No. 30,31 has no DrCr value." on every Comanche day | Comanche.PMS's setting in Carmen (07-status ask K): the same data posts on `test.PMS` | Carmen fixes the setting; then Approve again, or a repeat hook re-reads the day. Nothing to change here |
 | A day posted but shows no JV number | the engine does not return one | Expected until Carmen ships ask D (in progress since 2026-10-20). Find the JV in Carmen by date and source CMRV |
 | Re-run one day by hand | — | Prefer Carmen re-sending the hook. Otherwise run `update pms_events set status='received', attempts=0, processed_at=null, review_payload=null, reason_code=null, error_message=null where id = '…' and status <> 'posted';`, then the next sweep, or `POST /api/v1/pms/process/run` with the job token |
 
@@ -169,7 +170,7 @@ The real end to end is **CA-120**: a real Carmen menu click and real hooks. It n
 
 | Gap | Effect | Upgrade path |
 |---|---|---|
-| **The setting GET under `/api/interface`** (Carmen) | Every day stops at `carmen_config_unreadable` | Carmen adds it. Our call already uses that path (`carmen._PMS_CONFIG_PATH`) |
+| **The setting itself is unread** (decision-log #51) | A PMS whose Data Bank fields are not named like its mapping columns fails `unreadable_day` | Carmen adds `JsonKeys` and `Mapping_MapCode` to the `interfaceThirdParties` row; read them in `carmen_config.find_section` |
 | Token health skips PMS-only BUs | A dead token is found only when a day fails | Extend `sweep_token_health` to BUs with a live PMS key |
 | No retention purge for `pms_events` | Rows accumulate, about 1 per BU per day, with no payload once done | Decide a period; a cron like email's retention |
 | No JV number | The queue cannot link to the JV | **Carmen is adding `JvhSeq` and `JvhNo` to `interfacePostGL`'s answer** (ask D, agreed 2026-10-20). Then `post_day` stores it in `jv_no` ([07-status.md](07-status.md#what-we-still-owe)) |

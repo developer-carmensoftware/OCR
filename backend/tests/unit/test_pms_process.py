@@ -16,7 +16,7 @@ from sqlalchemy.dialects import postgresql
 from app.services.pms import carmen_config as cfg
 from app.services.pms import process
 from app.services.shared.carmen import CarmenAPIError
-from tests.unit.test_pms_carmen_config import COMANCHE_INI, CUSTOM_INI, DAY, _setting
+from tests.unit.test_pms_carmen_config import COLUMNS, DAY, INTERFACES, TABLE_COLUMNS
 
 HOOK = {
     "InterfaceType": "PMS",
@@ -25,8 +25,7 @@ HOOK = {
     "DocDate": "2025-10-20",
 }
 DATABANK = [{"Id": 148, "LastModified": "2026-10-14T14:29:34+07:00", "FileData": DAY}]
-SPEC = cfg.spec_of(cfg.parse_ini(COMANCHE_INI))
-ROWS = cfg.rows_of(DAY, SPEC)
+ROWS = cfg.rows_of(DAY, "Transaction", COLUMNS)
 # Carmen's table with every one of the day's rows mapped.
 FULL = [
     {
@@ -62,9 +61,10 @@ class _Run:
         *,
         settings=None,
         target=("tok", "https://dev.carmen4.com"),
-        carmen_settings=None,
+        interfaces=INTERFACES,
         databank=DATABANK,
         table=FULL,
+        columns=TABLE_COLUMNS,
         suggest=None,
         post=POSTED,
         claimed=None,
@@ -86,13 +86,13 @@ class _Run:
             "session": patch.object(process, "async_session", session),
             "target": patch.object(process, "_target", AsyncMock(return_value=target)),
             "write": patch.object(process, "_write", write),
-            "settings": patch.object(
-                process.carmen,
-                "get_pms_settings",
-                _mock(carmen_settings if carmen_settings is not None else [_setting()]),
-            ),
+            "interfaces": patch.object(process.carmen, "get_interfaces", _mock(interfaces)),
             "databank": patch.object(process.carmen, "get_databank_day", _mock(databank)),
-            "mapping": patch.object(process.carmen, "get_pms_mapping", _mock(table)),
+            "mapping": patch.object(
+                process.carmen,
+                "get_pms_mapping",
+                _mock(table if isinstance(table, Exception) else (table, columns)),
+            ),
             "masters": patch.object(process.mapping, "masters", AsyncMock(return_value=([], []))),
             "suggest": patch.object(process.mapping, "suggest", _mock(suggest or {})),
             "post": patch.object(process.carmen, "post_pms_gl", _mock(post)),
@@ -118,7 +118,7 @@ async def test_auto_post_off_parks_even_a_fully_mapped_day():
     payload = run.last["review_payload"]
     assert payload["flags"] == []
     assert (payload["setting_code"], payload["post_type"]) == ("Comanche.PMS", "REVENUE")
-    assert payload["counter"] == {"dept": "GEN", "acc": "1021001", "name": "A/R - Guest Ledger"}
+    assert "counter" not in payload
     assert payload["key_columns"] == ["Code", "Description"]
     assert len(payload["rows"]) == 4 and len(payload["mapped"]) == 4
     assert payload["databank_id"] == 148
@@ -140,8 +140,6 @@ async def test_a_fully_mapped_day_of_an_auto_post_bu_goes_to_carmens_engine():
         "Code": "Comanche.PMS",
         "DateFrom": "2025-10-20",
         "DateTo": "2025-10-20",
-        "DeptCode": "GEN",
-        "AccCode": "1021001",
         "id": [148],
     }
 
@@ -196,28 +194,45 @@ async def test_no_credential_is_retried_then_fails():
 
 @pytest.mark.asyncio
 async def test_unreadable_carmen_config_is_its_own_reason():
-    """The menu token cannot read the setting until Carmen opens it (CA-116)."""
-    run = _Run(carmen_settings=CarmenAPIError(404, "HTTP 404: not found"))
+    """The interface list or the mapping table could not be read, or keys nothing."""
+    run = _Run(interfaces=CarmenAPIError(404, "HTTP 404: not found"))
     assert await run() == "retry"
     assert run.last["reason_code"] == "carmen_config_unreadable"
-    run = _Run(table=CarmenAPIError(405, "HTTP 405: method"))
+    run = _Run(table=CarmenAPIError(303, 'HTTP 303: {"UserMessage":"Configuration is missing"}'))
     assert await run() == "retry"
     assert run.last["reason_code"] == "carmen_config_unreadable"
+    run = _Run(columns=["DeptCode", "AccCode", "AccDesc"])
+    assert await run() == "retry"
+    assert run.last["reason_code"] == "carmen_config_unreadable"
+    run.m["databank"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_no_active_setting_for_the_interface():
-    run = _Run(carmen_settings=[_setting(name="Opera")])
+async def test_no_revenue_section_for_the_interface():
+    run = _Run(interfaces=[{**INTERFACES[0], "InterfaceName": "Opera"}, INTERFACES[1]])
     assert await run() == "retry"
     assert run.last["reason_code"] == "pms_setting_missing"
+    run.m["mapping"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_a_file_layout_the_reader_does_not_take_fails_without_guessing():
-    run = _Run(carmen_settings=[_setting(ini=CUSTOM_INI)])
+async def test_a_file_type_the_reader_does_not_take_fails_without_guessing():
+    run = _Run(interfaces=[{**INTERFACES[0], "PostType": "Text"}])
     assert await run() == "failed"
     assert run.last["reason_code"] == "unsupported_pms_format"
-    run.m["databank"].assert_not_awaited()
+    assert "Comanche.PMS sends Text files" in run.last["error_message"]
+    run.m["mapping"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_day_with_no_list_keyed_like_the_table_fails_without_guessing():
+    """The PMS names its fields unlike Carmen's mapping columns: nothing to key the rows by."""
+    stats_only = {"Statistic": [{"Description": "TOTAL ROOM AVAILABLE", "Value": "162.00"}]}
+    run = _Run(databank=[{"Id": 149, "LastModified": "2026-10-14", "FileData": stats_only}])
+    assert await run() == "failed"
+    assert run.last["reason_code"] == "unreadable_day"
+    assert "keyed by Code, Description" in run.last["error_message"]
+    run.m["post"].assert_not_awaited()
 
 
 @pytest.mark.asyncio

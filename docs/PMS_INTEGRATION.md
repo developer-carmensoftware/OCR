@@ -242,14 +242,14 @@ generated through `routers/pms_carmen.py` (one live key per tenant and PMS,
 `backend/app/routers/pms.py`, `routers/pms_carmen.py`, `services/shared/api_keys.py`.
 Processing (CA-119) lives in
 `services/pms/`:
-- `carmen_config` reads Carmen's PMS setting (the INI in `ConfigBase64`, the mapping key, the
-  file layout);
+- `carmen_config` derives what Carmen's PMS setting says from `interfaceThirdParties`, the
+  mapping table's columns and the day itself (decision-log #51);
 - `mapping` holds the AI's picks for rows Carmen's table cannot place;
 - `process` is the job, and posts through Carmen's engine;
 - `review` handles approve/reject. Approve writes the mapping table back whole, because
   Carmen's PUT replaces it.
 
-The Carmen calls are in `services/shared/carmen.py` (`get_pms_settings`, `get_pms_mapping`,
+The Carmen calls are in `services/shared/carmen.py` (`get_interfaces`, `get_pms_mapping`,
 `put_pms_mapping`, `post_pms_gl`). Every call uses the BU's stored Carmen credential (#42),
 stored by the Settings API's writes (#44). Decisions:
 [email-automation decision log #39 to #44](email-automation/06-decision-log.md). Our side in full:

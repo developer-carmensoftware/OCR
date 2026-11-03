@@ -91,7 +91,6 @@ async def get_day(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) -
         "error_message": row.error_message,
         "setting_code": payload.get("setting_code"),
         "post_type": payload.get("post_type"),
-        "counter": payload.get("counter") or {},
         "key_columns": payload.get("key_columns") or [],
         "rows": [{**r, **(mapped.get(r["key"]) or {})} for r in rows],
         "mapped_count": sum(1 for k in keys if k in mapped),
@@ -195,7 +194,7 @@ async def approve(
         uri_ctx = current_carmen_uri.set(uri)
 
         try:
-            current = await carmen.get_pms_mapping(code, post_type, token)
+            current, _ = await carmen.get_pms_mapping(code, post_type, token)
         except carmen.CarmenAPIError as exc:
             raise CarmenServiceError(
                 f"Couldn't read Carmen's {payload.get('interface')} mapping, so nothing was "

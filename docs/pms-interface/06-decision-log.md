@@ -20,6 +20,7 @@ This page is the index, plus what was superseded and why.
 | [#44](../email-automation/06-decision-log.md#44-carmens-pms-setting-screen-owns-the-pms-settings-per-bu-and-pms-2026-10-16) | 2026-10-16 | CA-93 | **Carmen's PMS setting screen sets auto-post and generates the hook key, per BU × PMS**, through `/api/v1/carmen/pms`. One live key per BU × PMS; a new one revokes the old. A hook naming another PMS is a 403. Every Carmen write stores the proven token as the BU's credential (amended by #45). The first write creates a missing BU, with the signup credits; a read never does. No consent popup for a PMS-only BU (accepted). `#/pms` is deleted | Yes, except a working credential is now kept (#45). Merged 2026-10-20 |
 | [#45](../email-automation/06-decision-log.md#45-a-carmen-pms-write-keeps-a-working-credential-2026-10-20) | 2026-10-20 | CA-93 | A Carmen write on `/api/v1/carmen/pms` **keeps a held credential that still works** (`credential.adopt_token`) and stores its own token only when none is held, the same one is, or the held one is refused. Deliberate token saves (`PUT /settings/token`, the menu link) still replace it | Yes |
 | [#47](../email-automation/06-decision-log.md#47-the-pms-review-is-carmens-mapping-table-and-approve-is-the-yes-2026-10-28) | 2026-10-28 | CA-119 | The review is **one table laid out as Carmen's mapping screen** (Code, Description, DeptCode, AccCode, AccDesc): new rows first with pickers, Carmen's rows read-only, one per key, no amounts. **No *Checked* tick**: Approve opens once every new row has an account. AI tag and Undo kept; the AI's reason and *Unsure* dropped | Yes |
+| [#51](../email-automation/06-decision-log.md#51-pms-processing-reads-carmens-interface-list-and-derives-the-rest-2026-11-03) | 2026-11-03 | CA-119 | The Setting GET never came. Processing reads Carmen's **`interfaceThirdParties`** (active interfaces × sections) and **derives the rest**: code `{InterfaceName}.{InterfaceType}`, key = the mapping table's own columns, rows = the one `FileData` list carrying them all, counter left to Carmen's engine. A PMS it cannot key fails `unreadable_day`, never a guess | Yes |
 
 Two decisions from the email log apply here unchanged: **#24** (auto-post posts only what is
 ready to post: a flagged day waits under either setting) and **#34/#35/#38** (the settings
@@ -37,13 +38,12 @@ Settled on 2026-10-15, on Carmen's Discord, and in the user's own notes.
    `GET /api/interface/interfacePost/mapping/{code}/{type}/GL` answers 200 with the menu
    token, the same DataTable as the JWT route. Our `get_pms_mapping` needed no change.
 3. **The setting's code is `{InterfaceName}.{InterfaceType}`** (e.g. `Comanche.PMS`), matched
-   case-insensitively by Carmen. That is Carmen's rule; we still take the code from the
-   setting we read.
-4. **The counter account** (`DeptCode`/`AccCode` in the post) is required today. Carmen plans,
-   after 2026-10-19, to fill it from its own config when it is not sent. That would make the
-   counter optional **in the post**. It does not remove our need to read the setting: we also
-   read the INI for where the rows are (`JsonKeys`), what keys the mapping (`Mapping_MapCode`),
-   and `IsActive`.
+   case-insensitively by Carmen. That is Carmen's rule, and since #51 it is where our code
+   comes from: the setting itself is never read.
+4. **The counter account** (`DeptCode`/`AccCode` in the post) was required on 2026-10-15.
+   Carmen planned, after 2026-10-19, to fill it from its own config when it is not sent.
+   Since #51 we never send it, and the setting read it was one reason for is gone: #51
+   derives the rest from `interfaceThirdParties`, the mapping table and the day.
 
 ## What was superseded
 

@@ -24,7 +24,6 @@ DAY = {
     "doc_date": "2024-09-05",
     "setting_code": "Comanche.PMS",
     "post_type": "REVENUE",
-    "counter": {"dept": "GEN", "acc": "1021001", "name": "A/R - Guest Ledger"},
     "key_columns": ["Code", "Description"],
     "rows": [
         {

@@ -150,14 +150,6 @@ class PmsNewCode(BaseModel):
     why: str | None = None
 
 
-class PmsCounter(BaseModel):
-    """The account Carmen's setting posts the day's remainder to (its Summary line)."""
-
-    dept: str = ""
-    acc: str = ""
-    name: str = ""
-
-
 class PmsRow(BaseModel):
     """One row of the day as Carmen keys it, with the account Carmen's table gives it."""
 
@@ -181,7 +173,6 @@ class PmsDayOut(BaseModel):
     error_message: str | None = None
     setting_code: str
     post_type: str
-    counter: PmsCounter
     key_columns: list[str]
     rows: list[PmsRow]
     mapped_count: int

@@ -47,8 +47,7 @@ queue row (`activity._pms_row`).
 {
   "interface_type": "PMS", "interface": "Comanche", "doc_type": "Daily", "doc_date": "2024-09-05",
   "setting_code": "Comanche.PMS", "post_type": "REVENUE",
-  "counter": {"dept": "GEN", "acc": "1021001", "name": "…"},  // the section's counter account
-  "key_columns": ["Code", "Description"],                    // Mapping_MapCode's table columns
+  "key_columns": ["Code", "Description"],   // the mapping table's Columns, less the account
   "rows": [{"key": "[\"100\",\"Room Charge\"]", "values": {…}, "amount": "153068.41"}],
   "mapped": {"<key>": {"dept", "acc", "name"}},   // Carmen's accounts for this day's keys, when read
   "guessed": {"<key>": {"dept", "acc", "confidence", "why"}},  // the AI's, for new keys
@@ -122,14 +121,14 @@ creates it) with `enabled = false`. So the daily token-health sweep, which reads
 | Code | Set by | Status it leaves | Fixed by | Queue sentence |
 |---|---|---|---|---|
 | `no_credential` | process | `received` → `failed` at 3 | saving the PMS setting in Carmen (a write stores the token when none is held, #45) | No Carmen access is stored. Save this PMS setting in Carmen |
-| `carmen_config_unreadable` | process | `received` → `failed` | **Carmen** exposing the setting GET under `/api/interface`. **Every day today** | Carmen doesn't let this access read its PMS settings yet |
-| `pms_setting_missing` | process | `received` → `failed` | an active PMS setting for this `InterfaceName`, with an active REVENUE section, in Carmen | Carmen has no PMS posting setting for this interface |
-| `unsupported_pms_format` | process | **`failed` at once** | Carmen's setting is not a JSON-object layout; needs code here | Carmen's PMS setting uses a file the AI can't read yet |
+| `carmen_config_unreadable` | process | `received` → `failed` | Carmen answering `interfaceThirdParties` and the mapping table, with key columns in the table (decision-log #51) | Carmen doesn't let this access read its PMS settings yet |
+| `pms_setting_missing` | process | `received` → `failed` | a row for this PMS × GL × REVENUE in Carmen's `interfaceThirdParties` (an active setting) | Carmen has no PMS posting setting for this interface |
+| `unsupported_pms_format` | process | **`failed` at once** | the list's `PostType` is not `Json`; needs code here | Carmen's PMS setting uses a file the AI can't read yet |
 | `carmen_unauthorized` | process (Data Bank read, chart read, post) | `received` → `failed`, or `pending_review` when the post was refused | a fresh menu token | (email's phrase) |
 | `carmen_forbidden` | the same | the same | the menu user's permissions in Carmen, e.g. `Inf.PMS.DataBank` View | Carmen denied this access |
 | `databank_unreachable` | process | `received` → `failed` | Carmen being back | Could not reach Carmen's Data Bank |
 | `day_not_found` | process | `received` → `failed` | the PMS writing the day; Carmen re-sending the hook | Carmen's Data Bank does not have this day |
-| `unreadable_day` | process | **`failed` at once** | the PMS file | Could not read this day from the Data Bank |
+| `unreadable_day` | process | **`failed` at once** | the PMS file: no list in it (or more than one) carries every key column of Carmen's mapping table; a repeat hook re-reads it | Could not read this day from the Data Bank |
 | `processing_error` | process (any unexpected exception) | `received` → `failed` | us: read the log | Processing stopped with an error |
 | `carmen_rejected` | process (auto-post refused) | `pending_review` | the reviewer, with Carmen's words on screen | (email's phrase, or Carmen's words) |
 | `rejected_by_reviewer` | review | `rejected` | — | (email's phrase) |
@@ -161,8 +160,8 @@ was replaced in the second.
 - **The day's figures**, once it is done. The Data Bank is the source, and `review_payload` is
   cleared on `posted`, `rejected` and `failed`.
 - **The mapping**, which is Carmen's table (decision-log #43).
-- **The debit/credit rule and the counter**, which are Carmen's setting. Only a copy of the
-  counter rides in the payload, for the review's note and the post body.
+- **The debit/credit rule and the counter**, which are Carmen's setting. Neither is read: the
+  engine applies both (decision-log #51).
 - **The key's plaintext.** Only its sha256 is kept.
 - **A JV number**, which Carmen does not return.
 - **Guest data**, which the Data Bank does not hold: rows are aggregated by transaction code.

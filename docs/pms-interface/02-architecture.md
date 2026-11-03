@@ -12,7 +12,7 @@ flowchart LR
     Cron["pg_cron\npms-process */10"] -->|"POST /api/v1/pms/process/run"| API
 
     API --> Proc["services/pms/process.py"]
-    Proc -->|"read setting + INI"| CSetting["Carmen\ninterfacePost/Setting/GL"]
+    Proc -->|"read interface list"| CList["Carmen\ninterfaceThirdParties"]
     Proc -->|"read the day"| DataBank
     Proc -->|"read mapping"| CMap["Carmen\ninterfacePost/mapping"]
     Proc -->|"new rows only"| LLM["Text LLM\n(OpenRouter, deny)"]
@@ -103,22 +103,23 @@ sequenceDiagram
 
     W->>DB: _claim: status=received, attempts<3, lease free → processed_at=now, attempts+1
     W->>DB: _target: the BU's token + uri (email_ingest_settings)
-    W->>C: GET interfacePost/Setting/GL
-    W->>W: find_section(InterfaceName) → REVENUE → parse INI → spec_of
+    W->>C: GET interfaceThirdParties
+    W->>W: find_section(InterfaceType, InterfaceName) → GL × REVENUE → code {Name}.{Type}
+    W->>C: GET interfacePost/mapping/{code}/REVENUE/GL
+    W->>W: key_columns(Columns) → [Code, Description]
     W->>C: GET PMS/{name}/{docType}/Date/{docDate}
-    W->>W: newest_day (LastModified) → rows_of → [{key, values, amount}]
-    W->>C: GET interfacePost/mapping/{setting}/REVENUE/GL
+    W->>W: newest_day (the list carrying the key columns, LastModified) → rows_of
     W->>W: table_of → new_keys
     opt there are new keys
         W->>C: accounts + departments (mapping.masters)
         W->>L: one call: new rows + up to 120 mapped rows as examples
         W->>W: keep only codes in the BU's chart (_validate_codes)
     end
-    W->>W: payload {rows, mapped, guessed, flags, missing, ai, counter, databank_id, …}
+    W->>W: payload {rows, mapped, guessed, flags, missing, ai, key_columns, databank_id, …}
     alt flags, or auto_post off
         W->>DB: park → pending_review
     else nothing new and auto_post on
-        W->>C: POST interfacePostGL/REVENUE {Code, DateFrom=DateTo, DeptCode, AccCode, id:[databank_id]}
+        W->>C: POST interfacePostGL/REVENUE {Code, DateFrom=DateTo, id:[databank_id]}
         W->>DB: posted (or parked with Carmen's words if it refused)
     end
 ```
@@ -136,21 +137,20 @@ the sweep tries again once the 10-minute lease expires), **fails** (terminal) or
 flowchart TD
     A[claimed] --> B{credential stored?}
     B -->|"no"| Rno[retry: no_credential]
-    B -->|"yes"| C{read the PMS setting}
+    B -->|"yes"| C{read the interface list}
     C -->|"error"| Rcfg[retry: carmen_config_unreadable]
-    C -->|"ok"| D{active setting for InterfaceName, with an active REVENUE section?}
+    C -->|"ok"| D{a row for this PMS: GL × REVENUE?}
     D -->|"no"| Rset[retry: pms_setting_missing]
-    D -->|"yes"| E{INI is a JSON-object layout?}
+    D -->|"yes"| E{PostType is Json?}
     E -->|"no"| Ffmt[FAILED: unsupported_pms_format]
-    E -->|"yes"| F{read the Data Bank day}
+    E -->|"yes"| I{read the mapping table: Columns name a key?}
+    I -->|"error / no key"| Rcfg
+    I -->|"ok"| F{read the Data Bank day}
     F -->|"401 / 403 / other"| Rdb[retry: carmen_unauthorized / carmen_forbidden / databank_unreachable]
-    F -->|"ok"| G{a row with items under JsonKeys?}
-    G -->|"no"| Rnf[retry: day_not_found]
-    G -->|"yes"| H{items are objects?}
-    H -->|"no"| Fun[FAILED: unreadable_day]
-    H -->|"yes"| I{read the mapping table}
-    I -->|"error"| Rcfg
-    I -->|"ok"| J{new keys?}
+    F -->|"no row"| Rnf[retry: day_not_found]
+    F -->|"rows"| G{exactly one list carrying every key column?}
+    G -->|"no"| Fun[FAILED: unreadable_day]
+    G -->|"yes"| J{new keys?}
     J -->|"yes"| K[masters + LLM]
     K -->|"401/403"| Rdb
     K -->|"other error / LLM empty"| L
@@ -261,25 +261,31 @@ Carmen gives the final guard: `interfacePostGL` refuses a day it has already pos
 
 ## Reading Carmen's config (`carmen_config.py`)
 
-The BU's GL interface setting is a list of settings. Each has `InterfaceType`,
-`InterfaceName`, `IsActive`, `Code` (e.g. `Comanche.PMS`) and `Configuration`, a map of
-sections, each with `Active`, `ConfigBase64`, `DeptCode`, `AccCode` and `AccDesc`.
+Carmen's engine posts by the BU's GL interface setting: per PMS, an INI in base64 that holds
+the file layout, the mapping key, the debit/credit rule and the counter account. **The menu
+token cannot read that setting** (`interfacePost/Setting` has no `/api/interface` twin), so
+the module derives what processing needs from what it can read (decision-log #51):
 
-- **`find_section`** takes the active `PMS` setting whose `InterfaceName` matches the hook's
-  (case-insensitive), then its active `REVENUE` section that has a config.
-- **`decode` + `parse_ini`**: base64 → text (utf-8-sig, then utf-16, then cp874) → `[Section]`
-  / `key=value`, with `;` comments. A repeated key keeps its last value.
-- **`spec_of`** reads `[System]`. It requires `FileType=json`, `JsonType=jsonobject` and
-  `JsonKeys` (`Transaction` for Comanche). It parses `Mapping_MapCode`, e.g.
-  `[Code:Code][Description:Description]`, into (Data Bank field, table column) pairs, and reads
-  `[Amount] JsonKeyName` and `UseAccountMap`. With `UseAccountMap=false`, no key is ever new.
-- **`rows_of`** turns each item into `{key, values, amount}`. **It never adds, signs or
-  balances**: `amount` is the string as written, kept for the reviewer to read.
+- **`find_section`** takes the row of `interfaceThirdParties` whose `InterfaceType` and
+  `InterfaceName` match the hook's (case-insensitive), with `PostToModule` GL and `DocType`
+  REVENUE. The list is Carmen's register of third-party integrations (not the BU's settings,
+  not its licence); `From` says how the third party's data reaches Carmen (the user, 2026-11-03): `CarmenApi` = the third party sends it into Carmen (the Data Bank, then our hook); `PartnerApi` = Carmen fetches it from the third party itself; `null` = a user imports the file. The setting's code is
+  `{InterfaceName}.{InterfaceType}` (`Comanche.PMS`), Carmen's own rule; the row's
+  `PostType` must be `Json`.
+- **`key_columns`**: the mapping table's `Columns`, less `DeptCode`, `AccCode` and `AccDesc`
+  (Comanche: `Code`, `Description`).
+- **`rows_key` / `newest_day`**: the day's rows are the **one** list in `FileData` whose
+  entries all carry every key column (Comanche: `Transaction`; `Statistic` has no `Code`).
+  None, or two, is a layout this cannot read: `unreadable_day`, never a guess. The newest
+  `LastModified` row that has such a list wins.
+- **`rows_of`** turns each entry into `{key, values, amount}`, the key column's values read
+  from the field of the same name. **It never adds, signs or balances**: `amount` (the
+  `Amount` field, Comanche's name for it) is the string as written, kept for the AI.
 - **`merged_rows`** builds the PUT body: every row just read, a pick filled in where one
   applies, then the picks the table did not have, appended.
 
-The sides of the JV are in the same INI (`[DrCr]`; Comanche: `DrValue=-`, `CrValue=+`).
-We deliberately do not read them: they are the engine's (decision-log #43).
+The sides of the JV and the counter account stay in Carmen's INI, and the post sends no
+counter: they are the engine's (decision-log #43).
 
 ## What the AI is asked (`mapping.suggest`)
 
@@ -310,11 +316,10 @@ There is no PMS settings screen of ours. Carmen's PMS setting screen is the only
 
 ## Not built
 
-- **Reading the PMS setting with the menu token.** `GET interfacePost/Setting/GL` has no
-  `/api/interface` twin, so today every day stops at `carmen_config_unreadable`. Carmen added
-  the **mapping** GET there on 2026-10-15. The setting GET is the one left
-  ([07-status.md](07-status.md#what-blocks-the-merge)).
+- **Reading the PMS setting itself.** The menu token still cannot (`interfacePost/Setting`
+  has no `/api/interface` twin); decision-log #51 derives what it held instead. A PMS whose
+  Data Bank fields are not named like its mapping columns needs it after all.
 - **A JV number** on the posted row: `jv_no` stays null because the engine's answer has none.
 - **Token health for PMS-only BUs.** `sweep_token_health` walks only `enabled` email BUs.
 - **A retention purge** for `pms_events`.
-- **Layouts other than JSON object**, and sections other than REVENUE.
+- **Files other than JSON**, and sections other than REVENUE (Comanche's STATISTIC is listed, not posted).

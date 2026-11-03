@@ -204,17 +204,20 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
       pg_cron sweeps /api/v1/pms/process/run every 10 min for what a restart left)
       all with the BU's ONE stored Carmen credential (email_ingest_settings, decision #42)
       NO RULES OF OUR OWN (decision #43): Carmen's engine posts, by Carmen's per-PMS config
-      carmen_config.py: the BU's interface setting (interfacePost/Setting/GL) → its active
-          REVENUE section → the INI in ConfigBase64: file layout + Mapping_MapCode
-          (Comanche [Code][Description]); a non-JSON layout → unsupported_pms_format
-      read the day back: GET /api/interface/PMS/{name}/{docType}/Date/{docDate}
-      Carmen's mapping table (interfacePost/mapping/{setting}/REVENUE/GL) → rows it can't place
+      the setting itself (its INI) is out of the menu token's reach, so carmen_config.py
+          DERIVES it (decision #51): GET /api/interface/interfaceThirdParties → the hook's
+          PMS × GL × REVENUE row (none → pms_setting_missing; PostType ≠ Json →
+          unsupported_pms_format); code = {InterfaceName}.{InterfaceType}
+      Carmen's mapping table (interfacePost/mapping/{code}/REVENUE/GL): its Columns less
+          DeptCode/AccCode/AccDesc = the key (Comanche Code + Description)
+      read the day back: GET /api/interface/PMS/{name}/{docType}/Date/{docDate}; its rows =
+          the ONE FileData list carrying every key column (none/several → unreadable_day)
+      the table's rows → the day's rows it can't place
       mapping.py: the LLM only for those, shown the BU's own mapped rows as examples
       any new row, or this PMS's auto_post off → pending_review; else post_day →
-          POST /api/interface/interfacePostGL/REVENUE {Code, DateFrom/To, counter, id:[DataBank Id]}
-          (Carmen decides Dr/Cr + the counter line; answers no JV no; -200 = already posted)
-      ⚠ the setting/mapping GETs have no /api/interface twin yet → carmen_config_unreadable
-        until Carmen adds them (CA-116). A repeat hook re-reads an unposted day.
+          POST /api/interface/interfacePostGL/REVENUE {Code, DateFrom/To, id:[DataBank Id]}
+          (no counter: Carmen decides Dr/Cr + the counter line from its setting; answers
+          no JV no; -200 = already posted). A repeat hook re-reads an unposted day.
 
 #/CreditCardOCR (the AI JV Automation queue) lists PMS days beside email + manual rows
   services/credit_card/activity.py `_pms_*`: one row per BU × day, source "pms"
