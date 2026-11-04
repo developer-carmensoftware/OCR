@@ -71,24 +71,22 @@ REVOKED = _key(key_prefix="cpk_OldKey12", revoked_at=datetime(2026, 10, 20, 7, 1
 @pytest.mark.parametrize(
     ("plaintext", "found", "reason"),
     [
-        ("", None, "no key in Authorization"),
+        ("", None, "no key in Authorization (header missing or empty)"),
         ("eyJhbGc.eyJzdWI.c2ln", None, "a JWT, not a cpk_ key"),
         ('"cpk_secretvalue"', None, "cpk_ key with 1 chars before it"),
         ("{{pms_key}}", None, "not a cpk_ key (11 chars)"),
-        ("cpk_secretvalue", None, "unknown key"),
+        ("cpk_secretvalue", None, "unknown key: never issued by this backend"),
         ("cpk_secretvalue", REVOKED, "revoked key cpk_OldKey12, revoked 2026-10-20 07:12 UTC"),
         (
             "cpk_secretvalue",
             _key(key_prefix="cpk_LiveKey1", revoked_at=None),
-            "key cpk_LiveKey1: its BU is inactive or deleted",
+            "key cpk_LiveKey1: its BU is inactive or deleted, or the key's scope or expiry",
         ),
     ],
 )
-async def test_a_refusal_logs_why_but_never_the_key(plaintext, found, reason, caplog):
-    db = MagicMock(scalar=AsyncMock(side_effect=[None, found]), execute=AsyncMock())
-    assert await api_keys.authenticate(db, plaintext, api_keys.PMS_SCOPE, None) is None
-    assert f"PMS key refused: {reason}" in caplog.text
-    assert "secretvalue" not in caplog.text
+async def test_a_refusal_says_why_but_never_repeats_the_key(plaintext, found, reason):
+    db = MagicMock(scalar=AsyncMock(return_value=found))
+    assert await api_keys.why_refused(db, plaintext) == reason
 
 
 @pytest.mark.asyncio

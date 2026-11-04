@@ -13,6 +13,7 @@ The keys and the auto-post switch are set from Carmen's PMS setting screen, thro
 `routers/pms_carmen.py`. Contract: docs/PMS_INTEGRATION.md.
 """
 
+import logging
 import re
 from datetime import UTC, datetime
 from uuid import UUID
@@ -42,10 +43,12 @@ from app.models.schemas.pms import (
 from app.routers.admin.deps import require_maintenance_auth
 from app.services.pms import process
 from app.services.pms import review as pms_review
-from app.services.shared.api_keys import PMS_SCOPE, authenticate
+from app.services.shared.api_keys import PMS_SCOPE, authenticate, why_refused
 from app.utils.client_ip import get_client_ip
 
 router = APIRouter(prefix="/api/v1/pms", tags=["PMS"])
+
+logger = logging.getLogger(__name__)
 
 # The hook is four short fields (the data stays in Carmen's Data Bank); anything near
 # this size is not Carmen.
@@ -65,6 +68,10 @@ async def _pms_key(
     token = re.sub(r"^\s*bearer\s+", "", authorization or "", flags=re.IGNORECASE).strip()
     key = await authenticate(db, token, PMS_SCOPE, get_client_ip(request))
     if key is None:
+        reason = await why_refused(db, token)
+        logger.warning("PMS key refused: %s", reason)
+        # Also on this 401's performance_logs row (resource_id), so SQL can read it.
+        request.state.document_ref = f"PMS key refused: {reason}"[:255]
         raise HTTPException(401, "Invalid API key", headers={"WWW-Authenticate": "Bearer"})
     current_tenant_id.set(str(key.tenant_id))
     # PerformanceMiddleware only decodes our JWTs; this is how the row gets its tenant.

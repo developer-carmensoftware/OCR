@@ -55,6 +55,7 @@ def _db(*scalars):
 def _post(db, key, body=None, auth="Bearer cpk_good", content_type="application/json"):
     with (
         patch("app.routers.pms.authenticate", AsyncMock(return_value=key)) as auth_mock,
+        patch("app.routers.pms.why_refused", AsyncMock(return_value="test")),
         make_test_client(db) as client,
     ):
         headers = {"Authorization": auth} if auth is not None else {}
