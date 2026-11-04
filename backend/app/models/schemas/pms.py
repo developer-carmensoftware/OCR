@@ -185,7 +185,7 @@ class PmsApproveIn(BaseModel):
 
 
 class PmsApproveOut(BaseModel):
-    # Carmen's engine answers "Posting complete." without the JV's number (CA-116).
+    # The JV's seq, from the engine's answer `Id` (ask D); null on "already posted".
     jv_no: str | None = None
     # Carmen had already posted this day (by its own Post button, or an earlier approve).
     already_posted: bool = False

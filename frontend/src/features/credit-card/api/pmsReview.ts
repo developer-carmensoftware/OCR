@@ -47,7 +47,7 @@ export interface PmsDay {
 }
 
 export interface PmsApproveResult {
-  /** Carmen's engine does not return the JV's number yet (CA-116). */
+  /** The JV's seq, from the engine's answer `Id` (ask D); null when Carmen had already posted it. */
   jv_no: string | null
   /** Carmen had already posted this day — by its own Post button, or an earlier approve. */
   already_posted: boolean

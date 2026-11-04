@@ -51,7 +51,7 @@ gives 32 rows, 21 new keys against Carmen's 33-row table.
 | — | The mapping GET under `/api/interface` | **Done** 2026-10-15 |
 | B | A token that lasts for unattended calls | **Settled** 2026-10-15: the menu token does not expire. Still to confirm: minting a new token does not revoke the old one |
 | C | `Inf.PMS.DataBank` View for the menu user, per BU | Configuration, not code. `carmencloud`'s menu user got 403 (2026-10-14) |
-| D | The JV number in `interfacePostGL`'s answer | **Answered 2026-11-03.** `ViewPostResult` gained `Id: integer[]` (Swagger 3.241), not `JvhSeq`/`JvhNo`. Empty at 11:52 and 13:30; **filled by 15:13** (E2E P-03: `Id: [1598]` for JV 1598, since voided). Our side, next PR: `post_day` returns `Id[0]` (one day, one JV), `_process` and `review.approve` write it to `jv_no`, and the queue's Open JV works with no UI change. The voucher number (`JvhNo`) is not in it |
+| D | The JV number in `interfacePostGL`'s answer | **Answered 2026-11-03.** `ViewPostResult` gained `Id: integer[]` (Swagger 3.241), not `JvhSeq`/`JvhNo`. Empty at 11:52 and 13:30; **filled by 15:13** (E2E P-03: `Id: [1598]` for JV 1598, since voided). Our side: stored in `jv_no` (branch `feat/pms-jv-number`), so the queue's Open JV works. The voucher number (`JvhNo`) is not in it |
 | E | What a repeat hook means: Add vs AddOrUpdate | Partly seen: Carmen fires the hook on a Data Bank **Add** (sandbox, 2026-10-14). AddOrUpdate unknown. We re-read any unposted day either way |
 | F | Is the gross Summary line intended? (2 × Guest Ledger to the counter) | Open. The nets per account equal the old rule |
 | G | The counter when not sent: "not sent" means omitted, or `""`? | We **omit** it (decision-log #51). To prove on `test.PMS` that the engine then fills it; if it answers "Account code is empty", the post retries once with `GEN/1021001` (the user's fallback, built only if needed) |
@@ -70,13 +70,9 @@ are Normal).
 - **Ship decision-log #51:** deploy the backend (`-xntb`). No migration. Days stuck at
   `carmen_config_unreadable` wake on the next daily token check and park for review. The
   release note and `VERSION` (MINOR) stay batched.
-- **The JV number, once Carmen ships D:** `post_day` (`services/pms/process.py`) returns the
-  answer's `JvhSeq`, and `_process` and `review.approve` write it to `pms_events.jv_no` instead
-  of `None`. The queue's Open JV already reads `jv_no`, so the UI needs no change. Add a
-  `test_pms_process.py` case for the new answer shape.
-  `JvhNo` is a second value with no column yet. Decide when it ships whether the JV NO. column
-  shows it rather than the seq (email shows the seq today). If so, store it too
-  (`pms_events.jv_voucher_no`, one migration) and keep `jv_no` = `JvhSeq` for the link.
+- ~~**The JV number, once Carmen ships D.**~~ Done on branch `feat/pms-jv-number`: `post_day`
+  returns `Id[0]`, and `_process` and `review.approve` write it to `pms_events.jv_no`; the
+  queue's Open JV needed no change. `JvhNo` (the voucher number) is still not in the answer.
 - **The PMS kind that Carmen's post API fetches**, once Carmen's list (I) exists.
 - **CA-118:** decide the prod release scope; set `TRUST_PROXY=true` + `TRUSTED_PROXY_HOPS=1`
   on `-xntb`.
