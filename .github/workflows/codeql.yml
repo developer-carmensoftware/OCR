@@ -17,6 +17,7 @@ jobs:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
+      actions: read            # private repo: the action reads its own workflow run (since 2026-11-04)
       contents: read
       security-events: write   # required to upload results to the Security tab
 
