@@ -11,6 +11,7 @@ that PMS is switched off — there is no second switch.
 """
 
 import hashlib
+import logging
 import secrets
 from datetime import UTC, datetime
 from uuid import UUID
@@ -22,6 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.exceptions import ConflictError, NotFoundError
 from app.models.admin import APIKey
 from app.models.identity import Tenant
+
+logger = logging.getLogger(__name__)
 
 PREFIX = "cpk_"
 PMS_SCOPE = "pms:events"
@@ -111,9 +114,11 @@ async def authenticate(
     """The live key this plaintext belongs to, or None — never says which check failed.
 
     Stamps `last_used_at`/`last_used_ip`, which is how the admin page answers "is Carmen
-    actually calling?". The caller's commit makes it stick.
+    actually calling?". The caller's commit makes it stick. A refusal is logged with its
+    reason, never the key: the caller still learns nothing, but we can tell Carmen what to fix.
     """
     if not plaintext:
+        logger.warning("PMS key refused: no key in Authorization (header missing or empty)")
         return None
     key = await db.scalar(
         select(APIKey)
@@ -126,7 +131,11 @@ async def authenticate(
         )
     )
     now = datetime.now(UTC)
-    if key is None or scope not in (key.scopes or []):
+    if key is None:
+        logger.warning("PMS key refused: %s", await _why_refused(db, plaintext))
+        return None
+    # ponytail: scope and expiry refusals are not logged; every key is pms:events and none expires.
+    if scope not in (key.scopes or []):
         return None
     if key.expires_at is not None and key.expires_at <= now:
         return None
@@ -134,6 +143,22 @@ async def authenticate(
         update(APIKey).where(APIKey.id == key.id).values(last_used_at=now, last_used_ip=ip)
     )
     return key
+
+
+async def _why_refused(db: AsyncSession, plaintext: str) -> str:
+    """What a refused plaintext was, without repeating any of it."""
+    if not plaintext.startswith(PREFIX):
+        if plaintext.count(".") == 2:
+            return f"a JWT, not a {PREFIX} key"
+        if PREFIX in plaintext:
+            return f"{PREFIX} key with {plaintext.index(PREFIX)} chars before it"
+        return f"not a {PREFIX} key ({len(plaintext)} chars)"
+    key = await db.scalar(select(APIKey).where(APIKey.key_hash == hash_key(plaintext)))
+    if key is None:
+        return "unknown key: never issued by this backend"
+    if key.revoked_at is not None:
+        return f"revoked key {key.key_prefix}, revoked {key.revoked_at:%Y-%m-%d %H:%M} UTC"
+    return f"key {key.key_prefix}: its BU is inactive or deleted"
 
 
 def key_row(key: APIKey, tenants: dict[str, dict[str, str]]) -> dict:
