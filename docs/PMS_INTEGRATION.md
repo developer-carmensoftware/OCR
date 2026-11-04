@@ -224,8 +224,8 @@ Tracked in CA-116, with what we found on the dev Data Bank:
 3. **The token we use to read the Data Bank and post,** per BU, with no user session. It
    needs to last longer than a few hours, and to hold `Inf.PMS.DataBank` View (a menu user
    without it gets 403).
-4. **The JV number** in `interfacePostGL`'s answer. Today it says "Posting complete." without
-   it.
+4. ~~**The JV number** in `interfacePostGL`'s answer.~~ Done 2026-11-03: the answer's `Id`
+   holds the JV's seq.
 5. **What a repeat hook means.** Is the hook sent on Add *and* on AddOrUpdate? Is a second
    hook for the same day a changed day that we should process again?
 6. **Is the gross Summary line intended?** For Comanche it is 2 × Guest Ledger to the

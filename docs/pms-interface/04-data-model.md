@@ -22,7 +22,7 @@ columns are the same shape as `email_documents`.
 | `payload` | `jsonb not null` | `20261007000000` | The hook as sent, in Carmen's field names. Processing reads `InterfaceName`, `DocType` and `DocDate` from it |
 | `status` | `varchar(20) not null default 'received'` | `20261009000000` | `received` → `pending_review` → `posted` \| `rejected`. `failed` once the retries ran out. See [02 · state machine](02-architecture.md#diagram-7--state-machine) |
 | `review_payload` | `jsonb` | `20261009000000` | Set only while the day is `pending_review`. **Cleared on every terminal transition**. Encrypted at rest since 2026-10-29: stored as `{"enc": <Fernet token>}` (email decision-log #49); the shape below is what it decrypts to |
-| `jv_no` | `varchar(50)` | `20261009000000` | Always `null` since path B, because the engine returns no number. Path A wrote the JvhSeq here |
+| `jv_no` | `varchar(50)` | `20261009000000` | The JV's seq, from the engine's answer `Id` (ask D, since 2026-11-03); what the queue's Open JV opens. `null` when Carmen had already posted the day, and on days posted before then |
 | `reason_code` | `varchar(50)` | `20261009000000` | Why the day stopped, or `already_posted`. [Taxonomy](#reason_code-taxonomy) |
 | `error_message` | `text` | `20261009000000` | Carmen's own words (`carmen_words`), the reviewer's reject reason, or our sentence; ≤ 500 |
 | `attempts` | `int not null default 0` | `20261009000000` | Processing attempts; at 3 a retryable reason becomes `failed`. Reset by a repeat hook or a wake |
@@ -163,5 +163,5 @@ was replaced in the second.
 - **The debit/credit rule and the counter**, which are Carmen's setting. Neither is read: the
   engine applies both (decision-log #51).
 - **The key's plaintext.** Only its sha256 is kept.
-- **A JV number**, which Carmen does not return.
+- **The voucher number** (`JvhNo`), which Carmen does not return; only the seq.
 - **Guest data**, which the Data Bank does not hold: rows are aggregated by transaction code.

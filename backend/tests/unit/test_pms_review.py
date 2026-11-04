@@ -51,7 +51,7 @@ PICKS = {
     KEY["Cash - Advance Payment"]: {"dept": "GEN", "acc": "1010001"},
     KEY["Guest Ledger"]: {"dept": "GEN", "acc": "1021001"},
 }
-POSTED = "posted"
+POSTED = ("posted", "1599")  # post_day: (outcome, the JV's seq from Carmen's `Id`)
 
 
 class _Approve:
@@ -114,7 +114,14 @@ class _Approve:
 @pytest.mark.asyncio
 async def test_approve_writes_the_whole_table_then_has_carmen_post_the_day():
     run = _Approve()
-    assert await run(PICKS) == {"jv_no": None, "already_posted": False}
+    assert await run(PICKS) == {"jv_no": "1599", "already_posted": False}
+    # The day is stored posted with the JV Carmen named, for the queue's Open JV.
+    written = [
+        c.args[0].compile().params
+        for c in run.db.execute.await_args_list
+        if "jv_no" in c.args[0].compile().params
+    ]
+    assert [(w["status"], w["jv_no"]) for w in written] == [("posted", "1599")]
     code, post_type, rows, token = run.m["put"].await_args.args
     assert (code, post_type, token) == ("Comanche.PMS", "REVENUE", "tok")
     # Every row Carmen had goes back (the PUT replaces the table), the blank one filled in.
@@ -147,7 +154,7 @@ async def test_approve_writes_the_whole_table_then_has_carmen_post_the_day():
 
 @pytest.mark.asyncio
 async def test_a_day_carmen_had_already_posted_is_done():
-    run = _Approve(post="already_posted")
+    run = _Approve(post=("already_posted", None))
     assert await run(PICKS) == {"jv_no": None, "already_posted": True}
 
 

@@ -319,7 +319,6 @@ There is no PMS settings screen of ours. Carmen's PMS setting screen is the only
 - **Reading the PMS setting itself.** The menu token still cannot (`interfacePost/Setting`
   has no `/api/interface` twin); decision-log #51 derives what it held instead. A PMS whose
   Data Bank fields are not named like its mapping columns needs it after all.
-- **A JV number** on the posted row: `jv_no` stays null because the engine's answer has none.
 - **Token health for PMS-only BUs.** `sweep_token_health` walks only `enabled` email BUs.
 - **A retention purge** for `pms_events`.
 - **Files other than JSON**, and sections other than REVENUE (Comanche's STATISTIC is listed, not posted).

@@ -112,9 +112,23 @@ def _refusal(exc: carmen.CarmenAPIError, other: str) -> str:
     return {401: "carmen_unauthorized", 403: "carmen_forbidden"}.get(exc.status_code, other)
 
 
-async def post_day(section: dict, doc_date: str, databank_id: Any, carmen_token: str) -> str:
-    """Ask Carmen's engine to post one Data Bank day. Returns `posted` or `already_posted`.
+def _jv_seq(result: dict) -> str | None:
+    """The JV Carmen's engine just made, from its answer's `Id` (ask D, 2026-11-03).
 
+    `Id` is a list because a date range can post several JVs; we post one day at a time, so
+    one JV. Older answers carry no `Id`: the day still posts, without a link to its JV.
+    """
+    ids = result.get("Id")
+    return str(ids[0]) if isinstance(ids, list) and ids and ids[0] else None
+
+
+async def post_day(
+    section: dict, doc_date: str, databank_id: Any, carmen_token: str
+) -> tuple[str, str | None]:
+    """Ask Carmen's engine to post one Data Bank day.
+
+    Returns `("posted", jv_seq)` — the JV's seq when Carmen names it, which is what the
+    queue's Open JV link opens — or `("already_posted", None)`.
     `section` is the payload's `{"setting_code", "post_type"}`. The counter account is left
     to the engine, which takes it from the setting (decision-log #51).
     Raises `PostRefused` with Carmen's words (`Mapping is incomplete.`, a closed period, …),
@@ -132,9 +146,9 @@ async def post_day(section: dict, doc_date: str, databank_id: Any, carmen_token:
         carmen_token,
     )
     if isinstance(result, dict) and result.get("Result") is True:
-        return "posted"
+        return "posted", _jv_seq(result)
     if isinstance(result, dict) and result.get("Code") == _ALREADY_POSTED:
-        return "already_posted"
+        return "already_posted", None
     verdict = None
     if isinstance(result, dict):
         verdict = (
@@ -331,7 +345,7 @@ async def _process(claimed) -> str:
             return await _park(pk, payload)
 
         try:
-            outcome = await post_day(payload, doc_date, payload["databank_id"], token)
+            outcome, jv_no = await post_day(payload, doc_date, payload["databank_id"], token)
         except PostRefused as exc:
             return await _park(pk, payload, "carmen_rejected", str(exc))
         except carmen.CarmenAPIError as exc:
@@ -339,7 +353,7 @@ async def _process(claimed) -> str:
         await _write(
             pk,
             status="posted",
-            jv_no=None,
+            jv_no=jv_no,
             review_payload=None,
             reason_code="already_posted" if outcome == "already_posted" else None,
             error_message=None,

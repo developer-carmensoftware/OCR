@@ -133,8 +133,8 @@ the string the PMS wrote. The review screen reads neither `amount` nor `confiden
 | `503` | Carmen's mapping could not be read (**nothing was written**), Carmen did not save the accounts, or the post could not reach Carmen | stays parked |
 
 A key that Carmen's table has meanwhile mapped (by its own screen) keeps Carmen's account, and
-the pick sent for it is ignored. `jv_no` is always `null`: the engine answers "Posting
-complete." without a number (CA-116).
+the pick sent for it is ignored. `jv_no` is the JV's seq from the engine's answer `Id`
+(ask D); `null` when Carmen had already posted the day.
 
 ## `POST /days/{id}/reject`
 
@@ -161,7 +161,7 @@ the counter account is Carmen's setting, and the engine reads it from there (dec
 
 | Carmen answers | Means | We record |
 |---|---|---|
-| `200` `{"Result": true, "Code": 1}` | posted. **No JV number** | `posted` |
+| `200` `{"Result": true, "Code": 1, "Id": [1599]}` | posted. `Id` holds the JV's seq (ask D, since 2026-11-03; one day, one JV) | `posted`, `jv_no` = `Id[0]` |
 | `303` `{"Code": -200, "UserMessage": "Already Posted."}` | posted before (its own Post button, or an earlier approve) | `posted` + `already_posted` |
 | `303` `{"Code": -500, "UserMessage": "Mapping is incomplete."}` | a row has no account | parked `carmen_rejected` (pipeline) · `400` (approve) |
 | `303` `{"Code": -400, "UserMessage": "Configuration is missing"}` | no `Code` sent | the same |

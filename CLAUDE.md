@@ -217,7 +217,8 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
       any new row, or this PMS's auto_post off → pending_review; else post_day →
           POST /api/interface/interfacePostGL/REVENUE {Code, DateFrom/To, id:[DataBank Id]}
           (no counter: Carmen decides Dr/Cr + the counter line from its setting; answers
-          no JV no; -200 = already posted). A repeat hook re-reads an unposted day.
+          `Id: [JvhSeq]` → pms_events.jv_no, the queue's Open JV; -200 = already posted).
+          A repeat hook re-reads an unposted day.
 
 #/CreditCardOCR (the AI JV Automation queue) lists PMS days beside email + manual rows
   services/credit_card/activity.py `_pms_*`: one row per BU × day, source "pms"

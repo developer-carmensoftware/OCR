@@ -173,7 +173,7 @@ The real end to end is **CA-120**: a real Carmen menu click and real hooks. It n
 | **The setting itself is unread** (decision-log #51) | A PMS whose Data Bank fields are not named like its mapping columns fails `unreadable_day` | Carmen adds `JsonKeys` and `Mapping_MapCode` to the `interfaceThirdParties` row; read them in `carmen_config.find_section` |
 | Token health skips PMS-only BUs | A dead token is found only when a day fails | Extend `sweep_token_health` to BUs with a live PMS key |
 | No retention purge for `pms_events` | Rows accumulate, about 1 per BU per day, with no payload once done | Decide a period; a cron like email's retention |
-| No JV number | The queue cannot link to the JV | **Carmen is adding `JvhSeq` and `JvhNo` to `interfacePostGL`'s answer** (ask D, agreed 2026-10-20). Then `post_day` stores it in `jv_no` ([07-status.md](07-status.md#what-we-still-owe)) |
+| No voucher number (`JvhNo`) | The JV NO. column shows the seq (as email does), not the number an accountant reads | Ask Carmen to add `JvhNo` to the answer beside `Id`; store it in a new column then |
 | Approve: a Carmen error while reading the chart (`mapping.masters`) is not wrapped | `500` instead of `503`. The claim is still released, and nothing is written (it comes before the PUT) | Wrap it like the mapping read |
 | The 403 Data Bank refusal retries 3× a day via the wake rule | Noise in the row's attempts while the permission is missing | Accept; it stops once the permission is granted |
 | Only JSON-object layouts, only REVENUE | Opera, GuestLine, Hotelogix and Custom fail `unsupported_pms_format` | A reader per layout in `carmen_config.rows_of` |

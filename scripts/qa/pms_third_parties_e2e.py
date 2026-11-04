@@ -9,6 +9,7 @@ full-system E2E (`pms_third_parties_ui.mjs` drives the hooks and the browser, an
     python scripts/qa/pms_third_parties_e2e.py jvs              # this run's engine JVs for the two days (JSON)
     python scripts/qa/pms_third_parties_e2e.py llm              # pms_interface LLM calls of the E2E tenants
     python scripts/qa/pms_third_parties_e2e.py engine-probe     # P-03 the success path on test.PMS (posts + voids a JV)
+    python scripts/qa/pms_third_parties_e2e.py seed-posted      # F-01: a posted Comanche day with P-03's JV seq
     python scripts/qa/pms_third_parties_e2e.py teardown         # T-01 restore the table, T-02 void this run's JVs
 
 **Comanche, not test.PMS** (user, 2026-11-03): `interfaceThirdParties` is Carmen's register of
@@ -57,6 +58,7 @@ from app.database import async_session  # noqa: E402
 from app.models.identity import Tenant  # noqa: E402
 from app.models.pms import PmsEvent  # noqa: E402
 from app.services.pms import carmen_config as cfg  # noqa: E402
+from app.services.pms import process  # noqa: E402
 from app.services.shared import carmen  # noqa: E402
 
 URI = "https://dev.carmen4.com"
@@ -71,6 +73,8 @@ POSTED = "2024-09-01"
 ALL_DAYS = (*DAYS, POSTED)
 # P-03: the success path, on the sandbox whose day posts (Carmen fills the counter itself).
 PROBE_SETTING, PROBE_NAME, PROBE_DAY, PROBE_ID = "test.PMS", "test", "2025-10-21", 169
+# F-01: the day stored posted with P-03's JV, for the queue's JV column and Open JV.
+SEEDED_DAY = "2024-06-30"
 TENANTS = ("pms-e2e", "pms-e2e-b")
 OUT = ROOT / ".playwright-mcp" / "pms-tp"
 STATE = OUT / "state.json"
@@ -381,26 +385,22 @@ def _void() -> bool:
 
 
 async def _engine_probe() -> bool:
-    """P-03, the success path: our `post_pms_gl` with no counter on a day Carmen posts.
+    """P-03, the success path: our `process.post_day` — no counter — on a day Carmen posts.
 
-    Expects `Result: true` and a JV carrying the setting's counter account, which only
-    Carmen can have added. Reports the answer's `Id` (ask D). Voids the JV at once.
+    Expects `posted`, a JV carrying the setting's counter account (which only Carmen can
+    have added), and `post_day` naming that JV's seq from the answer's `Id` (ask D): the
+    value `_process` and Approve store in `jv_no`. Keeps the seq for F-01; voids the JV.
     """
     day = (PROBE_DAY,)
     if before := [j["JvhSeq"] for j in _engine_jvs(day)]:
         print(f"FAIL P-03 {PROBE_SETTING} {PROBE_DAY} already has a live JV {before}")
         return False
     current_carmen_uri.set(URI)
-    body = {
-        "Code": PROBE_SETTING,
-        "DateFrom": PROBE_DAY,
-        "DateTo": PROBE_DAY,
-        "id": [PROBE_ID],
-    }
-    answer = await carmen.post_pms_gl(POST_TYPE, body, TOKEN)
+    section = {"setting_code": PROBE_SETTING, "post_type": POST_TYPE}
+    outcome, jv_no = await process.post_day(section, PROBE_DAY, PROBE_ID, TOKEN)
     await carmen.close_client()
     made = _engine_jvs(day)
-    ok, counter, voided = False, [], []
+    counter, voided = [], []
     with _jwt_client() as c:
         for j in made:
             jv = c.get(f"{API}/glJv/{j['JvhSeq']}").json()
@@ -410,7 +410,6 @@ async def _engine_probe() -> bool:
                 for x in lines
                 if x.get("AccCode") == "1021001"
             ]
-            ok = answer.get("Result") is True and bool(counter)
             r = c.delete(
                 f"{API}/glJv/{j['JvhSeq']}",
                 params={
@@ -420,14 +419,54 @@ async def _engine_probe() -> bool:
             )
             voided.append((j["JvhSeq"], r.status_code == 200))
     left = _engine_jvs(day)
-    ok = ok and len(made) == 1 and not left
+    seqs = [str(j["JvhSeq"]) for j in made]
+    posted_ok = outcome == "posted" and len(made) == 1 and bool(counter) and not left
     print(
-        f"{'PASS' if ok else 'FAIL'} P-03 our post with no counter posts on {PROBE_SETTING}, "
-        f"Carmen fills the counter  (Result={answer.get('Result')} jv={[j['JvhSeq'] for j in made]} "
-        f"counter lines={counter} voided={voided} left={[j['JvhSeq'] for j in left]})"
+        f"{'PASS' if posted_ok else 'FAIL'} P-03 our post_day, no counter, posts on {PROBE_SETTING}; "
+        f"Carmen fills the counter  (outcome={outcome} jv={seqs} counter lines={counter} "
+        f"voided={voided} left={[j['JvhSeq'] for j in left]})"
     )
-    print(f"INFO P-03 ask D: the answer's Id = {answer.get('Id')!r}")
-    return ok
+    named_ok = jv_no is not None and seqs == [jv_no]
+    print(
+        f"{'PASS' if named_ok else 'FAIL'} P-03 post_day names the JV Carmen made "
+        f"(ask D: the answer's Id)  (jv_no={jv_no!r} vs {seqs})"
+    )
+    if named_ok:
+        state = _state()
+        state["probe_jv"] = jv_no
+        _save(state)
+    return posted_ok and named_ok
+
+
+async def _seed_posted() -> str | None:
+    """F-01's row: a Comanche day stored posted with P-03's JV seq, as `_process` writes one.
+
+    Comanche refuses to post (ask K), so no day of ours reaches `posted` with a JV through
+    the flow yet; the row stands in for one, to check what the queue makes of `jv_no`.
+    """
+    jv_no = _state().get("probe_jv")
+    if not jv_no:
+        return None
+    async with async_session() as db:
+        tenants = {bu: t for t, bu in (await _tenant_ids(db)).items()}
+        hook = {
+            "InterfaceType": "PMS",
+            "InterfaceName": NAME,
+            "DocType": "Daily",
+            "DocDate": SEEDED_DAY,
+        }
+        db.add(
+            PmsEvent(
+                tenant_id=tenants["pms-e2e"],
+                event_id=f"PMS/{NAME}/Daily/{SEEDED_DAY}",
+                type="PMS",
+                payload=hook,
+                status="posted",
+                jv_no=jv_no,
+            )
+        )
+        await db.commit()
+    return jv_no
 
 
 def main() -> int:
@@ -461,6 +500,9 @@ def main() -> int:
         return 0
     if cmd == "engine-probe":
         return 0 if asyncio.run(_engine_probe()) else 1
+    if cmd == "seed-posted":
+        print(asyncio.run(_seed_posted()) or "")
+        return 0
     if cmd == "teardown":
         restored = asyncio.run(_restore())
         voided = _void()
