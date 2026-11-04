@@ -64,6 +64,31 @@ async def test_authenticate_refuses_without_stamping(found):
     db.execute.assert_not_awaited()
 
 
+REVOKED = _key(key_prefix="cpk_OldKey12", revoked_at=datetime(2026, 10, 20, 7, 12, tzinfo=UTC))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("plaintext", "found", "reason"),
+    [
+        ("", None, "no key in Authorization (header missing or empty)"),
+        ("eyJhbGc.eyJzdWI.c2ln", None, "a JWT, not a cpk_ key"),
+        ('"cpk_secretvalue"', None, "cpk_ key with 1 chars before it"),
+        ("{{pms_key}}", None, "not a cpk_ key (11 chars)"),
+        ("cpk_secretvalue", None, "unknown key: never issued by this backend"),
+        ("cpk_secretvalue", REVOKED, "revoked key cpk_OldKey12, revoked 2026-10-20 07:12 UTC"),
+        (
+            "cpk_secretvalue",
+            _key(key_prefix="cpk_LiveKey1", revoked_at=None),
+            "key cpk_LiveKey1: its BU is inactive or deleted, or the key's scope or expiry",
+        ),
+    ],
+)
+async def test_a_refusal_says_why_but_never_repeats_the_key(plaintext, found, reason):
+    db = MagicMock(scalar=AsyncMock(return_value=found))
+    assert await api_keys.why_refused(db, plaintext) == reason
+
+
 @pytest.mark.asyncio
 async def test_authenticate_with_no_token_never_queries():
     db = MagicMock(scalar=AsyncMock(), execute=AsyncMock())

@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: ["main"]
 
-# Least privilege: jobs only read the repo. (codeql.yml requests its own write scope.)
+# Least privilege: jobs only read the repo.
 permissions:
   contents: read
 
