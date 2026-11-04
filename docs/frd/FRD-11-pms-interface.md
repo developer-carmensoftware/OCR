@@ -1,15 +1,15 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-11 — PMS Interface Automation
-output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.2.docx
+output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.3.docx
 iso-wp: SD
-Document Version: Version 1.2 (As-Built Developer & Test Spec)
+Document Version: Version 1.3 (As-Built Developer & Test Spec)
 Module ID: `pms_interface` (ใช้บันทึก LLM usage เท่านั้น ไม่คิดเครดิต)
-Status: Built, merged to main (PR #284, #286, #287, #292, #293, #301–#303) — รอ Carmen เปิด setting GET ใต้ `/api/interface` (CA-116) ก่อนหน้านั้นทุกวันจะหยุดที่ `carmen_config_unreadable`
-Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026) — dialog ตารางเดียว merge แล้วใน PR #315
-Date: 2 November 2026
+Status: Built — อ่านรายการ interface ของ Carmen (`interfaceThirdParties`) แทน PMS setting (decision-log #51) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K) · ระบบยังไม่เก็บเลข JV (ask D)
+Source of truth: repo developer-carmensoftware/OCR @ da06eb2f (03/11/2026)
+Date: 4 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
-check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-10-07, interfacePostGL/REVENUE
+check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-10-07, interfacePostGL/REVENUE, GET /interfacePost/mapping/{code}/{postType}/GL, PUT /interfacePost/mapping/{code}/{postType}/GL, COMANCHE
 ---
 
 **ความสัมพันธ์กับเอกสารอื่น:** วันของ PMS เป็นแหล่งที่สามของคิว AI JV Automation การแสดงในคิว chip และ reason ใช้กติกาของ FRD-12 เอกสารนี้อธิบายตั้งแต่ Carmen ส่ง hook จนถึงตอนที่ engine ของ Carmen post วันนั้น สัญญาที่ส่งให้ทีม Carmen อยู่ใน `docs/PMS_INTEGRATION.md` และเอกสารเชิงลึกของทีมพัฒนาอยู่ใน `docs/pms-interface/`
@@ -21,6 +21,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 | 1.0 | 27/10/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว (path B ตาม decision-log #43 และหน้าตั้งค่าของ Carmen ตาม #44, #45) ครอบคลุม hook, การอ่านวันจาก Data Bank, AI แนะนำบัญชีเฉพาะแถวใหม่, การอนุมัติที่เขียน mapping table ของ Carmen แล้วให้ engine ของ Carmen post และสิ่งที่ยังรอจาก Carmen | Reviewed |
 | 1.1 | 28/10/2026 | Dev Team | Dialog ตรวจเหลือตารางเดียวแบบหน้า mapping ของ Carmen (Code, Description, DeptCode, AccCode, AccDesc): แถวใหม่อยู่บน แถวที่ map แล้วอ่านอย่างเดียว ไม่แสดงยอด ตัดช่องติ๊ก Checked, ป้าย Unsure, เหตุผลของ AI และหมายเหตุที่บอกชื่อ PMS setting ของ Carmen — กด Approve ได้เมื่อแถวใหม่ทุกแถวมีบัญชี (decision-log #47) | |
 | 1.2 | 02/11/2026 | Dev Team | ตรวจกับโค้ด ณ `2be6d7c9` แล้วแก้: ข้อยกเว้นของ #45 — ถ้ามีวันที่ค้างที่ `carmen_forbidden` token ใหม่จากหน้าจอ Carmen แทน credential เดิมแม้ยังใช้ได้ (`stopped_by_permission`) (§2.1, §5); ข้อความแถวที่ post แล้วคือ "Reviewed and posted by {name}"; `pms_events.review_payload` ถูกเข้ารหัส (#319) และทุกตารางเปิด RLS (#321) | |
+| 1.3 | 04/11/2026 | Dev Team | ตามโค้ด ณ da06eb2f (decision-log #51): ระบบอ่าน `interfaceThirdParties` แทน PMS setting และ INI แล้วหารหัส setting, คอลัมน์ key, รายการของวัน และรูปแบบไฟล์เอง วันไม่หยุดที่ `carmen_config_unreadable` ทุกวันแล้ว · การ post ไม่ส่งบัญชีพัก (engine ของ Carmen ใช้จาก setting ของมันเอง) · เหตุผล `pms_setting_missing` / `unsupported_pms_format` / `unreadable_day` ตามกติกาใหม่ · Comanche.PMS ยังถูก Carmen ปฏิเสธ (ask K) | |
 
 <!-- pagebreak -->
 
@@ -58,7 +59,7 @@ flowchart TB
 
 - **รับ hook ของ Carmen** `{InterfaceType, InterfaceName, DocType, DocDate}` ที่ `POST /api/v1/pms/events` ยืนยันตัวตนด้วย API key ของ BU × PMS นั้น เก็บเป็นหนึ่งแถวต่อ BU × วัน ตอบทันทีโดยไม่รอการประมวลผล
 - **Settings API สำหรับหน้า PMS setting ของ Carmen** (decision-log #44): อ่าน/ตั้ง auto-post, ออก key ใหม่ และเพิกถอน key ต่อ BU × PMS ทุกการเขียนจาก Carmen เก็บ token ของผู้ใช้เป็น credential ของ BU (ยกเว้นเมื่อ BU มี credential ที่ยังใช้ได้อยู่แล้ว ตาม #45 — **แต่ถ้ามีวันของ BU ที่ค้างที่ `carmen_forbidden` token ใหม่แทนที่เสมอ** เพราะ credential เดิมพิสูจน์แล้วว่าไม่มีสิทธิ์พอสำหรับงาน PMS และการแก้ของสาเหตุนี้คือให้ผู้ใช้ที่มีสิทธิ์กดบันทึกหน้า PMS setting)
-- **ประมวลผลหนึ่งวัน:** อ่าน PMS setting และ INI ของ section REVENUE, อ่านวันจาก Data Bank, อ่าน mapping table, หาแถวใหม่, ให้ AI แนะนำบัญชี แล้วพักรอคน หรือให้ engine post
+- **ประมวลผลหนึ่งวัน:** อ่านรายการ interface ของ BU จาก Carmen (`interfaceThirdParties`) หา section REVENUE → GL ของ PMS นั้น, อ่าน mapping table (คอลัมน์ของตารางบอกว่าอะไรเป็น key), อ่านวันจาก Data Bank, หาแถวใหม่, ให้ AI แนะนำบัญชี แล้วพักรอคน หรือให้ engine post
 - **ลองใหม่อัตโนมัติ** สำหรับสาเหตุที่อาจหายเอง (ยังไม่มี credential, Carmen ล่ม, Data Bank ยังไม่มีวันนั้น) สูงสุด 3 ครั้ง และปลุกวันที่รอเมื่อมี credential ใหม่
 - **ตรวจในคิว:** หนึ่งแถวต่อวัน และ dialog ตรวจที่ `#/CreditCardOCR/review?pms=<id>`
 - **Approve:** อ่านตารางสด ตรวจบัญชีกับผังบัญชี เขียนตารางกลับทั้งตารางพร้อมแถวใหม่ แล้วให้ engine post จากนั้นตรวจวันอื่นที่รออยู่ของ BU เดียวกันอีกรอบ
@@ -75,7 +76,7 @@ flowchart TB
 | Section อื่นนอกจาก REVENUE (Statistic, MarketSegment) | ไม่อ่าน |
 | Layout ที่ไม่ใช่ JSON object (CSV, fixed-width; Opera, GuestLine, Hotelogix) | จบเป็น `unsupported_pms_format` ไม่เดา |
 | PMS ที่ Carmen ดึงข้อมูลเองโดยไม่ผ่าน Data Bank | รอ Carmen ส่งรายการประเภท PMS แล้วจึงวางแผนแยก |
-| เลข JV บนแถวที่ post แล้ว | engine ของ Carmen ยังไม่คืนเลข JV (Carmen ตกลงจะเพิ่ม `JvhSeq`/`JvhNo` แล้ว — ask D) |
+| เลข JV บนแถวที่ post แล้ว | Carmen คืน `Id` ของ JV ในคำตอบแล้ว แต่ระบบยังไม่เก็บลง `jv_no` (ask D) |
 | ลบแถว `pms_events` เก่าตามอายุ | ยังไม่ได้กำหนดระยะเวลา |
 | ตรวจสุขภาพ token รายวันของ BU ที่ใช้เฉพาะ PMS | พบ token ตายเมื่อวันหนึ่งล้มเหลว |
 | Popup ขอความยินยอมเรื่อง AI สำหรับ BU ที่ใช้เฉพาะ PMS | ยอมรับแล้ว (decision-log #44) — ขอให้ Carmen แจ้งบนหน้า PMS setting (ask J) |
@@ -92,7 +93,7 @@ flowchart TB
 | F-03 | Carmen Settings API | GET/PUT settings, POST/DELETE keys สำหรับหน้าจอของ Carmen | `routers/pms_carmen.py` |
 | F-04 | Shared credential | credential เดียวของ BU ที่ email automation ใช้ด้วย | `services/email_automation/credential.py` (`adopt_token`, `posting_target`) |
 | F-05 | Day processing | gate ladder, park หรือ post, ลองใหม่, ปลุก | `services/pms/process.py` (`process_event`, `run_pms_processing`, `post_day`) |
-| F-06 | Carmen config reader | อ่าน INI แบบที่ engine อ่าน: section, spec, แถว, key, ตารางที่รวมแล้ว | `services/pms/carmen_config.py` |
+| F-06 | Carmen config reader | หา section จากรายการ interface ของ Carmen แล้วหาเอง: รหัส setting `{InterfaceName}.{InterfaceType}`, คอลัมน์ key จากตาราง mapping, รายการของวันใน `FileData` ที่มีทุกคอลัมน์ key | `services/pms/carmen_config.py` (`find_section`, `key_columns`, `newest_day`, `rows_of`) |
 | F-07 | AI suggestion | หนึ่งคำขอต่อวันที่มีแถวใหม่ ใช้แถวที่ map แล้วเป็นตัวอย่าง | `services/pms/mapping.py` (`suggest`) |
 | F-08 | Review | ดู, approve, reject, recheck | `services/pms/review.py` + `/api/v1/pms/days/*` |
 | F-09 | Queue rows | วันของ PMS เป็นแถวในคิว | `services/credit_card/activity.py` (`_pms_row`) |
@@ -188,7 +189,6 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 | Key | ความหมาย |
 |---|---|
 | `setting_code` / `post_type` | PMS setting ที่ post วันนั้น เช่น `Comanche.PMS` / `REVENUE` |
-| `counter` | บัญชีพักของ section (แผนก, บัญชี, ชื่อ) — สำเนาสำหรับหมายเหตุและ body ของการ post |
 | `key_columns` | คอลัมน์ที่เป็น key ของ mapping เช่น `["Code","Description"]` |
 | `rows` | ทุกแถวของวันตามลำดับในไฟล์: key, values, amount (ข้อความตามที่ PMS เขียน) |
 | `mapped` | บัญชีของ Carmen สำหรับ key ของวันนั้น |
@@ -267,13 +267,13 @@ Migration: `20261007000000_pms_events.sql`, `20261009000000_pms_processing.sql` 
 ทุกคำขอไปที่ `{carmen_uri}/Carmen.API/api/interface/…` ด้วย token ของ BU ที่เก็บไว้ (menu token ซึ่งเปิดได้เฉพาะ `/api/interface/*`)
 
 <!-- widths: 36,30,34 -->
-| Endpoint ฝั่ง Carmen | ใช้ทำอะไร | สถานะ (26/10/2026) |
+| Endpoint ฝั่ง Carmen | ใช้ทำอะไร | สถานะ |
 |---|---|---|
 | `GET /{type}/{name}/{docType}/Date/{docDate}` | อ่านวันจาก Data Bank | ใช้ได้ — ผู้ใช้ของ menu token ต้องมีสิทธิ์ `Inf.PMS.DataBank` View |
-| `GET /interfacePost/Setting/GL` | อ่าน PMS setting และ INI | **ยังไม่มีใต้ `/api/interface` (404) — เป็นสิ่งที่ขวางอยู่** |
-| `GET /interfacePost/mapping/{code}/{postType}/GL` | อ่าน mapping table | ใช้ได้ตั้งแต่ 15/10/2026 |
+| `GET /interfaceThirdParties` | รายการ interface ของ BU และ section ของแต่ละตัว `{InterfaceType, InterfaceName, PostToModule, DocType, PostType, From}` — ใช้หา section REVENUE → GL และรูปแบบไฟล์ | ใช้ได้ (PMS setting และ INI อ่านด้วย menu token ไม่ได้ จึงไม่อ่าน) |
+| `GET /interfacePost/mapping/{code}/{postType}/GL` | อ่าน mapping table และชื่อคอลัมน์ (คอลัมน์ที่ไม่ใช่ DeptCode / AccCode / AccDesc คือ key) | ใช้ได้ — คำตอบที่ไม่ใช่ตาราง (เช่น 303 Configuration is missing) ถือว่าอ่านไม่ได้ |
 | `PUT /interfacePost/mapping/{code}/{postType}/GL` | เขียน mapping table — **แทนที่ทั้งตาราง** | ใช้ได้ |
-| `POST /interfacePostGL/{postType}` | ให้ engine post วันนั้น `{Code, DateFrom, DateTo, DeptCode, AccCode, id}` | ใช้ได้ — ยังไม่คืนเลข JV |
+| `POST /interfacePostGL/{postType}` | ให้ engine post วันนั้น `{Code, DateFrom, DateTo, id}` — ไม่ส่งบัญชีพัก engine ใช้จาก setting ของ Carmen เอง | ใช้ได้ — Carmen คืน `Id` ของ JV แล้ว แต่ระบบยังไม่เก็บ (ask D) |
 | ผังบัญชีและแผนก | ให้ AI ใช้ และตรวจตอน approve | ใช้ได้ |
 
 **คำตอบของ engine:**
@@ -341,9 +341,9 @@ sequenceDiagram
     participant C as Carmen
     participant L as LLM
     W->>W: claim (lease 10 min, attempt + 1)
-    W->>C: GET PMS setting (REVENUE INI)
+    W->>C: GET interfaceThirdParties (REVENUE to GL section)
+    W->>C: GET mapping table (rows + key columns)
     W->>C: GET Data Bank day
-    W->>C: GET mapping table
     W->>W: new keys = day keys not in table
     opt new keys
         W->>C: accounts + departments
@@ -358,25 +358,28 @@ sequenceDiagram
 
 ## 8.4 Gate Ladder
 
-```mermaid 8.4a | Before the day is read — Carmen's setting
+```mermaid 8.4a | Before the day is read — Carmen's interface list and mapping table
 flowchart TB
     A[claimed] --> B{credential stored}
     B -->|no| R1[retry: no_credential]
-    B -->|yes| C{read PMS setting}
+    B -->|yes| C{read interface list}
     C -->|error| R2[retry:<br/>carmen_config_unreadable]
-    C -->|ok| D{active setting with<br/>active REVENUE}
+    C -->|ok| D{PMS listed with<br/>REVENUE to GL}
     D -->|no| R3[retry:<br/>pms_setting_missing]
-    D -->|yes| E{JSON-object layout}
+    D -->|yes| E{PostType Json}
     E -->|no| F1[FAILED:<br/>unsupported_pms_format]
-    E -->|yes| N([read the day, 8.4b])
+    E -->|yes| M{mapping table<br/>with key columns}
+    M -->|no| R6[retry:<br/>carmen_config_unreadable]
+    M -->|yes| N([read the day, 8.4b])
 ```
 
 ```mermaid 8.4b | Reading the day, then park or post
 flowchart TB
     G{read Data Bank day} -->|error| R4[retry: unauthorized,<br/>forbidden, unreachable]
     G -->|no rows| R5[retry: day_not_found]
-    G -->|ok| H{read mapping table}
-    H -->|ok| I{flags or<br/>auto_post off}
+    G -->|ok| H{one FileData list<br/>with every key column}
+    H -->|none or several| F2[FAILED:<br/>unreadable_day]
+    H -->|one| I{flags or<br/>auto_post off}
     I -->|yes| PK[PARK:<br/>pending_review]
     I -->|no| J{engine post}
     J -->|Result true or -200| PO[POSTED]
@@ -429,14 +432,14 @@ sequenceDiagram
 | reason_code | สาเหตุ | สถานะที่ค้าง | แก้โดย |
 |---|---|---|---|
 | `no_credential` | BU ยังไม่มี credential | `received` → `failed` ที่ครั้งที่ 3 | บันทึก PMS setting ใน Carmen |
-| `carmen_config_unreadable` | อ่าน PMS setting ไม่ได้ (**ทุกวันในตอนนี้**) | `received` → `failed` | Carmen เปิด setting GET ใต้ `/api/interface` |
-| `pms_setting_missing` | ไม่มี setting ที่ active ของ PMS นี้ หรือไม่มี section REVENUE | `received` → `failed` | ตั้งค่าใน Carmen |
-| `unsupported_pms_format` | INI ไม่ใช่ layout แบบ JSON object | `failed` ทันที | ต้องเพิ่มโค้ดอ่าน layout ใหม่ |
+| `carmen_config_unreadable` | อ่านรายการ interface หรือ mapping table ไม่ได้ หรือตาราง mapping ไม่มีคอลัมน์ key | `received` → `failed` | ตรวจ mapping table ของ setting นั้นใน Carmen |
+| `pms_setting_missing` | รายการ interface ของ Carmen ไม่มี PMS นี้ที่ post REVENUE เข้า GL | `received` → `failed` | ตั้งค่าใน Carmen |
+| `unsupported_pms_format` | `PostType` ของ section ไม่ใช่ `Json` | `failed` ทันที | ต้องเพิ่มโค้ดอ่านรูปแบบใหม่ |
 | `carmen_unauthorized` | token ตาย | `received` → `failed` หรือพักถ้าตอน post | token ใหม่ |
 | `carmen_forbidden` | ผู้ใช้ของ token ไม่มีสิทธิ์ (เช่น Data Bank View) | เหมือนข้างบน | สิทธิ์ใน Carmen |
 | `databank_unreachable` | ติดต่อ Data Bank ไม่ได้ | `received` → `failed` | Carmen กลับมา |
 | `day_not_found` | Data Bank ยังไม่มีวันนั้น | `received` → `failed` | PMS เขียนวันนั้น แล้ว Carmen ส่ง hook ใหม่ |
-| `unreadable_day` | รายการในวันไม่ใช่ object | `failed` ทันที | ไฟล์ของ PMS |
+| `unreadable_day` | ไม่มีรายการใน `FileData` ของวันที่มีทุกคอลัมน์ key หรือมีมากกว่าหนึ่งรายการ (ไม่เดา) | `failed` ทันที | ชื่อ field ของ PMS ใน Data Bank ต้องตรงกับคอลัมน์ของตาราง mapping |
 | `processing_error` | exception ที่ไม่ได้คาดไว้ | `received` → `failed` | ทีมพัฒนาอ่าน log |
 | `carmen_rejected` | engine ปฏิเสธตอน auto-post | `pending_review` | ผู้ตรวจ พร้อมข้อความของ Carmen |
 | `rejected_by_reviewer` | คนกด Reject | `rejected` | — |
@@ -453,7 +456,7 @@ sequenceDiagram
 | EC-07 | อ่านตารางของ Carmen ไม่ได้ตอน approve | 503 ไม่เขียนอะไร |
 | EC-08 | `Comanche` กับ `COMANCHE` เป็นสองวัน | ยอมรับ (Carmen ส่งตัวพิมพ์เดียว) engine ปฏิเสธการ post ครั้งที่สอง (`-200`) |
 | EC-09 | Data Bank มีหลายแถวของวันเดียวกัน | ใช้แถวที่ `LastModified` ล่าสุด |
-| EC-10 | `UseAccountMap=false` ใน INI | ไม่มีแถวใดเป็นแถวใหม่ |
+| EC-10 | วันของ Comanche มีทั้งรายการ `Transaction` และ `Statistic` | อ่านเฉพาะรายการที่มีทุกคอลัมน์ key (`Transaction`) |
 
 ## 9.1 State Diagram — สถานะของ pms_events
 
@@ -514,13 +517,13 @@ stateDiagram-v2
 |---|---|
 | เสร็จ | Hook receiver, API key ต่อ BU × PMS, 401/403/413/422 |
 | เสร็จ | Settings API สำหรับหน้าจอ Carmen, การสร้าง tenant, credential ตาม #45 |
-| เสร็จ | อ่าน INI แบบที่ engine อ่าน (section, spec, rows, key, merged table) |
+| เสร็จ | อ่านรายการ interface ของ Carmen แล้วหารหัส setting, คอลัมน์ key และรายการของวันเอง (decision-log #51) |
 | เสร็จ | AI แนะนำเฉพาะแถวใหม่ พร้อม `_validate_codes` |
 | เสร็จ | Park / post, ลองใหม่ 3 ครั้ง, ปลุกเมื่อมี credential ใหม่, sweep ทุก 10 นาที |
 | เสร็จ | Approve: อ่านตารางสด, ตรวจกับผัง, PUT ทั้งตาราง, post, recheck |
 | เสร็จ | แถวในคิวและ dialog ตรวจ |
-| รอ Carmen | setting GET ใต้ `/api/interface` (ask A) |
-| รอ Carmen | เลข JV ในคำตอบของ `interfacePostGL` (ask D) แล้วเก็บลง `jv_no` |
+| รอ Carmen | Carmen ปฏิเสธการ post ของ Comanche.PMS ว่า "no DrCr value" ขณะที่ข้อมูลเดียวกัน post ได้บน setting อื่น (ask K) |
+| ยังไม่ทำ | เก็บเลข JV จาก `Id` ในคำตอบของ `interfacePostGL` ลง `jv_no` (ask D) |
 | ยังไม่ทำ | retention ของ `pms_events`, token health ของ BU ที่ใช้เฉพาะ PMS |
 
 ## 11.2 Acceptance Criteria
@@ -603,8 +606,9 @@ POST /api/v1/pms/days/8c2e…/approve
 | TC-PMS-12 | มีแถวใหม่, auto-post เปิด | ส่ง hook | `pending_review` "AI suggested mapping: …" | ไม่เรียก engine |
 | TC-PMS-13 | AI ตอบว่าง | จำลอง LLM ล้มเหลว | แถวนั้นเป็น `mapping_missing` | วันไม่หยุด |
 | TC-PMS-14 | ยังไม่มี credential | ส่ง hook ก่อน Generate key | `received` + `no_credential` แล้ว `failed` ครั้งที่ 3 | บันทึก setting แล้ววันตื่นเอง |
-| TC-PMS-15 | อ่าน PMS setting ไม่ได้ (ปัจจุบัน) | ส่ง hook | `carmen_config_unreadable` | ตื่นเมื่อมี credential ใหม่ |
-| TC-PMS-16 | layout ไม่ใช่ JSON | setting เป็น CSV | `failed` ทันที `unsupported_pms_format` | ไม่ลองซ้ำ |
+| TC-PMS-15 | อ่านรายการ interface หรือ mapping table ไม่ได้ | ส่ง hook | `carmen_config_unreadable` | ตื่นเมื่อมี credential ใหม่ |
+| TC-PMS-16 | ไฟล์ไม่ใช่ JSON | section มี `PostType` อื่นที่ไม่ใช่ Json | `failed` ทันที `unsupported_pms_format` | ไม่ลองซ้ำ |
+| TC-PMS-28 | ไม่มีรายการของวันที่มีทุกคอลัมน์ key | `FileData` มีแต่รายการที่ขาด `Code` | `failed` ทันที `unreadable_day` | ไม่ลองซ้ำ ไม่เรียก AI |
 | TC-PMS-17 | engine ปฏิเสธตอน auto-post | จำลอง `Code -500` | `pending_review` + `carmen_rejected` | ข้อความ Carmen บนแถว |
 
 ## 13.3 Category 3: Review

@@ -6,10 +6,10 @@ iso-ref: RS-07|PMS-[A-Z]+\d
 Document Version: Version 0.1 (Requirements Specification)
 แผนงาน: PMS Interface automation (10/09 – 30/09/2026)
 Module ID: `pms_interface` (บันทึกการใช้ LLM เท่านั้น ไม่คิดเครดิต)
-รายละเอียดการออกแบบ: FRD-11 PMS Interface Automation v1.2 (Software Design) และ `docs/pms-interface/`
-Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026)
-สถานะระบบ: รอ Carmen เปิด PMS setting ใต้ `/api/interface` (CA-116) ก่อนหน้านั้นทุกวันหยุดที่ `carmen_config_unreadable`
-Date: 2 November 2026
+รายละเอียดการออกแบบ: FRD-11 PMS Interface Automation v1.3 (Software Design) และ `docs/pms-interface/`
+Source of truth: repo developer-carmensoftware/OCR @ da06eb2f (03/11/2026)
+สถานะระบบ: อ่านรายการ interface ของ Carmen แทน PMS setting (decision-log #51) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K) · ยังไม่เก็บเลข JV (ask D)
+Date: 4 November 2026
 ---
 
 ## Document Revision History
@@ -39,10 +39,10 @@ Date: 2 November 2026
 | ทำ | ไม่ทำ |
 |---|---|
 | รับ hook ของ PMS และเก็บหนึ่งแถวต่อ BU × วัน | ตัดสิน Dr/Cr ยอดรวม บัญชีพัก หรือ prefix ของ JV — อยู่ใน PMS setting ของ Carmen |
-| อ่าน PMS setting, Data Bank และ mapping table ของ Carmen | InterfaceType อื่นนอกจาก PMS และ section อื่นนอกจาก REVENUE |
+| อ่านรายการ interface, Data Bank และ mapping table ของ Carmen | InterfaceType อื่นนอกจาก PMS และ section อื่นนอกจาก REVENUE |
 | ให้ AI แนะนำบัญชีเฉพาะแถวใหม่ | layout ที่ไม่ใช่ JSON (CSV, fixed-width) |
 | อนุมัติ/ปฏิเสธในคิว แล้วเขียน mapping กลับและสั่ง engine post | แก้ mapping หลังอนุมัติ — ใช้หน้าจอของ Carmen |
-| API ให้หน้า PMS setting ของ Carmen | เลข JV บนแถวที่ post แล้ว — รอ Carmen คืนเลข JV |
+| API ให้หน้า PMS setting ของ Carmen | เก็บเลข JV บนแถวที่ post แล้ว (Carmen คืน `Id` แล้ว ยังไม่ได้ทำ) |
 
 # 2. ข้อกำหนดด้านการทำงาน
 
@@ -53,7 +53,7 @@ Date: 2 November 2026
 | PMS-F02 | ระบบต้องปฏิเสธ key ที่ผิดหรือถูกเพิกถอน (401) key ของ PMS อื่น (403) body เกิน 16 KB (413) และ body ผิดรูปแบบ (422) | ทดสอบ | §5 |
 | PMS-F03 | หน้า PMS setting ของ Carmen ต้องอ่าน/ตั้ง auto-post ออก key ใหม่ (key ที่ใช้งานได้หนึ่งอันต่อ BU × PMS โดยเพิกถอนอันเดิม) และเพิกถอน key ได้ | ทดสอบ | §2.1, §12 |
 | PMS-F04 | ทุกการเขียนจากหน้าจอของ Carmen ต้องเก็บ token ของผู้ใช้เป็น credential ของ BU ยกเว้น BU มี credential ที่ยังใช้ได้อยู่แล้ว แต่ถ้ามีวันที่ค้างที่ `carmen_forbidden` ต้องแทนที่เสมอ | ทดสอบ | §2.1, §5 |
-| PMS-F05 | ระบบต้องประมวลผลหนึ่งวันด้วยการอ่าน PMS setting และ INI ของ section REVENUE, ข้อมูลวันจาก Data Bank และ mapping table ของ Carmen แล้วหาแถวที่ mapping table ยังไม่รู้จัก | ทดสอบ | §2.1, §8 |
+| PMS-F05 | ระบบต้องประมวลผลหนึ่งวันด้วยการหา section REVENUE → GL ของ PMS ในรายการ interface ของ Carmen, อ่าน mapping table (คอลัมน์ที่ไม่ใช่ DeptCode / AccCode / AccDesc คือ key) และข้อมูลวันจาก Data Bank แล้วหาแถวที่ mapping table ยังไม่รู้จัก | ทดสอบ | §2.1, §8 |
 | PMS-F06 | AI ต้องแนะนำบัญชีเฉพาะแถวใหม่ ในคำขอเดียวต่อวัน โดยใช้แถวที่ map แล้วของ BU เป็นตัวอย่าง | ทดสอบ | §1, F-07 |
 | PMS-F07 | วันที่มีแถวใหม่ต้องพักให้คนตรวจเสมอ วันที่ไม่มีแถวใหม่ post เองเมื่อเปิด auto-post ของ PMS นั้น | ทดสอบ | §11.2 |
 | PMS-F08 | ระบบต้องลองใหม่อัตโนมัติสูงสุด 3 ครั้งสำหรับสาเหตุที่อาจหายเอง (ยังไม่มี credential, Carmen ล่ม, Data Bank ยังไม่มีวันนั้น) และปลุกวันที่รอเมื่อมี credential ใหม่ | ทดสอบ | §2.1 |
@@ -61,7 +61,7 @@ Date: 2 November 2026
 | PMS-F10 | หลังอนุมัติ ระบบต้องตรวจวันอื่นที่รออยู่ของ BU เดียวกันอีกรอบ รหัสที่อนุมัติแล้วต้องไม่เป็นแถวใหม่อีก | ทดสอบ | §11.2 |
 | PMS-F11 | การปฏิเสธต้องเลิกวันนั้นพร้อมเหตุผลแบบไม่บังคับ และถ้า Carmen ส่งวันนั้นมาใหม่ต้องถูกอ่านอีกครั้ง | ทดสอบ | §2.1 |
 | PMS-F12 | ระบบต้องไม่ส่ง Dr/Cr หรือยอดรวมของตัวเองไป Carmen การ post ต้องผ่าน engine ของ Carmen ตาม PMS setting เท่านั้น | ทดสอบ | §1, §11.2 |
-| PMS-F13 | layout ที่ไม่ใช่ JSON ต้องจบเป็น `unsupported_pms_format` โดยไม่เดา | ทดสอบ | §2.2 |
+| PMS-F13 | section ที่ `PostType` ไม่ใช่ Json ต้องจบเป็น `unsupported_pms_format` และวันที่ไม่มีรายการเดียวที่มีทุกคอลัมน์ key ต้องจบเป็น `unreadable_day` โดยไม่เดา | ทดสอบ | §2.2 |
 
 # 3. ข้อกำหนดด้านส่วนติดต่อผู้ใช้
 
@@ -77,7 +77,7 @@ Date: 2 November 2026
 | รหัส | ข้อกำหนด | ทวนสอบโดย | อ้างอิง FRD-11 |
 |---|---|---|---|
 | PMS-I01 | ระบบต้องอ่านวันจาก Data Bank (`GET /api/interface/PMS/{name}/{docType}/Date/{docDate}`) อ่าน/เขียน mapping table และสั่ง post ผ่าน `interfacePostGL` ของ Carmen ด้วย credential ของ BU | ทดสอบ | §7 |
-| PMS-I02 | การอ่าน PMS setting ต้องใช้ endpoint ใต้ `/api/interface` ซึ่ง Carmen ยังไม่เปิด (CA-116) ก่อนหน้านั้นวันต้องหยุดที่ `carmen_config_unreadable` | ทดสอบ | §7 |
+| PMS-I02 | ระบบต้องหา section ของ PMS จาก `GET /api/interface/interfaceThirdParties` และหารหัส setting เป็น `{InterfaceName}.{InterfaceType}` เอง (PMS setting และ INI อ่านด้วย menu token ไม่ได้) ถ้าอ่านรายการหรือ mapping table ไม่ได้ วันต้องหยุดที่ `carmen_config_unreadable` | ทดสอบ | §7 |
 
 # 5. ข้อกำหนดด้านคุณภาพ
 
@@ -95,7 +95,7 @@ Date: 2 November 2026
 <!-- widths!: 15,55,12,18 -->
 | รหัส | ข้อกำหนด | ทวนสอบโดย | อ้างอิง FRD-11 |
 |---|---|---|---|
-| PMS-C01 | ไม่มีกติกาบัญชีของระบบเอง (decision-log #43) ทุกอย่างมาจาก PMS setting ของ Carmen | ตรวจทาน | §1 |
+| PMS-C01 | ไม่มีกติกาบัญชีของระบบเอง (decision-log #43) ทุกอย่างมาจาก PMS setting ของ Carmen การ post ส่งแค่รหัส setting วันที่ และ Data Bank id ไม่ส่งบัญชีพัก | ตรวจทาน | §1 |
 | PMS-C02 | Carmen เป็นผู้กำหนดว่าใครเห็นหน้า PMS setting ระบบไม่ตรวจสิทธิ์ซ้ำ | ตรวจทาน | §10.1 |
 
 # 7. เกณฑ์การยอมรับ

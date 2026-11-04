@@ -250,7 +250,7 @@ Date: 2 November 2026
 | PMS-F10 | FRD-11 §11.2 | `services/pms/review.py` | `test_pms_review.py` | TC-PMS-25 |
 | PMS-F11 | FRD-11 §2.1 | `services/pms/review.py` | `test_pms_review_api.py` | TC-PMS-26 |
 | PMS-F12 | FRD-11 §1 | `services/pms/process.py` | `test_pms_process.py` | TC-PMS-21, 27 |
-| PMS-F13 | FRD-11 §2.2 | `services/pms/carmen_config.py` | `test_pms_carmen_config.py` | TC-PMS-16 |
+| PMS-F13 | FRD-11 §2.2, §9 | `services/pms/carmen_config.py`, `services/pms/process.py` | `test_pms_carmen_config.py`, `test_pms_process.py` | TC-PMS-16, 28 |
 | PMS-U01 | FRD-11 §4 | `services/pms/review.py` | `PmsReviewDocument.test.tsx` | TC-PMS-20 |
 | PMS-U02 | FRD-11 §2.1 | `services/shared/api_keys.py` | `ApiKeysPage.test.tsx` | — |
 | PMS-I01 | FRD-11 §7 | `services/pms/process.py` | `test_pms_process.py` | TC-PMS-21 |
