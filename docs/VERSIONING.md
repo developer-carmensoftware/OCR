@@ -49,7 +49,7 @@ MINOR (if it adds something users can see or do) or PATCH.
 2. **Does a request, response, field, URL, status code or payload that worked before stop working?**
    Removing, renaming, retyping, making optional → required, or changing meaning all count.
    **Adding** an endpoint, an optional field or a new enum value does **not**.
-3. **Must a person do something new to keep using it?** Re-onboard a BU, re-enter a credential, re-map settings.
+3. **Must a person do something new to keep using it?** Re-onboard a BU, re-enter a credential, re-map settings. (A one-click re-consent modal is the one exception, see below.)
 
 A forced re-onboard is MAJOR even when the API is untouched (Q1 yes via the user, Q3 yes). A forced **re-consent** is deliberately *not*: it is one modal click, so a `CONSENT_VERSION` bump is MINOR (decided 2026-11-05).
 
