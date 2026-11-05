@@ -60,7 +60,7 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-07-27',
-    version: '0.1.2',
+    version: '0.1.0',
     en: {
       title: 'Eight banks and payment gateways supported',
       features: [
@@ -143,7 +143,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   },
   {
     date: '2026-07-21',
-    version: '0.1.1',
+    version: '0.0.2',
     en: {
       title: 'Account mappings stay saved',
       fixes: [
@@ -175,7 +175,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   },
   {
     date: '2026-07-20',
-    version: '0.1.0',
+    version: '0.0.1',
     en: {
       title: 'Maintenance notices you can actually read',
       features: [

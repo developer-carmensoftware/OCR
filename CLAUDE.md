@@ -54,7 +54,7 @@ Every meaningful change is logged in [`changelog/`](changelog/), **one file per 
 and `deploy.yml` tags the GitHub Release `v$(cat VERSION)`. `APP_VERSION` in the env still
 overrides the backend value, but it is an override, not the source.
 
-**Phase: `0.x.z` until the PMS interface is complete** (reset 2026-11-05 from `1.0.2` → `0.1.2`; the product is
+**Phase: `0.x.z` until the PMS interface is complete** (reset 2026-11-05 from `1.0.2` → `0.1.0`; the product is
 "complete" only when PMS is). At `0.x`, MINOR covers both new capability and a breaking change, and there is no
 MAJOR; `1.0.0` is cut once, at PMS done. The table below applies in full from `1.0.0`. See VERSIONING.md.
 

@@ -9,7 +9,7 @@ Reset on 2026-11-05 (was `1.0.2`; no tag or GitHub release ever existed, so no c
 numbers). The product counts as complete only when the **PMS interface** is complete, so we stay in
 SemVer's initial-development range:
 
-- Old `1.0.0 / 1.0.1 / 1.0.2` became `0.1.0 / 0.1.1 / 0.1.2` (same releases, renumbered). `VERSION` = `0.1.2`.
+- Old `1.0.0 / 1.0.1 / 1.0.2` became `0.0.1 / 0.0.2 / 0.1.0` (same releases, renumbered, so the newest shipped state is the first official `0.1.0`). `VERSION` = `0.1.0`.
 - **MINOR** (`0.X.0`) = a new user-visible capability **or** a breaking contract change. Both are allowed
   at `0.x`; there is no MAJOR below 1.0.0.
 - **PATCH** (`0.1.X`) = fix, prompt tweak, perf, copy: unchanged.
