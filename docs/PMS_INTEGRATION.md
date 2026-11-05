@@ -45,6 +45,9 @@ belongs to exactly that (host, BU) and PMS (decision-log #44).
 
 **Rules:**
 
+- **The hook carries the `cpk_…` key, never your Carmen token.** The Carmen token only proves
+  the Get token call (§6); a hook carrying it gets `401`. Whether the key works is
+  `key.last_used_at` in `GET …/carmen/pms/settings`: empty means no hook has got through yet.
 - A key is returned once, by `POST …/carmen/pms/keys`, and we keep only a hash. If it is lost,
   generate a new one.
 - **One live key per BU and PMS.** Generating a new one revokes the old one at once, so store
