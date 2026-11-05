@@ -91,8 +91,8 @@ if it fixes a misread, and MINOR if it newly supports a document layout.
 
 ## How to bump (one PR, one commit)
 
-1. Edit [`VERSION`](../VERSION), e.g. `1.0.2` → `1.1.0`.
-2. Add the matching `version: '1.1.0'` to the **newest** entry in
+1. Edit [`VERSION`](../VERSION), e.g. `0.1.0` → `0.2.0` (at `0.x`) or `1.0.2` → `1.1.0` (from 1.0.0).
+2. Add the matching `version: '0.2.0'` to the **newest** entry in
    [`frontend/src/shared/content/releaseNotes.ts`](../frontend/src/shared/content/releaseNotes.ts)
    (2–4 bullets, EN + TH). `releaseNotes.test.ts` fails if the two disagree.
 3. Add today's [`changelog/YYYY-MM-DD.md`](../changelog/) entry (CI's `changelog-check` requires it, and the release uses it as its notes).
@@ -113,7 +113,7 @@ changelog until you cut it.
 
 On a push to `main`, the last step of [`deploy.yml`](../.github/workflows/deploy.yml):
 
-1. `tag = v$(cat VERSION)` (e.g. `v1.1.0`).
+1. `tag = v$(cat VERSION)` (e.g. `v0.1.0`).
 2. No `changelog/<today ICT>.md` → skip, silently.
 3. `gh release view $tag` already exists → skip (VERSION was not bumped, so this deploy is not a release; not an error).
 4. Otherwise `gh release create $tag --title $tag --notes-file changelog/<today>.md`. GitHub creates the tag on the head commit of `main`.

@@ -25,6 +25,7 @@ Applies the rules in [VERSIONING.md](VERSIONING.md) to everything since `v1.0.2`
 |---|---|---|
 | Five `!:` commits on the email-automation / Settings API (`ingest_address` reshaped, `no_gl_mapping` dropped from `status.blockers`, API key dropped, `host` → `uri`, `carmen_uri` dropped) | 08-05, 08-10 | Not MAJOR. The surface did not exist in 1.0.2, and the changelog records that the contract was changed "while no customer is live and nothing has been handed to the Carmen team" (08-06). No outside consumer was broken. `changelog/2026-08-05.md` flagged a *pending MAJOR*; this audit supersedes it for the reason above |
 | `has_new` → `has_notification` on `GET /notifications` | 08-13 | Not MAJOR. The endpoint was added the same day as an interim poll substitute; no earlier shape was published |
+| `GET /notifications` (`items` → `data`) and `GET /credits/orders` (now `Page[T]`, `{total, limit, offset, data}`): response shape of endpoints that existed at 1.0.2 | after 1.0.2 | Not MAJOR. Only our own frontend calls them and it ships in the same deploy; no consumer outside this repo (found in the 2026-11-05 re-check, `git diff b6032dd0..HEAD -- backend/app/routers/`) |
 | Consent re-prompt (`CONSENT_VERSION`) | `v2` set 2026-07-13 | Before 1.0.2; already in the baseline |
 | Forced re-onboard | none found | — |
 | Carmen **posting** contract (JV / invoice payloads) | none found | JV source names changed to the AI JV sources (CA-110, 10-07); additive from Carmen's side |
