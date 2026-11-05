@@ -9,7 +9,7 @@ Reset on 2026-11-05 (was `1.0.2`; no tag or GitHub release ever existed, so no c
 numbers). The product counts as complete only when the **PMS interface** is complete, so we stay in
 SemVer's initial-development range:
 
-- Old `1.0.0 / 1.0.1 / 1.0.2` became `0.0.1 / 0.0.2 / 0.1.0` (same releases, renumbered, so the newest shipped state is the first official `0.1.0`). `VERSION` = `0.1.0`.
+- Old `1.0.0 / 1.0.1 / 1.0.2` became `0.0.1 / 0.0.2 / 0.0.3` (same releases, renumbered). **`0.1.0` is everything shipped up to 2026-11-05** (email automation, settlement reports, PMS, new plans), recorded as one release-note entry. `VERSION` = `0.1.0`.
 - **MINOR** (`0.X.0`) = a new user-visible capability **or** a breaking contract change. Both are allowed
   at `0.x`; there is no MAJOR below 1.0.0.
 - **PATCH** (`0.1.X`) = fix, prompt tweak, perf, copy: unchanged.
@@ -17,8 +17,8 @@ SemVer's initial-development range:
   written separately; do not release `1.0.0` before that document exists.
 - Everything below ("What each digit means") applies in full from `1.0.0` on.
 
-Next release after this reset is `0.2.0`: the audit in
-[VERSION_AUDIT_2026-11-05.md](VERSION_AUDIT_2026-11-05.md) found MINOR-level changes only.
+The audit in [VERSION_AUDIT_2026-11-05.md](VERSION_AUDIT_2026-11-05.md) found MINOR-level changes only since `1.0.2`;
+all of it is folded into `0.1.0` rather than spread over later numbers. The next change after that is `0.1.1` (fix) or `0.2.0` (new capability).
 
 ## What each digit means (from 1.0.0)
 

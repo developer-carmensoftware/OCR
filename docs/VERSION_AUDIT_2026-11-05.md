@@ -7,7 +7,7 @@ Applies the rules in [VERSIONING.md](VERSIONING.md) to everything since `v1.0.2`
 
 > **Superseded numbering (same day):** the project was reset to `0.x.z` (see
 > [VERSIONING.md](VERSIONING.md#current-phase-0xz-until-the-pms-interface-is-complete)). Old `1.0.2` is now
-> `0.1.0`, so this MINOR verdict means the next release is **`0.2.0`**, not `1.1.0`. The rest of this
+> `0.0.3`, and this MINOR verdict is folded into **`0.1.0`** (everything up to 2026-11-05), not `1.1.0`. The rest of this
 > page keeps the original `1.x` wording as the record of the audit.
 
 ## Method (and its limit)
@@ -50,9 +50,9 @@ Applies the rules in [VERSIONING.md](VERSIONING.md) to everything since `v1.0.2`
 
 ## To release
 
-1. `VERSION` → `0.2.0` (was `1.1.0` before the reset)
-2. Newest `releaseNotes.ts` entry gets `version: '0.2.0'` (the release notes for 08-05 → 11-04 were
-   deliberately deferred; write them now, EN + TH, 2–4 bullets, user-visible items only)
+1. `VERSION` = `0.1.0` (done 2026-11-05; was `1.1.0` before the reset)
+2. Newest `releaseNotes.ts` entry is `version: '0.1.0'`, dated 2026-11-05 (done: the notes for 08-05 → 11-04
+   that had been deferred are written as that one entry, EN + TH, 4 user-visible bullets)
 3. Today's changelog entry, then merge to `main`
 4. Note: the GitHub release step has never run (see VERSIONING.md → Status), so also create `v0.1.0`
-   and `v0.2.0` by hand if tags are wanted now
+   by hand if tags are wanted now

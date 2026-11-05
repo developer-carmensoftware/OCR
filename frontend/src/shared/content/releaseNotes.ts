@@ -59,8 +59,30 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    date: '2026-07-27',
+    date: '2026-11-05',
     version: '0.1.0',
+    en: {
+      title: 'Email review queue, settlement reports, PMS days and new plans',
+      features: [
+        'Bank statements and fee invoices that arrive by email are read for you and wait in the AI JV Automation queue. Open one to check it, fix the account mapping, file input tax (including late filing with corrections), and approve it to post to Carmen — or turn on auto-post for documents that are ready.',
+        'KBANK settlement reports are read and posted as a settlement JV, checked against the CSV that comes with them.',
+        'Days of PMS revenue sent from Carmen appear in the same queue once your PMS is connected: map any new rows to accounts, then approve the day.',
+        'New Lite plan (100 documents a month, 290 baht) and Micro top-up (100 credits, 490 baht); you can change plan from the Pricing page. AP invoices are charged per page read.',
+      ],
+    },
+    th: {
+      title: 'คิวรีวิวอีเมล รายงาน settlement วัน PMS และแพ็กเกจใหม่',
+      features: [
+        'statement และใบแจ้งค่าธรรมเนียมที่ส่งมาทางอีเมลจะถูกอ่านให้และรออยู่ในคิว AI JV Automation เปิดดูเพื่อตรวจ แก้การจับคู่บัญชี ยื่นภาษีซื้อ (รวมถึงยื่นย้อนหลังพร้อมแก้ไข) แล้วอนุมัติเพื่อส่งเข้า Carmen หรือเปิด auto-post สำหรับเอกสารที่พร้อมแล้ว',
+        'รายงาน settlement ของ KBANK ถูกอ่านและส่งเป็น JV ตัดบัญชีลูกหนี้ พร้อมตรวจเทียบกับไฟล์ CSV ที่มาด้วยกัน',
+        'ข้อมูลรายได้ PMS รายวันที่ส่งมาจาก Carmen จะแสดงในคิวเดียวกันเมื่อเชื่อมต่อ PMS แล้ว: จับคู่บัญชีให้แถวใหม่ แล้วอนุมัติทั้งวัน',
+        'แพ็กเกจ Lite ใหม่ (100 เอกสารต่อเดือน 290 บาท) และ Micro top-up (100 เครดิต 490 บาท) เปลี่ยนแพ็กเกจได้จากหน้า Pricing และใบแจ้งหนี้ AP คิดเครดิตตามจำนวนหน้าที่อ่าน',
+      ],
+    },
+  },
+  {
+    date: '2026-07-27',
+    version: '0.0.3',
     en: {
       title: 'Eight banks and payment gateways supported',
       features: [
