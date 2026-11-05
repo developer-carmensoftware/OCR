@@ -1692,6 +1692,15 @@ Carmen's job, and the rows we map are Carmen's converted rows.
   BU × PMS that has a live key and whose `interfaceThirdParties` row says `From: PartnerApi`.
   Get token is still the switch (#44). The row uses a hook's `event_id` shape, so a hook for
   the same day lands on the same row. No new cron job.
+- **Opening is an INSERT, not a start.** The opener writes the rows (`ON CONFLICT DO NOTHING`)
+  and does not `kick` them. The sweep then works through them **one at a time**, oldest
+  first, up to 50 per run (`run_pms_processing`). Its lock turns an overlapping run away.
+  So 100 BUs means one dry-run after another for roughly half an hour, never 100 at once.
+  - **Carmen's load:** about three calls per BU per day (mapping, dry-run, and the chart only
+    when there are new rows).
+  - **The partner's load:** one fetch per BU per day, plus hourly retries for a day not ready.
+  - **The AI:** runs only for rows Carmen's table lacks, so once a BU's table is complete, a
+    day costs no LLM call.
 - **Processing branches at one step.** For a PartnerApi section, the day's rows come from the
   dry-run instead of the Data Bank. The diff, the AI, the queue, Approve and auto-post are
   unchanged.
@@ -1701,9 +1710,15 @@ Carmen's job, and the rows we map are Carmen's converted rows.
 - **Posting is as for CarmenApi**: Approve and post, or auto-post (#24). If a user posts in
   Carmen first, we record `already_posted`.
 
-**Ceiling.** The dry-run reads the PMS at one moment and the post at another. If the PMS adds
-a key in between, Carmen's post refuses with "Mapping is incomplete" and posts nothing, and
-the day parks again.
+**Ceiling.**
+- **Timing:** the dry-run reads the PMS at one moment and the post at another. If the PMS adds
+  a key in between, Carmen's post refuses with "Mapping is incomplete" and posts nothing, and
+  the day parks again.
+- **Throughput:** one at a time is about 50 days per 10 minutes. Past a few hundred BUs the
+  morning backlog runs to hours; then the sweep should process with a small fixed
+  concurrency (about 3), within the 10-connection pool.
+- **The hook path needs the same cap.** `kick` starts one task per hook with no limit, so a
+  burst of CarmenApi hooks from many BUs can exceed the pool.
 
 **Later, not now.** A dry-run works for a CarmenApi PMS too, and could replace #51's
 derivation of the day's rows from the Data Bank.
