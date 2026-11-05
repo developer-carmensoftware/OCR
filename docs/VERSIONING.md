@@ -20,6 +20,23 @@ SemVer's initial-development range:
 The audit in [VERSION_AUDIT_2026-11-05.md](VERSION_AUDIT_2026-11-05.md) found MINOR-level changes only since `1.0.2`;
 all of it is folded into `0.1.0` rather than spread over later numbers. The next change after that is `0.1.1` (fix) or `0.2.0` (new capability).
 
+### The `1.0.0` gate: PMS is complete when it works end to end
+
+`1.0.0` is cut only when the PMS interface works **end to end, with Carmen's side and ours connected
+for real**, not simulated. Concretely, on a real BU in a real Carmen environment:
+
+1. Carmen's PMS setting screen generates the key and sets auto-post through our Settings API.
+2. Carmen's hook calls `POST /api/v1/pms/events` with that key and we store the day.
+3. We read the day back from Carmen, map the rows, and park it for review or post it.
+4. A person approves in the queue and Carmen's engine **posts** the day (no `Result:false`).
+5. The JV number comes back and the queue's *Open JV* opens it.
+6. This works for more than one PMS (Comanche is the first), and it is on prod, not only QA.
+
+Status as of 2026-11-05 (from [pms-interface/07-status.md](pms-interface/07-status.md)): **not met yet.**
+The first real end-to-end (CA-120) is still To Do; the prod release (CA-118) is open; and Comanche.PMS
+refuses to post (item K, "Line No. 30,31 has no DrCr value", a Carmen-side setting). The steps above
+are the checklist; update this block rather than writing a second definition.
+
 ## What each digit means (from 1.0.0)
 
 | Digit | Bump when | Reset |
