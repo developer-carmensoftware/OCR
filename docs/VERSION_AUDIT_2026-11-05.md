@@ -48,5 +48,5 @@ last state before versioning started (commit `b6032dd0`, 2026-07-27): 898 commit
 ## Release record
 
 1. `VERSION` = `0.1.0`.
-2. Newest `releaseNotes.ts` entry is `version: '0.1.0'`, dated 2026-11-05: EN + TH, 4 user-visible bullets.
+2. Newest `releaseNotes.ts` entry is `version: '0.1.0'`, dated 2026-11-05: EN + TH, 7 bullets written as a launch announcement.
 3. Git tag and GitHub Release `v0.1.0` on the merge of #341.
