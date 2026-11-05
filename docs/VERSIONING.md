@@ -5,20 +5,19 @@ Everything else derives from it. Bumping is **manual**; nothing bumps for you.
 
 ## Current phase: `0.x.z`, until the PMS interface is complete
 
-Reset on 2026-11-05 (was `1.0.2`; no tag or GitHub release ever existed, so no consumer pinned the old
-numbers). The product counts as complete only when the **PMS interface** is complete, so we stay in
-SemVer's initial-development range:
+The product counts as complete only when the **PMS interface** is complete, so we stay in SemVer's
+initial-development range. `0.1.0` is the baseline: it contains everything shipped up to 2026-11-05 (email
+automation, settlement reports, PMS, new plans) and has one release-note entry. `VERSION` = `0.1.0`.
 
-- Old `1.0.0 / 1.0.1 / 1.0.2` became `0.0.1 / 0.0.2 / 0.0.3` (same releases, renumbered). **`0.1.0` is everything shipped up to 2026-11-05** (email automation, settlement reports, PMS, new plans), recorded as one release-note entry. `VERSION` = `0.1.0`.
 - **MINOR** (`0.X.0`) = a new user-visible capability **or** a breaking contract change. Both are allowed
   at `0.x`; there is no MAJOR below 1.0.0.
-- **PATCH** (`0.1.X`) = fix, prompt tweak, perf, copy: unchanged.
-- **`1.0.0`** is cut once, when the PMS interface is done and has passed QA. Its definition of done is
-  written separately; do not release `1.0.0` before that document exists.
-- Everything below ("What each digit means") applies in full from `1.0.0` on.
+- **PATCH** (`0.1.X`) = fix, prompt tweak, perf, copy.
+- **`1.0.0`** is cut once, when the PMS interface is done and has passed QA (the gate below).
+- Everything under "What each digit means" applies in full from `1.0.0` on.
 
-The audit in [VERSION_AUDIT_2026-11-05.md](VERSION_AUDIT_2026-11-05.md) found MINOR-level changes only since `1.0.2`;
-all of it is folded into `0.1.0` rather than spread over later numbers. The next change after that is `0.1.1` (fix) or `0.2.0` (new capability).
+What `0.1.0` contains, and why it counts as MINOR-level only, is in
+[VERSION_AUDIT_2026-11-05.md](VERSION_AUDIT_2026-11-05.md). The next change is `0.1.1` (fix) or `0.2.0`
+(new capability).
 
 ### The `1.0.0` gate: PMS is complete when it works end to end
 
@@ -110,7 +109,7 @@ if it fixes a misread, and MINOR if it newly supports a document layout.
 
 ## How to bump (one PR, one commit)
 
-1. Edit [`VERSION`](../VERSION), e.g. `0.1.0` → `0.2.0` (at `0.x`) or `1.0.2` → `1.1.0` (from 1.0.0).
+1. Edit [`VERSION`](../VERSION), e.g. `0.1.0` → `0.2.0`.
 2. Add the matching `version: '0.2.0'` to the **newest** entry in
    [`frontend/src/shared/content/releaseNotes.ts`](../frontend/src/shared/content/releaseNotes.ts)
    (2–4 bullets, EN + TH). `releaseNotes.test.ts` fails if the two disagree.

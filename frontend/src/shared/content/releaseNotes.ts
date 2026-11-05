@@ -62,158 +62,27 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-05',
     version: '0.1.0',
     en: {
-      title: 'Email review queue, settlement reports, PMS days and new plans',
+      title: 'Carmen AI Automation is live: scan, review and post to Carmen',
       features: [
-        'Bank statements and fee invoices that arrive by email are read for you and wait in the AI JV Automation queue. Open one to check it, fix the account mapping, file input tax (including late filing with corrections), and approve it to post to Carmen — or turn on auto-post for documents that are ready.',
-        'KBANK settlement reports are read and posted as a settlement JV, checked against the CSV that comes with them.',
-        'Days of PMS revenue sent from Carmen appear in the same queue once your PMS is connected: map any new rows to accounts, then approve the day.',
-        'New Lite plan (100 documents a month, 290 baht) and Micro top-up (100 credits, 490 baht); you can change plan from the Pricing page. AP invoices are charged per page read.',
+        'Credit card statements and gateway fee invoices from eight issuers and gateways (Bangkok Bank, Kasikornbank, SCB, Krungsri, KTC, GHL, PayPal, SiamPay) are read by AI. It suggests the GL accounts and posts the journal voucher to Carmen.',
+        'AP Invoice Processing reads vendor invoices, checks the VAT type, discounts and line amounts against the document totals, suggests the GL accounts, and posts the invoice to Carmen.',
+        'Forward your bank emails to your Carmen AI address and the documents are read for you and wait in the AI JV Automation queue. Open one to check it, fix the account mapping, and approve it to post. Documents with nothing to check can post on their own if you switch on "Post without review".',
+        'KBANK settlement reports are read and posted as one settlement JV that clears your card receivables, checked against the CSV that comes with them.',
+        'Input tax is filed with each journal voucher, and late filing with corrections is handled from the same queue.',
+        'Daily revenue from your PMS arrives in the same queue: map any new rows to accounts, approve the day, and Carmen posts it. It works with the PMSs connected to Carmen.',
+        'Start free with your first 30 documents, then choose a monthly plan (Lite starts at 100 documents for 290 baht) or buy top-up credits (100 credits for 450 baht, never expiring) from Plans & Credits. AP invoices are charged one credit per page read.',
       ],
     },
     th: {
-      title: 'คิวรีวิวอีเมล รายงาน settlement วัน PMS และแพ็กเกจใหม่',
+      title: 'Carmen AI Automation เปิดใช้งานแล้ว: สแกน ตรวจ และส่งเข้า Carmen',
       features: [
-        'statement และใบแจ้งค่าธรรมเนียมที่ส่งมาทางอีเมลจะถูกอ่านให้และรออยู่ในคิว AI JV Automation เปิดดูเพื่อตรวจ แก้การจับคู่บัญชี ยื่นภาษีซื้อ (รวมถึงยื่นย้อนหลังพร้อมแก้ไข) แล้วอนุมัติเพื่อส่งเข้า Carmen หรือเปิด auto-post สำหรับเอกสารที่พร้อมแล้ว',
-        'รายงาน settlement ของ KBANK ถูกอ่านและส่งเป็น JV ตัดบัญชีลูกหนี้ พร้อมตรวจเทียบกับไฟล์ CSV ที่มาด้วยกัน',
-        'ข้อมูลรายได้ PMS รายวันที่ส่งมาจาก Carmen จะแสดงในคิวเดียวกันเมื่อเชื่อมต่อ PMS แล้ว: จับคู่บัญชีให้แถวใหม่ แล้วอนุมัติทั้งวัน',
-        'แพ็กเกจ Lite ใหม่ (100 เอกสารต่อเดือน 290 บาท) และ Micro top-up (100 เครดิต 490 บาท) เปลี่ยนแพ็กเกจได้จากหน้า Pricing และใบแจ้งหนี้ AP คิดเครดิตตามจำนวนหน้าที่อ่าน',
-      ],
-    },
-  },
-  {
-    date: '2026-07-27',
-    version: '0.0.3',
-    en: {
-      title: 'Eight banks and payment gateways supported',
-      features: [
-        'Credit-card scanning supports eight issuers and payment gateways: Bangkok Bank, Kasikornbank, SCB, Krungsri, KTC, GHL (NTT DATA), PayPal and SiamPay. Gateway fee invoices are read one row per printed fee line, with the document VAT spread across those lines.',
-        "Account code choices now follow each department's allowed-account list from Carmen — departments with a restricted list only offer those accounts, and illegal pairs are flagged red before they can be saved or posted.",
-      ],
-      fixes: [
-        {
-          before:
-            'If your session ended while you were working, you were sent back to the login screen and every scan and correction you had made was gone.',
-          text: 'Your unfinished document is now kept. Reopen the module from Carmen and choose Restore to carry on where you left off — the scanned image is not kept, so only the preview will be empty.',
-        },
-        {
-          before:
-            'Invoices with a discount column could read the VAT type wrong and post per-line amounts that did not match the document.',
-          text: "Discount invoices now read VAT correctly, and the unit price in Carmen multiplies out to the line's Net Amount.",
-        },
-        {
-          before:
-            'Some AP invoice scans failed with a system error no matter how many times you retried.',
-          text: 'Those scans now read correctly on the first try.',
-        },
-        {
-          before:
-            'On the GHL fee invoice, Branch No. was left blank and the address showed in English against a Thai tax invoice.',
-          text: 'Branch No. is filled from the document, and the address prints as issued.',
-        },
-        {
-          before:
-            'In dark mode, hovering "additional mappings" in the payment-type window turned the text unreadable (white on white).',
-          text: 'Hover colors are fixed in dark mode.',
-        },
-      ],
-      qol: [
-        'The login screen now says when a session has timed out, instead of looking like you were never signed in.',
-        'AI Suggest now recognizes payment-gateway fee invoices (KTC, PayPal, and others) and proposes settlement-receivable accounts instead of bank accounts.',
-        'The mapping page is wider, and the credit row "Account Receivable / Bank" shows a live count of mapped payment types.',
-        'Upload limits are now 5 MB per file and up to 5 PDF pages per scan.',
-      ],
-    },
-    th: {
-      title: 'รองรับธนาคารและ payment gateway รวม 8 ราย',
-      features: [
-        'การสแกนบัตรเครดิตรองรับผู้ออกบัตรและ payment gateway รวม 8 ราย ได้แก่ ธนาคารกรุงเทพ กสิกรไทย ไทยพาณิชย์ กรุงศรี KTC GHL (NTT DATA) PayPal และ SiamPay ใบแจ้งค่าธรรมเนียมจาก gateway จะอ่านเป็นหนึ่งบรรทัดต่อหนึ่งรายการค่าธรรมเนียมที่พิมพ์ไว้ พร้อมกระจาย VAT ท้ายเอกสารลงในแต่ละบรรทัด',
-        'ตัวเลือกรหัสบัญชีจะเป็นไปตามรายการบัญชีที่อนุญาตของแต่ละแผนกจาก Carmen — แผนกที่จำกัดรายการไว้จะแสดงเฉพาะบัญชีที่อนุญาต และคู่ที่ไม่ถูกต้องจะถูกไฮไลต์สีแดงก่อนบันทึกหรือส่งบัญชี',
-      ],
-      fixes: [
-        {
-          before:
-            'ถ้า session หมดอายุระหว่างทำงาน ระบบจะเด้งกลับไปหน้าเข้าสู่ระบบ และสิ่งที่สแกนกับแก้ไขไว้ทั้งหมดหายไป',
-          text: 'เอกสารที่ยังไม่ได้ส่งจะถูกเก็บไว้ให้แล้ว เปิดโมดูลจาก Carmen อีกครั้งแล้วเลือก "Restore" เพื่อทำต่อจากจุดเดิม (ไฟล์ภาพไม่ได้ถูกเก็บไว้ จึงมีเพียงช่องแสดงตัวอย่างเอกสารที่ว่าง)',
-        },
-        {
-          before:
-            'ใบแจ้งหนี้ที่มีคอลัมน์ส่วนลด อาจอ่านประเภท VAT ผิด และยอดรายบรรทัดที่ส่งไปไม่ตรงกับเอกสาร',
-          text: 'ใบแจ้งหนี้ที่มีส่วนลดอ่าน VAT ถูกต้องแล้ว และราคาต่อหน่วยใน Carmen คูณออกมาตรงกับยอดสุทธิของบรรทัด',
-        },
-        {
-          before: 'สแกนใบแจ้งหนี้ AP บางไฟล์ขึ้น system error ไม่ว่าจะลองซ้ำกี่ครั้ง',
-          text: 'ไฟล์เหล่านั้นอ่านได้ถูกต้องตั้งแต่ครั้งแรกแล้ว',
-        },
-        {
-          before:
-            'ใบแจ้งค่าธรรมเนียม GHL: เลขที่สาขาว่างเปล่า และที่อยู่แสดงเป็นภาษาอังกฤษ ทั้งที่ใบกำกับภาษีเป็นภาษาไทย',
-          text: 'เลขที่สาขาดึงจากเอกสารให้อัตโนมัติ และที่อยู่แสดงตามที่พิมพ์บนใบกำกับภาษี',
-        },
-        {
-          before:
-            'โหมดมืด: เอาเมาส์ชี้ "additional mappings" ในหน้าต่าง payment type แล้วตัวหนังสืออ่านไม่ได้ (ขาวบนพื้นขาว)',
-          text: 'สีตอน hover ในโหมดมืดแสดงถูกต้องแล้ว',
-        },
-      ],
-      qol: [
-        'หน้าเข้าสู่ระบบจะบอกชัดเจนว่า session หมดอายุ แทนที่จะดูเหมือนไม่เคยเข้าสู่ระบบมาก่อน',
-        'AI Suggest รู้จักใบแจ้งค่าธรรมเนียม payment gateway (KTC, PayPal และอื่นๆ) และเสนอบัญชีลูกหนี้จากผู้ให้บริการแทนบัญชีธนาคาร',
-        'หน้าจับคู่บัญชีกว้างขึ้น และแถว "Account Receivable / Bank" แสดงจำนวน payment type ที่จับคู่แล้วแบบสด',
-        'ขนาดไฟล์อัปโหลดจำกัดที่ 5 MB ต่อไฟล์ และ PDF สแกนได้สูงสุด 5 หน้าต่อครั้ง',
-      ],
-    },
-  },
-  {
-    date: '2026-07-21',
-    version: '0.0.2',
-    en: {
-      title: 'Account mappings stay saved',
-      fixes: [
-        {
-          before:
-            'Re-opening Mapping Settings showed "1 pending mapping" and the payment type back at "Click to Map", even though you had just saved it — so every scan meant mapping the same rows again.',
-          text: 'Payment-type accounts you have mapped now come back exactly as you left them.',
-        },
-        {
-          before: 'Payment types you added yourself disappeared after a reload.',
-          text: 'Your own payment types are remembered too.',
-        },
-      ],
-    },
-    th: {
-      title: 'การจับคู่บัญชีถูกจดจำไว้แล้ว',
-      fixes: [
-        {
-          before:
-            'เปิดหน้าตั้งค่าการจับคู่บัญชีอีกครั้ง ระบบขึ้นว่า "1 pending mapping" และ payment type กลับไปเป็น "Click to Map" ทั้งที่เพิ่งบันทึกไป ทำให้ต้อง map ซ้ำทุกครั้งที่สแกน',
-          text: 'บัญชีของ payment type ที่จับคู่ไว้ จะแสดงค่าเดิมตามที่บันทึกไว้',
-        },
-        {
-          before: 'payment type ที่เพิ่มเอง หายไปหลังจากโหลดหน้าใหม่',
-          text: 'payment type ที่เพิ่มเองถูกจดจำไว้เช่นกัน',
-        },
-      ],
-    },
-  },
-  {
-    date: '2026-07-20',
-    version: '0.0.1',
-    en: {
-      title: 'Maintenance notices you can actually read',
-      features: [
-        'System updates now appear in the notification bell. Open one to read the full history on this page.',
-      ],
-      qol: [
-        'The scheduled-maintenance bar shows the exact window and a countdown to it.',
-        'Order notifications open the matching order directly instead of the full list.',
-      ],
-    },
-    th: {
-      title: 'แจ้งเตือนการปิดปรับปรุงที่อ่านเข้าใจง่ายขึ้น',
-      features: ['การอัปเดตระบบจะแสดงที่กระดิ่งแจ้งเตือน กดเพื่อเปิดหน้านี้และดูประวัติทั้งหมด'],
-      qol: [
-        'แถบแจ้งปิดปรับปรุงแสดงช่วงเวลาที่ชัดเจน พร้อมนับถอยหลัง',
-        'การแจ้งเตือนคำสั่งซื้อจะเปิดคำสั่งซื้อนั้นโดยตรง แทนที่จะเปิดรายการทั้งหมด',
+        'AI อ่านใบแจ้งยอดบัตรเครดิตและใบแจ้งค่าธรรมเนียมจาก gateway ของ 8 ราย (ธนาคารกรุงเทพ กสิกรไทย ไทยพาณิชย์ กรุงศรี KTC GHL PayPal SiamPay) แนะนำรหัสบัญชี และส่งใบสำคัญรายวัน (JV) เข้า Carmen',
+        'AP Invoice Processing อ่านใบแจ้งหนี้ผู้ขาย ตรวจประเภท VAT ส่วนลด และยอดรายบรรทัดกับยอดรวมในเอกสาร แนะนำรหัสบัญชี แล้วส่งใบแจ้งหนี้เข้า Carmen',
+        'ส่งต่ออีเมลจากธนาคารมายังที่อยู่อีเมล Carmen AI ของคุณ เอกสารจะถูกอ่านให้และรออยู่ในคิว AI JV Automation เปิดดูเพื่อตรวจ แก้การจับคู่บัญชี แล้วอนุมัติเพื่อส่งเข้า Carmen เอกสารที่ไม่มีอะไรต้องตรวจจะส่งเองได้ ถ้าเปิดสวิตช์ "Post without review"',
+        'รายงาน settlement ของ KBANK ถูกอ่านและส่งเป็น JV เดียวที่ตัดบัญชีลูกหนี้บัตรเครดิต พร้อมตรวจเทียบกับไฟล์ CSV ที่มาด้วยกัน',
+        'ภาษีซื้อถูกยื่นพร้อมกับ JV แต่ละใบ และการยื่นย้อนหลังพร้อมแก้ไขทำได้จากคิวเดียวกัน',
+        'รายได้รายวันจาก PMS แสดงในคิวเดียวกัน ให้จับคู่บัญชีกับแถวใหม่ อนุมัติทั้งวัน แล้ว Carmen จะลงบัญชีให้ ใช้ได้กับ PMS ที่เชื่อมต่อกับ Carmen',
+        'เริ่มใช้ฟรี 30 เอกสารแรก แล้วเลือกแพ็กเกจรายเดือน (Lite เริ่มที่ 100 เอกสาร 290 บาท) หรือซื้อเครดิตเติมเพิ่ม (100 เครดิต 450 บาท ไม่มีวันหมดอายุ) ได้ที่หน้าแพ็กเกจและเครดิต ใบแจ้งหนี้ AP คิด 1 เครดิตต่อหน้าที่อ่าน',
       ],
     },
   },
