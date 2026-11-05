@@ -47,18 +47,22 @@ Every meaningful change is logged in [`changelog/`](changelog/), **one file per 
 
 ## Versioning
 
-**SemVer, stored once in the repo-root [`VERSION`](VERSION) file.** Everything derives from it:
+**SemVer, stored once in the repo-root [`VERSION`](VERSION) file** (full guide: [docs/VERSIONING.md](docs/VERSIONING.md)). Everything derives from it:
 `backend/app/config.py` (`_read_version()` → `app_version` → `/api/version`, and `/docs` where
 `EXPOSE_API_DOCS=true` — dev/QA only, off on prod since 2026-10-30, decision-log #50),
 `frontend/vite.config.ts` (+ `vitest.config.js`) bake it in as `__APP_VERSION__` (shown on Home),
 and `deploy.yml` tags the GitHub Release `v$(cat VERSION)`. `APP_VERSION` in the env still
 overrides the backend value, but it is an override, not the source.
 
+**Phase: `0.x.z` until the PMS interface is complete** (reset 2026-11-05 from `1.0.2` → `0.1.0`; the product is
+"complete" only when PMS is). At `0.x`, MINOR covers both new capability and a breaking change, and there is no
+MAJOR; `1.0.0` is cut once, at PMS done. The table below applies in full from `1.0.0`. See VERSIONING.md.
+
 | Bump | When |
 |---|---|
 | **PATCH** | bug fix, prompt tweak, perf, copy fix — nothing new to learn |
 | **MINOR** | new user-visible capability: a module, a bank, an admin page, a wizard step |
-| **MAJOR** | breaks someone outside this repo — Carmen posting contract, `/api/v1` shape, forced re-onboard/re-consent |
+| **MAJOR** | breaks someone outside this repo — Carmen posting contract, `/api/v1` shape, forced re-onboard (a `CONSENT_VERSION` re-consent is only MINOR) |
 
 Refactors, CI, and dependency bumps bump **nothing** — same rule `releaseNotes.ts` uses. A deploy
 with no version bump hits the existing tag and simply skips the release; that is the intended path,
