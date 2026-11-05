@@ -30,7 +30,9 @@ for real**, not simulated. Concretely, on a real BU in a real Carmen environment
 3. We read the day back from Carmen, map the rows, and park it for review or post it.
 4. A person approves in the queue and Carmen's engine **posts** the day (no `Result:false`).
 5. The JV number comes back and the queue's *Open JV* opens it.
-6. This works for more than one PMS (Comanche is the first), and it is on prod, not only QA.
+6. This works for **every PMS that interfaces with Carmen**, not one vendor. Carmen owns the list of PMSs
+   (it has said it will announce kinds as they come); the list is recorded here when Carmen confirms it, and
+   each PMS on it must pass steps 1–5. Until then Comanche is the only one exercised. It is on prod, not only QA.
 
 Status as of 2026-11-05 (from [pms-interface/07-status.md](pms-interface/07-status.md)): **not met yet.**
 The first real end-to-end (CA-120) is still To Do; the prod release (CA-118) is open; and Comanche.PMS
