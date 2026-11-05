@@ -287,6 +287,14 @@ the module derives what processing needs from what it can read (decision-log #51
 The sides of the JV and the counter account stay in Carmen's INI, and the post sends no
 counter: they are the engine's (decision-log #43).
 
+**A `PartnerApi` PMS (not built, decision-log #52).** It puts no day in the Data Bank, so the
+step above that reads the day (`newest_day` / `rows_of`) has nothing to read. The plan:
+- the section's `From` picks where the rows come from;
+- for `PartnerApi` they come from Carmen's dry-run of `interfacePostGL` (ask L), and everything
+  after is the same;
+- the `pms-process` sweep opens yesterday's day for each BU × PMS with a live key, since no hook
+  will.
+
 ## What the AI is asked (`mapping.suggest`)
 
 One `call_text_llm` per day that has new keys (`module_id = pms_interface`), using the

@@ -1670,3 +1670,40 @@ carries no setting code, no INI and no counter account.
 list: its days fail `unreadable_day`, and are never keyed by a guess, because Approve writes
 the table back whole. Such a PMS needs the INI after all, which means asking Carmen to put
 `JsonKeys` and `Mapping_MapCode` on the list's row.
+
+## 52. A PartnerApi PMS: Carmen's dry-run, opened by our sweep (proposed, 2026-11-05)
+
+**Status: proposed.** It waits on Carmen's dry-run (ask L). Nothing is built.
+
+**The problem.** A `PartnerApi` PMS never puts a day in the Data Bank. When a user presses
+Post in Carmen, Carmen fetches the day from the PMS, converts it to Carmen's rows, applies the
+mapping and posts, in one step, keeping nothing. So there is no day to park, no hook, and
+nothing to map before the post. A GET of the PMS's raw data would not help: converting it is
+Carmen's job, and the rows we map are Carmen's converted rows.
+
+**Decision (with the user).**
+- **Ask Carmen for a dry-run of `interfacePostGL`** (ask L). It is the post's own pipeline
+  (fetch, convert, apply the mapping), but it writes no JV and stores nothing. It answers the
+  converted rows, one per mapping key, with the account mapped or empty. It is the one missing
+  piece: every other step of #51 already works without the Data Bank, and a post by date range
+  with no `id` is proven (2026-10-15).
+- **We open the day ourselves.** No hook will come, so the existing `pms-process` sweep (every
+  10 minutes) opens yesterday's `pms_events` row once, after 08:00 ICT. It does this for every
+  BU × PMS that has a live key and whose `interfaceThirdParties` row says `From: PartnerApi`.
+  Get token is still the switch (#44). The row uses a hook's `event_id` shape, so a hook for
+  the same day lands on the same row. No new cron job.
+- **Processing branches at one step.** For a PartnerApi section, the day's rows come from the
+  dry-run instead of the Data Bank. The diff, the AI, the queue, Approve and auto-post are
+  unchanged.
+  - An empty answer is `day_not_ready`. It is retried hourly without spending attempts, and
+    fails `day_not_found` after 24 hours.
+  - `-200` is `already_posted`.
+- **Posting is as for CarmenApi**: Approve and post, or auto-post (#24). If a user posts in
+  Carmen first, we record `already_posted`.
+
+**Ceiling.** The dry-run reads the PMS at one moment and the post at another. If the PMS adds
+a key in between, Carmen's post refuses with "Mapping is incomplete" and posts nothing, and
+the day parks again.
+
+**Later, not now.** A dry-run works for a CarmenApi PMS too, and could replace #51's
+derivation of the day's rows from the Data Bank.
