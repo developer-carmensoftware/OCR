@@ -174,6 +174,9 @@ class PmsDayOut(BaseModel):
     setting_code: str
     post_type: str
     key_columns: list[str]
+    # False when this PMS's rows could not be read here (another layout, a PMS Carmen fetches
+    # at post time): no rows are shown, and Carmen checks the mapping on Approve (#52).
+    preview: bool = True
     rows: list[PmsRow]
     mapped_count: int
     new_codes: list[PmsNewCode]

@@ -6,6 +6,7 @@ row. No side or total is computed anywhere here — those are the engine's.
 """
 
 from contextlib import asynccontextmanager
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -48,8 +49,14 @@ POSTED = {
 AUTO = SimpleNamespace(auto_post=True)
 
 
-def _claimed(attempts=1):
-    return SimpleNamespace(id=uuid4(), tenant_id=uuid4(), payload=HOOK, attempts=attempts)
+def _claimed(attempts=1, created_at=None):
+    return SimpleNamespace(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        payload=HOOK,
+        attempts=attempts,
+        created_at=created_at or datetime.now(UTC),
+    )
 
 
 def _mock(value):
@@ -194,9 +201,24 @@ async def test_a_row_the_ai_could_not_place_is_missing():
 
 @pytest.mark.asyncio
 async def test_carmens_engine_refusing_parks_the_day_with_its_words():
-    run = _Run(settings=AUTO, post={"Code": -500, "UserMessage": "Mapping is incomplete."})
+    refused = {
+        "Result": False,
+        "Code": -1,
+        "UserMessage": "Error",
+        "ErrorList": [{"Date": "06/10/2026", "Message": "Invalid account codes 1115001"}],
+    }
+    run = _Run(settings=AUTO, post=refused)
     assert await run() == "pending_review"
     assert run.last["reason_code"] == "carmen_rejected"
+    assert "Invalid account codes 1115001" in run.last["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_carmen_finding_a_key_unmapped_parks_the_day_as_mapping_incomplete():
+    """The engine checks the mapping itself and posts nothing (decision-log #52)."""
+    run = _Run(settings=AUTO, post={"Code": -500, "UserMessage": "Mapping is incomplete."})
+    assert await run() == "pending_review"
+    assert run.last["reason_code"] == "pms_mapping_incomplete"
     assert run.last["error_message"] == "Mapping is incomplete."
 
 
@@ -234,24 +256,85 @@ async def test_no_revenue_section_for_the_interface():
     run.m["mapping"].assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_a_file_type_the_reader_does_not_take_fails_without_guessing():
-    run = _Run(interfaces=[{**INTERFACES[0], "PostType": "Text"}])
-    assert await run() == "failed"
-    assert run.last["reason_code"] == "unsupported_pms_format"
-    assert "Comanche.PMS sends Text files" in run.last["error_message"]
-    run.m["mapping"].assert_not_awaited()
+# HotelTime's layout (dev Data Bank, 2026-10-06): its rows are `Revenue`, and its mapping
+# table keys them `HT_Code` / `HT_Description` / `Department` — names the day does not use.
+HOTELTIME = [
+    {
+        "Id": 171,
+        "LastModified": "2026-10-07T03:32:57+07:00",
+        "FileData": {
+            "Revenue": [
+                {"Code": "4100001", "Description": "001 - Room Charge (Auto)", "Amount": 42748.69}
+            ]
+        },
+    }
+]
+HT_COLUMNS = ["HT_Code", "HT_Description", "Department", "DeptCode", "AccCode", "AccDesc"]
 
 
 @pytest.mark.asyncio
-async def test_a_day_with_no_list_keyed_like_the_table_fails_without_guessing():
-    """The PMS names its fields unlike Carmen's mapping columns: nothing to key the rows by."""
-    stats_only = {"Statistic": [{"Description": "TOTAL ROOM AVAILABLE", "Value": "162.00"}]}
-    run = _Run(databank=[{"Id": 149, "LastModified": "2026-10-14", "FileData": stats_only}])
-    assert await run() == "failed"
-    assert run.last["reason_code"] == "unreadable_day"
-    assert "keyed by Code, Description" in run.last["error_message"]
+async def test_a_day_the_reader_cannot_key_waits_for_approve_with_no_rows():
+    """No preview is not a failure (decision-log #52): with auto-post off the day parks, and
+    Carmen checks the mapping when it is approved."""
+    run = _Run(databank=HOTELTIME, table=[], columns=HT_COLUMNS)
+    assert await run() == "pending_review"
+    payload = run.last["review_payload"]
+    assert payload["preview"] is False
+    assert (payload["rows"], payload["flags"], payload["databank_id"]) == ([], [], 171)
+    assert payload["key_columns"] == ["HT_Code", "HT_Description", "Department"]
+    assert run.last["reason_code"] is None
+    run.m["suggest"].assert_not_awaited()
     run.m["post"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_day_the_reader_cannot_key_goes_to_carmen_when_auto_post_is_on():
+    run = _Run(settings=AUTO, databank=HOTELTIME, table=[], columns=HT_COLUMNS)
+    assert await run() == "posted"
+    assert run.m["post"].await_args.args[1]["id"] == [171]
+    run = _Run(
+        settings=AUTO,
+        databank=HOTELTIME,
+        table=[],
+        columns=HT_COLUMNS,
+        post={"Code": -500, "UserMessage": "Mapping is incomplete."},
+    )
+    assert await run() == "pending_review"
+    assert run.last["reason_code"] == "pms_mapping_incomplete"
+    assert run.last["review_payload"]["preview"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_file_that_is_not_json_is_not_a_failure_either():
+    """GuestLine's day is CSV: nothing here can key it, so Carmen does (decision-log #52)."""
+    csv = [{"Id": 180, "LastModified": "2026-10-06", "FileData": "Code,Description\n100,Room"}]
+    run = _Run(interfaces=[{**INTERFACES[0], "PostType": "Csv"}], databank=csv)
+    assert await run() == "pending_review"
+    assert run.last["review_payload"]["preview"] is False
+    assert run.last["review_payload"]["databank_id"] == 180
+
+
+@pytest.mark.asyncio
+async def test_a_readable_day_keeps_its_preview():
+    run = _Run()
+    assert await run() == "pending_review"
+    assert run.last["review_payload"]["preview"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_day_the_sweep_opened_posts_by_date_alone_when_the_data_bank_has_none():
+    """A PartnerApi PMS: Carmen fetches the day when it posts, so no Data Bank row, no id."""
+    opened = _claimed()
+    opened.payload = {**HOOK, "Source": process.OPENED_BY_SWEEP}
+    run = _Run(settings=AUTO, databank=[], claimed=opened)
+    assert await run() == "posted"
+    body = run.m["post"].await_args.args[1]
+    assert body == {"Code": "Comanche.PMS", "DateFrom": "2025-10-20", "DateTo": "2025-10-20"}
+    off = _claimed()
+    off.payload = {**HOOK, "Source": process.OPENED_BY_SWEEP}
+    run = _Run(databank=[], claimed=off)
+    assert await run() == "pending_review"
+    assert run.last["review_payload"]["databank_id"] is None
 
 
 @pytest.mark.asyncio
@@ -334,6 +417,7 @@ async def test_the_sweep_wakes_those_days_before_it_picks():
     pk = uuid4()
     _, session = _db_returning([pk])
     with (
+        patch.object(process, "_open_partner_days", AsyncMock(return_value=2)) as opener,
         patch.object(process, "_requeue_ready_days", AsyncMock(return_value=0)),
         patch.object(process, "_wake_for_new_credential", AsyncMock(return_value=1)),
         patch.object(process, "async_session", session),
@@ -342,6 +426,9 @@ async def test_the_sweep_wakes_those_days_before_it_picks():
     ):
         summary = await process.run_pms_processing()
     assert summary["woken"] == 1 and summary["pending_review"] == 1
+    # PartnerApi days are opened first, so the same sweep works through them.
+    opener.assert_awaited_once()
+    assert summary["opened"] == 2
     one.assert_awaited_once_with(pk)
 
 
@@ -369,3 +456,129 @@ async def test_ready_days_of_an_auto_post_pms_are_sent_back_others_stay():
     sql = str(update_stmt.compile(dialect=postgresql.dialect()))
     assert "UPDATE pms_events" in sql
     assert update_stmt.compile().params["id_1"] == [ready]
+
+
+# ── PartnerApi days: opened by the sweep (decision-log #52) ────────────────────────
+
+
+@asynccontextmanager
+async def _no_db():
+    yield MagicMock()
+
+
+PARTNER_LIST = [{**INTERFACES[0], "InterfaceName": "HotelTime", "From": "PartnerApi"}, *INTERFACES]
+
+
+@pytest.mark.asyncio
+async def test_no_day_opens_before_the_hotels_day_is_closed():
+    with patch.object(process, "async_session") as session:
+        at_7_59 = datetime(2026, 11, 6, 0, 59, tzinfo=UTC)  # 07:59 ICT
+        assert await process._open_partner_days(at_7_59) == 0
+    session.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_yesterday_opens_for_each_partner_pms_a_bu_switched_on():
+    bu, other = uuid4(), uuid4()
+    live = MagicMock(all=lambda: [(bu, "hoteltime"), (bu, "comanche"), (other, "guestline")])
+    db = MagicMock(execute=AsyncMock(return_value=live), commit=AsyncMock())
+
+    @asynccontextmanager
+    async def session():
+        yield db
+
+    # Comanche is a hooked PMS (not on the list); the other BU's list could not be read.
+    names = {bu: {"hoteltime": "HotelTime"}, other: None}
+    stored = AsyncMock(return_value=uuid4())
+    with (
+        patch.object(process, "async_session", session),
+        patch.object(process, "_partner_names", AsyncMock(side_effect=lambda t, d: names[t])),
+        patch.object(process, "store_day", stored),
+    ):
+        at_nine = datetime(2026, 11, 6, 2, 0, tzinfo=UTC)  # 09:00 ICT
+        assert await process._open_partner_days(at_nine) == 1
+    tenant, event_id, type_, payload = stored.await_args.args[1:]
+    assert (tenant, event_id, type_) == (bu, "PMS/HotelTime/Daily/2026-11-05", "PMS")
+    assert payload == {
+        "InterfaceType": "PMS",
+        "InterfaceName": "HotelTime",
+        "DocType": "Daily",
+        "DocDate": "2026-11-05",
+        "Source": process.OPENED_BY_SWEEP,
+    }
+    # A day already stored (a hook came first, or an earlier sweep) is not opened twice.
+    with (
+        patch.object(process, "async_session", session),
+        patch.object(process, "_partner_names", AsyncMock(side_effect=lambda t, d: names[t])),
+        patch.object(process, "store_day", AsyncMock(return_value=None)),
+    ):
+        assert await process._open_partner_days(at_nine) == 0
+
+
+@pytest.mark.asyncio
+async def test_carmens_list_is_read_once_a_day_and_a_failure_is_asked_again():
+    process._partner_cache.clear()
+    bu = uuid4()
+    lists = AsyncMock(
+        side_effect=[CarmenAPIError(500, "HTTP 500: IsNullOrWhiteSpace"), PARTNER_LIST]
+    )
+    target = AsyncMock(return_value=("tok", "https://dev.carmen4.com"))
+    today = date(2026, 11, 6)
+    try:
+        with (
+            patch.object(process, "async_session", _no_db),
+            patch.object(process, "_target", target),
+            patch.object(process.carmen, "get_interfaces", lists),
+        ):
+            assert await process._partner_names(bu, today) is None
+            assert await process._partner_names(bu, today) == {"hoteltime": "HotelTime"}
+            assert await process._partner_names(bu, today) == {"hoteltime": "HotelTime"}
+        assert lists.await_count == 2
+        with (
+            patch.object(process, "async_session", _no_db),
+            patch.object(process, "_target", AsyncMock(return_value=("", ""))),
+        ):
+            assert await process._partner_names(uuid4(), today) is None
+    finally:
+        process._partner_cache.clear()
+
+
+# Carmen's answer for a date it has no data for (dev, 2026-11-06). -400 alone is not it:
+# "Configuration is missing" is -400 too.
+NO_DATA = {"Code": -400, "UserMessage": "No Data Found on 05/11/2026 to 05/11/2026 "}
+
+
+@pytest.mark.asyncio
+async def test_a_day_carmen_has_no_data_for_yet_is_asked_again_hourly_without_spending_tries():
+    opened = _claimed(attempts=2)
+    opened.payload = {**HOOK, "Source": process.OPENED_BY_SWEEP}
+    run = _Run(settings=AUTO, databank=[], claimed=opened, post=NO_DATA)
+    assert await run() == "retry"
+    assert run.last["reason_code"] == "day_not_ready"
+    assert run.last["error_message"] == "No Data Found on 05/11/2026 to 05/11/2026"
+    assert run.last["attempts"] == 1  # the claim's +1 is given back
+    assert "status" not in run.last  # still `received`, for the next hourly try
+
+
+@pytest.mark.asyncio
+async def test_a_day_still_without_data_after_a_day_is_given_up():
+    from datetime import timedelta
+
+    stale = _claimed(created_at=datetime.now(UTC) - timedelta(hours=25))
+    stale.payload = {**HOOK, "Source": process.OPENED_BY_SWEEP}
+    run = _Run(settings=AUTO, databank=[], claimed=stale, post=NO_DATA)
+    assert await run() == "failed"
+    assert (run.last["status"], run.last["reason_code"]) == ("failed", "day_not_found")
+
+
+@pytest.mark.asyncio
+async def test_a_missing_configuration_is_not_mistaken_for_no_data():
+    missing = {"Code": -400, "UserMessage": "Configuration is missing"}
+    run = _Run(settings=AUTO, post=missing)
+    assert await run() == "pending_review"
+    assert run.last["reason_code"] == "carmen_rejected"
+
+
+def test_a_day_without_data_yet_is_not_taken_again_within_the_hour():
+    sql = str(process._due(datetime.now(UTC)).compile(dialect=postgresql.dialect()))
+    assert "reason_code IS DISTINCT FROM" in sql and "processed_at <" in sql
