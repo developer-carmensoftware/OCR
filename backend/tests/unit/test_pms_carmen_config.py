@@ -100,15 +100,122 @@ def test_the_key_is_the_mapping_tables_columns_less_the_account():
     assert cfg.key_columns(["DeptCode", "AccCode", "AccDesc"]) == []
 
 
-def test_the_rows_are_the_one_list_carrying_every_key_column():
+def test_the_rows_are_the_list_answering_the_most_key_columns():
     assert cfg.rows_key(DAY, COLUMNS) == "Transaction"
     assert cfg.rows_key(json.dumps(DAY), COLUMNS) == "Transaction"
-    # `Statistic` carries a Description but no Code: not a candidate.
-    assert cfg.rows_key(DAY, ["Description"]) is None  # both fit: ambiguous, not a guess
-    assert cfg.rows_key(DAY, ["Code", "Account"]) is None  # none fits
+    # `Statistic` answers Description too; the REVENUE rows are the list carrying Amount.
+    assert cfg.rows_key(DAY, ["Description"]) == "Transaction"
+    # A column no field answers is blank; the list still fits on the others.
+    assert cfg.rows_key(DAY, ["Code", "Account"]) == "Transaction"
+    assert cfg.rows_key(DAY, ["Account"]) is None  # nothing answers: no list
     assert cfg.rows_key({"Transaction": []}, COLUMNS) is None
     assert cfg.rows_key("not json", COLUMNS) is None
     assert cfg.rows_key(DAY, []) is None
+
+
+def test_a_list_named_after_another_section_is_not_revenues():
+    assert cfg.rows_key(DAY, ["Description"], frozenset({"statistic"})) == "Transaction"
+    stats_only = {"Statistic": DAY["Statistic"]}
+    assert cfg.rows_key(stats_only, ["Description"]) == "Statistic"
+    assert cfg.rows_key(stats_only, ["Description"], frozenset({"statistic"})) is None
+
+
+def test_two_lists_alike_even_on_amount_are_not_guessed_between():
+    twins = {"Revenue": DAY["Transaction"], "Transaction": DAY["Transaction"]}
+    assert cfg.rows_key(twins, COLUMNS) is None
+
+
+def test_a_key_column_reads_its_own_field_else_the_name_without_its_prefix():
+    assert cfg.field_for("Code", ["code", "Description"]) == "code"  # any case
+    assert cfg.field_for("HT_Code", ["Code", "Description"]) == "Code"
+    assert cfg.field_for("HT_Description", ["Code", "Description"]) == "Description"
+    assert cfg.field_for("Department", ["Code", "Description"]) is None
+    assert cfg.field_for("Channel", ["Code"]) is None
+
+
+# HotelTime's day (dev Data Bank 171): rows in `Revenue`, keyed `HT_Code` / `HT_Description`
+# from `Code` / `Description`, and `Department`, which no field answers, blank. Some rows
+# have no `Code` at all. Carmen's engine wrote exactly these keys on its -500 (2026-11-06).
+HT_COLUMNS = ["HT_Code", "HT_Description", "Department"]
+HT_DAY = {
+    "Information": {"HotelCode": "HT"},
+    "Revenue": [
+        {
+            "Code": "4100001",
+            "Description": "001 - Room Charge (Auto)",
+            "AccountNature": "C",
+            "SegmentName": "Room",
+            "Amount": 42748.69,
+        },
+        {"Description": "Rounding", "AccountNature": "C", "SegmentName": "", "Amount": 0.01},
+    ],
+    "Statistic": [{"Description": "Rooms Occupied", "Value": 52}],
+}
+
+
+def test_hoteltime_keys_its_prefixed_columns_from_the_days_bare_fields():
+    assert cfg.rows_key(HT_DAY, HT_COLUMNS, frozenset({"statistic"})) == "Revenue"
+    rows = cfg.rows_of(HT_DAY, "Revenue", HT_COLUMNS)
+    assert [r["values"] for r in rows] == [
+        {"HT_Code": "4100001", "HT_Description": "001 - Room Charge (Auto)", "Department": ""},
+        {"HT_Code": "", "HT_Description": "Rounding", "Department": ""},
+    ]
+    assert rows[0]["amount"] == "42748.69"
+    assert cfg.label(rows[1]["key"]) == "Rounding"
+
+
+# Cloudbeds' day (dev Data Bank 184): `Transaction` and `Statistic` both carry its key fields,
+# and its table keys a `Channel` no list carries (Carmen added it on its first -500).
+CB_COLUMNS = ["Description", "MarketSegmentDesc", "Channel"]
+CB_DAY = {
+    "Information": {},
+    "Transaction": [
+        {
+            "Code": "RM",
+            "Description": "Room Revenue",
+            "MarketSegmentDesc": "OTA",
+            "TransactionType": "credit",
+            "Amount": 3500,
+        },
+        {
+            "Code": "CL",
+            "Description": "cityledger",
+            "MarketSegmentDesc": "",
+            "TransactionType": "debit",
+            "Amount": -3500,
+        },
+    ],
+    "Statistic": [
+        {"Code": "RO", "Description": "Rooms Occupied", "MarketSegmentDesc": "OTA", "Value": 12}
+    ],
+}
+
+
+def test_cloudbeds_reads_its_transaction_not_its_statistic():
+    assert cfg.rows_key(CB_DAY, CB_COLUMNS, frozenset({"statistic"})) == "Transaction"
+    assert cfg.rows_key(CB_DAY, CB_COLUMNS) == "Transaction"  # Amount decides, even unskipped
+    rows = cfg.rows_of(CB_DAY, "Transaction", CB_COLUMNS)
+    assert rows[1]["values"] == {
+        "Description": "cityledger",
+        "MarketSegmentDesc": "",
+        "Channel": "",
+    }
+
+
+def test_the_interfaces_other_sections_are_its_other_doc_types():
+    assert cfg.other_doc_types(INTERFACES, "pms", "comanche") == frozenset({"statistic"})
+    assert cfg.other_doc_types(INTERFACES, "PMS", "Opera") == frozenset()
+
+
+def test_carmens_rows_with_no_account_are_the_keys_it_waits_for():
+    current = [
+        {"Code": "100", "Description": "Room Charge", "DeptCode": "103", "AccCode": "4010001"},
+        {"Code": "729", "Description": "Rebate", "DeptCode": None, "AccCode": None},
+        {"Code": "729", "Description": "Rebate", "DeptCode": "", "AccCode": ""},  # once
+    ]
+    assert cfg.blank_keys(current, COLUMNS) == [
+        {"key": cfg.key_id(["729", "Rebate"]), "values": {"Code": "729", "Description": "Rebate"}}
+    ]
 
 
 def test_every_row_is_its_own_key_tax_rows_included():

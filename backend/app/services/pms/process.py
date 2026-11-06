@@ -290,6 +290,51 @@ async def _retry_or_fail(event_pk, attempts: int, reason: str, error: str) -> st
     return "retry"
 
 
+async def with_carmen_keys(payload: dict, token: str) -> dict:
+    """The day's review after Carmen's `-500`, with the keys Carmen named in it to map here.
+
+    Carmen's engine writes every key a post found unmapped into the mapping table, with no
+    account (decision-log #53). Those rows join the day's, with the AI's suggestions, so the
+    reviewer maps them in this app: all of them, this day's and any earlier day's, because
+    Carmen needs them all. If the table cannot be read, the payload stays as it was and the
+    day parks saying why.
+    """
+    columns = payload.get("key_columns") or []
+    try:
+        current, _ = await carmen.get_pms_mapping(
+            payload["setting_code"], payload["post_type"], token
+        )
+    except carmen.CarmenAPIError as exc:
+        logger.warning("[pms] Could not read Carmen's mapping after its -500: %s", exc.detail)
+        return payload
+    rows = list(payload.get("rows") or [])
+    have = {r["key"] for r in rows}
+    rows += [
+        {"key": b["key"], "values": b["values"], "amount": ""}
+        for b in cfg.blank_keys(current, columns)
+        if b["key"] not in have
+    ]
+    table = cfg.table_of(current, columns)
+    new = cfg.new_keys(rows, table)
+    guessed = dict(payload.get("guessed") or {})
+    todo = [k for k in new if k not in guessed]
+    if todo:
+        try:
+            accounts, departments = await mapping.masters(token)
+            guessed |= await mapping.suggest(todo, rows, table, accounts, departments)
+        except carmen.CarmenAPIError as exc:
+            logger.warning("[pms] Could not read Carmen's GL for suggestions: %s", exc.detail)
+    return {
+        **payload,
+        "rows": rows,
+        "mapped": {k: table[k] for k in dict.fromkeys(r["key"] for r in rows) if k in table},
+        "guessed": guessed,
+        "flags": mapping.flags(new, guessed),
+        **mapping.open_keys(new, guessed),
+        "preview": bool(payload.get("preview", True) or rows),
+    }
+
+
 async def process_event(event_pk: uuid.UUID) -> str:
     """Take one day from `received` to `pending_review`, `posted` or `failed`.
 
@@ -330,9 +375,10 @@ async def _process(claimed) -> str:
     uri_ctx = current_carmen_uri.set(uri)
     try:
         try:
-            section = cfg.find_section(await carmen.get_interfaces(token), itype, name)
+            interfaces = await carmen.get_interfaces(token)
         except carmen.CarmenAPIError as exc:
             return await _retry_or_fail(pk, attempts, "carmen_config_unreadable", exc.detail)
+        section = cfg.find_section(interfaces, itype, name)
         if section is None:
             return await _retry_or_fail(
                 pk,
@@ -370,11 +416,13 @@ async def _process(claimed) -> str:
                 "day_not_found",
                 f"Carmen's Data Bank has no {name} {doc_type} for {doc_date} yet.",
             )
-        # The preview: the day's rows as the mapping table keys them. It reads a PMS whose
-        # fields are named like the table's columns (Comanche), and no other (HotelTime keys
-        # `HT_Code` from `Code`; a CSV file has no fields). Without it the day does not fail:
-        # Carmen's engine checks the mapping when the day is posted (decision-log #52).
-        newest = cfg.newest_day(found or [], columns)
+        # The preview: the day's rows as the mapping table keys them, a key column reading its
+        # own field or that name without a prefix (HotelTime's `HT_Code` ← `Code`), and none
+        # read from a list named after another section (`Statistic`, decision-log #53). A day
+        # with no list that fits (a CSV file, a PartnerApi day with no Data Bank row) does
+        # not fail: Carmen's engine checks the mapping when it is posted, and its `-500`
+        # names the keys it lacks (`with_carmen_keys`).
+        newest = cfg.newest_day(found or [], columns, cfg.other_doc_types(interfaces, itype, name))
         databank = (
             newest[0]
             if newest
@@ -423,6 +471,7 @@ async def _process(claimed) -> str:
         try:
             outcome, jv_no = await post_day(payload, doc_date, payload["databank_id"], token)
         except MappingIncomplete as exc:
+            payload = await with_carmen_keys(payload, token)
             return await _park(pk, payload, "pms_mapping_incomplete", str(exc))
         except NoDataYet as exc:
             return await _not_ready(claimed, str(exc))

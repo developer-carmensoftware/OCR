@@ -259,14 +259,32 @@ async def test_carmen_saying_no_is_a_400_and_carmen_unreachable_a_503():
 
 
 @pytest.mark.asyncio
-async def test_carmen_finding_a_key_unmapped_leaves_the_day_parked_saying_so():
-    """Carmen's engine checks the mapping itself (decision-log #52): the day stays parked,
-    now with the reason, until the mapping is fixed in Carmen and approved again."""
+async def test_carmen_finding_a_key_unmapped_parks_the_day_with_the_keys_it_named():
+    """Carmen's engine checks the mapping itself and writes each key it lacks into its table
+    with no account (decision-log #53): the day stays parked holding those keys and the AI's
+    suggestions, to map here and approve again."""
+    named = {
+        "Code": "729",
+        "Description": "Rebate - Misc. (VAT)",
+        "DeptCode": None,
+        "AccCode": None,
+    }
+    rebate = cfg.key_id(["729", "Rebate - Misc. (VAT)"])
+    ai = {rebate: {"dept": "GEN", "acc": "1021001", "confidence": "low", "why": "rebate"}}
     run = _Approve(post=MappingIncomplete("Mapping is incomplete."))
-    with patch.object(review, "_note", AsyncMock()) as note:
+    reads = AsyncMock(side_effect=[(TABLE, TABLE_COLUMNS), (TABLE + [named], TABLE_COLUMNS)])
+    run.patches["read"] = patch.object(review.carmen, "get_pms_mapping", reads)
+    with (
+        patch.object(review, "_note", AsyncMock()) as note,
+        patch.object(review.mapping, "suggest", AsyncMock(return_value=ai)) as suggest,
+    ):
         with pytest.raises(ValidationError, match="Mapping is incomplete"):
             await run(PICKS)
-    note.assert_awaited_once_with(run.pk, "pms_mapping_incomplete", "Mapping is incomplete.")
+    pk, reason, words, payload = note.await_args.args
+    assert (pk, reason, words) == (run.pk, "pms_mapping_incomplete", "Mapping is incomplete.")
+    assert rebate in {r["key"] for r in payload["rows"]}  # Carmen's key joins the day's rows
+    assert payload["guessed"][rebate]["acc"] == "1021001" and payload["preview"] is True
+    assert rebate in suggest.await_args.args[0]
     run.m["release"].assert_awaited_once()
 
 

@@ -82,7 +82,9 @@ class _Run:
         suggest=None,
         post=POSTED,
         claimed=None,
+        after=None,
     ):
+        """`after`: the mapping table's second read, after Carmen's -500 (or its failure)."""
         self.claimed = claimed or _claimed()
         self.writes: list[dict] = []
         db = MagicMock(get=AsyncMock(return_value=settings))
@@ -105,7 +107,9 @@ class _Run:
             "mapping": patch.object(
                 process.carmen,
                 "get_pms_mapping",
-                _mock(table if isinstance(table, Exception) else (table, columns)),
+                _mock(table if isinstance(table, Exception) else (table, columns))
+                if after is None
+                else AsyncMock(side_effect=[(table, columns), after]),
             ),
             "masters": patch.object(process.mapping, "masters", AsyncMock(return_value=([], []))),
             "suggest": patch.object(process.mapping, "suggest", _mock(suggest or {})),
@@ -257,7 +261,8 @@ async def test_no_revenue_section_for_the_interface():
 
 
 # HotelTime's layout (dev Data Bank, 2026-10-06): its rows are `Revenue`, and its mapping
-# table keys them `HT_Code` / `HT_Description` / `Department` — names the day does not use.
+# table keys them `HT_Code` / `HT_Description` / `Department`, which read the day's `Code` and
+# `Description`, `Department` blank (decision-log #53).
 HOTELTIME = [
     {
         "Id": 171,
@@ -273,31 +278,83 @@ HT_COLUMNS = ["HT_Code", "HT_Description", "Department", "DeptCode", "AccCode", 
 
 
 @pytest.mark.asyncio
-async def test_a_day_the_reader_cannot_key_waits_for_approve_with_no_rows():
-    """No preview is not a failure (decision-log #52): with auto-post off the day parks, and
-    Carmen checks the mapping when it is approved."""
+async def test_hoteltime_is_keyed_from_its_bare_field_names_and_parks_with_its_rows():
+    """Every PMS is reviewable (decision-log #53): HotelTime's rows show, keyed as Carmen's
+    engine keys them, and its new keys go to the AI like Comanche's."""
     run = _Run(databank=HOTELTIME, table=[], columns=HT_COLUMNS)
     assert await run() == "pending_review"
     payload = run.last["review_payload"]
-    assert payload["preview"] is False
-    assert (payload["rows"], payload["flags"], payload["databank_id"]) == ([], [], 171)
+    assert payload["preview"] is True
+    assert payload["rows"][0]["values"] == {
+        "HT_Code": "4100001",
+        "HT_Description": "001 - Room Charge (Auto)",
+        "Department": "",
+    }
     assert payload["key_columns"] == ["HT_Code", "HT_Description", "Department"]
-    assert run.last["reason_code"] is None
-    run.m["suggest"].assert_not_awaited()
+    assert (payload["flags"], payload["databank_id"]) == (["mapping_missing"], 171)
+    run.m["suggest"].assert_awaited_once()
     run.m["post"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_a_day_the_reader_cannot_key_goes_to_carmen_when_auto_post_is_on():
+async def test_an_auto_post_bu_waits_for_any_pmss_new_rows_and_posts_a_mapped_day():
+    """Auto-post posts what is ready (decision-log #24), whichever PMS it is."""
     run = _Run(settings=AUTO, databank=HOTELTIME, table=[], columns=HT_COLUMNS)
+    assert await run() == "pending_review"
+    run.m["post"].assert_not_awaited()
+    mapped = [
+        {
+            "HT_Code": "4100001",
+            "HT_Description": "001 - Room Charge (Auto)",
+            "Department": None,  # Carmen writes the column blank; it keys as ""
+            "DeptCode": "103",
+            "AccCode": "4010001",
+            "AccDesc": "Room Revenue",
+        }
+    ]
+    run = _Run(settings=AUTO, databank=HOTELTIME, table=mapped, columns=HT_COLUMNS)
     assert await run() == "posted"
     assert run.m["post"].await_args.args[1]["id"] == [171]
+
+
+MINUS_500 = {"Code": -500, "UserMessage": "Mapping is incomplete."}
+CSV = [{"Id": 180, "LastModified": "2026-10-06", "FileData": "Code,Description\n100,Room"}]
+
+
+@pytest.mark.asyncio
+async def test_carmens_minus_500_puts_the_keys_it_named_in_the_review():
+    """A day nothing here could key posts by date (auto-post on). Carmen's -500 writes the
+    keys it lacks into its table with no account, and the day parks with them and the AI's
+    suggestions, to map here (decision-log #53)."""
+    named = {"Code": "100", "Description": "Room", "DeptCode": None, "AccCode": None}
+    key = cfg.key_id(["100", "Room"])
+    guess = {key: {"dept": "103", "acc": "4010001", "confidence": "high", "why": "room"}}
     run = _Run(
         settings=AUTO,
-        databank=HOTELTIME,
+        databank=CSV,
         table=[],
-        columns=HT_COLUMNS,
-        post={"Code": -500, "UserMessage": "Mapping is incomplete."},
+        post=MINUS_500,
+        after=([named], TABLE_COLUMNS),
+        suggest=guess,
+    )
+    assert await run() == "pending_review"
+    assert run.last["reason_code"] == "pms_mapping_incomplete"
+    payload = run.last["review_payload"]
+    assert payload["preview"] is True
+    assert [(r["key"], r["amount"]) for r in payload["rows"]] == [(key, "")]
+    assert payload["guessed"][key]["acc"] == "4010001"
+    assert payload["flags"] == ["mapping_guessed"]
+    assert run.m["suggest"].await_args.args[0] == [key]
+
+
+@pytest.mark.asyncio
+async def test_the_day_still_parks_when_carmens_table_cannot_be_read_after_its_minus_500():
+    run = _Run(
+        settings=AUTO,
+        databank=CSV,
+        table=[],
+        post=MINUS_500,
+        after=CarmenAPIError(503, "Carmen Server request timed out."),
     )
     assert await run() == "pending_review"
     assert run.last["reason_code"] == "pms_mapping_incomplete"

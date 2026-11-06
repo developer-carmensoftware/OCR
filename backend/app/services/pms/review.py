@@ -35,6 +35,7 @@ from app.services.pms.process import (
     _target,
     carmen_words,
     post_day,
+    with_carmen_keys,
 )
 from app.services.shared import api_keys, carmen
 
@@ -133,13 +134,19 @@ async def _claim(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) ->
     raise ConflictError("Someone else has already handled this day")
 
 
-async def _note(event_pk: uuid.UUID, reason: str, error: str) -> None:
-    """Record why Carmen refused a parked day's post; the day stays parked."""
+async def _note(event_pk: uuid.UUID, reason: str, error: str, payload: dict | None = None) -> None:
+    """Record why Carmen refused a parked day's post; the day stays parked.
+
+    `payload`: the day's review as Carmen's refusal left it to map (`with_carmen_keys`).
+    """
+    values: dict[str, Any] = {"reason_code": reason, "error_message": error[:500]}
+    if payload is not None:
+        values["review_payload"] = payload
     async with async_session() as db:
         await db.execute(
             update(PmsEvent)
             .where(PmsEvent.id == event_pk, PmsEvent.status == "pending_review")
-            .values(reason_code=reason, error_message=error[:500])
+            .values(**values)
         )
         await db.commit()
 
@@ -239,9 +246,12 @@ async def approve(
                 payload, payload["doc_date"], payload.get("databank_id"), token
             )
         except MappingIncomplete as exc:
-            # The day stays parked, now saying why: Carmen's engine found a key its mapping
-            # table has no account for (decision-log #52). Fixed in Carmen, then Approve again.
-            await _note(event_pk, "pms_mapping_incomplete", str(exc))
+            # The day stays parked, now saying why and holding the keys Carmen's engine named
+            # (it writes them into its table with no account) for the reviewer to map here,
+            # then Approve again (decision-log #53).
+            await _note(
+                event_pk, "pms_mapping_incomplete", str(exc), await with_carmen_keys(payload, token)
+            )
             raise ValidationError(f"Carmen didn't post the day: {exc}") from exc
         except PostRefused as exc:
             # Carmen's latest word replaces an earlier one, as the sweep's refusal does: a day
