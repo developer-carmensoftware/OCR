@@ -1,10 +1,14 @@
 """Decision-log #52 — the data half of `pms_post_checks_ui.mjs` (Carmen's post checks the mapping).
 
     python scripts/qa/pms_post_checks_e2e.py state                 # pms-pc / pms-pc-b days, payload decrypted (JSON)
-    python scripts/qa/pms_post_checks_e2e.py ht-table              # HotelTime's mapping table on Carmen dev (JSON)
-    python scripts/qa/pms_post_checks_e2e.py ht-snapshot           # keep the table as it is now (once, before a run)
+    python scripts/qa/pms_post_checks_e2e.py table SETTING [COLS]  # a PMS's mapping table: columns, rows, blank, keys (JSON)
+    python scripts/qa/pms_post_checks_e2e.py snapshot SETTING      # keep that table as it is now (once, before a run)
+    python scripts/qa/pms_post_checks_e2e.py restore SETTING       # put the snapshot back, row for row (empty → PUT [])
+    python scripts/qa/pms_post_checks_e2e.py fill-blank SETTING DEPT ACC   # every row without an account gets one
+    python scripts/qa/pms_post_checks_e2e.py day-keys PMS DATE LIST COL,COL  # a Data Bank day's distinct keys
+    python scripts/qa/pms_post_checks_e2e.py jv SEQ                # one JV: date, source, status, lines, Dr/Cr (web JWT)
+    python scripts/qa/pms_post_checks_e2e.py ht-table|ht-snapshot|ht-restore   # the three above for HotelTime.PMS
     python scripts/qa/pms_post_checks_e2e.py ht-stage 2026-10-06   # give that day's keys an account (GEN/1021001)
-    python scripts/qa/pms_post_checks_e2e.py ht-restore            # put the snapshot back, row for row
     python scripts/qa/pms_post_checks_e2e.py backdate EVENT_ID MIN HOURS   # processed_at MIN minutes ago, created_at HOURS ago
     python scripts/qa/pms_post_checks_e2e.py posts-since ISO       # interfacePostGL calls since ISO (outbound_call_logs)
     python scripts/qa/pms_post_checks_e2e.py llm                   # pms_interface LLM calls of the two tenants
@@ -15,6 +19,8 @@
 
 HotelTime (dev Data Bank 2026-10-01..06) is the PMS #51's reader cannot key: rows in `Revenue`,
 table columns `HT_Code / HT_Description / Department` keyed from `Code / Description / ""`.
+Cloudbeds (2026-10-26..29) cannot be keyed either: `Transaction` and `Statistic` both carry its
+key columns `Description / MarketSegmentDesc`, and the reader takes a day only from one list.
 Local Supabase only. Reuses `pms_third_parties_e2e.py` for the Carmen and DB plumbing.
 """
 
@@ -31,12 +37,98 @@ import pms_third_parties_e2e as base  # noqa: E402
 from sqlalchemy import text, update  # noqa: E402
 
 base.TENANTS = ("pms-pc", "pms-pc-b")
-SETTING, POST_TYPE = "HotelTime.PMS", "REVENUE"
-SNAPSHOT = base.ROOT / ".playwright-mcp" / "pms-pc" / "hoteltime_snapshot.json"
+SETTING, POST_TYPE = "HotelTime.PMS", "REVENUE"  # the ht-* commands' table
 
 
-async def _table() -> tuple[list[dict], list[str]]:
-    return await base._carmen(base.carmen.get_pms_mapping, SETTING, POST_TYPE, base.TOKEN)
+def _snapshot_file(setting: str) -> Path:
+    # HotelTime.PMS → hoteltime_snapshot.json, the name the ht-* commands always used.
+    name = f"{setting.split('.')[0].lower()}_snapshot.json"
+    return base.ROOT / ".playwright-mcp" / "pms-pc" / name
+
+
+async def _table(setting: str = SETTING) -> tuple[list[dict], list[str]]:
+    return await base._carmen(
+        base.carmen.get_pms_mapping, setting, POST_TYPE, base.TOKEN
+    )
+
+
+def _body(rows: list[dict], columns: list[str]) -> list[dict]:
+    # Carmen's PUT takes the table's own columns, less the account name it fills in itself.
+    return [{c: r.get(c) for c in columns if c != "AccDesc"} for r in rows]
+
+
+def _key_text(row: dict, cols: list[str]) -> str:
+    return "|".join(_norm(row.get(c)) for c in cols)
+
+
+async def _table_info(setting: str, on: list[str] | None = None) -> dict:
+    """`on`: key the rows by these columns only. Cloudbeds' table keys a third column, `Channel`,
+    which Carmen's engine added on its first -500 and which no Data Bank list carries."""
+    rows, columns = await _table(setting)
+    keys = on or base.cfg.key_columns(columns)
+    return {
+        "columns": columns,
+        "key_columns": base.cfg.key_columns(columns),
+        "rows": len(rows),
+        "blank": sum(1 for r in rows if not _norm(r.get("AccCode")).strip()),
+        "keys": sorted({_key_text(r, keys) for r in rows}),
+    }
+
+
+async def _snapshot(setting: str) -> int:
+    rows, columns = await _table(setting)
+    f = _snapshot_file(setting)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(
+        json.dumps({"columns": columns, "rows": rows}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return len(rows)
+
+
+async def _fill_blank(setting: str, dept: str, acc: str) -> int:
+    """Map every row without an account, as a person would in Carmen's mapping screen."""
+    rows, columns = await _table(setting)
+    blank = [r for r in rows if not _norm(r.get("AccCode")).strip()]
+    for r in blank:
+        r["DeptCode"], r["AccCode"] = dept, acc
+    if blank:  # Carmen's PUT replaces the table: every row goes back
+        await base._carmen(
+            base.carmen.put_pms_mapping,
+            setting,
+            POST_TYPE,
+            _body(rows, columns),
+            base.TOKEN,
+        )
+    return len(blank)
+
+
+async def _day_keys(pms: str, date: str, list_name: str, cols: list[str]) -> dict:
+    found = await base._carmen(
+        base.carmen.get_databank_day, "PMS", pms, "Daily", date, base.TOKEN
+    )
+    fd = found[0]["FileData"] if found else {}
+    fd = json.loads(fd) if isinstance(fd, str) else fd
+    items = fd.get(list_name) or []
+    return {"rows": len(items), "keys": sorted({_key_text(i, cols) for i in items})}
+
+
+def _jv(seq: str) -> dict:
+    with base._jwt_client() as c:
+        r = c.get(f"{base.API}/glJv/{seq}")
+    body = r.json() or {}
+    d = body.get("Data") or body  # Carmen answers this one unwrapped (as P-03 reads it)
+    lines = d.get("Detail") or []
+    return {
+        "seq": d.get("JvhSeq"),
+        "date": str(d.get("JvhDate"))[:10],
+        "source": d.get("JvhSource"),
+        "status": d.get("Status"),
+        "lines": len(lines),
+        "dr": round(sum(float(x.get("DrBase") or 0) for x in lines), 2),
+        "cr": round(sum(float(x.get("CrBase") or 0) for x in lines), 2),
+        "accounts": sorted({f"{x.get('DeptCode')}/{x.get('AccCode')}" for x in lines}),
+    }
 
 
 async def _day(date: str) -> list[dict]:
@@ -70,32 +162,21 @@ async def _stage(date: str) -> int:
     return len(picks)
 
 
-async def _restore() -> bool:
-    snap = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
-    body = [{c: r.get(c) for c in snap["columns"] if c != "AccDesc"} for r in snap["rows"]]
-    await base._carmen(base.carmen.put_pms_mapping, SETTING, POST_TYPE, body, base.TOKEN)
-    now, _ = await _table()
-    seen = sorted(
-        (
-            _norm(r.get("HT_Code")),
-            _norm(r.get("HT_Description")),
-            _norm(r.get("Department")),
-            _norm(r.get("DeptCode")),
-            _norm(r.get("AccCode")),
-        )
-        for r in now
+async def _restore(setting: str = SETTING) -> bool:
+    snap = json.loads(_snapshot_file(setting).read_text(encoding="utf-8"))
+    body = _body(
+        snap["rows"], snap["columns"]
+    )  # an empty snapshot puts back an empty table
+    await base._carmen(
+        base.carmen.put_pms_mapping, setting, POST_TYPE, body, base.TOKEN
     )
-    want = sorted(
-        (
-            _norm(r.get("HT_Code")),
-            _norm(r.get("HT_Description")),
-            _norm(r.get("Department")),
-            _norm(r.get("DeptCode")),
-            _norm(r.get("AccCode")),
-        )
-        for r in snap["rows"]
-    )
-    return seen == want
+    now, _ = await _table(setting)
+    cols = [c for c in snap["columns"] if c != "AccDesc"]
+
+    def row(r: dict) -> tuple[str, ...]:
+        return tuple(_norm(r.get(c)) for c in cols)
+
+    return sorted(map(row, now)) == sorted(map(row, snap["rows"]))
 
 
 async def _backdate(event_id: str, minutes: int, hours: int) -> int:
@@ -107,7 +188,10 @@ async def _backdate(event_id: str, minutes: int, hours: int) -> int:
         tenants = await base._tenant_ids(db)
         result = await db.execute(
             update(base.PmsEvent)
-            .where(base.PmsEvent.event_id == event_id, base.PmsEvent.tenant_id.in_(list(tenants)))
+            .where(
+                base.PmsEvent.event_id == event_id,
+                base.PmsEvent.tenant_id.in_(list(tenants)),
+            )
             .values(**values)
         )
         await db.commit()
@@ -134,7 +218,8 @@ async def _reset() -> int:
         if not tenants:
             return 0
         result = await db.execute(
-            text("delete from pms_events where tenant_id = any(:t)"), {"t": list(tenants)}
+            text("delete from pms_events where tenant_id = any(:t)"),
+            {"t": list(tenants)},
         )
         await db.commit()
         return result.rowcount
@@ -145,28 +230,47 @@ def main() -> int:
     if cmd == "state":
         print(json.dumps(asyncio.run(base._dump()), ensure_ascii=False, default=str))
         return 0
-    if cmd == "ht-table":
-        rows, columns = asyncio.run(_table())
-        blank = sum(1 for r in rows if not _norm(r.get("AccCode")).strip())
+    # The ht-* names are the generic table commands for HotelTime.PMS.
+    setting = (
+        SETTING if cmd.startswith("ht-") else (sys.argv[2] if len(sys.argv) > 2 else "")
+    )
+    if cmd in ("table", "ht-table"):
+        on = sys.argv[3].split(",") if cmd == "table" and len(sys.argv) > 3 else None
+        print(json.dumps(asyncio.run(_table_info(setting, on)), ensure_ascii=False))
+        return 0
+    if cmd in ("snapshot", "ht-snapshot"):
+        print(json.dumps({"rows": asyncio.run(_snapshot(setting))}))
+        return 0
+    if cmd in ("restore", "ht-restore"):
+        good = asyncio.run(_restore(setting))
+        print(json.dumps({"restored": good}))
+        return 0 if good else 1
+    if cmd == "fill-blank":
         print(
-            json.dumps({"columns": columns, "rows": len(rows), "blank": blank}, ensure_ascii=False)
+            json.dumps(
+                {"filled": asyncio.run(_fill_blank(setting, sys.argv[3], sys.argv[4]))}
+            )
         )
         return 0
-    if cmd == "ht-snapshot":
-        rows, columns = asyncio.run(_table())
-        SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
-        SNAPSHOT.write_text(
-            json.dumps({"columns": columns, "rows": rows}, ensure_ascii=False), encoding="utf-8"
+    if cmd == "day-keys":
+        pms, date, list_name, cols = (
+            sys.argv[2],
+            sys.argv[3],
+            sys.argv[4],
+            sys.argv[5].split(","),
         )
-        print(json.dumps({"rows": len(rows)}))
+        print(
+            json.dumps(
+                asyncio.run(_day_keys(pms, date, list_name, cols)), ensure_ascii=False
+            )
+        )
+        return 0
+    if cmd == "jv":
+        print(json.dumps(_jv(sys.argv[2]), ensure_ascii=False))
         return 0
     if cmd == "ht-stage":
         print(json.dumps({"staged": asyncio.run(_stage(sys.argv[2]))}))
         return 0
-    if cmd == "ht-restore":
-        good = asyncio.run(_restore())
-        print(json.dumps({"restored": good}))
-        return 0 if good else 1
     if cmd == "backdate":
         print(asyncio.run(_backdate(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]))))
         return 0
