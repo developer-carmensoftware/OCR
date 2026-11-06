@@ -216,10 +216,14 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
       Carmen's mapping table (interfacePost/mapping/{code}/REVENUE/GL): its Columns less
           DeptCode/AccCode/AccDesc = the key (Comanche Code + Description)
       read the day back: GET /api/interface/PMS/{name}/{docType}/Date/{docDate}; its rows =
-          the ONE FileData list carrying every key column — a PREVIEW (decision #52): a PMS
-          laid out otherwise (HotelTime: Revenue rows, HT_Code columns), a non-JSON file or a
-          PartnerApi day with no Data Bank row has none (preview:false, rows []), and Carmen's
-          engine checks the mapping when the day posts (auto-post) or is approved
+          the FileData list answering the most key columns (decision #53, every PMS on dev):
+          a column reads its own field, else that name less a PREFIX_ (HotelTime HT_Code ←
+          Code), else blank, as Carmen's engine writes it (Department, Cloudbeds' Channel); a
+          list named after another section (Statistic) is skipped; a tie goes to the one with
+          Amount. A day with nothing to key (a CSV file, a PartnerApi day with no Data Bank
+          row) has no preview (preview:false), and Carmen's engine checks it when it posts
+      Carmen's -500 (sweep or Approve): its table's rows with no account (the keys it just
+          wrote) join the day's, with the AI's picks, to map HERE (process.with_carmen_keys)
       the table's rows → the day's rows it can't place
       mapping.py: the LLM only for those, shown the BU's own mapped rows as examples
       any new row, or this PMS's auto_post off → pending_review; else post_day →
@@ -261,8 +265,8 @@ PMS settings page of ours, and the queue's `no_credential` has no fix button: th
 saving the PMS setting in Carmen. `#/admin/api-keys` stays as a support tool: list and
 revoke, **no issuing**. Revoking is how a PMS is switched off (no `modules` row yet).
 PMSs that Carmen's own post API fetches (`From: PartnerApi`: no Data Bank, no hook) are opened
-by the sweep and posted by date alone; the engine's `-500` parks `pms_mapping_incomplete`,
-fixed in Carmen's mapping screen (decision #52).
+by the sweep and posted by date alone; the engine's `-500` parks `pms_mapping_incomplete`
+with the keys Carmen named, which are mapped in our review (decision #53). Every PMS is reviewable.
 Contract for Carmen: [`docs/PMS_INTEGRATION.md`](docs/PMS_INTEGRATION.md). **Full docs: [`docs/pms-interface/`](docs/pms-interface/)**
 (requirements → architecture → API → data model → operations → decisions → status/Jira).
 

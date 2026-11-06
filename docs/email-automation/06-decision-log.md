@@ -1751,3 +1751,45 @@ everywhere once Carmen lists the missing keys.
   and the reviewer maps in Carmen. The fallback is a per-PMS field map for the preview
   (HotelTime: `HT_Code←Code`, `HT_Description←Description`, `Department←""`). It is built only
   if Carmen never lists the keys and a customer needs it.
+
+## 53. Every PMS is reviewable (2026-11-06)
+
+**Status: built** (branch `feat/pms-every-pms-reviewable`). Amends #52's reader and its "map it
+in Carmen".
+
+**Why.** The user decided every PMS must be reviewable. Under #52 only Comanche showed its rows.
+HotelTime and Cloudbeds showed "rows can't be shown here", and a `-500` sent the reviewer to
+Carmen's own screen.
+
+**Decision.**
+- **One generic reader** (`carmen_config`), not a per-PMS map.
+  - A key column reads the field of its own name (any case), else that name without a `PREFIX_`
+    (HotelTime's `HT_Code ← Code`). With neither, it is blank, which is what Carmen's engine
+    writes (HotelTime's `Department`, Cloudbeds' `Channel`).
+  - The day's rows are the list answering the most key columns. A list named after another of
+    the PMS's sections in `interfaceThirdParties` (`Statistic`) is skipped. A tie goes to the
+    list carrying `Amount`, and a tie even then has no preview.
+  - Checked against the keys Carmen's engine itself wrote on a `-500`: HotelTime 46 of 46,
+    Cloudbeds 78 of 78 (its `Transaction`), and Comanche unchanged.
+- **Carmen names what it lacks.** When a post answers `-500` (auto-post or Approve), the mapping
+  table is read again (`process.with_carmen_keys`).
+  - Every row with no account is a key Carmen's engine wrote, for this day or an earlier one.
+    These rows join the day's, with the AI's suggestions, and the day parks to be mapped in our
+    review.
+  - The review reloads after a refusal, so they show at once. A day nothing can key (a CSV
+    file, a PartnerApi day with no Data Bank row) is reviewable after Carmen's first answer.
+- **Auto-post posts what is ready** (#24), whatever the PMS: a day with new rows waits for a
+  person, and a fully mapped day still posts unattended.
+
+**Accepted (user, 2026-11-06).**
+- The first Approve of a day nothing can key posts with no rows on screen, because Carmen has
+  no dry-run. If its mapping is complete, that Approve makes the JV.
+- Every Carmen row with no account is shown, not only this day's: mapping them all is harmless,
+  and later days need them.
+- The E2E writes accounts into Carmen dev's tables and restores them.
+
+**Consequences.**
+- Ask L (Carmen listing the missing keys in the `-500`) is not needed.
+- #52's fallback idea, a per-PMS field map, is dropped.
+- The AI is now asked for HotelTime's and Cloudbeds' new rows too.
+- `pms.rcMappingIncomplete` now says to map the codes in the review.
