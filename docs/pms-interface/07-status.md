@@ -60,8 +60,9 @@ gives 32 rows, 21 new keys against Carmen's 33-row table.
 | I | **A list of the PMS kinds**: which send a hook with a Data Bank day, and which Carmen's own post API fetches | **Answered 2026-11-03** by `interfaceThirdParties`'s `From`: `CarmenApi` = the third party sends the day into Carmen (our hook flow); `PartnerApi` = Carmen fetches it from the third party (no Data Bank, no hook: **to build**, decision-log #52, waits on ask L); `null` = a user imports the file (does it land in the Data Bank and fire the hook? ask) |
 | J | **Tell users on the PMS setting screen that the AI reads the day's figures** to suggest accounts | Open. A PMS-only BU never sees our consent popup any more (accepted, decision-log #44) |
 | K | **Comanche.PMS refuses to post**: every Comanche day answers `Result:false` *"Line No. 30,31 has no DrCr value."*, with or without a counter (2024-07-01 and 2025-10-20, 2026-11-03). The same data (lines 30–31: 933 Refund 35,000.00, Guest Ledger 101,452.80) posts fine on `test.PMS`, so it is Comanche.PMS's own setting | **Open. Blocks every real Comanche post.** Our side records Carmen's words on the day (`carmen_rejected`) and keeps it in the queue |
-| L | **List the missing keys when a post is refused for mapping** (decision-log #52): the `-500` answer names each key the mapping table lacks, in that table's own column names, e.g. `"Missing":[{"HT_Code":"4100001","HT_Description":"001 - Room Charge (Auto)","Department":""}]`. Also asked: what a post answers for a date with no data, and whether a PartnerApi post takes a date range with no `id`. (Replaces the dry-run asked on 2026-11-05.) | **Optional since 2026-11-06.** A `-500` post makes Carmen's engine write the day's missing keys into the mapping table itself, with no account. Seen on HotelTime (46 rows) and Cloudbeds (78 rows for 10-26, exactly its `Transaction` keys; 28 more for 10-29, only the new ones). So the missing keys can be read back from Carmen's table without L. The two side questions are answered: no data → `-400 "No Data Found on …"` (`day_not_ready`), and a post without `id` goes by date |
+| L | **List the missing keys when a post is refused for mapping** (decision-log #52): the `-500` answer names each key the mapping table lacks, in that table's own column names, e.g. `"Missing":[{"HT_Code":"4100001","HT_Description":"001 - Room Charge (Auto)","Department":""}]`. Also asked: what a post answers for a date with no data, and whether a PartnerApi post takes a date range with no `id`. (Replaces the dry-run asked on 2026-11-05.) | **Not needed (decision-log #53).** A `-500` post makes Carmen's engine write the day's missing keys into the mapping table itself, with no account. Seen on HotelTime (46 rows) and Cloudbeds (78 rows for 10-26, exactly its `Transaction` keys; 28 more for 10-29, only the new ones). So the missing keys can be read back from Carmen's table without L. The two side questions are answered: no data → `-400 "No Data Found on …"` (`day_not_ready`), and a post without `id` goes by date |
 | M | **`interfaceThirdParties` answers 500** on dev since 2026-11-05: *"The best overloaded method match for 'string.IsNullOrWhiteSpace(string)' has some invalid arguments"* (it answered on 2026-11-03) | **Closed 2026-11-06:** it answers 200 again. Its 8 rows are Comanche, Hoteltime and Cloudbeds (REVENUE and STATISTIC, all CarmenApi) and Blueledgers (Inventory, PartnerApi) |
+| N | **HotelTime.PMS posts the day's `Code` as an account.** Every HotelTime post answers `ErrorList: "Invalid account codes 1115001"`, even with all 43 keys of 2026-10-06 mapped to valid carmencloud accounts (E2E N-04, 2026-11-06). `1115001` is one of the day's own `HT_Code` values, not one of our accounts. So Carmen's HotelTime setting reads `Code` as a GL account, which carmencloud's chart lacks. It is a setting or test-data matter | **To ask.** Blocks every real HotelTime post; our side records Carmen's words (`carmen_rejected`). Cloudbeds posts fine (JV 1610, voided) |
 
 Questions from path A that path B made moot: which posting path (Carmen's engine),
 debit/credit by `TransactionType` (Carmen's config), and Draft vs Normal (the engine's own JVs
@@ -77,6 +78,9 @@ Dev's Data Bank holds HotelTime days 2026-10-01 to 10-06 (Ids 176 to 171).
   `DeptCode`, `AccCode`, `AccDesc`. It was empty on dev until 2026-11-06. Then Carmen's own
   `-500`s wrote 46 rows with no account, which are kept as evidence for ask L.
 - **#51's reader:** `unreadable_day`, because the names differ.
+- **Our reader since #53:** keys it as `HT_Code ← Code`, `HT_Description ← Description` and
+  `Department` blank. That gives exactly the 46 keys Carmen's engine wrote. The review shows
+  HotelTime's own table, its new rows and the AI's picks.
 - **The key, by experiment** (PUT variants, then post; table restored to empty, no JV):
   `HT_Code←Code`, `HT_Description←Description`, `Department←""`. Rows with no `Code` are keyed
   `HT_Code` "".
@@ -100,9 +104,13 @@ Dev's Data Bank holds Cloudbeds days 2026-10-26 to 10-29 (Ids 184, 182, 180, 178
   - Since Carmen's first `-500` on it (2026-11-06), it also declares a key column `Channel`.
     The column stays after the table is emptied, the rows Carmen writes leave it null, and no
     list of the day carries it.
-- **Our reader:** no preview. Both lists carry `Description` and `MarketSegmentDesc`, and since
-  `Channel` was added, no list carries the whole key.
-- **End to end** (E2E group CB, BU `pms-pc`, 2026-10-26):
+- **Our reader:** before #53, no preview, because both lists carry `Description` and
+  `MarketSegmentDesc`.
+  - **Since #53** it reads `Transaction`: `Statistic` is another section in Carmen's list, and
+    `Channel` is blank.
+  - That gives 78 keys, as Carmen wrote them. The review shows Cloudbeds' own table with the
+    AI's picks.
+- **End to end before #53** (E2E group CB, BU `pms-pc`, 2026-10-26):
   1. The hook parks the day "Ready to post", with no AI call.
   2. Approve gets `-500`, and the day parks `pms_mapping_incomplete`.
   3. Carmen writes the day's **78 `Transaction` keys**, not `Statistic`'s, as rows with no account.
@@ -112,10 +120,9 @@ Dev's Data Bank holds Cloudbeds days 2026-10-26 to 10-29 (Ids 184, 182, 180, 178
      first run was voided the same way.
   6. A second day (10-29, auto-post on) gets `-500`, and Carmen adds only its 28 new keys.
   7. The table is emptied again; Carmen accepts an empty `PUT`.
-- **So:** for Cloudbeds the whole flow already works, with nothing built per PMS. The reviewer
-  maps the new keys in Carmen's screen.
-  - A preview would need the reader to ignore `Statistic` when reading REVENUE, and to drop or
-    derive `Channel`. That is an idea for later, not decided.
+- **So:** Carmen's engine posts Cloudbeds as it is, with nothing built per PMS.
+  - Since #53 the reviewer maps the new keys in our review instead of Carmen's screen.
+  - A `-500` the reader did not foresee brings Carmen's own missing keys into the review.
 
 ## What we still owe
 
