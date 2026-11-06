@@ -1,7 +1,7 @@
 # Graph Report - OCR  (2026-11-06)
 
 ## Corpus Check
-- 422 files · ~311,002 words
+- 422 files · ~311,063 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `59c576e3`
+- Built from commit: `52351cb9`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -40,7 +40,7 @@
 - 5. Components
 - useAPExtraction.ts
 - AdminLogin.tsx
-- eslint
+- @testing-library/react
 - devDependencies
 - apiFetch
 - PeriodPicker.tsx
@@ -286,7 +286,7 @@ Nodes (9): adminLogin(), AdminLoginError, LoginResponse, AdminLogin(), classify(
 
 ### Community 26 - "devDependencies"
 Cohesion: 0.09
-Nodes (23): autoprefixer, eslint-plugin-react-hooks, devDependencies, autoprefixer, eslint-plugin-react-hooks, globals, prettier, @testing-library/react (+15 more)
+Nodes (23): autoprefixer, eslint, eslint-plugin-react-hooks, devDependencies, autoprefixer, eslint, eslint-plugin-react-hooks, globals (+15 more)
 
 ### Community 27 - "apiFetch"
 Cohesion: 0.13

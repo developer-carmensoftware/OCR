@@ -80,7 +80,11 @@ export default function CustomSearchSelect({
   // list it came from.
   const skipOpenRef = useRef(false)
 
-  useEffect(() => {
+  // A layout effect: the field must hold its value by the time anyone can click it. As a
+  // passive effect it could still be pending at the click, then run first in the click's
+  // render and replace the click's '' with the value, so the list opened filtered to that one
+  // code (CI flake in PmsReviewDocument.test, 2026-11-06).
+  useLayoutEffect(() => {
     setSearchTerm(value || '')
   }, [value])
 
