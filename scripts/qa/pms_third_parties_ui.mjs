@@ -333,10 +333,12 @@ async function run() {
     newKeys(again?.payload).length === 3, `HTTP ${r.status} duplicate=${r.json?.duplicate}`)
 
   r = await hook(keys[`${BU}/comanche`], 'Comanche', '2026-10-08')
-  const junk = await until(rows => rows.find(x => x.event_id.toLowerCase() === 'pms/comanche/daily/2026-10-08' && x.status === 'failed'))
-  check('A-04', 'a Data Bank day with no list keyed like the table fails, unguessed',
-    junk?.reason_code === 'unreadable_day' && /Code, Description/.test(junk?.error_message || ''),
-    `${junk?.reason_code}: ${junk?.error_message}`)
+  // Decision-log #52: no list keyed like the table is no preview, not a failure. With
+  // auto-post off the day waits for Approve, and Carmen's engine checks the mapping then.
+  const junk = await until(rows => rows.find(x => x.event_id.toLowerCase() === 'pms/comanche/daily/2026-10-08' && x.status === 'pending_review'))
+  check('A-04', 'a Data Bank day with no list keyed like the table parks with no preview, unguessed',
+    junk?.payload?.preview === false && (junk?.payload?.rows || []).length === 0 && !junk?.reason_code,
+    `${junk?.status} preview=${junk?.payload?.preview} reason=${junk?.reason_code}`)
 
   r = await hook(keys[`${BU}/comanche`], 'Comanche', '2023-01-01')
   const absent = await until(rows => {
@@ -381,9 +383,9 @@ async function run() {
 
     await chip('Not posted')
     const npText = (await page.getByRole('table').innerText().catch(() => '')).replace(/\s+/g, ' ')
-    check('B-02', 'Not posted shows the opera and Comanche days with their reasons',
+    check('B-02', 'Not posted shows the opera day with its reason; the unkeyable day waits in Review instead (#52)',
       /Carmen has no PMS posting setting for this interface/.test(npText) &&
-        /Could not read this day from the Data Bank/.test(npText),
+        !/Could not read this day from the Data Bank/.test(npText),
       npText.slice(0, 200))
     await shot('B-02-not-posted')
 
