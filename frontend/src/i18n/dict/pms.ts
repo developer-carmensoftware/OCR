@@ -31,6 +31,9 @@ export const en = {
   'pms.loading': 'Loading the day',
   'pms.goneTitle': 'This day is not waiting for review',
   'pms.goneBody': 'Someone in your business unit may have approved or rejected it already.',
+  // A day whose rows this app could not read (decision-log #52): Carmen checks instead.
+  'pms.noPreview':
+    "This PMS's rows can't be shown here. Approve sends the day to Carmen, which checks the mapping before it posts.",
   // Why a day did not become a JV, as the queue row and the modal banner say it.
   'pms.rcNoCredential': 'No Carmen access is stored. Save this PMS setting in Carmen',
   'pms.rcDayNotFound': "Carmen's Data Bank does not have this day",
@@ -41,6 +44,8 @@ export const en = {
   'pms.rcUnsupportedFormat': "Carmen's PMS setting uses a file the AI can't read yet",
   'pms.rcConfigUnreadable': "Carmen doesn't let this access read its PMS settings yet",
   'pms.rcForbidden': 'Carmen denied this access',
+  'pms.rcMappingIncomplete':
+    'Carmen says a code has no account in its mapping. Map it in Carmen, then approve again',
 } as const
 
 export const th: Record<keyof typeof en, string> = {
@@ -71,6 +76,8 @@ export const th: Record<keyof typeof en, string> = {
   'pms.loading': 'กำลังโหลดข้อมูลวันนี้',
   'pms.goneTitle': 'วันนี้ไม่ได้รอตรวจอยู่',
   'pms.goneBody': 'อาจถูกอนุมัติหรือปฏิเสธไปแล้วโดยคนอื่นใน BU ของคุณ',
+  'pms.noPreview':
+    'แสดงรายการของ PMS นี้ที่นี่ไม่ได้ เมื่อกดอนุมัติ ระบบจะส่งวันนี้ให้ Carmen ตรวจ mapping ก่อนโพสต์',
   'pms.rcNoCredential': 'ยังไม่มีสิทธิ์เข้า Carmen ให้กดบันทึกหน้าตั้งค่า PMS นี้ใน Carmen',
   'pms.rcDayNotFound': 'Data Bank ของ Carmen ไม่มีข้อมูลวันนี้',
   'pms.rcDatabankUnreachable': 'ติดต่อ Data Bank ของ Carmen ไม่ได้',
@@ -80,4 +87,6 @@ export const th: Record<keyof typeof en, string> = {
   'pms.rcUnsupportedFormat': 'setting PMS ใน Carmen ใช้ไฟล์แบบที่ AI ยังอ่านไม่ได้',
   'pms.rcConfigUnreadable': 'Carmen ยังไม่ให้สิทธิ์นี้อ่าน setting PMS',
   'pms.rcForbidden': 'Carmen ไม่ให้สิทธิ์นี้เข้าถึง',
+  'pms.rcMappingIncomplete':
+    'Carmen แจ้งว่ามีรหัสที่ยังไม่มีบัญชีใน mapping ให้เพิ่มใน Carmen แล้วกดอนุมัติอีกครั้ง',
 }

@@ -227,108 +227,123 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
                 </div>
               )}
 
-              <section className="pms-sec" aria-labelledby="pms-acc">
-                <Head id="pms-acc" title={t('pms.accounts')} state={r.blockReason ? 'warn' : 'ok'}>
-                  {t('pms.rowCount', { n: day.new_codes.length + mappedRows.length })}
-                </Head>
-                <table className="jv-table" aria-labelledby="pms-acc">
-                  <thead>
-                    <tr>
-                      {day.key_columns.map((col, c) => (
-                        <th scope="col" key={col} className={c === 0 ? 'pms-w-code' : undefined}>
-                          {col}
+              {/* No rows to show: this PMS's day could not be read here (another layout, or a
+                  PMS Carmen fetches itself). Carmen checks the mapping when it is approved
+                  (decision-log #52), so Approve stays open. */}
+              {day.preview === false ? (
+                <p className="rd-blocked rd-blocked--note" role="status">
+                  <Info size={14} aria-hidden="true" />
+                  {t('pms.noPreview')}
+                </p>
+              ) : (
+                <section className="pms-sec" aria-labelledby="pms-acc">
+                  <Head
+                    id="pms-acc"
+                    title={t('pms.accounts')}
+                    state={r.blockReason ? 'warn' : 'ok'}
+                  >
+                    {t('pms.rowCount', { n: day.new_codes.length + mappedRows.length })}
+                  </Head>
+                  <table className="jv-table" aria-labelledby="pms-acc">
+                    <thead>
+                      <tr>
+                        {day.key_columns.map((col, c) => (
+                          <th scope="col" key={col} className={c === 0 ? 'pms-w-code' : undefined}>
+                            {col}
+                          </th>
+                        ))}
+                        <th scope="col" className="pms-w-dept">
+                          {t('pms.colDept')}
                         </th>
-                      ))}
-                      <th scope="col" className="pms-w-dept">
-                        {t('pms.colDept')}
-                      </th>
-                      <th scope="col" className="pms-w-acc">
-                        {t('pms.colAccount')}
-                      </th>
-                      <th scope="col" className="pms-w-name">
-                        {t('pms.colAccDesc')}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* The rows to decide first, so a long day never buries them. */}
-                    {day.new_codes.map(c => {
-                      const p = r.picks[c.key] ?? { dept: '', acc: '' }
-                      const ai = r.isAiPick(c.key)
-                      const changed = !ai && (p.dept !== (c.dept ?? '') || p.acc !== (c.acc ?? ''))
-                      return (
-                        <tr
-                          key={c.key}
-                          className={`jv-row${p.acc && p.dept ? '' : ' jv-row--needed'}${changed ? ' jv-row--changed' : ''}`}
-                        >
-                          {keyCells(c.values)}
-                          <td data-label={t('pms.colDept')}>
-                            <CustomSearchSelect
-                              value={p.dept || null}
-                              onChange={v => r.setPick(c.key, 'dept', v)}
-                              options={deptOptions}
-                              placeholder={t('pms.deptPlaceholder')}
-                              hasError={!p.dept}
-                              aria-label={t('pms.deptFor', { code: c.label })}
-                            />
-                          </td>
-                          <td data-label={t('pms.colAccount')}>
-                            <CustomSearchSelect
-                              value={p.acc || null}
-                              onChange={v => r.setPick(c.key, 'acc', v)}
-                              options={allowedAccountsForDept(
-                                p.dept,
-                                masters.departments,
-                                masters.accounts
-                              )}
-                              placeholder={t('pms.accountPlaceholder')}
-                              hasError={!p.acc}
-                              aria-label={t('pms.accountFor', { code: c.label })}
-                            />
-                          </td>
-                          {/* The picked account by name (the picker shows only its number),
-                              then whose answer it is: the AI's, or a person's with Undo. */}
-                          <td data-label={t('pms.colAccDesc')}>
-                            <span className="pms-accdesc">
-                              {accShort(p.acc)}
-                              {ai && (
-                                <span className="jv-tag jv-tag--ai pms-tag-ai">
-                                  <Sparkles size={11} strokeWidth={2.25} aria-hidden="true" />
-                                  {t('pms.aiTag')}
-                                </span>
-                              )}
-                              {changed && c.acc && (
-                                <button
-                                  type="button"
-                                  className="jv-tag jv-tag--undo"
-                                  onClick={() => r.undo(c.key)}
-                                  aria-label={t('pms.undoFor', { code: c.label })}
-                                >
-                                  <Undo2 size={11} strokeWidth={2.25} aria-hidden="true" />
-                                  {t('pms.undo')}
-                                </button>
-                              )}
-                            </span>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                    {/* As Carmen maps them: Carmen's own screen edits these, not this one. */}
-                    {mappedRows.map(row => (
-                      <tr className="jv-row" key={row.key}>
-                        {keyCells(row.values)}
-                        <td className="text-mono" data-label={t('pms.colDept')}>
-                          {row.dept}
-                        </td>
-                        <td className="text-mono" data-label={t('pms.colAccount')}>
-                          {row.acc}
-                        </td>
-                        <td data-label={t('pms.colAccDesc')}>{row.name || accShort(row.acc)}</td>
+                        <th scope="col" className="pms-w-acc">
+                          {t('pms.colAccount')}
+                        </th>
+                        <th scope="col" className="pms-w-name">
+                          {t('pms.colAccDesc')}
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
+                    </thead>
+                    <tbody>
+                      {/* The rows to decide first, so a long day never buries them. */}
+                      {day.new_codes.map(c => {
+                        const p = r.picks[c.key] ?? { dept: '', acc: '' }
+                        const ai = r.isAiPick(c.key)
+                        const changed =
+                          !ai && (p.dept !== (c.dept ?? '') || p.acc !== (c.acc ?? ''))
+                        return (
+                          <tr
+                            key={c.key}
+                            className={`jv-row${p.acc && p.dept ? '' : ' jv-row--needed'}${changed ? ' jv-row--changed' : ''}`}
+                          >
+                            {keyCells(c.values)}
+                            <td data-label={t('pms.colDept')}>
+                              <CustomSearchSelect
+                                value={p.dept || null}
+                                onChange={v => r.setPick(c.key, 'dept', v)}
+                                options={deptOptions}
+                                placeholder={t('pms.deptPlaceholder')}
+                                hasError={!p.dept}
+                                aria-label={t('pms.deptFor', { code: c.label })}
+                              />
+                            </td>
+                            <td data-label={t('pms.colAccount')}>
+                              <CustomSearchSelect
+                                value={p.acc || null}
+                                onChange={v => r.setPick(c.key, 'acc', v)}
+                                options={allowedAccountsForDept(
+                                  p.dept,
+                                  masters.departments,
+                                  masters.accounts
+                                )}
+                                placeholder={t('pms.accountPlaceholder')}
+                                hasError={!p.acc}
+                                aria-label={t('pms.accountFor', { code: c.label })}
+                              />
+                            </td>
+                            {/* The picked account by name (the picker shows only its number),
+                              then whose answer it is: the AI's, or a person's with Undo. */}
+                            <td data-label={t('pms.colAccDesc')}>
+                              <span className="pms-accdesc">
+                                {accShort(p.acc)}
+                                {ai && (
+                                  <span className="jv-tag jv-tag--ai pms-tag-ai">
+                                    <Sparkles size={11} strokeWidth={2.25} aria-hidden="true" />
+                                    {t('pms.aiTag')}
+                                  </span>
+                                )}
+                                {changed && c.acc && (
+                                  <button
+                                    type="button"
+                                    className="jv-tag jv-tag--undo"
+                                    onClick={() => r.undo(c.key)}
+                                    aria-label={t('pms.undoFor', { code: c.label })}
+                                  >
+                                    <Undo2 size={11} strokeWidth={2.25} aria-hidden="true" />
+                                    {t('pms.undo')}
+                                  </button>
+                                )}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {/* As Carmen maps them: Carmen's own screen edits these, not this one. */}
+                      {mappedRows.map(row => (
+                        <tr className="jv-row" key={row.key}>
+                          {keyCells(row.values)}
+                          <td className="text-mono" data-label={t('pms.colDept')}>
+                            {row.dept}
+                          </td>
+                          <td className="text-mono" data-label={t('pms.colAccount')}>
+                            {row.acc}
+                          </td>
+                          <td data-label={t('pms.colAccDesc')}>{row.name || accShort(row.acc)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+              )}
             </div>
 
             <footer className="rd-modal-foot">
