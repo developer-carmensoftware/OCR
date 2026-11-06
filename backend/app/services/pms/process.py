@@ -26,7 +26,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from app.context import current_carmen_uri, current_tenant_id
@@ -626,7 +626,15 @@ async def _open_partner_days(now: datetime | None = None) -> int:
                 hook = {"InterfaceType": "PMS", "InterfaceName": name, "DocType": "Daily"}
                 payload = {**hook, "DocDate": day, "Source": OPENED_BY_SWEEP}
                 event_id = f"PMS/{name}/Daily/{day}"
-                if await store_day(db, tenant_id, event_id, "PMS", payload):
+                # Carmen's list may spell the PMS unlike a hook does (`Hoteltime` / `HotelTime`),
+                # and the unique key is case-sensitive: a day a hook stored stays the one row.
+                held = await db.scalar(
+                    select(PmsEvent.id).where(
+                        PmsEvent.tenant_id == tenant_id,
+                        func.lower(PmsEvent.event_id) == event_id.lower(),
+                    )
+                )
+                if held is None and await store_day(db, tenant_id, event_id, "PMS", payload):
                     opened += 1
             await db.commit()
     return opened

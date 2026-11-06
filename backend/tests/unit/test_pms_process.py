@@ -481,7 +481,11 @@ async def test_no_day_opens_before_the_hotels_day_is_closed():
 async def test_yesterday_opens_for_each_partner_pms_a_bu_switched_on():
     bu, other = uuid4(), uuid4()
     live = MagicMock(all=lambda: [(bu, "hoteltime"), (bu, "comanche"), (other, "guestline")])
-    db = MagicMock(execute=AsyncMock(return_value=live), commit=AsyncMock())
+    db = MagicMock(
+        execute=AsyncMock(return_value=live),
+        scalar=AsyncMock(return_value=None),
+        commit=AsyncMock(),
+    )
 
     @asynccontextmanager
     async def session():
@@ -582,3 +586,30 @@ async def test_a_missing_configuration_is_not_mistaken_for_no_data():
 def test_a_day_without_data_yet_is_not_taken_again_within_the_hour():
     sql = str(process._due(datetime.now(UTC)).compile(dialect=postgresql.dialect()))
     assert "reason_code IS DISTINCT FROM" in sql and "processed_at <" in sql
+
+
+@pytest.mark.asyncio
+async def test_a_day_a_hook_stored_in_another_casing_is_not_opened_again():
+    """Carmen's list says `Hoteltime`, the hook said `HotelTime`: still one row per day."""
+    bu = uuid4()
+    live = MagicMock(all=lambda: [(bu, "hoteltime")])
+    db = MagicMock(
+        execute=AsyncMock(return_value=live),
+        scalar=AsyncMock(return_value=uuid4()),
+        commit=AsyncMock(),
+    )
+
+    @asynccontextmanager
+    async def session():
+        yield db
+
+    stored = AsyncMock(return_value=uuid4())
+    with (
+        patch.object(process, "async_session", session),
+        patch.object(process, "_partner_names", AsyncMock(return_value={"hoteltime": "Hoteltime"})),
+        patch.object(process, "store_day", stored),
+    ):
+        assert await process._open_partner_days(datetime(2026, 11, 6, 2, 0, tzinfo=UTC)) == 0
+    stored.assert_not_awaited()
+    held = str(db.scalar.await_args.args[0].compile(dialect=postgresql.dialect()))
+    assert "lower(pms_events.event_id)" in held
