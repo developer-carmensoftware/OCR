@@ -22,7 +22,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import func, or_, update
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_session
@@ -101,16 +100,12 @@ async def receive_event(
         # store, however valid. Carmen generates each PMS's key on that PMS's setting.
         raise HTTPException(403, f"This key is for PMS '{key.interface_name}'")
 
-    new_id = await db.scalar(
-        insert(PmsEvent)
-        .values(
-            tenant_id=key.tenant_id,
-            event_id=event.key,
-            type=event.interface_type,
-            payload=event.model_dump(by_alias=True, mode="json"),
-        )
-        .on_conflict_do_nothing(index_elements=["tenant_id", "event_id"])
-        .returning(PmsEvent.id)
+    new_id = await process.store_day(
+        db,
+        key.tenant_id,
+        event.key,
+        event.interface_type,
+        event.model_dump(by_alias=True, mode="json"),
     )
     duplicate = new_id is None
     process_it = not duplicate

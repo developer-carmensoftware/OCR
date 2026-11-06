@@ -192,3 +192,17 @@ def test_the_newest_readable_data_bank_row_wins():
     junk = {"Id": 3, "LastModified": "2024-09-07T00:00:00", "FileData": "not json"}
     assert cfg.newest_day([old, new, junk], COLUMNS) == (new, "Transaction")
     assert cfg.newest_day([junk], COLUMNS) is None
+
+
+def test_the_pmss_carmen_fetches_itself_are_its_partner_interfaces():
+    """`From: PartnerApi` means no hook comes: our sweep opens those days (decision-log #52)."""
+    listed = [
+        *INTERFACES,
+        {**INTERFACES[0], "InterfaceName": "HotelTime", "From": "PartnerApi"},
+        {**INTERFACES[0], "InterfaceName": "GuestLine", "From": "partnerapi"},
+        {**INTERFACES[0], "InterfaceName": "Opera", "From": "PartnerApi", "DocType": "STATISTIC"},
+        {**INTERFACES[0], "InterfaceName": "Vento", "From": "PartnerApi", "PostToModule": "AR"},
+        "not a row",
+    ]
+    assert cfg.partner_interfaces(listed) == {"hoteltime": "HotelTime", "guestline": "GuestLine"}
+    assert cfg.partner_interfaces(INTERFACES) == {}

@@ -15,7 +15,7 @@ import pytest
 from app.exceptions import CarmenServiceError, ConflictError, NotFoundError, ValidationError
 from app.services.pms import carmen_config as cfg
 from app.services.pms import review
-from app.services.pms.process import PostRefused
+from app.services.pms.process import MappingIncomplete, PostRefused
 from app.services.shared.carmen import CarmenAPIError
 from tests.unit.test_pms_carmen_config import COLUMNS, DAY, TABLE, TABLE_COLUMNS
 
@@ -245,12 +245,41 @@ async def test_a_failed_write_never_posts():
 @pytest.mark.asyncio
 async def test_carmen_saying_no_is_a_400_and_carmen_unreachable_a_503():
     run = _Approve(post=PostRefused("Period is closed"))
-    with pytest.raises(ValidationError, match="Period is closed"):
-        await run(PICKS)
+    with patch.object(review, "_note", AsyncMock()) as note:
+        with pytest.raises(ValidationError, match="Period is closed"):
+            await run(PICKS)
+    # Carmen's latest word replaces an older reason ("mapping incomplete" once fixed in Carmen).
+    note.assert_awaited_once_with(run.pk, "carmen_rejected", "Period is closed")
     run.m["release"].assert_awaited_once()
     run = _Approve(post=CarmenAPIError(504, "Carmen Server request timed out."))
-    with pytest.raises(CarmenServiceError, match="Approving again is safe"):
-        await run(PICKS)
+    with patch.object(review, "_note", AsyncMock()) as note:
+        with pytest.raises(CarmenServiceError, match="Approving again is safe"):
+            await run(PICKS)
+    note.assert_not_awaited()  # Carmen said nothing about the day: nothing to record
+
+
+@pytest.mark.asyncio
+async def test_carmen_finding_a_key_unmapped_leaves_the_day_parked_saying_so():
+    """Carmen's engine checks the mapping itself (decision-log #52): the day stays parked,
+    now with the reason, until the mapping is fixed in Carmen and approved again."""
+    run = _Approve(post=MappingIncomplete("Mapping is incomplete."))
+    with patch.object(review, "_note", AsyncMock()) as note:
+        with pytest.raises(ValidationError, match="Mapping is incomplete"):
+            await run(PICKS)
+    note.assert_awaited_once_with(run.pk, "pms_mapping_incomplete", "Mapping is incomplete.")
+    run.m["release"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_day_with_no_preview_posts_by_date_with_nothing_to_write():
+    """No rows could be read here (another layout, or a PMS Carmen fetches itself): Approve
+    writes nothing and asks Carmen to post, which checks the mapping (decision-log #52)."""
+    blind = {**PAYLOAD, "rows": [], "mapped": {}, "guessed": {}, "flags": [], "preview": False}
+    blind.pop("databank_id")
+    run = _Approve(payload=blind)
+    await run({})
+    run.m["put"].assert_not_awaited()
+    assert run.m["post"].await_args.args[2] is None
 
 
 @pytest.mark.asyncio
@@ -288,6 +317,8 @@ async def test_get_day_lists_the_rows_carmen_cannot_place_and_what_the_others_ma
     )
     assert day["mapped_count"] == 1
     assert day["rows"][0] == {**ROWS[0], "dept": "103", "acc": "4010001", "name": "Room Revenue"}
+    # A day processing could key shows its rows; one it could not says so (#52).
+    assert day["preview"] is True
     assert (day["setting_code"], day["post_type"]) == ("Comanche.PMS", "REVENUE")
     assert "counter" not in day
 
