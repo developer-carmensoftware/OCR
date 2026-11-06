@@ -205,17 +205,21 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
       → pms_events, one row per BU × Data Bank day: event_id = "PMS/Comanche/Daily/2026-10-07"
       202 new day · 200 {duplicate:true} same day again (moves updated_at) · 401 · 403 · 413 · 422
   the hook carries no data: storing the day starts processing (services/pms/, process.kick;
-      pg_cron sweeps /api/v1/pms/process/run every 10 min for what a restart left)
+      pg_cron sweeps /api/v1/pms/process/run every 10 min for what a restart left;
+      it also OPENS yesterday's day after 08:00 ICT for each BU × PMS with a live key whose
+      interfaceThirdParties row says From: PartnerApi — Carmen fetches those, no hook comes; #52)
       all with the BU's ONE stored Carmen credential (email_ingest_settings, decision #42)
       NO RULES OF OUR OWN (decision #43): Carmen's engine posts, by Carmen's per-PMS config
       the setting itself (its INI) is out of the menu token's reach, so carmen_config.py
           DERIVES it (decision #51): GET /api/interface/interfaceThirdParties → the hook's
-          PMS × GL × REVENUE row (none → pms_setting_missing; PostType ≠ Json →
-          unsupported_pms_format); code = {InterfaceName}.{InterfaceType}
+          PMS × GL × REVENUE row (none → pms_setting_missing); code = {InterfaceName}.{InterfaceType}
       Carmen's mapping table (interfacePost/mapping/{code}/REVENUE/GL): its Columns less
           DeptCode/AccCode/AccDesc = the key (Comanche Code + Description)
       read the day back: GET /api/interface/PMS/{name}/{docType}/Date/{docDate}; its rows =
-          the ONE FileData list carrying every key column (none/several → unreadable_day)
+          the ONE FileData list carrying every key column — a PREVIEW (decision #52): a PMS
+          laid out otherwise (HotelTime: Revenue rows, HT_Code columns), a non-JSON file or a
+          PartnerApi day with no Data Bank row has none (preview:false, rows []), and Carmen's
+          engine checks the mapping when the day posts (auto-post) or is approved
       the table's rows → the day's rows it can't place
       mapping.py: the LLM only for those, shown the BU's own mapped rows as examples
       any new row, or this PMS's auto_post off → pending_review; else post_day →
@@ -256,8 +260,9 @@ already holds one that works (decision-log #45). There is no
 PMS settings page of ours, and the queue's `no_credential` has no fix button: the fix is
 saving the PMS setting in Carmen. `#/admin/api-keys` stays as a support tool: list and
 revoke, **no issuing**. Revoking is how a PMS is switched off (no `modules` row yet).
-PMSs that Carmen's own post API fetches (no Data Bank, no hook) are not built: Carmen will
-list the PMS kinds first.
+PMSs that Carmen's own post API fetches (`From: PartnerApi`: no Data Bank, no hook) are opened
+by the sweep and posted by date alone; the engine's `-500` parks `pms_mapping_incomplete`,
+fixed in Carmen's mapping screen (decision #52).
 Contract for Carmen: [`docs/PMS_INTEGRATION.md`](docs/PMS_INTEGRATION.md). **Full docs: [`docs/pms-interface/`](docs/pms-interface/)**
 (requirements → architecture → API → data model → operations → decisions → status/Jira).
 
