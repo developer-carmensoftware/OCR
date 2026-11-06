@@ -1671,54 +1671,74 @@ list: its days fail `unreadable_day`, and are never keyed by a guess, because Ap
 the table back whole. Such a PMS needs the INI after all, which means asking Carmen to put
 `JsonKeys` and `Mapping_MapCode` on the list's row.
 
-## 52. A PartnerApi PMS: Carmen's dry-run, opened by our sweep (proposed, 2026-11-05)
+## 52. Carmen's post checks the mapping, for every PMS (proposed, 2026-11-06)
 
-**Status: proposed.** It waits on Carmen's dry-run (ask L). Nothing is built.
+**Status: proposed.** It replaces this entry's first draft (2026-11-05: a dry-run of
+`interfacePostGL` for PartnerApi PMSs). Nothing is built.
 
-**The problem.** A `PartnerApi` PMS never puts a day in the Data Bank. When a user presses
-Post in Carmen, Carmen fetches the day from the PMS, converts it to Carmen's rows, applies the
-mapping and posts, in one step, keeping nothing. So there is no day to park, no hook, and
-nothing to map before the post. A GET of the PMS's raw data would not help: converting it is
-Carmen's job, and the rows we map are Carmen's converted rows.
+**What we learned (2026-11-06).**
+- **Each PMS has its own layout.** HotelTime (dev Data Bank Ids 171–176) keeps its rows in
+  `Revenue`, not `Transaction`. Its mapping table's key columns are `HT_Code`,
+  `HT_Description` and `Department`.
+  - #51's reader cannot key it (`unreadable_day`).
+  - An experiment on dev found the key: `Code`, `Description` and a blank `Department`. Key
+    variants were PUT, then the day was posted; the table was restored and no JV was made.
+  - #51's derivation works only where the day's field names equal the table's columns, as
+    Comanche's do. Carmen cannot be asked to make dozens of PMSs alike.
+- **A PartnerApi PMS has no Data Bank day at all.**
+- **Carmen's post checks the mapping itself and posts nothing unless every key is mapped.** It
+  answers `-500 "Mapping is incomplete."`, naming no key. For other faults it answers an
+  `ErrorList` (HotelTime: "Invalid account codes 1115001"). Neither makes a JV.
 
-**Decision (with the user).**
-- **Ask Carmen for a dry-run of `interfacePostGL`** (ask L). It is the post's own pipeline
-  (fetch, convert, apply the mapping), but it writes no JV and stores nothing. It answers the
-  converted rows, one per mapping key, with the account mapped or empty. It is the one missing
-  piece: every other step of #51 already works without the Data Bank, and a post by date range
-  with no `id` is proven (2026-10-15).
-- **We open the day ourselves.** No hook will come, so the existing `pms-process` sweep (every
-  10 minutes) opens yesterday's `pms_events` row once, after 08:00 ICT. It does this for every
-  BU × PMS that has a live key and whose `interfaceThirdParties` row says `From: PartnerApi`.
-  Get token is still the switch (#44). The row uses a hook's `event_id` shape, so a hook for
-  the same day lands on the same row. No new cron job.
-- **Opening is an INSERT, not a start.** The opener writes the rows (`ON CONFLICT DO NOTHING`)
-  and does not `kick` them. The sweep then works through them **one at a time**, oldest
-  first, up to 50 per run (`run_pms_processing`). Its lock turns an overlapping run away.
-  So 100 BUs means one dry-run after another for roughly half an hour, never 100 at once.
-  - **Carmen's load:** about three calls per BU per day (mapping, dry-run, and the chart only
-    when there are new rows).
-  - **The partner's load:** one fetch per BU per day, plus hourly retries for a day not ready.
-  - **The AI:** runs only for rows Carmen's table lacks, so once a BU's table is complete, a
-    day costs no LLM call.
-- **Processing branches at one step.** For a PartnerApi section, the day's rows come from the
-  dry-run instead of the Data Bank. The diff, the AI, the queue, Approve and auto-post are
-  unchanged.
-  - An empty answer is `day_not_ready`. It is retried hourly without spending attempts, and
-    fails `day_not_found` after 24 hours.
-  - `-200` is `already_posted`.
-- **Posting is as for CarmenApi**: Approve and post, or auto-post (#24). If a user posts in
-  Carmen first, we record `already_posted`.
+**Decision: Carmen's post is the completeness check.** Our only job is the mapping, and only
+Carmen's engine knows a day's keys for every PMS.
+- **Preview where we can.** #51's reader stays as a preview. When it keys the day (Comanche),
+  the new rows go to the AI and the queue as today.
+- **Otherwise a different path, not a failure.** When the reader cannot key the day (another
+  layout, a non-JSON file, a PartnerApi day), processing does not fail:
+  - with auto-post on, it posts and Carmen checks;
+  - with auto-post off, it parks "Ready to post" with no rows shown. Approve sends the day to
+    Carmen, which checks.
+- **Carmen's answer decides.**
 
-**Ceiling.**
-- **Timing:** the dry-run reads the PMS at one moment and the post at another. If the PMS adds
-  a key in between, Carmen's post refuses with "Mapping is incomplete" and posts nothing, and
-  the day parks again.
-- **Throughput:** one at a time is about 50 days per 10 minutes. Past a few hundred BUs the
-  morning backlog runs to hours; then the sweep should process with a small fixed
-  concurrency (about 3), within the 10-connection pool.
-- **The hook path needs the same cap.** `kick` starts one task per hook with no limit, so a
-  burst of CarmenApi hooks from many BUs can exceed the pool.
+  | Answer | Result |
+  |---|---|
+  | `Result:true` | posted; `Id[0]` becomes `jv_no` |
+  | `-200` | `already_posted` |
+  | `-500` | parks `mapping_incomplete`. It is fixed in Carmen's mapping screen, then Approve. Once Carmen sends the missing keys, the AI suggests them in the modal |
+  | no data for the date | `day_not_ready`, retried hourly for 24 hours |
+  | any other refusal | `carmen_rejected`, with Carmen's words |
+- **We open PartnerApi days ourselves.** No hook comes, so after 08:00 ICT the `pms-process`
+  sweep opens yesterday's day for each BU × PMS that has a live key and whose
+  `interfaceThirdParties` row says `From: PartnerApi`. That list is read once a day per BU.
+  - A day that already has a row (a hook came) is skipped.
+  - If the list cannot be read, nothing opens; the next sweep tries again.
+  - Opening is an INSERT, and the sweep works through the days one at a time.
+- **`interfaceThirdParties` stays required.** It proves the PMS has a GL × REVENUE setting, and
+  it says which PMSs are PartnerApi.
 
-**Later, not now.** A dry-run works for a CarmenApi PMS too, and could replace #51's
-derivation of the day's rows from the Data Bank.
+**Asks (07-status L and M).**
+- **M:** `interfaceThirdParties` has answered 500 on dev since 2026-11-05. It is a bug, and it
+  blocks every day.
+- **L:** list the missing keys in the `-500` answer, in the mapping table's own column names.
+- **L, questions:** what does a post answer for a date with no data, and does a PartnerApi post
+  take a date range with no `id`?
+- No dry-run and no new route.
+
+**Unchanged.**
+- Auto-post still means "post with nobody pressing". With it off we never post, not even to
+  check.
+- #24 holds: an AI pick reaches Carmen's table only through a person's Approve.
+- A refused post writes nothing, so trying cannot make a wrong JV.
+
+**Coverage.** Every PMS posts. The AI helps where the preview reads the day (Comanche), and
+everywhere once Carmen lists the missing keys.
+
+**Ceilings.**
+- **Throughput:** one day at a time is about 50 per 10 minutes. Past a few hundred BUs it needs
+  a small fixed concurrency, within the 10-connection pool. The hook path's `kick` has no cap
+  and needs the same.
+- **No missing keys:** without them, a `-500` on a PMS the preview cannot read gets no AI help,
+  and the reviewer maps in Carmen. The fallback is a per-PMS field map for the preview
+  (HotelTime: `HT_Code←Code`, `HT_Description←Description`, `Department←""`). It is built only
+  if Carmen never lists the keys and a customer needs it.

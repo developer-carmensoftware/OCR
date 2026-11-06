@@ -233,32 +233,25 @@ Tracked in CA-116, with what we found on the dev Data Bank:
    hook for the same day a changed day that we should process again?
 6. **Is the gross Summary line intended?** For Comanche it is 2 × Guest Ledger to the
    counter account, against the Guest Ledger row's credit.
-7. **A dry-run of `interfacePostGL`, for PMSs Carmen fetches itself (`From: PartnerApi`).**
-   Such a PMS puts no day in the Data Bank: Carmen fetches, converts and posts in one step,
-   so nothing can be mapped before the post. We ask for the post's own call with
-   `"DryRun": true` (or `…/interfacePostGL/{postType}/preview`). It should do everything a post
-   does except write the JV, store nothing, and answer:
+7. **When a post is refused for mapping, name the missing keys.** Today `interfacePostGL`
+   answers `-500 "Mapping is incomplete."` and says nothing more. Your engine has just keyed
+   the day by the PMS's own setting and found which keys the mapping table lacks. Please list
+   them in the answer, in the mapping table's own column names:
 
    ```json
-   {"Result": true,
-    "Rows": [
-      {"Code": "100", "Description": "Room Charge", "DeptCode": "103", "AccCode": "4010001"},
-      {"Code": "104", "Description": "Room Upgrade", "DeptCode": "", "AccCode": ""}
-    ]}
+   {"Code": -500, "UserMessage": "Mapping is incomplete.",
+    "Missing": [{"HT_Code": "4100001", "HT_Description": "001 - Room Charge (Auto)", "Department": ""}]}
    ```
 
-   - **Rows:** one per key of the mapping table, named by the table's own columns, with the
-     account it maps to, or empty.
-   - **Extra fields:** the converter's own (`TransactionType`, `Amount`) are welcome; we ignore
-     any we do not know.
-   - **Special answers:** `Rows: []` when the PMS has no data for the date yet, and `-200`
-     when the day is already posted.
-   - **Token:** the same interface token as the rest of `/api/interface`.
-
-   We call it once a day per BU × PMS (hourly until the day has data), map what is empty, and
-   post as usual. Two questions with it:
-   - Does a PartnerApi post take a date range with no `id`?
-   - Is there a dev BU with a PartnerApi PMS we can test on?
+   It is one change in one place, for every PMS, and your users see which codes to map too.
+   Two questions with it:
+   - What does a post answer for a date with no data yet?
+   - Does a post for a PMS you fetch yourself (`From: PartnerApi`) take a date range with no
+     `id`?
+8. **`interfaceThirdParties` answers 500** on dev since 2026-11-05: *"The best overloaded
+   method match for 'string.IsNullOrWhiteSpace(string)' has some invalid arguments"*. It
+   answered on 2026-11-03. We read it first for every day, and its `From` tells us which PMSs
+   you fetch yourself.
 
 ---
 
