@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 from cryptography.fernet import Fernet as _Fernet
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 _config_logger = logging.getLogger(__name__)
@@ -265,6 +266,21 @@ class Settings(BaseSettings):
         # De-dup, preserve order.
         deduped = list(dict.fromkeys(keys))
         return deduped or [self.openrouter_api_key]
+
+    @model_validator(mode="after")
+    def _openrouter_key_from_pool(self) -> "Settings":
+        """Either variable alone is a configured key.
+
+        The "is a key set?" checks (credit-card scan and GL suggestion, AP extract and
+        suggest, the startup banner) read `openrouter_api_key`; the calls use
+        `openrouter_api_keys_list`. With only OPENROUTER_API_KEYS set, credit-card scans
+        500'd and AP answered "OPENROUTER_API_KEY is not configured" (2026-11-06). The
+        single key now borrows the pool's first, as the pool falls back to the single key.
+        Which keys the calls use is unchanged.
+        """
+        if not self.openrouter_api_key:
+            self.openrouter_api_key = self.openrouter_api_keys_list[0]
+        return self
 
     @property
     def llm_text_provider_allowlist_list(self) -> list[str]:
