@@ -245,12 +245,17 @@ async def test_a_failed_write_never_posts():
 @pytest.mark.asyncio
 async def test_carmen_saying_no_is_a_400_and_carmen_unreachable_a_503():
     run = _Approve(post=PostRefused("Period is closed"))
-    with pytest.raises(ValidationError, match="Period is closed"):
-        await run(PICKS)
+    with patch.object(review, "_note", AsyncMock()) as note:
+        with pytest.raises(ValidationError, match="Period is closed"):
+            await run(PICKS)
+    # Carmen's latest word replaces an older reason ("mapping incomplete" once fixed in Carmen).
+    note.assert_awaited_once_with(run.pk, "carmen_rejected", "Period is closed")
     run.m["release"].assert_awaited_once()
     run = _Approve(post=CarmenAPIError(504, "Carmen Server request timed out."))
-    with pytest.raises(CarmenServiceError, match="Approving again is safe"):
-        await run(PICKS)
+    with patch.object(review, "_note", AsyncMock()) as note:
+        with pytest.raises(CarmenServiceError, match="Approving again is safe"):
+            await run(PICKS)
+    note.assert_not_awaited()  # Carmen said nothing about the day: nothing to record
 
 
 @pytest.mark.asyncio

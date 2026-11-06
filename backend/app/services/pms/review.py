@@ -244,6 +244,9 @@ async def approve(
             await _note(event_pk, "pms_mapping_incomplete", str(exc))
             raise ValidationError(f"Carmen didn't post the day: {exc}") from exc
         except PostRefused as exc:
+            # Carmen's latest word replaces an earlier one, as the sweep's refusal does: a day
+            # whose mapping was fixed in Carmen must not keep saying "mapping incomplete".
+            await _note(event_pk, "carmen_rejected", str(exc))
             raise ValidationError(f"Carmen didn't post the day: {exc}") from exc
         except carmen.CarmenAPIError as exc:
             raise CarmenServiceError(
