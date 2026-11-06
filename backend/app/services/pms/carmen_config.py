@@ -60,6 +60,26 @@ def find_section(interfaces: list, interface_type: str, interface: str) -> Secti
     return None
 
 
+def partner_interfaces(interfaces: list) -> dict[str, str]:
+    """The PMSs Carmen fetches from the third party itself (`From: PartnerApi`), posting
+    REVENUE to GL: `{lower-cased name: name as Carmen writes it}`. No hook comes for them,
+    so their days are opened by our sweep (decision-log #52)."""
+    names: dict[str, str] = {}
+    for i in interfaces:
+        if not isinstance(i, dict):
+            continue
+        name = str(i.get("InterfaceName") or "")
+        if (
+            name
+            and str(i.get("InterfaceType") or "").casefold() == "pms"
+            and str(i.get("PostToModule") or "").upper() == "GL"
+            and str(i.get("DocType") or "").upper() == POST_TYPE
+            and str(i.get("From") or "").casefold() == "partnerapi"
+        ):
+            names[name.casefold()] = name
+    return names
+
+
 def key_columns(columns: list[str]) -> list[str]:
     """The mapping table's key columns: all of them but the account a key maps to."""
     return [c for c in columns if c not in _TARGET_COLUMNS]

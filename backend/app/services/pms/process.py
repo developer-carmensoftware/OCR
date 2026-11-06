@@ -23,15 +23,18 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert
 
 from app.context import current_carmen_uri, current_tenant_id
 from app.database import async_session
+from app.models.admin import APIKey
 from app.models.email_automation import EmailIngestSettings
 from app.models.enums import JobStatus
+from app.models.identity import Tenant
 from app.models.observability import JobRun
 from app.models.pms import PmsEvent, PmsSettings
 from app.services.email_automation import credential
@@ -59,6 +62,21 @@ WAKE_REASONS = (
 )
 # `interfacePostGL` answers a day it has already posted with this code (and HTTP 303).
 _ALREADY_POSTED = -200
+# …and a day with a key its mapping table has no account for with this one, posting nothing.
+_MAPPING_INCOMPLETE = -500
+# …and a date it has no data for with -400 "No Data Found on …" (seen 2026-11-06). -400 also
+# means "Configuration is missing", so the words decide, not the code alone.
+_NO_DATA = -400
+# A day with no data yet (a PartnerApi PMS before the hotel's day is in) is asked again this
+# often, without spending its attempts, and given up on this long after it was stored.
+NOT_READY_WAIT = timedelta(hours=1)
+NOT_READY_FOR = timedelta(hours=24)
+# A day the sweep opens itself (a PartnerApi PMS, decision-log #52) says so in its payload.
+OPENED_BY_SWEEP = "sweep"
+# PartnerApi days are opened for yesterday, once the hotel's night audit is surely done.
+# ponytail: one fixed hour for every BU; per-BU hours if a hotel closes its day later.
+ICT = timezone(timedelta(hours=7))
+OPEN_AFTER_HOUR = 8
 
 _sweep_lock = asyncio.Lock()
 # asyncio keeps only a weak reference to a task; these are held until they finish.
@@ -67,6 +85,15 @@ _running: set[asyncio.Task] = set()
 
 class PostRefused(Exception):
     """Carmen's engine answered, and the answer was no. Its own words are the message."""
+
+
+class MappingIncomplete(PostRefused):
+    """The engine's `-500`: a key of the day has no account in Carmen's mapping table. The
+    engine checks this itself, for every PMS, and posts nothing (decision-log #52)."""
+
+
+class NoDataYet(PostRefused):
+    """The engine's `-400 "No Data Found on …"`: nothing to post for the date yet."""
 
 
 def kick(event_pk: uuid.UUID) -> None:
@@ -131,24 +158,34 @@ async def post_day(
     queue's Open JV link opens — or `("already_posted", None)`.
     `section` is the payload's `{"setting_code", "post_type"}`. The counter account is left
     to the engine, which takes it from the setting (decision-log #51).
-    Raises `PostRefused` with Carmen's words (`Mapping is incomplete.`, a closed period, …),
-    or `carmen.CarmenAPIError` when Carmen could not be reached or refused the credential.
-    Asking again is safe: the engine refuses a day it has already posted.
+    Raises `MappingIncomplete` for the engine's `-500`, `PostRefused` with Carmen's words for
+    any other no (a closed period, an invalid account, …), or `carmen.CarmenAPIError` when
+    Carmen could not be reached or refused the credential. Asking again is safe: the engine
+    refuses a day it has already posted, and posts nothing while a key is unmapped.
+    A day with no Data Bank row (a PartnerApi PMS, which Carmen fetches at post time) is
+    posted by date alone, with no `id`.
     """
-    result = await carmen.post_pms_gl(
-        section["post_type"],
-        {
-            "Code": section["setting_code"],
-            "DateFrom": doc_date,
-            "DateTo": doc_date,
-            "id": [databank_id],
-        },
-        carmen_token,
-    )
+    body: dict[str, Any] = {
+        "Code": section["setting_code"],
+        "DateFrom": doc_date,
+        "DateTo": doc_date,
+    }
+    if databank_id is not None:
+        body["id"] = [databank_id]
+    result = await carmen.post_pms_gl(section["post_type"], body, carmen_token)
     if isinstance(result, dict) and result.get("Result") is True:
         return "posted", _jv_seq(result)
     if isinstance(result, dict) and result.get("Code") == _ALREADY_POSTED:
         return "already_posted", None
+    if isinstance(result, dict) and result.get("Code") == _MAPPING_INCOMPLETE:
+        raise MappingIncomplete(str(result.get("UserMessage") or "Mapping is incomplete.")[:500])
+    words = str(result.get("UserMessage") or "") if isinstance(result, dict) else ""
+    if (
+        isinstance(result, dict)
+        and result.get("Code") == _NO_DATA
+        and "no data found" in words.lower()
+    ):
+        raise NoDataYet(words.strip()[:500])
     verdict = None
     if isinstance(result, dict):
         verdict = (
@@ -160,24 +197,53 @@ async def post_day(
     raise PostRefused(str(verdict or f"Carmen answered {result!r}")[:500])
 
 
+def _due(now: datetime):
+    """A `received` day a worker may take: unclaimed or abandoned, with attempts left — and
+    one Carmen had no data for yet only once `NOT_READY_WAIT` has passed."""
+    return and_(
+        PmsEvent.status == "received",
+        PmsEvent.attempts < MAX_ATTEMPTS,
+        or_(PmsEvent.processed_at.is_(None), PmsEvent.processed_at < now - LEASE),
+        or_(
+            PmsEvent.reason_code.is_distinct_from("day_not_ready"),
+            PmsEvent.processed_at < now - NOT_READY_WAIT,
+        ),
+    )
+
+
 async def _claim(event_pk: uuid.UUID) -> Any:
     """Take a `received` day for this worker, or None when it is not ours to take."""
     now = datetime.now(UTC)
     async with async_session() as db:
         result = await db.execute(
             update(PmsEvent)
-            .where(
-                PmsEvent.id == event_pk,
-                PmsEvent.status == "received",
-                PmsEvent.attempts < MAX_ATTEMPTS,
-                or_(PmsEvent.processed_at.is_(None), PmsEvent.processed_at < now - LEASE),
-            )
+            .where(PmsEvent.id == event_pk, _due(now))
             .values(processed_at=now, attempts=PmsEvent.attempts + 1)
-            .returning(PmsEvent.id, PmsEvent.tenant_id, PmsEvent.payload, PmsEvent.attempts)
+            .returning(
+                PmsEvent.id,
+                PmsEvent.tenant_id,
+                PmsEvent.payload,
+                PmsEvent.attempts,
+                PmsEvent.created_at,
+            )
         )
         row = result.first()
         await db.commit()
     return row
+
+
+async def store_day(db, tenant_id: uuid.UUID, event_id: str, type_: str, payload: dict):
+    """One row per BU × day: the new row's id, or None when the day is already stored.
+
+    The hook stores the days Carmen announces, and the sweep the days of a PartnerApi PMS,
+    which nobody announces (decision-log #52). The caller commits.
+    """
+    return await db.scalar(
+        insert(PmsEvent)
+        .values(tenant_id=tenant_id, event_id=event_id, type=type_, payload=payload)
+        .on_conflict_do_nothing(index_elements=["tenant_id", "event_id"])
+        .returning(PmsEvent.id)
+    )
 
 
 async def _write(event_pk: uuid.UUID, **values) -> None:
@@ -198,6 +264,21 @@ async def _park(
         processed_at=datetime.now(UTC),
     )
     return "pending_review"
+
+
+async def _not_ready(claimed, error: str) -> str:
+    """Carmen has no data for the date yet (a PartnerApi PMS before the hotel's day is in).
+    Asked again hourly without spending an attempt; given up on a day after it was stored."""
+    if datetime.now(UTC) - claimed.created_at >= NOT_READY_FOR:
+        await _write(claimed.id, status="failed", reason_code="day_not_found", error_message=error)
+        return "failed"
+    await _write(
+        claimed.id,
+        reason_code="day_not_ready",
+        error_message=error,
+        attempts=max(claimed.attempts - 1, 0),
+    )
+    return "retry"
 
 
 async def _retry_or_fail(event_pk, attempts: int, reason: str, error: str) -> str:
@@ -259,16 +340,6 @@ async def _process(claimed) -> str:
                 "pms_setting_missing",
                 f"Carmen has no PMS interface {name} posting Revenue to GL.",
             )
-        if section.file_type.lower() != "json":
-            await _write(
-                pk,
-                status="failed",
-                reason_code="unsupported_pms_format",
-                error_message=f"{section.setting_code} sends {section.file_type or 'an unnamed'} "
-                "files; only JSON is read.",
-            )
-            return "failed"
-
         try:
             current, table_columns = await carmen.get_pms_mapping(
                 section.setting_code, section.post_type, token
@@ -284,30 +355,32 @@ async def _process(claimed) -> str:
                 f"Carmen's {section.setting_code} mapping table names no key columns.",
             )
 
+        # A day our sweep opened belongs to a PMS Carmen fetches at post time: there may be no
+        # Data Bank row for it at all. A hooked day is in the Data Bank, or about to be.
+        opened = hook.get("Source") == OPENED_BY_SWEEP
         try:
             found = await carmen.get_databank_day(itype, name, doc_type, doc_date, token)
         except carmen.CarmenAPIError as exc:
             reason = _refusal(exc, "databank_unreachable")
             return await _retry_or_fail(pk, attempts, reason, carmen_words(exc))
-        if not found:
+        if not found and not opened:
             return await _retry_or_fail(
                 pk,
                 attempts,
                 "day_not_found",
                 f"Carmen's Data Bank has no {name} {doc_type} for {doc_date} yet.",
             )
-        newest = cfg.newest_day(found, columns)
-        if newest is None:
-            await _write(
-                pk,
-                status="failed",
-                reason_code="unreadable_day",
-                error_message=f"No list in the Data Bank's {name} {doc_date} has exactly the "
-                f"rows keyed by {', '.join(columns)}.",
-            )
-            return "failed"
-        databank, json_keys = newest
-        rows = cfg.rows_of(databank["FileData"], json_keys, columns)
+        # The preview: the day's rows as the mapping table keys them. It reads a PMS whose
+        # fields are named like the table's columns (Comanche), and no other (HotelTime keys
+        # `HT_Code` from `Code`; a CSV file has no fields). Without it the day does not fail:
+        # Carmen's engine checks the mapping when the day is posted (decision-log #52).
+        newest = cfg.newest_day(found or [], columns)
+        databank = (
+            newest[0]
+            if newest
+            else max(found or [{}], key=lambda d: str(d.get("LastModified") or ""))
+        )
+        rows = cfg.rows_of(databank["FileData"], newest[1], columns) if newest else []
 
         table = cfg.table_of(current, columns)
         new = cfg.new_keys(rows, table)
@@ -338,6 +411,9 @@ async def _process(claimed) -> str:
             "flags": mapping.flags(new, guessed),
             # Which keys those flags are about, for the queue row (`activity._pms_row`).
             **mapping.open_keys(new, guessed),
+            # False: the rows could not be read here, so the review shows none and Carmen
+            # checks the mapping when the day is posted.
+            "preview": newest is not None,
             "databank_id": databank.get("Id"),
             "last_modified": databank.get("LastModified"),
         }
@@ -346,6 +422,10 @@ async def _process(claimed) -> str:
 
         try:
             outcome, jv_no = await post_day(payload, doc_date, payload["databank_id"], token)
+        except MappingIncomplete as exc:
+            return await _park(pk, payload, "pms_mapping_incomplete", str(exc))
+        except NoDataYet as exc:
+            return await _not_ready(claimed, str(exc))
         except PostRefused as exc:
             return await _park(pk, payload, "carmen_rejected", str(exc))
         except carmen.CarmenAPIError as exc:
@@ -479,28 +559,103 @@ async def _wake_for_new_credential() -> int:
     return len(woken)
 
 
+# The PartnerApi PMSs of each BU, read from Carmen's interface list once a day: a list that
+# failed to read is not cached, so the next sweep asks again.
+_partner_cache: dict[uuid.UUID, tuple[date, dict[str, str]]] = {}
+
+
+async def _partner_names(tenant_id: uuid.UUID, today: date) -> dict[str, str] | None:
+    """`{lower-cased name: name}` of this BU's PartnerApi PMSs, or None when Carmen's list
+    could not be read (no credential, a refusal, Carmen's own 500)."""
+    hit = _partner_cache.get(tenant_id)
+    if hit and hit[0] == today:
+        return hit[1]
+    async with async_session() as db:
+        token, uri = await _target(db, tenant_id)
+    if not token or not uri:
+        return None
+    ctx = current_carmen_uri.set(uri)
+    try:
+        names = cfg.partner_interfaces(await carmen.get_interfaces(token))
+    except carmen.CarmenAPIError as exc:
+        logger.warning("[pms] Carmen's interface list for %s: %s", tenant_id, exc.detail)
+        return None
+    finally:
+        current_carmen_uri.reset(ctx)
+    _partner_cache[tenant_id] = (today, names)
+    return names
+
+
+async def _open_partner_days(now: datetime | None = None) -> int:
+    """Open yesterday's day for every PartnerApi PMS a BU has switched on (decision-log #52).
+
+    Carmen fetches such a PMS's day itself when it posts, so no hook announces it and the
+    Data Bank may never hold it. After `OPEN_AFTER_HOUR` (ICT) each BU × PMS with a live key
+    whose interface-list row says `From: PartnerApi` gets the row a hook would have stored.
+    Only an INSERT: the sweep then works through the days one at a time, so a hundred BUs
+    never reach Carmen at once. A day that already has a row (a hook came) is left alone.
+    """
+    local = (now or datetime.now(UTC)).astimezone(ICT)
+    if local.hour < OPEN_AFTER_HOUR:
+        return 0
+    day = (local.date() - timedelta(days=1)).isoformat()
+    async with async_session() as db:
+        live = (
+            await db.execute(
+                select(APIKey.tenant_id, APIKey.interface_name)
+                .join(Tenant, Tenant.id == APIKey.tenant_id)
+                .where(
+                    APIKey.revoked_at.is_(None),
+                    APIKey.interface_name.is_not(None),
+                    Tenant.deleted_at.is_(None),
+                    Tenant.is_active.is_(True),
+                )
+            )
+        ).all()
+    keys: dict[uuid.UUID, set[str]] = {}
+    for tenant_id, interface in live:
+        keys.setdefault(tenant_id, set()).add(interface)
+    opened = 0
+    for tenant_id, interfaces in keys.items():
+        partner = await _partner_names(tenant_id, local.date())
+        if not partner:
+            continue
+        async with async_session() as db:
+            for lowered in sorted(interfaces & partner.keys()):
+                name = partner[lowered]
+                hook = {"InterfaceType": "PMS", "InterfaceName": name, "DocType": "Daily"}
+                payload = {**hook, "DocDate": day, "Source": OPENED_BY_SWEEP}
+                event_id = f"PMS/{name}/Daily/{day}"
+                # Carmen's list may spell the PMS unlike a hook does (`Hoteltime` / `HotelTime`),
+                # and the unique key is case-sensitive: a day a hook stored stays the one row.
+                held = await db.scalar(
+                    select(PmsEvent.id).where(
+                        PmsEvent.tenant_id == tenant_id,
+                        func.lower(PmsEvent.event_id) == event_id.lower(),
+                    )
+                )
+                if held is None and await store_day(db, tenant_id, event_id, "PMS", payload):
+                    opened += 1
+            await db.commit()
+    return opened
+
+
 async def run_pms_processing(limit: int = 50) -> dict:
     """One sweep: every day waiting at `received`, oldest first. Serialised against itself."""
     if _sweep_lock.locked():
         return {"status": "busy"}
     async with _sweep_lock:
         started = datetime.now(UTC)
-        summary: dict = {"status": "ok", "requeued": 0, "woken": 0}
+        summary: dict = {"status": "ok", "opened": 0, "requeued": 0, "woken": 0}
         error = None
         try:
+            summary["opened"] = await _open_partner_days()
             summary["requeued"] = await _requeue_ready_days()
             summary["woken"] = await _wake_for_new_credential()
             now = datetime.now(UTC)
             async with async_session() as db:
                 result = await db.execute(
-                    select(PmsEvent.id)
-                    .where(
-                        PmsEvent.status == "received",
-                        PmsEvent.attempts < MAX_ATTEMPTS,
-                        or_(PmsEvent.processed_at.is_(None), PmsEvent.processed_at < now - LEASE),
-                    )
-                    .order_by(PmsEvent.created_at)
-                    .limit(limit)
+                    select(PmsEvent.id).where(_due(now)).order_by(PmsEvent.created_at).limit(limit)
                 )
                 pks = list(result.scalars().all())
             for pk in pks:
@@ -511,7 +666,9 @@ async def run_pms_processing(limit: int = 50) -> dict:
             error = str(exc)
             summary["status"] = "error"
         worked = sum(
-            v for k, v in summary.items() if k not in ("status", "requeued", "woken", "skipped")
+            v
+            for k, v in summary.items()
+            if k not in ("status", "opened", "requeued", "woken", "skipped")
         )
         await _record_run(started, worked, error)
         return summary
