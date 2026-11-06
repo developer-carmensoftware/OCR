@@ -40,6 +40,9 @@ export interface PmsDay {
   error_message: string | null
   /** The mapping key's columns, in order (`Code`, `Description` for Comanche). */
   key_columns: string[]
+  /** False when this PMS's rows could not be read here (another layout, or a PMS Carmen
+   *  fetches itself): no rows to show, and Carmen checks the mapping on Approve (#52). */
+  preview?: boolean
   rows: PmsRow[]
   /** How many of the day's keys Carmen's table already maps. */
   mapped_count: number

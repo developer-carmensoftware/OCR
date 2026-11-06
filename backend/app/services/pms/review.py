@@ -30,6 +30,7 @@ from app.services.pms import carmen_config as cfg
 from app.services.pms import mapping
 from app.services.pms.process import (
     REVIEW_CLAIM_TTL,
+    MappingIncomplete,
     PostRefused,
     _target,
     carmen_words,
@@ -92,6 +93,8 @@ async def get_day(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) -
         "setting_code": payload.get("setting_code"),
         "post_type": payload.get("post_type"),
         "key_columns": payload.get("key_columns") or [],
+        # False: this PMS's rows could not be read here; Carmen checks the mapping on Approve.
+        "preview": payload.get("preview", True),
         "rows": [{**r, **(mapped.get(r["key"]) or {})} for r in rows],
         "mapped_count": sum(1 for k in keys if k in mapped),
         "new_codes": new_codes,
@@ -128,6 +131,17 @@ async def _claim(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) ->
     if status == "pending_review":
         raise ConflictError("Another reviewer is posting this day right now")
     raise ConflictError("Someone else has already handled this day")
+
+
+async def _note(event_pk: uuid.UUID, reason: str, error: str) -> None:
+    """Record why Carmen refused a parked day's post; the day stays parked."""
+    async with async_session() as db:
+        await db.execute(
+            update(PmsEvent)
+            .where(PmsEvent.id == event_pk, PmsEvent.status == "pending_review")
+            .values(reason_code=reason, error_message=error[:500])
+        )
+        await db.commit()
 
 
 async def _release(event_pk: uuid.UUID) -> None:
@@ -222,9 +236,17 @@ async def approve(
 
         try:
             outcome, jv_no = await post_day(
-                payload, payload["doc_date"], payload["databank_id"], token
+                payload, payload["doc_date"], payload.get("databank_id"), token
             )
+        except MappingIncomplete as exc:
+            # The day stays parked, now saying why: Carmen's engine found a key its mapping
+            # table has no account for (decision-log #52). Fixed in Carmen, then Approve again.
+            await _note(event_pk, "pms_mapping_incomplete", str(exc))
+            raise ValidationError(f"Carmen didn't post the day: {exc}") from exc
         except PostRefused as exc:
+            # Carmen's latest word replaces an earlier one, as the sweep's refusal does: a day
+            # whose mapping was fixed in Carmen must not keep saying "mapping incomplete".
+            await _note(event_pk, "carmen_rejected", str(exc))
             raise ValidationError(f"Carmen didn't post the day: {exc}") from exc
         except carmen.CarmenAPIError as exc:
             raise CarmenServiceError(

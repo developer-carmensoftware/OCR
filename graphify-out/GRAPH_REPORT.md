@@ -1,16 +1,16 @@
-# Graph Report - OCR  (2026-11-03)
+# Graph Report - OCR  (2026-11-06)
 
 ## Corpus Check
-- 422 files · ~310,382 words
+- 422 files · ~311,002 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2248 nodes · 6264 edges · 146 communities (101 shown, 45 thin omitted)
+- 2248 nodes · 6264 edges · 144 communities (99 shown, 45 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 68 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `2be6d7c9`
+- Built from commit: `59c576e3`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -40,7 +40,7 @@
 - 5. Components
 - useAPExtraction.ts
 - AdminLogin.tsx
-- carmen.ts
+- eslint
 - devDependencies
 - apiFetch
 - PeriodPicker.tsx
@@ -48,7 +48,6 @@
 - admin/api/credits.ts
 - DocumentPreview.tsx
 - dependencies
-- DetailTable.tsx
 - showToast
 - ErrorsPage.tsx
 - EmailAutomationPage.tsx
@@ -66,7 +65,7 @@
 - ReviewQueue.tsx
 - adminAuth.ts
 - scripts
-- config.ts
+- carmen.ts
 - APTableRow.tsx
 - LanguageProvider
 - compilerOptions
@@ -128,7 +127,6 @@
 - plan.ts
 - warn.ts
 - @testing-library/dom
-- @testing-library/react
 - qr.ts
 - review.ts
 - TenantsPage.tsx
@@ -184,7 +182,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (146 total, 45 thin omitted)
+## Communities (144 total, 45 thin omitted)
 
 ### Community 0 - "api.ts"
 Cohesion: 0.08
@@ -200,7 +198,7 @@ Nodes (32): en, th, en, th, en, th, en, th (+24 more)
 
 ### Community 3 - "ManualScan.tsx"
 Cohesion: 0.08
-Nodes (41): AccountingReview(), DEFAULT_EMPTY_OBJECT, Props, configBanks, BANK_LOGOS, BankDetectionBanner(), Props, DetailRow (+33 more)
+Nodes (38): AccountingReview(), DEFAULT_EMPTY_OBJECT, Props, configBanks, BANK_LOGOS, BankDetectionBanner(), Props, AMOUNT_FIELDS (+30 more)
 
 ### Community 4 - "appKey"
 Cohesion: 0.12
@@ -235,8 +233,8 @@ Cohesion: 0.11
 Nodes (31): AdminOrderStatus, approveOrder(), ArCustomerProfile, fetchAdminPaymentInfo(), fetchKpi(), holdBatch(), HoldBatchResponse, HoldBatchResultItem (+23 more)
 
 ### Community 12 - "useReviewDocument.ts"
-Cohesion: 0.15
-Nodes (19): approveDocument(), getPending(), ItxOverrides, rejectDocument(), BlockReason, BU_WIDE, JvEditor(), JvState (+11 more)
+Cohesion: 0.08
+Nodes (35): approveDocument(), getPending(), ItxOverrides, rejectDocument(), BlockReason, BU_WIDE, JvEditor(), JvState (+27 more)
 
 ### Community 13 - "useSettlementMapping.ts"
 Cohesion: 0.14
@@ -286,13 +284,9 @@ Nodes (21): APExtractionProps, EXTRACTION_STAGES, _fetchExtract(), isNumFld(), N
 Cohesion: 0.27
 Nodes (9): adminLogin(), AdminLoginError, LoginResponse, AdminLogin(), classify(), LoginError, LoginErrorKind, mmss() (+1 more)
 
-### Community 25 - "carmen.ts"
-Cohesion: 0.12
-Nodes (16): apiFetch, CarmenDetailLine, CarmenPayload, fetchAccountCodes, fetchDepartments, MAPPED_ITEMS, MOCK_HEADER, MOCK_VENDOR (+8 more)
-
 ### Community 26 - "devDependencies"
 Cohesion: 0.09
-Nodes (23): autoprefixer, eslint, eslint-plugin-react-hooks, devDependencies, autoprefixer, eslint, eslint-plugin-react-hooks, globals (+15 more)
+Nodes (23): autoprefixer, eslint-plugin-react-hooks, devDependencies, autoprefixer, eslint-plugin-react-hooks, globals, prettier, @testing-library/react (+15 more)
 
 ### Community 27 - "apiFetch"
 Cohesion: 0.13
@@ -318,13 +312,9 @@ Nodes (10): DocPreviewAction, docPreviewReducer(), DocPreviewState, DocumentPrev
 Cohesion: 0.12
 Nodes (17): framer-motion, dependencies, framer-motion, lucide-react, pdf-lib, react, react-day-picker, react-dom (+9 more)
 
-### Community 33 - "DetailTable.tsx"
-Cohesion: 0.25
-Nodes (10): AMOUNT_FIELDS, DetailTable(), formatAmount(), Props, sumColumn(), DETAIL_COLUMNS, DETAIL_LABELS, DetailColumn (+2 more)
-
 ### Community 34 - "showToast"
-Cohesion: 0.11
-Nodes (32): Props, Ctrl, APSuccessStep(), Props, Props, APInvoiceHeader, ApDraft, Args (+24 more)
+Cohesion: 0.08
+Nodes (40): Props, Ctrl, APSuccessStep(), Props, Props, APInvoiceHeader, ApDraft, Args (+32 more)
 
 ### Community 35 - "ErrorsPage.tsx"
 Cohesion: 0.25
@@ -390,9 +380,9 @@ Nodes (9): adminLogout(), adminMe(), AdminUser, clearAdminToken(), getAdminToken
 Cohesion: 0.14
 Nodes (14): scripts, build, contrast, dev, format, format:check, lint, lint:fix (+6 more)
 
-### Community 51 - "config.ts"
-Cohesion: 0.09
-Nodes (27): Correction, diffCorrections(), FIELD_NAME_MAP, logCorrections(), OcrSubmissionHook, OcrSubmissionProps, CarmenJvPayload, defaultConfig (+19 more)
+### Community 51 - "carmen.ts"
+Cohesion: 0.08
+Nodes (32): Correction, diffCorrections(), FIELD_NAME_MAP, logCorrections(), handleAddInputTax(), OcrSubmissionHook, OcrSubmissionProps, CarmenJvPayload (+24 more)
 
 ### Community 52 - "APTableRow.tsx"
 Cohesion: 0.24
@@ -578,11 +568,11 @@ Nodes (8): APAccountMappingStep(), DEFAULT_EMPTY_ARRAY, DEFAULT_EMPTY_OBJECT, fm
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `useT()` connect `useT` to `api.ts`, `APLineItemsTable.tsx`, `ManualScan.tsx`, `parseNum`, `TutorialModal.tsx`, `screens.tsx`, `useMapping.ts`, `orders.ts`, `APAccountMappingStep.tsx`, `useReviewDocument.ts`, `useSettlementMapping.ts`, `unwrapDetail`, `Overview.tsx`, `payment-mapping/types.ts`, `ApiKeysPage.tsx`, `bankTransforms.ts`, `useAPExtraction.ts`, `AdminLogin.tsx`, `apiFetch`, `PeriodPicker.tsx`, `admin/api/credits.ts`, `DocumentPreview.tsx`, `DetailTable.tsx`, `showToast`, `ErrorsPage.tsx`, `EmailAutomationPage.tsx`, `FeatureFlows.tsx`, `formatThb`, `NotificationBell.tsx`, `useOcrWizard`, `date.ts`, `DataTable.tsx`, `QueueRow.tsx`, `ReviewQueue.tsx`, `LanguageProvider`, `OrderWorkspace.tsx`, `PmsReviewDocument.tsx`, `OrderStatusBadge.tsx`, `Home.tsx`, `APInvoice.tsx`, `APAmountSummary.tsx`, `MaintenancePage.tsx`, `OrderActions.tsx`, `usePmsReview.ts`, `OrderHistory.tsx`, `Pricing.tsx`, `getCarmenUrl`, `main.tsx`, `APGroupModal.tsx`, `CheckoutFlow.tsx`, `client.ts`, `TenantsPage.tsx`, `ExtractionsPage.tsx`?**
+- **Why does `useT()` connect `useT` to `api.ts`, `APLineItemsTable.tsx`, `ManualScan.tsx`, `parseNum`, `TutorialModal.tsx`, `screens.tsx`, `useMapping.ts`, `orders.ts`, `APAccountMappingStep.tsx`, `useReviewDocument.ts`, `useSettlementMapping.ts`, `unwrapDetail`, `Overview.tsx`, `payment-mapping/types.ts`, `ApiKeysPage.tsx`, `bankTransforms.ts`, `useAPExtraction.ts`, `AdminLogin.tsx`, `apiFetch`, `PeriodPicker.tsx`, `admin/api/credits.ts`, `DocumentPreview.tsx`, `showToast`, `ErrorsPage.tsx`, `EmailAutomationPage.tsx`, `FeatureFlows.tsx`, `formatThb`, `NotificationBell.tsx`, `useOcrWizard`, `date.ts`, `DataTable.tsx`, `QueueRow.tsx`, `ReviewQueue.tsx`, `LanguageProvider`, `OrderWorkspace.tsx`, `PmsReviewDocument.tsx`, `OrderStatusBadge.tsx`, `Home.tsx`, `APInvoice.tsx`, `APAmountSummary.tsx`, `MaintenancePage.tsx`, `OrderActions.tsx`, `usePmsReview.ts`, `OrderHistory.tsx`, `Pricing.tsx`, `getCarmenUrl`, `main.tsx`, `APGroupModal.tsx`, `CheckoutFlow.tsx`, `client.ts`, `TenantsPage.tsx`, `ExtractionsPage.tsx`?**
   _High betweenness centrality (0.202) - this node is a cross-community bridge._
-- **Why does `apiFetch` connect `apiFetch` to `showToast`, `parseNum`, `NotificationBell.tsx`, `client.ts`, `useMapping.ts`, `useReviewDocument.ts`, `useSettlementMapping.ts`, `QueueRow.tsx`, `usePmsReview.ts`, `ReviewQueue.tsx`, `useMappingData.ts`, `OrderHistory.tsx`, `config.ts`, `ocr.ts`, `Pricing.tsx`, `useAPExtraction.ts`, `carmen.ts`?**
+- **Why does `apiFetch` connect `apiFetch` to `showToast`, `parseNum`, `NotificationBell.tsx`, `client.ts`, `useMapping.ts`, `useReviewDocument.ts`, `useSettlementMapping.ts`, `QueueRow.tsx`, `usePmsReview.ts`, `ReviewQueue.tsx`, `useMappingData.ts`, `OrderHistory.tsx`, `carmen.ts`, `ocr.ts`, `Pricing.tsx`, `useAPExtraction.ts`?**
   _High betweenness centrality (0.022) - this node is a cross-community bridge._
-- **Why does `API` connect `adminFetch` to `useMapping.ts`, `orders.ts`, `useSettlementMapping.ts`, `unwrapDetail`, `ocr.ts`, `ApiKeysPage.tsx`, `useAPExtraction.ts`, `AdminLogin.tsx`, `carmen.ts`, `apiFetch`, `admin/api/credits.ts`, `showToast`, `NotificationBell.tsx`, `EmailSettings.tsx`, `ReviewQueue.tsx`, `adminAuth.ts`, `config.ts`, `MaintenancePage.tsx`, `usePmsReview.ts`, `client.ts`?**
+- **Why does `API` connect `adminFetch` to `useMapping.ts`, `orders.ts`, `useSettlementMapping.ts`, `unwrapDetail`, `ocr.ts`, `ApiKeysPage.tsx`, `useAPExtraction.ts`, `AdminLogin.tsx`, `apiFetch`, `admin/api/credits.ts`, `showToast`, `NotificationBell.tsx`, `EmailSettings.tsx`, `ReviewQueue.tsx`, `adminAuth.ts`, `carmen.ts`, `MaintenancePage.tsx`, `usePmsReview.ts`, `client.ts`?**
   _High betweenness centrality (0.016) - this node is a cross-community bridge._
 - **What connects `name`, `private`, `type` to the rest of the system?**
   _670 weakly-connected nodes found - possible documentation gaps or missing edges._
@@ -591,4 +581,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `dict/index.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.04440333024976873 - nodes in this community are weakly interconnected._
 - **Should `ManualScan.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.07676767676767676 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08446455505279035 - nodes in this community are weakly interconnected._

@@ -54,6 +54,10 @@ export const REASON_KEY: Record<string, TKey> = {
   unsupported_pms_format: 'pms.rcUnsupportedFormat',
   carmen_config_unreadable: 'pms.rcConfigUnreadable',
   carmen_forbidden: 'pms.rcForbidden',
+  // Carmen's engine found a key its mapping table has no account for, and posted nothing
+  // (decision-log #52). Not `mapping_incomplete`: that one's fix is our GL mapping page,
+  // and this one is fixed in Carmen's own mapping screen, which we have no link to.
+  pms_mapping_incomplete: 'pms.rcMappingIncomplete',
 }
 
 /**

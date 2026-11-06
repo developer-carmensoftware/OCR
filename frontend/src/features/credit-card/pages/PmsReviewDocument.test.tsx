@@ -94,6 +94,28 @@ beforeEach(() => {
 })
 
 describe('a parked PMS day', () => {
+  it('says Carmen checks a day whose rows could not be read here, and lets it be approved', async () => {
+    // HotelTime keys its table HT_Code / HT_Description / Department, names its day does not
+    // use: no preview, so Carmen's engine checks the mapping on Approve (decision-log #52).
+    open({
+      ...DAY,
+      interface: 'HotelTime',
+      key_columns: ['HT_Code', 'HT_Description', 'Department'],
+      preview: false,
+      rows: [],
+      mapped_count: 0,
+      new_codes: [],
+    })
+    expect(await screen.findByText(/rows can't be shown here/)).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(approveButton()).toBeEnabled()
+  })
+
+  it('says what Carmen found when it refused the post for an unmapped code', async () => {
+    open({ ...DAY, reason_code: 'pms_mapping_incomplete', error_message: 'Mapping is incomplete.' })
+    expect(await screen.findByText(/has no account in its mapping/)).toBeInTheDocument()
+  })
+
   it('is one table laid out as Carmen maps, and nothing about the sides', async () => {
     open()
     expect(await screen.findByText('Comanche · Daily ·', { exact: false })).toBeInTheDocument()
