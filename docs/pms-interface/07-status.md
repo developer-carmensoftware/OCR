@@ -57,13 +57,34 @@ gives 32 rows, 21 new keys against Carmen's 33-row table.
 | G | The counter when not sent: "not sent" means omitted, or `""`? | We **omit** it (decision-log #51). To prove on `test.PMS` that the engine then fills it; if it answers "Account code is empty", the post retries once with `GEN/1021001` (the user's fallback, built only if needed) |
 | — | Data Bank test row Id 146 (breaks `POST …/PMS/search/…` with a 500) | Asked 2026-10-08. Unknown whether it was deleted. We don't call search |
 | H | **The PMS setting screen calls our Settings API** (#44): auto-post and Generate key per BU × PMS, sending the non-expiring token, and `pms` exactly as the hook's `InterfaceName` | Open. Replaces CA-115's menu link. From Carmen's **server** (CORS admits only our app), within 20 calls a minute per source IP. Contract: [`PMS_INTEGRATION.md` §6](../PMS_INTEGRATION.md#6-settings-api--your-pms-setting-screen) |
-| I | **A list of the PMS kinds**: which send a hook with a Data Bank day, and which Carmen's own post API fetches | **Answered 2026-11-03** by `interfaceThirdParties`'s `From`: `CarmenApi` = the third party sends the day into Carmen (our hook flow); `PartnerApi` = Carmen fetches it from the third party (no Data Bank, no hook: **to build**, needs a trigger and a read-before-post from Carmen); `null` = a user imports the file (does it land in the Data Bank and fire the hook? ask) |
+| I | **A list of the PMS kinds**: which send a hook with a Data Bank day, and which Carmen's own post API fetches | **Answered 2026-11-03** by `interfaceThirdParties`'s `From`: `CarmenApi` = the third party sends the day into Carmen (our hook flow); `PartnerApi` = Carmen fetches it from the third party (no Data Bank, no hook: **to build**, decision-log #52, waits on ask L); `null` = a user imports the file (does it land in the Data Bank and fire the hook? ask) |
 | J | **Tell users on the PMS setting screen that the AI reads the day's figures** to suggest accounts | Open. A PMS-only BU never sees our consent popup any more (accepted, decision-log #44) |
 | K | **Comanche.PMS refuses to post**: every Comanche day answers `Result:false` *"Line No. 30,31 has no DrCr value."*, with or without a counter (2024-07-01 and 2025-10-20, 2026-11-03). The same data (lines 30–31: 933 Refund 35,000.00, Guest Ledger 101,452.80) posts fine on `test.PMS`, so it is Comanche.PMS's own setting | **Open. Blocks every real Comanche post.** Our side records Carmen's words on the day (`carmen_rejected`) and keeps it in the queue |
+| L | **List the missing keys when a post is refused for mapping** (decision-log #52): the `-500` answer names each key the mapping table lacks, in that table's own column names, e.g. `"Missing":[{"HT_Code":"4100001","HT_Description":"001 - Room Charge (Auto)","Department":""}]`. Also asked: what a post answers for a date with no data, and whether a PartnerApi post takes a date range with no `id`. (Replaces the dry-run asked on 2026-11-05.) | **To ask 2026-11-06.** Without it, a PMS our preview cannot read still posts, but a `-500` gets no AI help: the reviewer maps in Carmen |
+| M | **`interfaceThirdParties` answers 500** on dev since 2026-11-05: *"The best overloaded method match for 'string.IsNullOrWhiteSpace(string)' has some invalid arguments"* (it answered on 2026-11-03) | **Open. Blocks every day of every PMS**: processing reads it first, and it says which PMSs are PartnerApi |
 
 Questions from path A that path B made moot: which posting path (Carmen's engine),
 debit/credit by `TransactionType` (Carmen's config), and Draft vs Normal (the engine's own JVs
 are Normal).
+
+## HotelTime, the second PMS (2026-11-06)
+
+Dev's Data Bank holds HotelTime days 2026-10-01 to 10-06 (Ids 176 to 171).
+- **The day:** rows in `Revenue`, with fields `Code`, `Description`, `SegmentName`,
+  `AccountNature` (D/C) and `Amount`. `Amount` is a number, missing on some rows; 3 rows have no
+  `Code`.
+- **The mapping table** `HotelTime.PMS`: columns `HT_Code`, `HT_Description`, `Department`,
+  `DeptCode`, `AccCode`, `AccDesc`. Empty on dev.
+- **#51's reader:** `unreadable_day`, because the names differ.
+- **The key, by experiment** (PUT variants, then post; table restored to empty, no JV):
+  `HT_Code←Code`, `HT_Description←Description`, `Department←""`. Rows with no `Code` are keyed
+  `HT_Code` "".
+  - With the right keys the post stops at `ErrorList: "Invalid account codes 1115001"`.
+    `Code` holds the hotel's own account numbers, which carmencloud's chart lacks: Carmen
+    config or test data.
+  - An empty table answers `-500 "Mapping is incomplete."`, naming no key.
+- **Led to decision-log #52:** Carmen's post is the completeness check, and #51's reader is a
+  preview.
 
 ## What we still owe
 

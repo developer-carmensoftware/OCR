@@ -287,6 +287,16 @@ the module derives what processing needs from what it can read (decision-log #51
 The sides of the JV and the counter account stay in Carmen's INI, and the post sends no
 counter: they are the engine's (decision-log #43).
 
+**Not built yet: Carmen's post as the check (decision-log #52).** The reader above becomes
+a *preview*. When it keys the day (Comanche), processing goes on as described. When it
+cannot, the day does not fail:
+- **The cases:** another PMS layout (HotelTime: `Revenue` rows, `HT_Code` / `HT_Description` /
+  `Department` columns), a non-JSON file, or a PartnerApi day with no Data Bank row.
+- **What happens:** with auto-post on, it posts; with it off, it waits for Approve. Carmen's
+  answer decides (`-500` parks `mapping_incomplete`).
+- **Opening PartnerApi days:** the `pms-process` sweep opens yesterday's day for each BU × PMS
+  that has a live key and whose `interfaceThirdParties` row says `From: PartnerApi`.
+
 ## What the AI is asked (`mapping.suggest`)
 
 One `call_text_llm` per day that has new keys (`module_id = pms_interface`), using the

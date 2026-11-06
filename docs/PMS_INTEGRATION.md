@@ -233,6 +233,25 @@ Tracked in CA-116, with what we found on the dev Data Bank:
    hook for the same day a changed day that we should process again?
 6. **Is the gross Summary line intended?** For Comanche it is 2 × Guest Ledger to the
    counter account, against the Guest Ledger row's credit.
+7. **When a post is refused for mapping, name the missing keys.** Today `interfacePostGL`
+   answers `-500 "Mapping is incomplete."` and says nothing more. Your engine has just keyed
+   the day by the PMS's own setting and found which keys the mapping table lacks. Please list
+   them in the answer, in the mapping table's own column names:
+
+   ```json
+   {"Code": -500, "UserMessage": "Mapping is incomplete.",
+    "Missing": [{"HT_Code": "4100001", "HT_Description": "001 - Room Charge (Auto)", "Department": ""}]}
+   ```
+
+   It is one change in one place, for every PMS, and your users see which codes to map too.
+   Two questions with it:
+   - What does a post answer for a date with no data yet?
+   - Does a post for a PMS you fetch yourself (`From: PartnerApi`) take a date range with no
+     `id`?
+8. **`interfaceThirdParties` answers 500** on dev since 2026-11-05: *"The best overloaded
+   method match for 'string.IsNullOrWhiteSpace(string)' has some invalid arguments"*. It
+   answered on 2026-11-03. We read it first for every day, and its `From` tells us which PMSs
+   you fetch yourself.
 
 ---
 
