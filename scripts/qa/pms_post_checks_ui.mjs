@@ -7,12 +7,18 @@
 //
 // S setup · O opening PartnerApi days (first: the BU's interface list is cached once a day) ·
 // N a day with no preview, in the browser · A auto-post · R a repeat hook · L language and phone ·
-// E hygiene · T teardown (always).
+// CB Cloudbeds, a third layout, through Carmen's engine to a JV · E hygiene · T teardown (always).
 //
 // Needs the stack of pms_third_parties_ui.mjs, with the backend started by
 // scripts/qa/pms_backend_stub.py (interface list switchable from .playwright-mcp/pms-pc/interfaces.json).
+// **Start that backend afresh before every run:** the sweep caches each BU's interface list for
+// the day, and a warm cache from an earlier run skips the outage O-06 stages (O-02/O-03/O-06 fail).
+// PMS_E2E_CB=0 skips the CB group, for a rerun that should make no real JV.
 // **Carmen dev writes:** HotelTime's mapping table (N-07 stages one day's accounts; teardown puts the
-// snapshot back). Every post here is refused by Carmen (-500, ErrorList, "No Data Found"): no JV.
+// snapshot back). Every HotelTime post is refused by Carmen (-500, ErrorList, "No Data Found").
+// Cloudbeds (CB, the plan of 2026-11-06 afternoon): its empty table gets the keys Carmen's -500
+// writes, each mapped to GEN/1021001, and the post that follows may make **one real JV, voided at
+// once** (CB-06 stops the run if it cannot be). Teardown puts the table back empty.
 
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -48,6 +54,12 @@ const DAY_N = '2026-10-06' // the no-preview day reviewed in the browser
 const DAY_A1 = '2026-10-05' // posted unattended
 const DAY_A2 = '2026-10-04' // parked, then sent when auto-post is switched on
 const HT_DAYS = ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06']
+const CB = 'Cloudbeds.PMS'
+const CB_DAY = '2026-10-26' // Data Bank Id 184: 86 Transaction rows, 78 keys
+const CB_DAY2 = '2026-10-29' // Id 178: 87 keys, some new to CB_DAY
+const CB_COLS = 'Description,MarketSegmentDesc'
+let cbSnapped = false // teardown empties Cloudbeds' table only when this run found it empty
+let cbBase = [] // the live JVs on the Cloudbeds days before the run (Carmen's own, e.g. 1588)
 const ict = new Date(Date.now() + 7 * 3600e3)
 const YESTERDAY = new Date(Date.UTC(ict.getUTCFullYear(), ict.getUTCMonth(), ict.getUTCDate() - 1))
   .toISOString()
@@ -77,10 +89,10 @@ function pyJson(...args) {
   if (r.code !== 0) throw new Error(`helper ${args[0]} failed: ${r.err.slice(-500)}`)
   return JSON.parse(r.out.trim().split('\n').pop())
 }
-const dayOf = (rows, bu, date) =>
-  rows.find(r => r.bu === bu && r.event_id.toLowerCase() === `pms/hoteltime/daily/${date}`)
-const daysOf = (rows, bu, date) =>
-  rows.filter(r => r.bu === bu && r.event_id.toLowerCase() === `pms/hoteltime/daily/${date}`)
+const dayOf = (rows, bu, date, pms = 'hoteltime') =>
+  rows.find(r => r.bu === bu && r.event_id.toLowerCase() === `pms/${pms}/daily/${date}`)
+const daysOf = (rows, bu, date, pms = 'hoteltime') =>
+  rows.filter(r => r.bu === bu && r.event_id.toLowerCase() === `pms/${pms}/daily/${date}`)
 
 async function until(pred, ms = 90000) {
   const end = Date.now() + ms
@@ -116,10 +128,10 @@ const carmenApi = async (method, p, body) => {
   await sleep(3500) // Carmen's settings API: 20 calls a minute per IP
   return r
 }
-const hook = (key, date) =>
+const hook = (key, date, name = 'HotelTime') =>
   http('POST', `${API}/api/v1/pms/events`, {
     headers: { Authorization: `Bearer ${key}` },
-    body: { InterfaceType: 'PMS', InterfaceName: 'HotelTime', DocType: 'Daily', DocDate: date },
+    body: { InterfaceType: 'PMS', InterfaceName: name, DocType: 'Daily', DocDate: date },
   })
 const sweep = () => http('POST', `${API}/api/v1/pms/process/run`, { headers: { Authorization: `Bearer ${JOB}` } })
 /** interfacePostGL calls since `since`, once the outbound log has been written (every 10 s). */
@@ -170,14 +182,15 @@ async function chip(name) {
   }
   await page.waitForTimeout(1500)
 }
-const queueRow = date => page.getByRole('row').filter({ hasText: dmy(date) }).filter({ hasText: 'HotelTime · Daily' })
+const queueRow = (date, pms = 'HotelTime') =>
+  page.getByRole('row').filter({ hasText: dmy(date) }).filter({ hasText: `${pms} · Daily` })
 
-async function openDay(date) {
+async function openDay(date, pms = 'HotelTime') {
   await chip('Review')
-  await queueRow(date).getByRole('button', { name: 'Review' }).click()
+  await queueRow(date, pms).getByRole('button', { name: 'Review' }).click()
   const dialog = page.getByRole('dialog').first()
   await dialog.waitFor({ timeout: 30000 })
-  await dialog.getByText('HotelTime · Daily', { exact: false }).waitFor({ timeout: 60000 })
+  await dialog.getByText(`${pms} · Daily`, { exact: false }).waitFor({ timeout: 60000 })
   await page.waitForTimeout(800)
   return dialog
 }
@@ -200,7 +213,7 @@ async function run() {
   py('reset') // a clean run: the two test tenants' days from an earlier run are forgotten
   setSwitch({ mode: '500' }) // O-06: the first sweep meets Carmen's list down
   const keys = {}
-  for (const [bu, pms] of [[BU, 'hoteltime'], [BU, 'comanche'], [BU_B, 'hoteltime']]) {
+  for (const [bu, pms] of [[BU, 'hoteltime'], [BU, 'comanche'], [BU_B, 'hoteltime'], [BU, 'cloudbeds']]) {
     const r = await carmenApi('POST', '/keys', { uri: URI, bu, pms })
     keys[`${bu}/${pms}`] = r.json?.api_key
     check('S-01', `key for ${bu} × ${pms}`, r.status === 201 && r.json?.api_key?.startsWith('cpk_'), `HTTP ${r.status}`)
@@ -426,6 +439,138 @@ async function run() {
     check('L-02', 'at 390 px the dialog fits: no sideways scroll, the note readable',
       wide <= 390 && /rows can't be shown here/.test(await dialog.innerText()), `scrollWidth=${wide}`)
     await shot('L-02-phone')
+
+    // ── CB — Cloudbeds: a third layout, through Carmen's engine to a JV ──────────────
+    // Its day carries the key columns in two lists (Transaction, Statistic), so there is no
+    // preview: Carmen's post is the whole check. Its -500 writes the missing keys into the
+    // table; mapping them (as a person would in Carmen's screen) lets the next post through.
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    const cbOn = process.env.PMS_E2E_CB !== '0' // PMS_E2E_CB=0: a rerun that makes no real JV
+    const cbListed = real.find(x => String(x.InterfaceName).toLowerCase() === 'cloudbeds' && x.DocType === 'REVENUE')
+    const cb0 = cbOn ? pyJson('table', CB) : { rows: -1 }
+    cbBase = pyJson('jvs', CB_DAY, CB_DAY2)
+    if (cb0.rows === 0) cbSnapped = pyJson('snapshot', CB).rows === 0
+    const cbGo = cbOn && check('CB-00', "Carmen's own list has Cloudbeds × GL × REVENUE; its table starts empty (snapshot kept)",
+      cbListed?.PostToModule === 'GL' && cbListed?.From === 'CarmenApi' && cbSnapped && !!keys[`${BU}/cloudbeds`],
+      `from=${cbListed?.From} rows=${cb0.rows} key=${cb0.key_columns} live JVs before=${cbBase}`)
+    if (cbGo) {
+      await carmenApi('PUT', '/settings', { uri: URI, bu: BU, pms: 'cloudbeds', auto_post: false })
+      const llmCb = Number(py('llm').out.trim().split('\n').pop())
+      r = await hook(keys[`${BU}/cloudbeds`], CB_DAY, 'Cloudbeds')
+      const dCb = await until(rs => {
+        const d = dayOf(rs, BU, CB_DAY, 'cloudbeds')
+        return d?.status === 'pending_review' ? d : null
+      })
+      const pCb = dCb?.payload
+      const llmCbNow = Number(py('llm').out.trim().split('\n').pop())
+      // The key is whatever Carmen's table declares: Description, MarketSegmentDesc and, since
+      // Carmen's first -500 on dev (2026-11-06), Channel, which no list of the day carries.
+      check('CB-01', `hook → Cloudbeds ${CB_DAY} parks with no preview (no single list carries Carmen's key), no AI`,
+        r.status === 202 && pCb?.preview === false && pCb?.rows?.length === 0 && pCb?.databank_id === 184 &&
+          pCb?.setting_code === CB && JSON.stringify(pCb?.key_columns) === JSON.stringify(cb0.key_columns) &&
+          (pCb?.flags || []).length === 0 && !dCb?.reason_code && llmCbNow === llmCb,
+        `HTTP ${r.status} preview=${pCb?.preview} id=${pCb?.databank_id} code=${pCb?.setting_code} cols=${pCb?.key_columns} reason=${dCb?.reason_code} ai ${llmCb}→${llmCbNow}`)
+
+      await chip('Review')
+      const rowCb = (await queueRow(CB_DAY, 'Cloudbeds').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      dialog = await openDay(CB_DAY, 'Cloudbeds')
+      const bodyCb = (await dialog.innerText()).replace(/\s+/g, ' ')
+      check('CB-02', "the queue says \"Ready to post\"; the dialog says the rows can't be shown and Carmen checks",
+        /Ready to post/i.test(rowCb) && /rows can't be shown here/.test(bodyCb) &&
+          (await dialog.getByRole('table').count()) === 0 && (await approveIn(dialog).isEnabled()),
+        `row="${rowCb.slice(0, 110)}"`)
+      await shot('CB-02-dialog')
+
+      await approveIn(dialog).click()
+      said = await alertIn(dialog)
+      rows = pyJson('state')
+      const refusedCb = dayOf(rows, BU, CB_DAY, 'cloudbeds')
+      const jvAfterRefusal = pyJson('jvs', CB_DAY).filter(s => !cbBase.includes(s))
+      const minus500 = check('CB-03', 'Approve → Carmen: mapping incomplete (its table is empty); parked pms_mapping_incomplete; no JV',
+        /Mapping is incomplete/.test(said) && refusedCb?.status === 'pending_review' &&
+          refusedCb?.reason_code === 'pms_mapping_incomplete' && jvAfterRefusal.length === 0,
+        `"${said.slice(0, 120)}" reason=${refusedCb?.reason_code} new JVs=${jvAfterRefusal}`)
+      await shot('CB-03-refused')
+
+      if (minus500) {
+        const cb1 = pyJson('table', CB, CB_COLS) // keyed on the columns the day has (not Channel)
+        const tx = pyJson('day-keys', 'Cloudbeds', CB_DAY, 'Transaction', CB_COLS)
+        const st = pyJson('day-keys', 'Cloudbeds', CB_DAY, 'Statistic', CB_COLS)
+        const sameSet = (a, b) => a.length === b.length && a.every(k => b.includes(k))
+        const both = [...new Set([...tx.keys, ...st.keys])]
+        const which = sameSet(cb1.keys, tx.keys) ? 'Transaction' : sameSet(cb1.keys, both) ? 'Transaction+Statistic' : 'other'
+        check('CB-04', "Carmen's -500 wrote the day's missing keys into its table, none with an account",
+          cb1.rows > 0 && cb1.blank === cb1.rows && which !== 'other',
+          `rows=${cb1.rows} blank=${cb1.blank} keys = ${which} (Transaction ${tx.keys.length}, Statistic ${st.keys.length})` +
+            (which === 'other' ? ` only-in-table=${cb1.keys.filter(k => !both.includes(k)).slice(0, 3)}` : ''))
+
+        const filled = pyJson('fill-blank', CB, 'GEN', '1021001')
+        await page.keyboard.press('Escape')
+        dialog = await openDay(CB_DAY, 'Cloudbeds')
+        await approveIn(dialog).click()
+        // Carmen either posts (the day turns `posted`) or refuses (its words show in the dialog).
+        let posted = null
+        let refusal = ''
+        for (let i = 0; i < 60 && !posted && !refusal; i++) {
+          await sleep(2000)
+          const d = dayOf(pyJson('state'), BU, CB_DAY, 'cloudbeds')
+          if (d?.status === 'posted') posted = d
+          else if (await dialog.getByRole('alert').isVisible().catch(() => false))
+            refusal = (await dialog.getByRole('alert').innerText()).trim()
+        }
+        const newJvs = pyJson('jvs', CB_DAY).filter(s => !cbBase.includes(s))
+        if (posted) {
+          const jv = pyJson('jv', String(posted.jv_no))
+          await chip('Posted')
+          const rowP = queueRow(CB_DAY, 'Cloudbeds')
+          const textP = (await rowP.innerText().catch(() => '')).replace(/\s+/g, ' ')
+          const href = await rowP.getByRole('link', { name: /Open JV/ }).getAttribute('href').catch(() => null)
+          check('CB-05', 'mapped in Carmen, Approve again: Carmen posts the day; the queue shows its JV and Open JV links to it',
+            newJvs.length === 1 && String(newJvs[0]) === String(posted.jv_no) && jv.date === CB_DAY && jv.lines > 0 &&
+              jv.dr === jv.cr && textP.includes(String(posted.jv_no)) && !!href && href.includes(`/glJv/${posted.jv_no}/show`),
+            `filled=${filled.filled} ${JSON.stringify(jv)} href=${href}`)
+          await shot('CB-05-posted')
+          const v = py('void', String(posted.jv_no))
+          const left = pyJson('jvs', CB_DAY).filter(s => !cbBase.includes(s))
+          const voided = check('CB-06', `JV ${posted.jv_no} voided at once; ${CB_DAY}'s live JVs are back to before`,
+            v.code === 0 && left.length === 0, `${v.out.trim().split('\n').pop()} left=${left}`)
+          if (!voided) throw new Stop(`JV ${posted.jv_no} could not be voided: void it in Carmen by hand`)
+          r = await hook(keys[`${BU}/cloudbeds`], CB_DAY, 'Cloudbeds')
+          await sleep(6000)
+          const still = dayOf(pyJson('state'), BU, CB_DAY, 'cloudbeds')
+          check('CB-07', 'a repeat hook for the posted day changes nothing',
+            r.status === 200 && r.json?.duplicate === true && still?.status === 'posted', `HTTP ${r.status} status=${still?.status}`)
+        } else {
+          const dRef = dayOf(pyJson('state'), BU, CB_DAY, 'cloudbeds')
+          check('CB-05', "mapped in Carmen, Approve again: Carmen passes the mapping; its next answer shows and becomes the reason",
+            !!refusal && !/Mapping is incomplete/.test(refusal) && /Carmen didn't post the day/.test(refusal) &&
+              dRef?.reason_code === 'carmen_rejected' && newJvs.length === 0,
+            `filled=${filled.filled} "${refusal.slice(0, 160)}" reason=${dRef?.reason_code} new JVs=${newJvs}`)
+          if (newJvs.length) py('void', ...newJvs.map(String))
+          await shot('CB-05-refused')
+        }
+
+        // CB-08: a second day with keys of its own, unattended.
+        const cbBefore = pyJson('table', CB, CB_COLS)
+        const tx2 = pyJson('day-keys', 'Cloudbeds', CB_DAY2, 'Transaction', CB_COLS)
+        const fresh = tx2.keys.filter(k => !cbBefore.keys.includes(k))
+        await carmenApi('PUT', '/settings', { uri: URI, bu: BU, pms: 'cloudbeds', auto_post: true })
+        r = await hook(keys[`${BU}/cloudbeds`], CB_DAY2, 'Cloudbeds')
+        const d2 = await until(rs => {
+          const d = dayOf(rs, BU, CB_DAY2, 'cloudbeds')
+          return d && (d.status === 'posted' || d.reason_code) ? d : null
+        }, 120000)
+        const made2 = pyJson('jvs', CB_DAY2).filter(s => !cbBase.includes(s))
+        if (made2.length) py('void', ...made2.map(String)) // posted after all: undone at once
+        const cbAfter = pyJson('table', CB, CB_COLS)
+        const added = cbAfter.rows - cbBefore.rows
+        check('CB-08', `auto-post on: ${CB_DAY2} goes to Carmen; only its ${fresh.length} new keys come back as blank rows; parked pms_mapping_incomplete; no JV`,
+          r.status === 202 && d2?.reason_code === 'pms_mapping_incomplete' && made2.length === 0 &&
+            added === fresh.length && cbAfter.blank === added,
+          `${d2?.status}/${d2?.reason_code} rows ${cbBefore.rows}→${cbAfter.rows} added=${added} blank=${cbAfter.blank} JVs=${made2}`)
+        await carmenApi('PUT', '/settings', { uri: URI, bu: BU, pms: 'cloudbeds', auto_post: false })
+      }
+    }
   } finally {
     await browser.close()
   }
@@ -436,17 +581,25 @@ async function run() {
   const fives = log.split('\n').filter(l => /\/(pms|carmen\/pms)\//.test(l) && /" 5\d\d /.test(l))
   check('E-02', 'no 5xx from the PMS routes', log && fives.length === 0, fives.slice(0, 3).join(' | ') || (log ? '' : 'no log'))
   const llm1 = Number(py('llm').out.trim().split('\n').pop())
-  check('E-03', 'no AI call for HotelTime days (nothing to preview)', llm1 === llm0, `calls ${llm0}→${llm1}`)
+  check('E-03', 'no AI call for HotelTime or Cloudbeds days (nothing to preview)', llm1 === llm0, `calls ${llm0}→${llm1}`)
   const made = pyJson('jvs', ...HT_DAYS, YESTERDAY)
   check('E-04', 'no JV on any HotelTime day or yesterday', made.length === 0, `jvs=${made}`)
   if (made.length) py('void', ...made.map(String))
+  const cbLeft = pyJson('jvs', CB_DAY, CB_DAY2).filter(s => !cbBase.includes(s))
+  check('E-05', 'no JV of this run left live on the Cloudbeds days', cbLeft.length === 0, `left=${cbLeft} before=${cbBase}`)
+  if (cbLeft.length) py('void', ...cbLeft.map(String))
 }
 
 async function teardown() {
   const restored = py('ht-restore')
   check('T-01', "HotelTime's table is the snapshot", restored.code === 0, restored.out.trim().split('\n').pop())
-  for (const [bu, pms] of [[BU, 'hoteltime'], [BU, 'comanche'], [BU_B, 'hoteltime']]) {
-    if (pms === 'hoteltime') await carmenApi('PUT', '/settings', { uri: URI, bu, pms, auto_post: false })
+  if (cbSnapped) {
+    const cbBack = py('restore', CB)
+    check('T-04', "Cloudbeds' table is empty again, as this run found it", cbBack.code === 0,
+      `${cbBack.out.trim().split('\n').pop()} ${cbBack.code ? cbBack.err.trim().split('\n').pop() : ''}`)
+  }
+  for (const [bu, pms] of [[BU, 'hoteltime'], [BU, 'comanche'], [BU_B, 'hoteltime'], [BU, 'cloudbeds']]) {
+    if (pms !== 'comanche') await carmenApi('PUT', '/settings', { uri: URI, bu, pms, auto_post: false })
     const r = await carmenApi('DELETE', `/keys?${new URLSearchParams({ uri: URI, bu, pms })}`)
     check('T-02', `auto-post off, key revoked: ${bu} × ${pms}`, r.status === 204 || r.status === 404, `HTTP ${r.status}`)
   }

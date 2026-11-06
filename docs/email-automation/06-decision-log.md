@@ -1671,10 +1671,19 @@ list: its days fail `unreadable_day`, and are never keyed by a guess, because Ap
 the table back whole. Such a PMS needs the INI after all, which means asking Carmen to put
 `JsonKeys` and `Mapping_MapCode` on the list's row.
 
-## 52. Carmen's post checks the mapping, for every PMS (proposed, 2026-11-06)
+## 52. Carmen's post checks the mapping, for every PMS (built, 2026-11-06)
 
-**Status: proposed.** It replaces this entry's first draft (2026-11-05: a dry-run of
-`interfacePostGL` for PartnerApi PMSs). Nothing is built.
+**Status: built** (PR #346, merged 2026-11-06). It replaces this entry's first draft
+(2026-11-05: a dry-run of `interfacePostGL` for PartnerApi PMSs).
+
+**Proven end to end (2026-11-06, `pms_post_checks_ui.mjs` group CB):** Cloudbeds, a PMS
+whose day has no preview, went from the hook to a real JV.
+- The steps: hook, no preview, Approve. Carmen answered `-500` and wrote the day's 78 missing
+  keys into its own table, with no accounts. The keys were mapped (as in Carmen's screen), then
+  Approve again: JV 1608, 86 lines, balanced, which was voided at once.
+- A second day, unattended, brought back only its 28 new keys.
+- So a `-500` leaves the missing keys readable from Carmen's table, and ask L is optional.
+- Details are in [`07-status.md`](../pms-interface/07-status.md#cloudbeds-the-third-pms-2026-11-06).
 
 **What we learned (2026-11-06).**
 - **Each PMS has its own layout.** HotelTime (dev Data Bank Ids 171–176) keeps its rows in
