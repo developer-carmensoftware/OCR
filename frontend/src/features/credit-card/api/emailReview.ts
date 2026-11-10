@@ -44,9 +44,9 @@ export type ActivityFilter = 'all' | 'today' | 'review' | 'success' | 'unposted'
  *  here has to do — everything else is one chip further, behind `ALL_SCOPES`. */
 export const QUEUE_CHIPS = ['review', 'all'] as const satisfies readonly ActivityFilter[]
 
-/** What the All chip's dropdown narrows the log to, one at a time — every value the API
- *  already answered when these were chips of their own. `all` first: clicking the chip, or
- *  landing on it, shows everything. */
+/** Every value `?filter=` may carry. Not a second strip: `success` / `unposted` are the Status
+ *  row of the Filters popover and light the All chip, and `today` is the Date → Today range
+ *  (an old bell link still names it, and the page translates it). */
 export const ALL_SCOPES = [
   'all',
   'today',
@@ -131,14 +131,42 @@ export interface ActivityPage extends Page<ReviewDocument> {
   counts: Record<string, number>
 }
 
+/** What the reader narrowed the log to, beside the status chip: which documents rather than
+ *  what became of them. The server applies it to the list AND the counts, so the strip's
+ *  numbers always describe the table under it. Empty = no narrowing. */
+export type QueueSource = 'email' | 'manual' | 'pms'
+export type QueueRange = '' | 'today' | '7d' | '30d'
+export interface QueueNarrow {
+  q: string
+  sources: QueueSource[]
+  /** One bank code; excludes PMS days, which have none. */
+  bank: string
+  range: QueueRange
+}
+export const NO_NARROW: QueueNarrow = { q: '', sources: [], bank: '', range: '' }
+
+/** A PMS day has no bank, so the two cannot be asked for together: the menu locks one while the
+ *  other is chosen, the API answers 400, and this repairs what arrives from outside (a pasted or
+ *  bookmarked URL) before it is ever sent. The bank goes, not PMS — PMS is the explicit choice.
+ *  Pure, and idempotent. */
+export const reconcileNarrow = (n: QueueNarrow): QueueNarrow =>
+  n.bank && n.sources.includes('pms') ? { ...n, bank: '' } : n
+
+export const narrowCount = (n: QueueNarrow) =>
+  (n.q ? 1 : 0) + n.sources.length + (n.bank ? 1 : 0) + (n.range ? 1 : 0)
+
 export async function listActivity(
   filter: ActivityFilter,
   limit = 25,
-  offset = 0
+  offset = 0,
+  narrow: QueueNarrow = NO_NARROW
 ): Promise<ActivityPage> {
-  const res = await apiFetch(
-    `${API.creditCard.activity}?filter=${filter}&limit=${limit}&offset=${offset}`
-  )
+  const qs = new URLSearchParams({ filter, limit: String(limit), offset: String(offset) })
+  if (narrow.q) qs.set('q', narrow.q)
+  if (narrow.sources.length) qs.set('source', narrow.sources.join(','))
+  if (narrow.bank) qs.set('bank', narrow.bank)
+  if (narrow.range) qs.set('range', narrow.range)
+  const res = await apiFetch(`${API.creditCard.activity}?${qs}`)
   if (!res.ok) throw new Error(`Activity fetch failed (${res.status})`)
   return res.json() as Promise<ActivityPage>
 }

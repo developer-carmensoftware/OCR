@@ -1,6 +1,6 @@
 import type React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { LanguageProvider } from '@/i18n/LanguageContext'
 import ReviewQueue from './ReviewQueue'
 import type { ReviewDocument } from '@/features/credit-card/api/emailReview'
@@ -73,11 +73,42 @@ function mount(
   )
 }
 
-/** Narrow the log through the All chip's dropdown — what a reader does now that Today,
- *  Posted and Not posted are no longer chips (§24). The page must already be on All. */
-async function pickScope(name: string) {
-  fireEvent.click(await screen.findByRole('button', { name: 'Show' }))
-  fireEvent.mouseDown(screen.getByRole('option', { name, hidden: true }))
+/** Which attribute of `+ Filter` a value belongs to. */
+const ATTR_OF = (value: string) =>
+  ['Posted', 'Not posted'].includes(value)
+    ? 'Status'
+    : ['Email', 'Manual', 'PMS'].includes(value)
+      ? 'Source'
+      : ['Any time', 'Today', 'Last 7 days', 'Last 30 days'].includes(value)
+        ? 'Date'
+        : 'Bank'
+
+/** The value rows of the open menu. */
+const menuOptions = () =>
+  [...screen.getByRole('menu').querySelectorAll<HTMLElement>('[role^="menuitem"]')].filter(
+    el => el.getAttribute('role') !== 'menuitem'
+  )
+const optionNamed = (value: string) =>
+  menuOptions().find(el => new RegExp(`^${value}(\\s|$)`).test(el.textContent || ''))!
+
+/** Open `+ Filter`, pick the attribute, then the value — what a reader does now that Posted and
+ *  Not posted are not chips (§24). Closes the menu again, as Escape would (a multi-select list
+ *  stays open on its own). */
+async function pickScope(value: string) {
+  fireEvent.keyDown(document, { key: 'Escape' })
+  fireEvent.click(await screen.findByRole('button', { name: 'Filter' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(`^${ATTR_OF(value)}`) }))
+  fireEvent.click(optionNamed(value))
+  fireEvent.keyDown(document, { key: 'Escape' })
+}
+
+/** The removable chip an applied filter wears: `Bank: KBANK`. */
+const appliedChip = (name: string) => screen.getByRole('button', { name: `Remove filter: ${name}` })
+
+/** The last request the page made, as `listActivity` received it. */
+const lastCall = () => {
+  const calls = vi.mocked(api.listActivity).mock.calls
+  return calls[calls.length - 1]
 }
 
 beforeEach(() => vi.clearAllMocks())
@@ -457,7 +488,6 @@ describe('the chips', () => {
     await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))
     expect(vi.mocked(api.listActivity).mock.calls.map(c => c[0])).toEqual(['review', 'all'])
     expect(screen.getByRole('tab', { name: /^All/ })).toHaveAttribute('aria-selected', 'true')
-    expect(await screen.findByRole('button', { name: 'Show' })).toHaveTextContent('Everything')
   })
 
   it('shows no empty table on the way through', async () => {
@@ -471,14 +501,14 @@ describe('the chips', () => {
 
   it('opens straight on the filter a bell row named, skipping the fall-through', async () => {
     // A collapsed `document_blocked`/`document_failed` bell row (NotificationBell.tsx)
-    // links here with `?filter=unposted`. Not a chip any more: All, narrowed to it.
+    // links here with `?filter=unposted`. Not a chip: it lights All and wears a Status chip.
     window.location.hash = '#/CreditCardOCR?filter=unposted'
     mount([doc()], { ...ZERO, all: 113, today: 4, review: 12, unposted: 101 })
     await screen.findByText('KTC')
     expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('unposted')
     expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('tab', { name: /^All/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('button', { name: 'Show' })).toHaveTextContent('Not posted')
+    expect(appliedChip('Status: Not posted')).toBeInTheDocument()
   })
 
   it('moves to the named filter on a hashchange, not only on mount', async () => {
@@ -494,7 +524,9 @@ describe('the chips', () => {
     await waitFor(() =>
       expect(screen.getByRole('tab', { name: /^All/ })).toHaveAttribute('aria-selected', 'true')
     )
-    expect(await screen.findByRole('button', { name: 'Show' })).toHaveTextContent('Not posted')
+    expect(
+      await screen.findByRole('button', { name: 'Remove filter: Status: Not posted' })
+    ).toBeVisible()
   })
 
   it('leaves the chip alone on a hashchange with no filter, e.g. opening a document', async () => {
@@ -517,36 +549,32 @@ describe('the chips', () => {
     expect(vi.mocked(api.listActivity).mock.calls[1][0]).toBe('all')
   })
 
-  it('shows the dropdown on All and nowhere else', async () => {
-    // Review has nothing on screen but the work.
+  it('has no dropdown on the strip at all — Posted and Not posted live in Filters', async () => {
     mount([doc()], { all: 113, today: 5, review: 3, success: 7, unposted: 5 })
     await screen.findByText('KTC')
     expect(screen.queryByRole('button', { name: 'Show' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: /^All/ }))
-    expect(await screen.findByRole('button', { name: 'Show' })).toHaveTextContent('Everything')
-    fireEvent.click(screen.getByRole('tab', { name: /Review/ }))
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Show' })).not.toBeInTheDocument()
-    )
+    await waitFor(() => expect(lastCall()[0]).toBe('all'))
+    expect(screen.queryByRole('button', { name: 'Show' })).not.toBeInTheDocument()
   })
 
-  it('offers the three views that used to be chips, and refetches for the one picked', async () => {
+  it('offers Posted and Not posted under Status, and refetches for the one picked', async () => {
     mount([doc()], { ...ZERO, all: 5, review: 1, success: 4 })
     await screen.findByText('KTC')
-    fireEvent.click(screen.getByRole('tab', { name: /^All/ }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Show' }))
-    expect(screen.getAllByRole('option', { hidden: true }).map(o => o.textContent)).toEqual([
-      'Everything',
-      'Today',
-      'Posted',
-      'Not posted',
-    ])
-    fireEvent.mouseDown(screen.getByRole('option', { name: 'Posted', hidden: true }))
-    await waitFor(() => {
-      const calls = vi.mocked(api.listActivity).mock.calls
-      expect(calls[calls.length - 1][0]).toBe('success')
-    })
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Status/ }))
+    expect(menuOptions().map(o => o.textContent)).toEqual(['Posted', 'Not posted'])
+    fireEvent.click(optionNamed('Posted'))
+    await waitFor(() => expect(lastCall()[0]).toBe('success'))
     expect(screen.getByRole('tab', { name: /^All/ })).toHaveAttribute('aria-selected', 'true')
+    expect(appliedChip('Status: Posted')).toBeInTheDocument()
+    // The chip is the control too: its label reopens the list, and the picked one is checked.
+    fireEvent.click(screen.getByRole('button', { name: 'Status: Posted' }))
+    expect(optionNamed('Posted')).toHaveAttribute('aria-checked', 'true')
+    // Picked again, it lets go and the page is on All.
+    fireEvent.click(optionNamed('Posted'))
+    await waitFor(() => expect(lastCall()[0]).toBe('all'))
+    expect(screen.queryByRole('group', { name: 'Active filters' })).not.toBeInTheDocument()
   })
 
   it('shows a zero on the work chip rather than dropping the number', async () => {
@@ -557,7 +585,7 @@ describe('the chips', () => {
     expect(chip).toHaveTextContent('0')
   })
 
-  it('hides the chips and the dropdown from a BU with no documents at all', async () => {
+  it('hides the chips and the search from a BU with no documents at all', async () => {
     // Zeroes above an explanation of what the feature is would be scaffolding, not
     // navigation.
     mount([], ZERO)
@@ -597,6 +625,331 @@ describe('the chips', () => {
     await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(4))
     expect(vi.mocked(api.listActivity).mock.calls[3][0]).toBe('unposted')
     expect(screen.getByRole('tab', { name: /^All/ })).toHaveAttribute('aria-selected', 'true')
+  })
+})
+
+describe('narrowing: search, source, bank, date', () => {
+  const COUNTS = { ...ZERO, all: 9, review: 2, success: 7 }
+
+  it('commits a search once typing pauses, not on every keystroke', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    const box = screen.getByRole('searchbox', { name: 'Search documents' })
+    fireEvent.change(box, { target: { value: 'k' } })
+    fireEvent.change(box, { target: { value: 'kbank' } })
+    await waitFor(() => expect(lastCall()[3]).toMatchObject({ q: 'kbank' }))
+    // One request for the pause, not one per letter.
+    const withQ = vi.mocked(api.listActivity).mock.calls.filter(c => c[3]?.q)
+    expect(withQ).toHaveLength(1)
+  })
+
+  it('sends source, bank and date from the menu, and shows each as one chip', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    await pickScope('Email')
+    await pickScope('Manual')
+    await pickScope('KBANK')
+    await pickScope('Last 7 days')
+    await waitFor(() =>
+      expect(lastCall()[3]).toEqual({
+        q: '',
+        sources: ['email', 'manual'],
+        bank: 'KBANK',
+        range: '7d',
+      })
+    )
+    const chips = within(screen.getByRole('group', { name: 'Active filters' }))
+    expect(chips.getByRole('button', { name: 'Source: Email, Manual' })).toBeInTheDocument()
+    expect(chips.getByRole('button', { name: 'Bank: KBANK' })).toBeInTheDocument()
+    expect(chips.getByRole('button', { name: 'Date: Last 7 days' })).toBeInTheDocument()
+    // No badge number: the chips are the count.
+    expect(screen.getByRole('button', { name: 'Filter' })).toHaveTextContent(/^Filter$/)
+  })
+
+  it('lists attributes first, and only then the values of the one picked', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    const attrs = screen.getAllByRole('menuitem').map(i => i.textContent)
+    expect(attrs).toEqual(['Status', 'Source', 'Bank', 'Date'])
+    // Nothing of the values is laid out yet.
+    expect(screen.queryByText('KBANK')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Date/ }))
+    expect(menuOptions().map(o => o.textContent)).toEqual([
+      'Any time',
+      'Today',
+      'Last 7 days',
+      'Last 30 days',
+    ])
+    // The way back, and it is a real button.
+    fireEvent.click(screen.getByRole('button', { name: /– Back$/ }))
+    expect(screen.getAllByRole('menuitem')).toHaveLength(4)
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Date/ }))
+    fireEvent.click(optionNamed('Today'))
+    await waitFor(() => expect(lastCall()[3]).toMatchObject({ range: 'today' }))
+  })
+
+  it('names the bank beside its code, and says single-select with radios and multi with checks', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Bank/ }))
+    expect(optionNamed('KBANK').textContent).toBe('KBANK Kasikornbank')
+    expect(optionNamed('KBANK')).toHaveAttribute('role', 'menuitemradio')
+    fireEvent.click(screen.getByRole('button', { name: /– Back$/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Source/ }))
+    expect(optionNamed('Email')).toHaveAttribute('role', 'menuitemcheckbox')
+  })
+
+  it('goes back to page one when a narrowing changes', async () => {
+    mount([doc()], COUNTS, 40)
+    await screen.findByText('KTC')
+    await pickScope('Last 7 days')
+    await waitFor(() => expect(lastCall()[2]).toBe(0))
+  })
+
+  it('shows what is applied as chips that each remove themselves, and Clear all', async () => {
+    window.location.hash = '#/CreditCardOCR?bank=scb&range=30d'
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    const group = screen.getByRole('group', { name: 'Active filters' })
+    fireEvent.click(within(group).getByRole('button', { name: 'Remove filter: Bank: SCB' }))
+    await waitFor(() => expect(lastCall()[3]).toMatchObject({ bank: '', range: '30d' }))
+    fireEvent.click(within(group).getByRole('button', { name: 'Clear all' }))
+    await waitFor(() => expect(lastCall()[3]).toEqual({ q: '', sources: [], bank: '', range: '' }))
+    expect(screen.queryByRole('group', { name: 'Active filters' })).not.toBeInTheDocument()
+  })
+
+  it('opens on All, narrowed, when a pasted URL carries a view', async () => {
+    // Review under a narrowing says little about the work, and the reader was sent here to
+    // see exactly this view — nothing to guess, so no fall-through.
+    window.location.hash = '#/CreditCardOCR?source=pms,bogus&q=comanche'
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('all')
+    expect(vi.mocked(api.listActivity).mock.calls[0][3]).toMatchObject({
+      q: 'comanche',
+      sources: ['pms'],
+    })
+  })
+
+  it('reads an old ?filter=today link as All + the Today date', async () => {
+    window.location.hash = '#/CreditCardOCR?filter=today'
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('all')
+    expect(vi.mocked(api.listActivity).mock.calls[0][3]).toMatchObject({ range: 'today' })
+    expect(screen.getByRole('tab', { name: /^All/ })).toHaveAttribute('aria-selected', 'true')
+    expect(appliedChip('Date: Today')).toBeInTheDocument()
+  })
+
+  it('shows the status as a chip like any other filter, and Clear all lets go of it', async () => {
+    window.location.hash = '#/CreditCardOCR?filter=unposted&bank=SCB'
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    expect(appliedChip('Status: Not posted')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
+    await waitFor(() => expect(lastCall()[0]).toBe('all'))
+    expect(lastCall()[3]).toEqual({ q: '', sources: [], bank: '', range: '' })
+  })
+
+  it('has no Posted or Not posted chip — the strip is Review and All', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual([
+      expect.stringMatching(/^Review/),
+      'All',
+    ])
+    expect(screen.queryByRole('tab', { name: /Posted/ })).not.toBeInTheDocument()
+  })
+
+  it('writes the view into the URL as it changes', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    fireEvent.click(screen.getByRole('tab', { name: /^All/ }))
+    await pickScope('Not posted')
+    await waitFor(() => expect(window.location.hash).toBe('#/CreditCardOCR?filter=unposted'))
+    await pickScope('BBL')
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/CreditCardOCR?filter=unposted&bank=BBL')
+    )
+  })
+
+  it('says nothing matched, not "no scans yet", when a narrowing empties a BU that has rows', async () => {
+    // Counts are taken under the narrowing, so `all` is 0 here though the BU has history.
+    // Reading that as a BU that never scanned would hide the very controls that undo it.
+    window.location.hash = '#/CreditCardOCR?bank=SCB'
+    mount([], ZERO)
+    expect(await screen.findByText('No documents match')).toBeInTheDocument()
+    expect(screen.queryByText('No scans yet')).not.toBeInTheDocument()
+    expect(screen.getByRole('searchbox')).toBeInTheDocument()
+    const card = screen.getByText('No documents match').closest('.rq-empty') as HTMLElement
+    fireEvent.click(within(card).getByRole('button', { name: 'Clear all' }))
+    await waitFor(() => expect(lastCall()[3]).toMatchObject({ bank: '' }))
+  })
+
+  it('closes the menu on Escape and gives focus back to what opened it', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    const btn = screen.getByRole('button', { name: 'Filter' })
+    fireEvent.click(btn)
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(btn).toHaveFocus()
+  })
+
+  it('moves through the menu with the arrow keys and picks with Enter', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    // Opening hands focus to the first item.
+    expect(screen.getByRole('menuitem', { name: /^Status/ })).toHaveFocus()
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' })
+    expect(screen.getByRole('menuitem', { name: /^Source/ })).toHaveFocus()
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowUp' })
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowUp' })
+    expect(screen.getByRole('menuitem', { name: /^Date/ })).toHaveFocus() // wraps
+  })
+
+  it('removes a chip with Backspace on its label, as well as with its ✕', async () => {
+    window.location.hash = '#/CreditCardOCR?bank=SCB&range=30d'
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Bank: SCB' }), { key: 'Backspace' })
+    await waitFor(() => expect(lastCall()[3]).toMatchObject({ bank: '', range: '30d' }))
+  })
+
+  it('shows chips only for what is applied: at rest the bar is the search and one button', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    expect(screen.queryByRole('group', { name: 'Active filters' })).not.toBeInTheDocument()
+    expect(screen.getByRole('searchbox')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Filter' })).toBeInTheDocument()
+  })
+})
+
+describe('the guard: a PMS day has no bank, so the two are never asked for together', () => {
+  const COUNTS = { ...ZERO, all: 9, review: 2, success: 7 }
+
+  /** The attribute list, open. */
+  const openList = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Filter' }))
+    return screen.getByRole('menu')
+  }
+
+  it('locks the Bank attribute while PMS is a source, and says why on the row', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    await pickScope('PMS')
+    const menu = await openList()
+    const bank = within(menu).getByRole('menuitem', { name: /^Bank/ })
+    expect(bank).toHaveAttribute('aria-disabled', 'true')
+    expect(bank).toHaveTextContent('PMS has no bank')
+    const before = vi.mocked(api.listActivity).mock.calls.length
+    fireEvent.click(bank)
+    // Dead: the list did not open and nothing was asked of the server.
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(4)
+    expect(vi.mocked(api.listActivity).mock.calls.length).toBe(before)
+    // The others are alive.
+    expect(within(menu).getByRole('menuitem', { name: /^Status/ })).not.toHaveAttribute(
+      'aria-disabled'
+    )
+  })
+
+  it('locks the PMS option while a bank is set, and leaves Email and Manual alone', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    await pickScope('KBANK')
+    fireEvent.click(await screen.findByRole('button', { name: 'Filter' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Source/ }))
+    expect(optionNamed('PMS')).toHaveAttribute('aria-disabled', 'true')
+    expect(optionNamed('PMS')).toHaveTextContent('Remove the Bank filter first')
+    expect(optionNamed('Email')).not.toHaveAttribute('aria-disabled')
+    expect(optionNamed('Manual')).not.toHaveAttribute('aria-disabled')
+    const before = vi.mocked(api.listActivity).mock.calls.length
+    fireEvent.click(optionNamed('PMS'))
+    expect(vi.mocked(api.listActivity).mock.calls.length).toBe(before)
+    expect(optionNamed('PMS')).toHaveAttribute('aria-checked', 'false')
+    // Email still toggles.
+    fireEvent.click(optionNamed('Email'))
+    await waitFor(() => expect(lastCall()[3]).toMatchObject({ sources: ['email'], bank: 'KBANK' }))
+  })
+
+  it('is one lock, so Email + PMS also holds the bank, and releasing either side frees both', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    await pickScope('Email')
+    await pickScope('PMS')
+    expect(within(await openList()).getByRole('menuitem', { name: /^Bank/ })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    )
+    fireEvent.keyDown(document, { key: 'Escape' })
+    // Drop PMS: the Bank attribute comes back.
+    await pickScope('PMS')
+    expect(within(await openList()).getByRole('menuitem', { name: /^Bank/ })).not.toHaveAttribute(
+      'aria-disabled'
+    )
+  })
+
+  it('steps over a dead row with the arrow keys and never lands on it', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    await pickScope('PMS')
+    const menu = await openList()
+    const order: string[] = []
+    for (let i = 0; i < 6; i++) {
+      order.push((document.activeElement as HTMLElement).textContent!.slice(0, 6))
+      fireEvent.keyDown(menu, { key: 'ArrowDown' })
+    }
+    // Status, Source, Date — Bank is skipped — and it wraps.
+    expect(order.every(o => !o.startsWith('Bank'))).toBe(true)
+    expect(order.slice(0, 4)).toEqual([
+      'Status',
+      expect.stringMatching(/^Source/),
+      'Date',
+      'Status',
+    ])
+  })
+
+  it('repairs a pasted link that asks for both: the bank goes, PMS stays, one clean request', async () => {
+    window.location.hash = '#/CreditCardOCR?source=email,pms&bank=SCB&range=7d'
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(api.listActivity).mock.calls[0][3]).toEqual({
+      q: '',
+      sources: ['email', 'pms'],
+      bank: '',
+      range: '7d',
+    })
+    expect(appliedChip('Source: Email, PMS')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Bank:/ })).not.toBeInTheDocument()
+    // And the address bar says what the page is showing, not what it was handed.
+    await waitFor(() => expect(window.location.hash).not.toContain('bank='))
+  })
+
+  it('does the same when the link arrives while the page is already open', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    window.location.hash = '#/CreditCardOCR?filter=all&source=pms&bank=KBANK'
+    await waitFor(() =>
+      expect(lastCall()[3]).toEqual({ q: '', sources: ['pms'], bank: '', range: '' })
+    )
+  })
+
+  it('reconcileNarrow is pure and idempotent', async () => {
+    const { reconcileNarrow, NO_NARROW } = await import('@/features/credit-card/api/emailReview')
+    const bad = { ...NO_NARROW, sources: ['pms' as const], bank: 'KBANK' }
+    const good = reconcileNarrow(bad)
+    expect(good).toEqual({ ...NO_NARROW, sources: ['pms'], bank: '' })
+    expect(bad.bank).toBe('KBANK') // not mutated
+    expect(reconcileNarrow(good)).toBe(good) // already fine → the same object
+    const email = { ...NO_NARROW, sources: ['email' as const], bank: 'KBANK' }
+    expect(reconcileNarrow(email)).toBe(email)
+    expect(reconcileNarrow({ ...NO_NARROW, bank: 'KBANK' }).bank).toBe('KBANK')
   })
 })
 

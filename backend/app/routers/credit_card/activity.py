@@ -45,6 +45,10 @@ async def list_activity(
     filter: str = Query("all", description="all | today | review | success | unposted"),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    q: str = Query("", max_length=100, description="search doc no / filename / bank"),
+    source: str = Query("", max_length=40, description="comma list of email,manual,pms"),
+    bank: str = Query("", max_length=20, description="bank code; excludes PMS days"),
+    range: str = Query("", max_length=8, description="today | 7d | 30d"),
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
@@ -69,12 +73,16 @@ async def list_activity(
     gives each row exactly one, and three of them have a chip.
 
 
+    `q`, `source`, `bank` and `range` narrow *which* documents, beside the status filter. A bank
+    cannot be combined with `source=pms` (400): PMS days carry no bank.
+
     An unknown filter falls back to `all` rather than 400ing: the query string is a UI
     detail and a stale bookmark — `?filter=skipped` from before the chips merged — should
     land somewhere useful.
     """
+    narrow = activity_service.parse_narrow(q, source, bank, range)
     return await activity_service.list_activity(
-        db, uuid.UUID(str(session.tenant_id)), filter, limit, offset
+        db, uuid.UUID(str(session.tenant_id)), filter, limit, offset, narrow
     )
 
 
