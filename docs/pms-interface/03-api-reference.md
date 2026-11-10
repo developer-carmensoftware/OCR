@@ -100,21 +100,21 @@ checks:
   "error_message": null,        // Carmen's own words, for those
   "setting_code": "Comanche.PMS", "post_type": "REVENUE",
   "key_columns": ["Code", "Description"],
-  "rows": [                     // every row of the day, in file order; Carmen's account where it has one
+  "rows": [                     // every row of the day, in Carmen's preview order; Carmen's account where it has one
     {"key": "[\"100\",\"Room Charge\"]", "values": {"Code": "100", "Description": "Room Charge"},
-     "amount": "153068.41", "dept": "101", "acc": "4010001", "name": "Room Revenue"}
+     "dept": "101", "acc": "4010001", "name": "Room Revenue"}
   ],
   "mapped_count": 23,
   "new_codes": [                // one per new key; the AI's pick when it made a usable one
-    {"key": "[\"729\",\"…\"]", "label": "729 · …", "values": {…}, "amount": "-849.62",
+    {"key": "[\"729\",\"…\"]", "label": "729 · …", "values": {…},
      "dept": "101", "acc": "4010006", "confidence": "low", "why": "…"}
   ]
 }
 ```
 
-`key` is opaque to the client: send it back unchanged as the key of `mappings`. `amount` is
-the string the PMS wrote. The review screen reads neither `amount` nor `confidence`/`why`
-(decision-log #47); they stay in the response as the day's record. **There is no side and no total.** `404` when the day is not
+`key` is opaque to the client: send it back unchanged as the key of `mappings`. There is no
+`amount`: Carmen's preview carries none (decision-log #54). The review screen does not read
+`confidence`/`why` (decision-log #47); they stay in the response as the day's record. **There is no side and no total.** `404` when the day is not
 `pending_review` for this BU, or has no payload.
 
 ## `POST /days/{id}/approve`
@@ -152,6 +152,7 @@ All under `{carmen_uri}/Carmen.API/api/interface`, with the BU's menu token.
 | `GET /interfaceThirdParties` | `carmen.get_interfaces` | the BU's interfaces × sections: `[{InterfaceType, InterfaceName, PostToModule, DocType, PostType, From}]`, e.g. `{"PMS", "Comanche", "GL", "REVENUE", "Json", "CarmenApi"}` | **works since 2026-11-03** (Carmen added it in place of the setting GET, which is still 404 with the menu token). Carmen's register of third-party integrations, not the BU's settings. `From` says how the third party's data reaches Carmen (the user, 2026-11-03): `CarmenApi` = the third party sends it into Carmen (the Data Bank, then our hook); `PartnerApi` = Carmen fetches it from the third party itself; `null` = a user imports the file (decision-log #51) |
 | `GET /interfacePost/mapping/{code}/{postType}/GL` | `carmen.get_pms_mapping` | a .NET DataTable: `{"Columns": [{ColumnName}…], "Rows": [{Code, Description, DeptCode, AccCode, AccDesc, …}]}`. `Columns` less the account columns is the mapping key. A setting Carmen lacks answers `303` `Code -400 "Configuration is missing"`, which we raise | **works since 2026-10-15** (Carmen added it; 33 rows for Comanche) |
 | `PUT /interfacePost/mapping/{code}/{postType}/GL` | `carmen.put_pms_mapping` | body `[{<key columns>, DeptCode, AccCode}]`. **Replaces the whole table** | works with the menu token (sandbox, 2026-10-14) |
+| `POST /interfacePreviewPostGL/{postType}` | `carmen.preview_pms_gl` | the post's body. Answers a .NET DataTable named `Mapping`, not the `ViewPostResult` Swagger names: the mapping table's columns, one row per line of the day keyed as the engine reads it, and the account each key has (null = none). No amounts, sides or refusals. `id` is optional (by date). `303` `-400 "No Data Found"` when there is no data; HTTP 500 for a closed period. It makes no JV and does not write the table | **works since 2026-11-10** (ask P; 500 on 11-09). Equal to our old reader on five dev days. The day's rows since decision-log #54 |
 | `POST /interfacePostGL/{postType}` | `carmen.post_pms_gl` | see below | works with the menu token |
 | account codes, departments | `carmen.get_account_codes`, `get_departments` | the BU's chart, for the AI and the approve checks | works |
 

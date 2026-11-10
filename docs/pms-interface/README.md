@@ -79,7 +79,7 @@ These documents live outside this folder:
 | **PMS setting** | The BU's GL interface setting in Carmen (`interfacePost/Setting/GL`), e.g. `Comanche.PMS`. Each section (`Revenue`, …) carries an INI file in base64 (`ConfigBase64`) and a counter account. **The menu token cannot read it**; Carmen's engine does. |
 | **Interface list** | `GET /api/interface/interfaceThirdParties`: the BU's active interfaces × sections (`{InterfaceType, InterfaceName, PostToModule, DocType, PostType, From}`). What we read in the setting's place (decision-log #51). |
 | **Section** | The part of a setting the engine posts by. We use only `REVENUE`: one day, one JV. |
-| **Key columns** | The mapping table's `Columns` less `DeptCode`/`AccCode`/`AccDesc` (Comanche: `Code`, `Description`). The day's rows are the one `FileData` list carrying them all (decision-log #51). |
+| **Key columns** | The mapping table's `Columns` less `DeptCode`/`AccCode`/`AccDesc` (Comanche: `Code`, `Description`). The day's rows are Carmen's preview of the post, keyed by these columns (decision-log #54). |
 | **Mapping key** | The values of the key columns, in order, as a JSON array: `["100","Room Charge - VAT"]` for Comanche (`[Code][Description]`). So a tax row is its own key, and so is a renamed description. |
 | **Mapping table** | Carmen's per-setting table: key columns → `DeptCode`/`AccCode`. Carmen's own screen edits it, and so does our Approve. **A PUT replaces it whole.** |
 | **New row / new key** | A key of the day that has no account in the mapping table. Only these go to the AI and to the reviewer. |

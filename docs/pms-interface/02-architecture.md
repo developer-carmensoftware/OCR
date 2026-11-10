@@ -108,8 +108,9 @@ sequenceDiagram
     W->>C: GET interfacePost/mapping/{code}/REVENUE/GL
     W->>W: key_columns(Columns) → [Code, Description]
     W->>C: GET PMS/{name}/{docType}/Date/{docDate}
-    W->>W: newest_day (the list carrying the key columns, LastModified) → rows_of
-    W->>W: table_of → new_keys
+    W->>W: the newest LastModified row → databank_id (the row a post reads)
+    W->>C: POST interfacePreviewPostGL/REVENUE {Code, DateFrom=DateTo, id:[databank_id]}
+    W->>W: preview_rows (Carmen's keys, in its order) → table_of → new_keys
     opt there are new keys
         W->>C: accounts + departments (mapping.masters)
         W->>L: one call: new rows + up to 120 mapped rows as examples
@@ -274,26 +275,32 @@ the module derives what processing needs from what it can read (decision-log #51
   `PostType` must be `Json`.
 - **`key_columns`**: the mapping table's `Columns`, less `DeptCode`, `AccCode` and `AccDesc`
   (Comanche: `Code`, `Description`).
-- **`rows_key` / `newest_day`**: the day's rows are the **one** list in `FileData` whose
-  entries all carry every key column (Comanche: `Transaction`; `Statistic` has no `Code`).
-  None, or two, is a layout this cannot read: `unreadable_day`, never a guess. The newest
-  `LastModified` row that has such a list wins.
-- **`rows_of`** turns each entry into `{key, values, amount}`, the key column's values read
-  from the field of the same name. **It never adds, signs or balances**: `amount` (the
-  `Amount` field, Comanche's name for it) is the string as written, kept for the AI.
+- **The day's rows are Carmen's preview of the post** (decision-log #54). Since #54, nothing
+  of ours reads a PMS's own layout or a day's `FileData`.
+  - `interfacePreviewPostGL` takes the post's own body. It answers a DataTable: the mapping
+    table's columns, one row per line of the day keyed as the engine reads it by the INI, and
+    the account the table gives each key (null = none).
+  - The preview is given the newest `LastModified` Data Bank row, the one the post will read,
+    so the review shows what Approve posts.
+  - **`preview_rows`** turns each row into `{key, values}`, a blank or null value as `""`, as
+    `table_of` reads the table. **There is no amount**: the preview carries none.
+  - **Outcomes:**
+    - `-400 No Data` waits hourly (`day_not_ready`).
+    - 401 or 403 is the credential's reason.
+    - Any other failure parks the day with no rows (`preview: false`), and the `-500` fallback
+      below brings in the keys.
 - **`merged_rows`** builds the PUT body: every row just read, a pick filled in where one
   applies, then the picks the table did not have, appended.
 
 The sides of the JV and the counter account stay in Carmen's INI, and the post sends no
 counter: they are the engine's (decision-log #43).
 
-**Not built yet: Carmen's post as the check (decision-log #52).** The reader above becomes
-a *preview*. When it keys the day (Comanche), processing goes on as described. When it
-cannot, the day does not fail:
-- **The cases:** another PMS layout (HotelTime: `Revenue` rows, `HT_Code` / `HT_Description` /
-  `Department` columns), a non-JSON file, or a PartnerApi day with no Data Bank row.
-- **What happens:** with auto-post on, it posts; with it off, it waits for Approve. Carmen's
-  answer decides (`-500` parks `mapping_incomplete`).
+**Carmen's post as the check (decision-log #52, #53).** A day the preview gave no rows for
+does not fail:
+- **What happens:** with auto-post on, it posts; with it off, it waits for Approve.
+- **Carmen's answer decides:** a `-500` parks `pms_mapping_incomplete`. The table's rows
+  without an account (the keys the engine just wrote) join the review with the AI's picks
+  (`with_carmen_keys`).
 - **Opening PartnerApi days:** the `pms-process` sweep opens yesterday's day for each BU × PMS
   that has a live key and whose `interfaceThirdParties` row says `From: PartnerApi`.
 
@@ -301,7 +308,8 @@ cannot, the day does not fail:
 
 One `call_text_llm` per day that has new keys (`module_id = pms_interface`), using the
 suggestion model under the text-provider allowlist. The prompt carries:
-- the new lines, as `<code> · <description>`, with their amounts;
+- the new lines, each value under its column's name (`HT_Code: 1115001 · HT_Description: 100 -
+  ABF Revenue`). Every PMS keys differently, and there are no amounts (decision-log #54);
 - up to 120 of the BU's already-mapped rows, as examples of the house pattern;
 - the departments;
 - the accounts, filtered to `income` and `balancesheet` types when the chart types any.
