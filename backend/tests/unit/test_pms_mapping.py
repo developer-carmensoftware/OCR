@@ -44,6 +44,22 @@ async def test_the_ai_sees_the_bus_columns_and_examples_and_no_amounts():
 
 
 @pytest.mark.asyncio
+async def test_an_unusable_answer_is_asked_once_more():
+    """The model answered cut or empty now and then (2026-11-10): one more try, then none."""
+    answer = {"L1": {"dept": "201", "acc": "4110001", "confidence": "high", "why": "food"}}
+    llm = AsyncMock(side_effect=[None, answer])
+    with patch.object(mapping, "call_text_llm", llm):
+        out = await mapping.suggest([NEW], TABLE, ACCOUNTS, DEPTS, COLUMNS)
+    assert out[NEW]["acc"] == "4110001" and llm.await_count == 2
+    assert llm.await_args.kwargs["max_tokens"] == mapping._MAX_TOKENS
+
+    llm = AsyncMock(return_value=None)
+    with patch.object(mapping, "call_text_llm", llm):
+        assert await mapping.suggest([NEW], TABLE, ACCOUNTS, DEPTS, COLUMNS) == {}
+    assert llm.await_count == mapping._TRIES
+
+
+@pytest.mark.asyncio
 async def test_nothing_new_asks_nothing():
     llm = AsyncMock()
     with patch.object(mapping, "call_text_llm", llm):

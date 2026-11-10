@@ -25,6 +25,14 @@ logger = logging.getLogger(__name__)
 _POSTABLE_TYPES = {"income", "balancesheet"}
 # Enough of the BU's own rows to show the pattern without crowding the prompt.
 _EXAMPLES = 120
+# The suggestion model thinks before it answers, and its thinking counts against max_tokens:
+# on 2026-11-10 one answer used 7,579 of 8,000 and came back cut. A day's 78 keys need about
+# 3,000 tokens of answer.
+_MAX_TOKENS = 16000
+# The same model also answered cut or empty with tokens to spare, several times that day, the
+# old prompt as often as the new. A second try is cheap next to a reviewer picking 78
+# accounts by hand.
+_TRIES = 2
 
 
 async def masters(carmen_token: str) -> tuple[list[dict], list[dict]]:
@@ -138,7 +146,11 @@ New lines:
 
 Answer ONLY a JSON object: {{"<line id>": {{"dept": "<dept code>", "acc": "<account code>", "confidence": "high|medium|low", "why": "<max 12 words>"}}, ...}} with one entry per line id. Use only codes listed above."""
 
-    data = await call_text_llm(prompt, module_id=Module.PMS_INTERFACE, max_tokens=8000)
+    data = None
+    for _ in range(_TRIES):
+        data = await call_text_llm(prompt, module_id=Module.PMS_INTERFACE, max_tokens=_MAX_TOKENS)
+        if data:
+            break
     if not data:
         logger.warning("[pms] No usable suggestion for %d new row(s)", len(new))
         return {}
