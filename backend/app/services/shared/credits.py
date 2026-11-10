@@ -417,8 +417,11 @@ async def topup_order(
         ).scalar_one_or_none()
         if order is None or order.tenant_id != tenant_id:
             raise NotFoundError("Order not found")
-        if order.status == CreditOrderStatus.PAID:
-            raise ConflictError("Order already fulfilled")
+        # Only an open order may be credited. PAID and COMPLETE (posted to Carmen AR)
+        # were credited already and VOID never will be; flipping any of them back to
+        # PAID would grant the pack a second time.
+        if order.status not in (CreditOrderStatus.IN_PROGRESS, CreditOrderStatus.ON_HOLD):
+            raise ConflictError("Order is not open: already credited or void")
         order.status = CreditOrderStatus.PAID  # type: ignore[assignment]
         order.paid_at = datetime.now(UTC)  # type: ignore[assignment]
         order.approved_by = admin_email  # type: ignore[assignment]
