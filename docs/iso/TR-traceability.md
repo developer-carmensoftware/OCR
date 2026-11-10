@@ -2,10 +2,10 @@
 title: Requirements → Design → Code → Test (AI JV Automation timeline)
 iso-wp: TR
 iso-topic: Traceability_AI_JV_Automation
-Document Version: Version 0.1 (Traceability Record)
+Document Version: Version 0.2 (Traceability Record)
 ขอบเขต: ข้อกำหนดทุกข้อใน RS-01 ถึง RS-08
-Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026)
-Date: 2 November 2026
+Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026) · แถว PMS ตามโค้ด ณ 6a70389f + PR #357 (10/11/2026)
+Date: 10 November 2026
 ---
 
 ## Document Revision History
@@ -13,6 +13,7 @@ Date: 2 November 2026
 | Version | Date | Author | Description of Changes | Approved By |
 |---|---|---|---|---|
 | 0.1 | 02/11/2026 | Dev Team | จัดทำฉบับแรก — สอบกลับข้อกำหนดของ RS-01 ถึง RS-08 ไปยัง FRD, โค้ด, test อัตโนมัติ และ test case | |
+| 0.2 | 10/11/2026 | Dev Team | แถว PMS ตาม RS-07 v0.2 และ FRD-11 v1.4 (decision-log #52–#54): PMS-F05, F06, F08, F13, I01, Q04 แก้ และเพิ่ม PMS-F14 | |
 
 <!-- pagebreak -->
 
@@ -242,23 +243,24 @@ Date: 2 November 2026
 | PMS-F02 | FRD-11 §5 | `routers/pms.py`, `services/shared/api_keys.py` | `test_pms_webhook.py`, `test_api_keys.py` | TC-PMS-03–06 |
 | PMS-F03 | FRD-11 §12 | `routers/pms_carmen.py` | `test_pms_carmen.py` | TC-PMS-07 |
 | PMS-F04 | FRD-11 §5 | `routers/pms_carmen.py`, `services/email_automation/credential.py` | `test_pms_carmen.py`, `test_pms_process.py` | TC-PMS-14 |
-| PMS-F05 | FRD-11 §8 | `services/pms/process.py`, `services/pms/carmen_config.py` | `test_pms_process.py`, `test_pms_carmen_config.py` | TC-PMS-10, 11, 15 |
-| PMS-F06 | FRD-11 §3 | `services/pms/mapping.py` | `test_pms_process.py` | TC-PMS-12, 13, 20 |
+| PMS-F05 | FRD-11 §8 | `services/pms/process.py`, `services/pms/carmen_config.py`, `services/shared/carmen.py` | `test_pms_process.py`, `test_pms_carmen_config.py` | TC-PMS-10, 11, 15, 18 |
+| PMS-F06 | FRD-11 §3 | `services/pms/mapping.py`, `llm/client.py` | `test_pms_mapping.py`, `test_llm_client.py`, `test_pms_process.py` | TC-PMS-12, 13, 20 |
 | PMS-F07 | FRD-11 §11.2 | `services/pms/process.py` | `test_pms_process.py` | TC-PMS-10–12 |
-| PMS-F08 | FRD-11 §2.1 | `services/pms/process.py` | `test_pms_process.py`, `test_pms_process_run.py` | TC-PMS-14 |
+| PMS-F08 | FRD-11 §2.1 | `services/pms/process.py` | `test_pms_process.py`, `test_pms_process_run.py` | TC-PMS-14, 19 |
 | PMS-F09 | FRD-11 §11.2 | `services/pms/review.py` | `test_pms_review.py`, `test_pms_review_api.py`, `PmsReviewDocument.test.tsx` | TC-PMS-21–24 |
 | PMS-F10 | FRD-11 §11.2 | `services/pms/review.py` | `test_pms_review.py` | TC-PMS-25 |
 | PMS-F11 | FRD-11 §2.1 | `services/pms/review.py` | `test_pms_review_api.py` | TC-PMS-26 |
 | PMS-F12 | FRD-11 §1 | `services/pms/process.py` | `test_pms_process.py` | TC-PMS-21, 27 |
-| PMS-F13 | FRD-11 §2.2, §9 | `services/pms/carmen_config.py`, `services/pms/process.py` | `test_pms_carmen_config.py`, `test_pms_process.py` | TC-PMS-16, 28 |
+| PMS-F13 | FRD-11 §8.4, §9 | `services/pms/process.py`, `services/pms/review.py` | `test_pms_process.py`, `test_pms_review.py` | TC-PMS-16, 17 |
+| PMS-F14 | FRD-11 §8.6 | `services/pms/process.py` | `test_pms_process.py` | — |
 | PMS-U01 | FRD-11 §4 | `services/pms/review.py` | `PmsReviewDocument.test.tsx` | TC-PMS-20 |
 | PMS-U02 | FRD-11 §2.1 | `services/shared/api_keys.py` | `ApiKeysPage.test.tsx` | — |
-| PMS-I01 | FRD-11 §7 | `services/pms/process.py` | `test_pms_process.py` | TC-PMS-21 |
+| PMS-I01 | FRD-11 §7 | `services/pms/process.py`, `services/shared/carmen.py` | `test_pms_process.py` | TC-PMS-21, 28 |
 | PMS-I02 | FRD-11 §7 | `services/pms/carmen_config.py` | `test_pms_carmen_config.py` | TC-PMS-15 |
 | PMS-Q01 | FRD-11 §10.1 | `services/shared/api_keys.py` | `test_api_keys.py`, `test_pms_webhook.py` | TC-PMS-03, 04 |
 | PMS-Q02 | FRD-11 §10.2 | `services/pms/process.py` | `test_pms_process.py`, `test_pms_review.py` | TC-PMS-02 |
 | PMS-Q03 | FRD-11 §10.2 | `services/pms/process.py` | `test_pms_process_run.py` | — |
-| PMS-Q04 | FRD-11 §10.3 | `models/pms.py` | `test_encrypted_json.py` | — |
+| PMS-Q04 | FRD-11 §10.3 | `models/pms.py`, `services/pms/mapping.py` | `test_encrypted_json.py`, `test_pms_mapping.py` | — |
 | PMS-Q05 | FRD-11 §10.4 | `services/shared/api_keys.py` | `test_api_keys.py` | — |
 | PMS-C01 | FRD-11 §1 | — | — (ตรวจทาน) | — |
 | PMS-C02 | FRD-11 §10.1 | — | — (ตรวจทาน) | — |
