@@ -1631,3 +1631,229 @@ its frontend calls `carmen-ocr-backend.onrender.com`, already in `connect-src` (
 both confirmed before the switch). Before merging, the exact policy was served enforced on QA
 through a Playwright route: slips, the admin pages and the proforma loaded with 0 violations.
 Rolling back is renaming the header to `Content-Security-Policy-Report-Only`.
+
+## 51. PMS processing reads Carmen's interface list, and derives the rest (2026-11-03)
+
+**Decided:** 2026-11-03, with the user, in a grilling session (CA-119, CA-116 ask A). It
+replaces how #43 *reads* Carmen's config; what #43 decided (Carmen's engine posts, by
+Carmen's own config, and the mapping lives in Carmen's table) is unchanged.
+
+**What changed at Carmen.** Ask A was a menu-token twin of `interfacePost/Setting/GL`, the
+setting whose INI says where a day's rows are and what keys the mapping. It never came:
+`/api/interface/interfacePost/Setting/*` still answers 404, so every day parked at
+`carmen_config_unreadable`. Carmen added `GET /api/interface/interfaceThirdParties` instead:
+the BU's interfaces and their sections, one row each,
+`{InterfaceType, InterfaceName, PostToModule, DocType, PostType, From}` (dev, 2026-11-03:
+Comanche → GL → REVENUE and STATISTIC, both `Json`, `From: CarmenApi`; CarmenAI → AR). It
+carries no setting code, no INI and no counter account.
+
+**Decision: derive what the list lacks, don't wait for more.**
+
+| Need | From |
+|---|---|
+| The PMS has an active REVENUE → GL section | a list row matching the hook's `InterfaceType` and `InterfaceName` (case-insensitive), `PostToModule` GL, `DocType` REVENUE. The list is **not** the BU's settings (an active `test.PMS` is absent, an inactive `CarmenAI.PMS` present) nor its licence (`test` is licensed): it is Carmen's register of third-party integrations, with the active sections. Which BU uses which PMS is our key, from Get token (#44) |
+| The setting's code | `{InterfaceName}.{InterfaceType}`, Carmen's own rule (Noon, 2026-10-15) |
+| The file format | `PostType`; anything but `Json` fails `unsupported_pms_format` |
+| What keys the mapping | the mapping table's own `Columns`, less `DeptCode`/`AccCode`/`AccDesc` (Comanche: Code, Description). A table with none, or Carmen's 303 for a setting it lacks, parks `carmen_config_unreadable` |
+| Where the day's rows are | the **one** `FileData` list whose entries all carry every key column (Comanche: `Transaction`; `Statistic` has no `Code`). None or several fails `unreadable_day` |
+| The amount (shown to the AI only) | `Amount`, Comanche's field name |
+| The counter account | not sent. Carmen's engine takes it from its own setting — **proven** 2026-11-03: a post with no counter on `test.PMS` made JV 1594, carrying GEN/1021001 lines we never sent |
+
+- **REVENUE only**, as decided on 2026-10-14. STATISTIC is listed but not posted.
+- **`From` is not read yet.** `From` says how the third party's data reaches Carmen (the user, 2026-11-03): `CarmenApi` = the third party sends it into Carmen (the Data Bank, then our hook); `PartnerApi` = Carmen fetches it from the third party itself; `null` = a user imports the file. A hook means the day is in the Data Bank, whichever way it got there, so processing does not filter on it; a `PartnerApi` PMS sends no hook and needs its own flow (not built).
+- **The Settings API does not check `pms` against the list.** A name Carmen does not list
+  shows as `pms_setting_missing` on the day, which is where it is fixed.
+- **Days already stuck at `carmen_config_unreadable` are left alone.** The daily token check
+  re-proves the credential, which wakes them (#42's sweep), and they park for review.
+
+**Ceiling.** A PMS whose Data Bank fields are not named like its mapping columns matches no
+list: its days fail `unreadable_day`, and are never keyed by a guess, because Approve writes
+the table back whole. Such a PMS needs the INI after all, which means asking Carmen to put
+`JsonKeys` and `Mapping_MapCode` on the list's row.
+
+## 52. Carmen's post checks the mapping, for every PMS (built, 2026-11-06)
+
+**Status: built** (PR #346, merged 2026-11-06). It replaces this entry's first draft
+(2026-11-05: a dry-run of `interfacePostGL` for PartnerApi PMSs).
+
+**Proven end to end (2026-11-06, `pms_post_checks_ui.mjs` group CB):** Cloudbeds, a PMS
+whose day has no preview, went from the hook to a real JV.
+- The steps: hook, no preview, Approve. Carmen answered `-500` and wrote the day's 78 missing
+  keys into its own table, with no accounts. The keys were mapped (as in Carmen's screen), then
+  Approve again: JV 1608, 86 lines, balanced, which was voided at once.
+- A second day, unattended, brought back only its 28 new keys.
+- So a `-500` leaves the missing keys readable from Carmen's table, and ask L is optional.
+- Details are in [`07-status.md`](../pms-interface/07-status.md#cloudbeds-the-third-pms-2026-11-06).
+
+**What we learned (2026-11-06).**
+- **Each PMS has its own layout.** HotelTime (dev Data Bank Ids 171–176) keeps its rows in
+  `Revenue`, not `Transaction`. Its mapping table's key columns are `HT_Code`,
+  `HT_Description` and `Department`.
+  - #51's reader cannot key it (`unreadable_day`).
+  - An experiment on dev found the key: `Code`, `Description` and a blank `Department`. Key
+    variants were PUT, then the day was posted; the table was restored and no JV was made.
+  - #51's derivation works only where the day's field names equal the table's columns, as
+    Comanche's do. Carmen cannot be asked to make dozens of PMSs alike.
+- **A PartnerApi PMS has no Data Bank day at all.**
+- **Carmen's post checks the mapping itself and posts nothing unless every key is mapped.** It
+  answers `-500 "Mapping is incomplete."`, naming no key. For other faults it answers an
+  `ErrorList` (HotelTime: "Invalid account codes 1115001"). Neither makes a JV.
+
+**Decision: Carmen's post is the completeness check.** Our only job is the mapping, and only
+Carmen's engine knows a day's keys for every PMS.
+- **Preview where we can.** #51's reader stays as a preview. When it keys the day (Comanche),
+  the new rows go to the AI and the queue as today.
+- **Otherwise a different path, not a failure.** When the reader cannot key the day (another
+  layout, a non-JSON file, a PartnerApi day), processing does not fail:
+  - with auto-post on, it posts and Carmen checks;
+  - with auto-post off, it parks "Ready to post" with no rows shown. Approve sends the day to
+    Carmen, which checks.
+- **Carmen's answer decides.**
+
+  | Answer | Result |
+  |---|---|
+  | `Result:true` | posted; `Id[0]` becomes `jv_no` |
+  | `-200` | `already_posted` |
+  | `-500` | parks `mapping_incomplete`. It is fixed in Carmen's mapping screen, then Approve. Once Carmen sends the missing keys, the AI suggests them in the modal |
+  | no data for the date | `day_not_ready`, retried hourly for 24 hours |
+  | any other refusal | `carmen_rejected`, with Carmen's words |
+- **We open PartnerApi days ourselves.** No hook comes, so after 08:00 ICT the `pms-process`
+  sweep opens yesterday's day for each BU × PMS that has a live key and whose
+  `interfaceThirdParties` row says `From: PartnerApi`. That list is read once a day per BU.
+  - A day that already has a row (a hook came) is skipped.
+  - If the list cannot be read, nothing opens; the next sweep tries again.
+  - Opening is an INSERT, and the sweep works through the days one at a time.
+- **`interfaceThirdParties` stays required.** It proves the PMS has a GL × REVENUE setting, and
+  it says which PMSs are PartnerApi.
+
+**Asks (07-status L and M).**
+- **M:** `interfaceThirdParties` has answered 500 on dev since 2026-11-05. It is a bug, and it
+  blocks every day.
+- **L:** list the missing keys in the `-500` answer, in the mapping table's own column names.
+- **L, questions:** what does a post answer for a date with no data, and does a PartnerApi post
+  take a date range with no `id`?
+- No dry-run and no new route.
+
+**Unchanged.**
+- Auto-post still means "post with nobody pressing". With it off we never post, not even to
+  check.
+- #24 holds: an AI pick reaches Carmen's table only through a person's Approve.
+- A refused post writes nothing, so trying cannot make a wrong JV.
+
+**Coverage.** Every PMS posts. The AI helps where the preview reads the day (Comanche), and
+everywhere once Carmen lists the missing keys.
+
+**Ceilings.**
+- **Throughput:** one day at a time is about 50 per 10 minutes. Past a few hundred BUs it needs
+  a small fixed concurrency, within the 10-connection pool. The hook path's `kick` has no cap
+  and needs the same.
+- **No missing keys:** without them, a `-500` on a PMS the preview cannot read gets no AI help,
+  and the reviewer maps in Carmen. The fallback is a per-PMS field map for the preview
+  (HotelTime: `HT_Code←Code`, `HT_Description←Description`, `Department←""`). It is built only
+  if Carmen never lists the keys and a customer needs it.
+
+## 53. Every PMS is reviewable (2026-11-06)
+
+**Status: built** (branch `feat/pms-every-pms-reviewable`). Amends #52's reader and its "map it
+in Carmen".
+
+**Why.** The user decided every PMS must be reviewable. Under #52 only Comanche showed its rows.
+HotelTime and Cloudbeds showed "rows can't be shown here", and a `-500` sent the reviewer to
+Carmen's own screen.
+
+**Decision.**
+- **One generic reader** (`carmen_config`), not a per-PMS map.
+  - A key column reads the field of its own name (any case), else that name without a `PREFIX_`
+    (HotelTime's `HT_Code ← Code`). With neither, it is blank, which is what Carmen's engine
+    writes (HotelTime's `Department`, Cloudbeds' `Channel`).
+  - The day's rows are the list answering the most key columns. A list named after another of
+    the PMS's sections in `interfaceThirdParties` (`Statistic`) is skipped. A tie goes to the
+    list carrying `Amount`, and a tie even then has no preview.
+  - Checked against the keys Carmen's engine itself wrote on a `-500`: HotelTime 46 of 46,
+    Cloudbeds 78 of 78 (its `Transaction`), and Comanche unchanged.
+- **Carmen names what it lacks.** When a post answers `-500` (auto-post or Approve), the mapping
+  table is read again (`process.with_carmen_keys`).
+  - Every row with no account is a key Carmen's engine wrote, for this day or an earlier one.
+    These rows join the day's, with the AI's suggestions, and the day parks to be mapped in our
+    review.
+  - The review reloads after a refusal, so they show at once. A day nothing can key (a CSV
+    file, a PartnerApi day with no Data Bank row) is reviewable after Carmen's first answer.
+- **Auto-post posts what is ready** (#24), whatever the PMS: a day with new rows waits for a
+  person, and a fully mapped day still posts unattended.
+
+**Accepted (user, 2026-11-06).**
+- The first Approve of a day nothing can key posts with no rows on screen, because Carmen has
+  no dry-run. If its mapping is complete, that Approve makes the JV.
+- Every Carmen row with no account is shown, not only this day's: mapping them all is harmless,
+  and later days need them.
+- The E2E writes accounts into Carmen dev's tables and restores them.
+
+**Consequences.**
+- Ask L (Carmen listing the missing keys in the `-500`) is not needed.
+- #52's fallback idea, a per-PMS field map, is dropped.
+- The AI is now asked for HotelTime's and Cloudbeds' new rows too.
+- `pms.rcMappingIncomplete` now says to map the codes in the review.
+
+## 54. Carmen's preview keys the day; our reader is gone (2026-11-10)
+
+**Status: built** (branch `feat/pms-preview-reader`). Replaces #53's reader. #53's `-500`
+fallback stays as a fallback.
+
+**Why.**
+- The user asked that a PMS new to us show its rows on day one, with no code of ours per PMS.
+  #53's reader guesses a PMS's layout from the mapping table's column names. A PMS that names
+  its fields unlike the columns would have shown no rows until a blind first Approve.
+- Carmen built a preview of a post: `POST /api/interface/interfacePreviewPostGL/{postType}`
+  (ask P), which takes the same body as the post. It answered 500 on 2026-11-09 and has worked
+  since 2026-11-10.
+
+**What the preview is** (dev, 2026-11-10).
+- **Shape.** Not the `ViewPostResult` Swagger names, but a .NET DataTable named `Mapping`:
+  - the mapping table's columns;
+  - one row per line of the day, keyed as Carmen's engine reads it by the BU's INI;
+  - each row with the account the table gives that key (`AccCode` null = unmapped).
+- **Equal to our reader.** On five days across all three PMSs on dev, its keys equal #53's
+  reader's in value and order, and its unmapped rows equal our new keys (Comanche 21,
+  HotelTime 42, Cloudbeds 78).
+- **No side effects.** It makes no JV and writes nothing into the mapping table.
+- **Other behaviour:**
+  - `id` is optional: it reads the day by date.
+  - It takes about 0.6 s.
+  - A date with no data answers 303 `-400 "No Data Found"`, as the post does.
+  - A closed period answers HTTP 500 with Carmen's words.
+- **Not covered:**
+  - amounts, Dr/Cr and the balance line;
+  - an already-posted day (it still answers rows);
+  - the post's own refusals: ask K (DrCr) and ask N (balance account).
+
+**Decision.**
+- **The day's rows come from the preview** (`carmen.preview_pms_gl`, `cfg.preview_rows`).
+  - The preview is given the Data Bank row a post would read: the newest `Id`, or the date
+    alone when there is none. So the review shows what Approve will post.
+  - `rows_key`, `field_for`, `rows_of`, `newest_day` and `other_doc_types` are deleted, and the
+    app no longer reads a day's `FileData` at all.
+- **The preview's own outcomes:**
+  - `-400 No Data` waits hourly (`day_not_ready`), as the post's does.
+  - 401 or 403 is the credential's reason.
+  - Any other failure parks the day with no rows (`preview: false`), and the `-500` fallback
+    brings in the keys Carmen lacks. The preview is not what posts, so it cannot fail a day.
+- **The AI sees no amounts** (user decision 2026-11-10). The preview carries none.
+  - Each key is shown under the BU's own column names (`HT_Code: 1115001 · HT_Description:
+    100 - ABF Revenue`), with the BU's mapped rows as examples.
+  - The prompt no longer assumes Comanche's `code · description` or its ` - VAT`/` - SERVICE`
+    rows.
+- **`amount` leaves the review API** (`PmsRow`, `PmsNewCode`). The screen never showed it
+  (#47), and nothing fills it any more.
+- **`scripts/qa/pms_probe.py`** checks a PMS for a BU before it goes live, posting nothing.
+  - With the menu token: the interface row, the mapping table's key, the Data Bank day, and
+    the preview's rows and new keys.
+  - With a web JWT as well: Revenue's PostType and balance account, failing when a Summary
+    balance account is not in the chart (ask N).
+
+**Consequences.**
+- A PMS keys correctly on its first day if Carmen's engine can read it, whatever its layout.
+  A CSV day is read too, if Carmen reads it.
+- A PMS no longer needs `Amount` to be told from its `Statistic` list. The preview reads only
+  what the INI's `JsonKeys` names.
+- The reviewer still learns of asks K and N only from the post. Carmen adding Amount, Dr/Cr
+  and those errors to the preview would bring them before Approve.

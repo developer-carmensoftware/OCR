@@ -129,6 +129,23 @@ export function usePmsReview(id: string, onClose: () => void, onDone: () => void
       // Carmen's own refusal (a closed period, an account it does not know) stays on
       // screen next to the thing that has to change; the day stays parked.
       setPostError(err.message)
+      // A -500 left the keys Carmen named in the day, to map here (decision-log #53): show
+      // them now, keeping every account the reviewer has picked.
+      getPmsDay(day.id)
+        .then(d => {
+          setDay(d)
+          setPicks(cur =>
+            Object.fromEntries(
+              d.new_codes.map(c => [
+                c.key,
+                cur[c.key]?.acc ? cur[c.key] : { dept: c.dept ?? '', acc: c.acc ?? '' },
+              ])
+            )
+          )
+        })
+        .catch(() => {
+          /* the refusal above is what matters; the day as it was stays on screen */
+        })
     } finally {
       setBusy(false)
     }

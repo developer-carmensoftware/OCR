@@ -343,16 +343,13 @@ async def get_databank_day(
         raise wrap_network_error(e) from e
 
 
-# ── Carmen's PMS posting engine (decision-log #43) ───────────────────────────
+# ── Carmen's PMS posting engine (decision-log #43, #51) ──────────────────────
 #
 # A BU's interface setting holds Carmen's own config per PMS — file layout, Dr/Cr, the
-# mapping key, the counter account — and Carmen's engine posts a Data Bank day by it. We
-# only read the setting and the mapping table, add rows to the table, and ask the engine
-# to post. The menu token (`<hash>|<uuid>`) opens nothing outside `/api/interface`, and
-# the two reads have no `/api/interface` twin yet: until Carmen adds them (CA-116) they
-# answer 404/405 and the day parks with `carmen_config_unreadable`. They live behind
-# this one prefix so that day is a one-line change.
-_PMS_CONFIG_PATH = "/interfacePost"
+# mapping key, the counter account — and Carmen's engine posts a Data Bank day by it. The
+# menu token (`<hash>|<uuid>`) opens nothing outside `/api/interface`, where the setting
+# itself has no twin; what it can read is the BU's list of interfaces and the mapping
+# table. We read those two, add rows to the table, and ask the engine to post.
 
 
 def _quoted(*parts: str) -> str:
@@ -361,11 +358,12 @@ def _quoted(*parts: str) -> str:
     return "/".join(quote(p, safe="") for p in parts)
 
 
-async def get_pms_settings(carmen_token: str) -> list[dict]:
-    """Every GL interface setting of this BU (`Code`, `InterfaceName`, `Configuration`, …)."""
+async def get_interfaces(carmen_token: str) -> list[dict]:
+    """This BU's interfaces and their sections, one row each:
+    `{InterfaceType, InterfaceName, PostToModule, DocType, PostType, From}`."""
     try:
         resp = await get_http_client().get(
-            f"{_base_url()}{_PMS_CONFIG_PATH}/Setting/GL", headers=_headers(carmen_token)
+            f"{_base_url()}/interfaceThirdParties", headers=_headers(carmen_token)
         )
         body = _json_or_raise(resp)
         return body if isinstance(body, list) else []
@@ -373,20 +371,28 @@ async def get_pms_settings(carmen_token: str) -> list[dict]:
         raise wrap_network_error(e) from e
 
 
-async def get_pms_mapping(code: str, post_type: str, carmen_token: str) -> list[dict]:
-    """The rows of one setting's mapping table. Carmen answers a .NET DataTable."""
+async def get_pms_mapping(
+    code: str, post_type: str, carmen_token: str
+) -> tuple[list[dict], list[str]]:
+    """One setting's mapping table: `(rows, column names)`. Carmen answers a .NET DataTable.
+
+    Anything else — Carmen's 303 `Configuration is missing` for a setting it does not
+    have — raises: the table is written back whole on approve, so it is never guessed.
+    """
     try:
         resp = await get_http_client().get(
-            f"{_base_url()}{_PMS_CONFIG_PATH}/mapping/{_quoted(code, post_type, 'GL')}",
+            f"{_base_url()}/interfacePost/mapping/{_quoted(code, post_type, 'GL')}",
             headers=_headers(carmen_token),
         )
         body = _json_or_raise(resp)
-        rows = body.get("Rows") if isinstance(body, dict) else None
-        return [
+        if not isinstance(body, dict) or not body.get("Columns"):
+            raise _fail(resp)
+        rows = [
             {k: v for k, v in r.items() if k not in ("OriginalRow", "RowState")}
-            for r in rows or []
+            for r in body.get("Rows") or []
             if isinstance(r, dict)
         ]
+        return rows, [str(c.get("ColumnName")) for c in body["Columns"] if isinstance(c, dict)]
     except RequestError as e:
         raise wrap_network_error(e) from e
 
@@ -420,6 +426,31 @@ async def post_pms_gl(post_type: str, body: dict, carmen_token: str) -> Any:
     try:
         resp = await get_http_client().post(
             f"{_base_url()}/interfacePostGL/{_quoted(post_type)}",
+            json=body,
+            headers=_headers(carmen_token),
+        )
+        return _json_or_raise(resp)
+    except CarmenAPIError:
+        raise
+    except RequestError as e:
+        raise wrap_network_error(e) from e
+
+
+async def preview_pms_gl(post_type: str, body: dict, carmen_token: str) -> Any:
+    """What Carmen's engine would post for `body`, without posting (ask P, decision-log #54).
+
+    Takes the same body as `post_pms_gl`. Swagger says it answers `ViewPostResult`, but what
+    Carmen actually sends is a .NET DataTable named `Mapping`:
+    - the mapping table's columns;
+    - one row per line of the day, keyed as the engine reads it;
+    - each row with the account the table gives that key (`AccCode` null = none).
+
+    It carries no amounts and no sides. A date with no data comes back as a value (303,
+    `Code -400`), as the post's does. Only ≥ 400 raises, and a closed period is one of those.
+    """
+    try:
+        resp = await get_http_client().post(
+            f"{_base_url()}/interfacePreviewPostGL/{_quoted(post_type)}",
             json=body,
             headers=_headers(carmen_token),
         )

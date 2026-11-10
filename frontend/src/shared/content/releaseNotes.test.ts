@@ -74,4 +74,110 @@ describe('release notes', () => {
   it('newest entry matches the repo-root VERSION file', () => {
     expect(RELEASE_NOTES[0]?.version).toBe(__APP_VERSION__)
   })
+
+  // ---- Language guards ---------------------------------------------------------
+  // The note is read by a Thai accounting clerk and an English reader, so a number
+  // or a product name that exists in only one language is a wrong fact, not a
+  // style issue. These are cheap, mechanical checks; they do not replace reading it.
+  const bulletsOf = (c: { features?: string[]; qol?: string[]; fixes?: { text: string }[] }) => [
+    ...(c.features ?? []),
+    ...(c.qol ?? []),
+    ...(c.fixes ?? []).map(f => f.text),
+  ]
+  const allText = (r: (typeof RELEASE_NOTES)[number]) => [
+    r.en.title,
+    r.th.title,
+    ...bulletsOf(r.en),
+    ...bulletsOf(r.th),
+  ]
+
+  it('no copy has stray spaces, empty strings or unbalanced brackets and quotes', () => {
+    for (const r of RELEASE_NOTES) {
+      for (const t of allText(r)) {
+        expect(t).toBe(t.trim())
+        expect(t).not.toMatch(/ {2}/)
+        expect((t.match(/\(/g) ?? []).length).toBe((t.match(/\)/g) ?? []).length)
+        expect((t.match(/"/g) ?? []).length % 2).toBe(0)
+      }
+    }
+  })
+
+  // The bug class that shipped once: 490 in the copy, 450 on the screen. If a number is
+  // in one language it must be in the other, bullet for bullet.
+  it('each bullet carries the same numbers in EN and TH', () => {
+    const nums = (t: string) =>
+      (t.replace(/\beight\b/gi, '8').match(/\d[\d,]*/g) ?? []).sort().join(',')
+    for (const r of RELEASE_NOTES) {
+      const en = bulletsOf(r.en)
+      const th = bulletsOf(r.th)
+      en.forEach((b, i) => expect(nums(th[i]), `bullet ${i + 1}`).toBe(nums(b)))
+    }
+  })
+
+  // A product name, bank or file type named in one language must be named in the other.
+  it('each bullet names the same products and banks in EN and TH', () => {
+    const NAMED = [
+      'KBANK',
+      'KTC',
+      'GHL',
+      'PayPal',
+      'SiamPay',
+      'PMS',
+      'CSV',
+      'JV',
+      'VAT',
+      'AP',
+      'Lite',
+      'AI JV Automation',
+      'Post without review',
+    ]
+    for (const r of RELEASE_NOTES) {
+      const en = bulletsOf(r.en)
+      const th = bulletsOf(r.th)
+      en.forEach((b, i) => {
+        for (const n of NAMED) {
+          expect(th[i].includes(n), `bullet ${i + 1} "${n}"`).toBe(b.includes(n))
+        }
+      })
+    }
+  })
+
+  it('Thai bullets do not open with lowercase English', () => {
+    for (const r of RELEASE_NOTES) {
+      for (const b of bulletsOf(r.th)) expect(b).not.toMatch(/^[a-z]/)
+    }
+  })
+
+  // One idea per bullet. The caps are loose on purpose; they stop a bullet from quietly
+  // growing into a paragraph, not from being a full sentence.
+  it('titles and bullets stay readable in length', () => {
+    for (const r of RELEASE_NOTES) {
+      expect(r.en.title.length).toBeLessThanOrEqual(70)
+      expect(r.th.title.length).toBeLessThanOrEqual(90)
+      for (const b of bulletsOf(r.en)) expect(b.split(/\s+/).length).toBeLessThanOrEqual(55)
+      for (const b of bulletsOf(r.th)) expect(b.length).toBeLessThanOrEqual(260)
+    }
+  })
+
+  // Wrong facts we have already shipped once, and words the product does not use.
+  it('contains none of the strings known to be wrong or off-label', () => {
+    const BANNED =
+      /Pricing page|490|Bank statements|1\.0\.2|หน้า Pricing|เครดิตเติมเพิ่ม|Carmen AI address/
+    for (const r of RELEASE_NOTES) {
+      for (const t of allText(r)) expect(t).not.toMatch(BANNED)
+    }
+  })
+
+  // Thai keeps English only where the screen does (JV, AP, PMS, KBANK, CSV, VAT,
+  // settlement, gateway, the quoted switch label). Everything else has a Thai word.
+  it('Thai does not fall back to translatable English words', () => {
+    for (const r of RELEASE_NOTES) {
+      for (const t of [r.th.title, ...bulletsOf(r.th)]) {
+        const stripped = t.replace('AP Invoice Processing', '').replace('Post without review', '')
+        expect(stripped).not.toMatch(
+          /\b(journal|voucher|invoice|statement|input tax|credit|plan)\b/i
+        )
+      }
+    }
+  })
 })

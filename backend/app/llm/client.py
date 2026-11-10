@@ -339,6 +339,21 @@ def _strip_code_fences(text: str) -> str:
     return "\n".join(inner).strip()
 
 
+def _loads_object(raw: str) -> Any:
+    """JSON, or a JSON object whose last `}` the model left off.
+
+    The suggestion model sometimes ends a complete object without its closing brace: 3 of 5
+    PMS answers on 2026-11-10, with `finish_reason` "stop" and every entry whole. One brace is
+    added, and only when that alone makes it parse. An answer cut mid-entry still fails.
+    """
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        if not raw.startswith("{"):
+            raise
+        return json.loads(raw + "}")
+
+
 def parse_vision_json(result_text: str) -> dict:
     """Parse a vision-LLM response into a dict, tolerating markdown fences and a
     one-element array wrapper. Anything else raises LLMParseError so the user gets
@@ -571,7 +586,7 @@ async def call_text_llm(
 
     raw = _strip_code_fences(content.strip())
     try:
-        parsed = json.loads(raw)
+        parsed = _loads_object(raw)
         if settings.app_debug:
             logger.debug(
                 "[LLM text] done model=%s duration=%.0fms tokens=%s parsed_keys=%s",

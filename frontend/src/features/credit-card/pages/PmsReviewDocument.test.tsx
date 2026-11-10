@@ -94,6 +94,65 @@ beforeEach(() => {
 })
 
 describe('a parked PMS day', () => {
+  it('says Carmen checks a day whose rows could not be read here, and lets it be approved', async () => {
+    // A day with nothing to read yet (a CSV file, a PartnerApi day with no Data Bank row): no
+    // preview, so Carmen's engine checks the mapping on Approve (decision-log #52, #53).
+    open({
+      ...DAY,
+      interface: 'Guestline',
+      preview: false,
+      rows: [],
+      mapped_count: 0,
+      new_codes: [],
+    })
+    expect(await screen.findByText(/rows can't be shown here/)).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(approveButton()).toBeEnabled()
+  })
+
+  it('says what Carmen found when it refused the post for an unmapped code', async () => {
+    open({ ...DAY, reason_code: 'pms_mapping_incomplete', error_message: 'Mapping is incomplete.' })
+    expect(await screen.findByText(/has no account for some codes/)).toBeInTheDocument()
+  })
+
+  it("lays out another PMS's table by its own key columns", async () => {
+    const ht = '["4100001","001 - Room Charge (Auto)",""]'
+    open({
+      ...DAY,
+      interface: 'HotelTime',
+      key_columns: ['HT_Code', 'HT_Description', 'Department'],
+      rows: [
+        {
+          key: ht,
+          values: {
+            HT_Code: '4100001',
+            HT_Description: '001 - Room Charge (Auto)',
+            Department: '',
+          },
+        },
+      ],
+      mapped_count: 0,
+      new_codes: [
+        {
+          key: ht,
+          label: '4100001 · 001 - Room Charge (Auto)',
+          values: {
+            HT_Code: '4100001',
+            HT_Description: '001 - Room Charge (Auto)',
+            Department: '',
+          },
+          dept: '103',
+          acc: '4010001',
+        },
+      ],
+    })
+    const head = within(await screen.findByRole('table')).getAllByRole('columnheader')
+    expect(head.map(h => h.textContent)).toEqual(
+      expect.arrayContaining(['HT_Code', 'HT_Description', 'Department'])
+    )
+    expect(screen.getByText('4100001')).toBeInTheDocument()
+  })
+
   it('is one table laid out as Carmen maps, and nothing about the sides', async () => {
     open()
     expect(await screen.findByText('Comanche · Daily ·', { exact: false })).toBeInTheDocument()
@@ -221,6 +280,41 @@ describe('a parked PMS day', () => {
     expect(
       await screen.findByText("Carmen didn't post the day: Mapping is incomplete.")
     ).toBeInTheDocument()
+  })
+
+  it('after a refusal the day reloads with the codes Carmen named, keeping the picks', async () => {
+    const named = '["730","Rebate - Other"]'
+    vi.mocked(api.approvePmsDay).mockRejectedValue(
+      Object.assign(new Error("Carmen didn't post the day: Mapping is incomplete."), {
+        status: 400,
+      })
+    )
+    open()
+    await screen.findAllByText('729')
+    vi.mocked(api.getPmsDay).mockResolvedValue({
+      ...DAY,
+      reason_code: 'pms_mapping_incomplete',
+      rows: [...DAY.rows, { key: named, values: { Code: '730', Description: 'Rebate - Other' } }],
+      new_codes: [
+        ...DAY.new_codes,
+        {
+          key: named,
+          label: '730 · Rebate - Other',
+          values: { Code: '730', Description: 'Rebate - Other' },
+          dept: 'GEN',
+          acc: '1021001',
+        },
+      ],
+    })
+    fireEvent.click(approveButton())
+    expect(await screen.findByText('730')).toBeInTheDocument()
+    expect(api.getPmsDay).toHaveBeenCalledTimes(2)
+    expect(
+      screen.getByText("Carmen didn't post the day: Mapping is incomplete.")
+    ).toBeInTheDocument()
+    // The AI's account for 729 is still the pick, and the new code came with the AI's.
+    expect(screen.getByLabelText('Account for 729 · Rebate - Misc. (VAT)')).toHaveValue('4240011')
+    expect(screen.getByLabelText('Account for 730 · Rebate - Other')).toHaveValue('1021001')
   })
 
   it('a day someone else handled says so', async () => {

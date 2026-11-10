@@ -15,14 +15,12 @@ import pytest
 from app.exceptions import CarmenServiceError, ConflictError, NotFoundError, ValidationError
 from app.services.pms import carmen_config as cfg
 from app.services.pms import review
-from app.services.pms.process import PostRefused
+from app.services.pms.process import MappingIncomplete, PostRefused
 from app.services.shared.carmen import CarmenAPIError
-from tests.unit.test_pms_carmen_config import COMANCHE_INI, DAY, TABLE
+from tests.unit.test_pms_carmen_config import COLUMNS, ROWS, TABLE, TABLE_COLUMNS
 
-SPEC = cfg.spec_of(cfg.parse_ini(COMANCHE_INI))
-ROWS = cfg.rows_of(DAY, SPEC)
 KEY = {r["values"]["Description"]: r["key"] for r in ROWS}
-MAPPED = cfg.table_of(TABLE, SPEC.columns)
+MAPPED = cfg.table_of(TABLE, COLUMNS)
 GUESS = {
     KEY["Room Charge - VAT"]: {"dept": "GEN", "acc": "2012003", "confidence": "high", "why": "tax"}
 }
@@ -32,8 +30,7 @@ PAYLOAD = {
     "doc_date": "2025-10-20",
     "setting_code": "Comanche.PMS",
     "post_type": "REVENUE",
-    "counter": {"dept": "GEN", "acc": "1021001", "name": "A/R - Guest Ledger"},
-    "key_columns": SPEC.columns,
+    "key_columns": COLUMNS,
     "rows": ROWS,
     "mapped": {k: v for k, v in MAPPED.items() if k in {r["key"] for r in ROWS}},
     "guessed": GUESS,
@@ -53,7 +50,7 @@ PICKS = {
     KEY["Cash - Advance Payment"]: {"dept": "GEN", "acc": "1010001"},
     KEY["Guest Ledger"]: {"dept": "GEN", "acc": "1021001"},
 }
-POSTED = "posted"
+POSTED = ("posted", "1599")  # post_day: (outcome, the JV's seq from Carmen's `Id`)
 
 
 class _Approve:
@@ -89,7 +86,11 @@ class _Approve:
             ),
             "release": patch.object(review, "_release", AsyncMock()),
             "target": patch.object(review, "_target", AsyncMock(return_value=target)),
-            "read": patch.object(review.carmen, "get_pms_mapping", mock(table)),
+            "read": patch.object(
+                review.carmen,
+                "get_pms_mapping",
+                mock(table if isinstance(table, Exception) else (table, TABLE_COLUMNS)),
+            ),
             "put": patch.object(review.carmen, "put_pms_mapping", mock(put or {"Code": 0})),
             "masters": patch.object(
                 review.mapping, "masters", AsyncMock(return_value=(ACCOUNTS, DEPTS))
@@ -112,7 +113,14 @@ class _Approve:
 @pytest.mark.asyncio
 async def test_approve_writes_the_whole_table_then_has_carmen_post_the_day():
     run = _Approve()
-    assert await run(PICKS) == {"jv_no": None, "already_posted": False}
+    assert await run(PICKS) == {"jv_no": "1599", "already_posted": False}
+    # The day is stored posted with the JV Carmen named, for the queue's Open JV.
+    written = [
+        c.args[0].compile().params
+        for c in run.db.execute.await_args_list
+        if "jv_no" in c.args[0].compile().params
+    ]
+    assert [(w["status"], w["jv_no"]) for w in written] == [("posted", "1599")]
     code, post_type, rows, token = run.m["put"].await_args.args
     assert (code, post_type, token) == ("Comanche.PMS", "REVENUE", "tok")
     # Every row Carmen had goes back (the PUT replaces the table), the blank one filled in.
@@ -145,7 +153,7 @@ async def test_approve_writes_the_whole_table_then_has_carmen_post_the_day():
 
 @pytest.mark.asyncio
 async def test_a_day_carmen_had_already_posted_is_done():
-    run = _Approve(post="already_posted")
+    run = _Approve(post=("already_posted", None))
     assert await run(PICKS) == {"jv_no": None, "already_posted": True}
 
 
@@ -236,12 +244,59 @@ async def test_a_failed_write_never_posts():
 @pytest.mark.asyncio
 async def test_carmen_saying_no_is_a_400_and_carmen_unreachable_a_503():
     run = _Approve(post=PostRefused("Period is closed"))
-    with pytest.raises(ValidationError, match="Period is closed"):
-        await run(PICKS)
+    with patch.object(review, "_note", AsyncMock()) as note:
+        with pytest.raises(ValidationError, match="Period is closed"):
+            await run(PICKS)
+    # Carmen's latest word replaces an older reason ("mapping incomplete" once fixed in Carmen).
+    note.assert_awaited_once_with(run.pk, "carmen_rejected", "Period is closed")
     run.m["release"].assert_awaited_once()
     run = _Approve(post=CarmenAPIError(504, "Carmen Server request timed out."))
-    with pytest.raises(CarmenServiceError, match="Approving again is safe"):
-        await run(PICKS)
+    with patch.object(review, "_note", AsyncMock()) as note:
+        with pytest.raises(CarmenServiceError, match="Approving again is safe"):
+            await run(PICKS)
+    note.assert_not_awaited()  # Carmen said nothing about the day: nothing to record
+
+
+@pytest.mark.asyncio
+async def test_carmen_finding_a_key_unmapped_parks_the_day_with_the_keys_it_named():
+    """Carmen's engine checks the mapping itself and writes each key it lacks into its table
+    with no account (decision-log #53): the day stays parked holding those keys and the AI's
+    suggestions, to map here and approve again."""
+    named = {
+        "Code": "729",
+        "Description": "Rebate - Misc. (VAT)",
+        "DeptCode": None,
+        "AccCode": None,
+    }
+    rebate = cfg.key_id(["729", "Rebate - Misc. (VAT)"])
+    ai = {rebate: {"dept": "GEN", "acc": "1021001", "confidence": "low", "why": "rebate"}}
+    run = _Approve(post=MappingIncomplete("Mapping is incomplete."))
+    reads = AsyncMock(side_effect=[(TABLE, TABLE_COLUMNS), (TABLE + [named], TABLE_COLUMNS)])
+    run.patches["read"] = patch.object(review.carmen, "get_pms_mapping", reads)
+    with (
+        patch.object(review, "_note", AsyncMock()) as note,
+        patch.object(review.mapping, "suggest", AsyncMock(return_value=ai)) as suggest,
+    ):
+        with pytest.raises(ValidationError, match="Mapping is incomplete"):
+            await run(PICKS)
+    pk, reason, words, payload = note.await_args.args
+    assert (pk, reason, words) == (run.pk, "pms_mapping_incomplete", "Mapping is incomplete.")
+    assert rebate in {r["key"] for r in payload["rows"]}  # Carmen's key joins the day's rows
+    assert payload["guessed"][rebate]["acc"] == "1021001" and payload["preview"] is True
+    assert rebate in suggest.await_args.args[0]
+    run.m["release"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_day_with_no_preview_posts_by_date_with_nothing_to_write():
+    """No rows could be read here (another layout, or a PMS Carmen fetches itself): Approve
+    writes nothing and asks Carmen to post, which checks the mapping (decision-log #52)."""
+    blind = {**PAYLOAD, "rows": [], "mapped": {}, "guessed": {}, "flags": [], "preview": False}
+    blind.pop("databank_id")
+    run = _Approve(payload=blind)
+    await run({})
+    run.m["put"].assert_not_awaited()
+    assert run.m["post"].await_args.args[2] is None
 
 
 @pytest.mark.asyncio
@@ -271,16 +326,15 @@ async def test_get_day_lists_the_rows_carmen_cannot_place_and_what_the_others_ma
         "Guest Ledger · Guest Ledger",
     ]
     vat = day["new_codes"][0]
-    assert (vat["amount"], vat["dept"], vat["acc"], vat["confidence"]) == (
-        "11525.06",
-        "GEN",
-        "2012003",
-        "high",
-    )
+    assert (vat["dept"], vat["acc"], vat["confidence"]) == ("GEN", "2012003", "high")
+    # No amount: Carmen's preview carries none (decision-log #54).
+    assert "amount" not in vat
     assert day["mapped_count"] == 1
     assert day["rows"][0] == {**ROWS[0], "dept": "103", "acc": "4010001", "name": "Room Revenue"}
+    # A day processing could key shows its rows; one it could not says so (#52).
+    assert day["preview"] is True
     assert (day["setting_code"], day["post_type"]) == ("Comanche.PMS", "REVENUE")
-    assert day["counter"]["acc"] == "1021001"
+    assert "counter" not in day
 
 
 @pytest.mark.asyncio

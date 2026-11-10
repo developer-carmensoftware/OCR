@@ -111,7 +111,7 @@ async def authenticate(
     """The live key this plaintext belongs to, or None — never says which check failed.
 
     Stamps `last_used_at`/`last_used_ip`, which is how the admin page answers "is Carmen
-    actually calling?". The caller's commit makes it stick.
+    actually calling?". The caller's commit makes it stick. `why_refused` says why, for us.
     """
     if not plaintext:
         return None
@@ -134,6 +134,25 @@ async def authenticate(
         update(APIKey).where(APIKey.id == key.id).values(last_used_at=now, last_used_ip=ip)
     )
     return key
+
+
+async def why_refused(db: AsyncSession, plaintext: str) -> str:
+    """Why `authenticate` refused this plaintext, without repeating any of it — for our log
+    only, so we can tell Carmen what to fix; the caller still learns nothing."""
+    if not plaintext:
+        return "no key in Authorization (header missing or empty)"
+    if not plaintext.startswith(PREFIX):
+        if plaintext.count(".") == 2:
+            return f"a JWT, not a {PREFIX} key"
+        if PREFIX in plaintext:
+            return f"{PREFIX} key with {plaintext.index(PREFIX)} chars before it"
+        return f"not a {PREFIX} key ({len(plaintext)} chars)"
+    key = await db.scalar(select(APIKey).where(APIKey.key_hash == hash_key(plaintext)))
+    if key is None:
+        return "unknown key: never issued by this backend"
+    if key.revoked_at is not None:
+        return f"revoked key {key.key_prefix}, revoked {key.revoked_at:%Y-%m-%d %H:%M} UTC"
+    return f"key {key.key_prefix}: its BU is inactive or deleted, or the key's scope or expiry"
 
 
 def key_row(key: APIKey, tenants: dict[str, dict[str, str]]) -> dict:

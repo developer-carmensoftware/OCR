@@ -14,7 +14,6 @@ day. Then it re-checks this BU's other parked days, which may now be fully mappe
 import logging
 import uuid
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import or_, select, update
@@ -30,22 +29,16 @@ from app.services.pms import carmen_config as cfg
 from app.services.pms import mapping
 from app.services.pms.process import (
     REVIEW_CLAIM_TTL,
+    MappingIncomplete,
     PostRefused,
     _target,
     carmen_words,
     post_day,
+    with_carmen_keys,
 )
 from app.services.shared import api_keys, carmen
 
 logger = logging.getLogger(__name__)
-
-
-def _total(amounts: list[str]) -> str:
-    """The amount a key's rows add up to, as written — a key is usually one row."""
-    try:
-        return str(sum((Decimal(a) for a in amounts if a), Decimal(0)))
-    except InvalidOperation:
-        return amounts[0] if amounts else ""
 
 
 async def get_day(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) -> dict | None:
@@ -68,14 +61,12 @@ async def get_day(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) -
     for key in keys:
         if key in mapped:
             continue
-        mine = [r for r in rows if r["key"] == key]
         pick = guessed.get(key) or {}
         new_codes.append(
             {
                 "key": key,
                 "label": cfg.label(key),
-                "values": mine[0]["values"] if mine else {},
-                "amount": _total([r["amount"] for r in mine]),
+                "values": next((r["values"] for r in rows if r["key"] == key), {}),
                 "dept": pick.get("dept"),
                 "acc": pick.get("acc"),
                 "confidence": pick.get("confidence"),
@@ -91,8 +82,9 @@ async def get_day(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) -
         "error_message": row.error_message,
         "setting_code": payload.get("setting_code"),
         "post_type": payload.get("post_type"),
-        "counter": payload.get("counter") or {},
         "key_columns": payload.get("key_columns") or [],
+        # False: this PMS's rows could not be read here; Carmen checks the mapping on Approve.
+        "preview": payload.get("preview", True),
         "rows": [{**r, **(mapped.get(r["key"]) or {})} for r in rows],
         "mapped_count": sum(1 for k in keys if k in mapped),
         "new_codes": new_codes,
@@ -129,6 +121,23 @@ async def _claim(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) ->
     if status == "pending_review":
         raise ConflictError("Another reviewer is posting this day right now")
     raise ConflictError("Someone else has already handled this day")
+
+
+async def _note(event_pk: uuid.UUID, reason: str, error: str, payload: dict | None = None) -> None:
+    """Record why Carmen refused a parked day's post; the day stays parked.
+
+    `payload`: the day's review as Carmen's refusal left it to map (`with_carmen_keys`).
+    """
+    values: dict[str, Any] = {"reason_code": reason, "error_message": error[:500]}
+    if payload is not None:
+        values["review_payload"] = payload
+    async with async_session() as db:
+        await db.execute(
+            update(PmsEvent)
+            .where(PmsEvent.id == event_pk, PmsEvent.status == "pending_review")
+            .values(**values)
+        )
+        await db.commit()
 
 
 async def _release(event_pk: uuid.UUID) -> None:
@@ -195,7 +204,7 @@ async def approve(
         uri_ctx = current_carmen_uri.set(uri)
 
         try:
-            current = await carmen.get_pms_mapping(code, post_type, token)
+            current, _ = await carmen.get_pms_mapping(code, post_type, token)
         except carmen.CarmenAPIError as exc:
             raise CarmenServiceError(
                 f"Couldn't read Carmen's {payload.get('interface')} mapping, so nothing was "
@@ -222,8 +231,21 @@ async def approve(
                 ) from exc
 
         try:
-            outcome = await post_day(payload, payload["doc_date"], payload["databank_id"], token)
+            outcome, jv_no = await post_day(
+                payload, payload["doc_date"], payload.get("databank_id"), token
+            )
+        except MappingIncomplete as exc:
+            # The day stays parked, now saying why and holding the keys Carmen's engine named
+            # (it writes them into its table with no account) for the reviewer to map here,
+            # then Approve again (decision-log #53).
+            await _note(
+                event_pk, "pms_mapping_incomplete", str(exc), await with_carmen_keys(payload, token)
+            )
+            raise ValidationError(f"Carmen didn't post the day: {exc}") from exc
         except PostRefused as exc:
+            # Carmen's latest word replaces an earlier one, as the sweep's refusal does: a day
+            # whose mapping was fixed in Carmen must not keep saying "mapping incomplete".
+            await _note(event_pk, "carmen_rejected", str(exc))
             raise ValidationError(f"Carmen didn't post the day: {exc}") from exc
         except carmen.CarmenAPIError as exc:
             raise CarmenServiceError(
@@ -237,7 +259,7 @@ async def approve(
                 .where(PmsEvent.id == event_pk)
                 .values(
                     status="posted",
-                    jv_no=None,
+                    jv_no=jv_no,
                     review_payload=None,
                     reason_code="already_posted" if outcome == "already_posted" else None,
                     error_message=None,
@@ -251,7 +273,7 @@ async def approve(
         if chosen:
             fresh = {**table, **{k: {**v, "name": ""} for k, v in chosen.items()}}
             await recheck(tenant_id, payload.get("interface") or "", fresh)
-        return {"jv_no": None, "already_posted": outcome == "already_posted"}
+        return {"jv_no": jv_no, "already_posted": outcome == "already_posted"}
     finally:
         if uri_ctx is not None:
             current_carmen_uri.reset(uri_ctx)

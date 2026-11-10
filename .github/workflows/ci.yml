@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: ["main"]
 
-# Least privilege: jobs only read the repo. (codeql.yml requests its own write scope.)
+# Least privilege: jobs only read the repo.
 permissions:
   contents: read
 
@@ -129,9 +129,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Pinned, not `latest`: CLI 3.0.0 (2026-11-03) refuses this repo's config.toml
+      # ("[inbucket] … is no longer supported. Use [local_smtp]"), which failed this job on
+      # every PR. 2.121.0 is the version the local recipe uses. Move to 3.x together with a
+      # config.toml migration, in its own PR.
       - uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: 2.121.0
 
       # `supabase db reset` boots the bundled Supabase Postgres (ships pg_cron,
       # pgvector, partitioning) and applies schemas/ + migrations/ + seed. Fails

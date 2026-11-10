@@ -13,6 +13,7 @@ The keys and the auto-post switch are set from Carmen's PMS setting screen, thro
 `routers/pms_carmen.py`. Contract: docs/PMS_INTEGRATION.md.
 """
 
+import logging
 import re
 from datetime import UTC, datetime
 from uuid import UUID
@@ -21,7 +22,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import func, or_, update
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_session
@@ -42,10 +42,12 @@ from app.models.schemas.pms import (
 from app.routers.admin.deps import require_maintenance_auth
 from app.services.pms import process
 from app.services.pms import review as pms_review
-from app.services.shared.api_keys import PMS_SCOPE, authenticate
+from app.services.shared.api_keys import PMS_SCOPE, authenticate, why_refused
 from app.utils.client_ip import get_client_ip
 
 router = APIRouter(prefix="/api/v1/pms", tags=["PMS"])
+
+logger = logging.getLogger(__name__)
 
 # The hook is four short fields (the data stays in Carmen's Data Bank); anything near
 # this size is not Carmen.
@@ -65,6 +67,10 @@ async def _pms_key(
     token = re.sub(r"^\s*bearer\s+", "", authorization or "", flags=re.IGNORECASE).strip()
     key = await authenticate(db, token, PMS_SCOPE, get_client_ip(request))
     if key is None:
+        reason = await why_refused(db, token)
+        logger.warning("PMS key refused: %s", reason)
+        # Also on this 401's performance_logs row (resource_id), so SQL can read it.
+        request.state.document_ref = f"PMS key refused: {reason}"[:255]
         raise HTTPException(401, "Invalid API key", headers={"WWW-Authenticate": "Bearer"})
     current_tenant_id.set(str(key.tenant_id))
     # PerformanceMiddleware only decodes our JWTs; this is how the row gets its tenant.
@@ -94,16 +100,12 @@ async def receive_event(
         # store, however valid. Carmen generates each PMS's key on that PMS's setting.
         raise HTTPException(403, f"This key is for PMS '{key.interface_name}'")
 
-    new_id = await db.scalar(
-        insert(PmsEvent)
-        .values(
-            tenant_id=key.tenant_id,
-            event_id=event.key,
-            type=event.interface_type,
-            payload=event.model_dump(by_alias=True, mode="json"),
-        )
-        .on_conflict_do_nothing(index_elements=["tenant_id", "event_id"])
-        .returning(PmsEvent.id)
+    new_id = await process.store_day(
+        db,
+        key.tenant_id,
+        event.key,
+        event.interface_type,
+        event.model_dump(by_alias=True, mode="json"),
     )
     duplicate = new_id is None
     process_it = not duplicate

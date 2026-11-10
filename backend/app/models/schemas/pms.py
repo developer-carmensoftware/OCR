@@ -141,8 +141,6 @@ class PmsNewCode(BaseModel):
     key: str
     label: str
     values: dict[str, str]
-    # As the PMS wrote it; Carmen's engine decides which side it posts to.
-    amount: str
     # The AI's pick, when it made a usable one.
     dept: str | None = None
     acc: str | None = None
@@ -150,20 +148,12 @@ class PmsNewCode(BaseModel):
     why: str | None = None
 
 
-class PmsCounter(BaseModel):
-    """The account Carmen's setting posts the day's remainder to (its Summary line)."""
-
-    dept: str = ""
-    acc: str = ""
-    name: str = ""
-
-
 class PmsRow(BaseModel):
-    """One row of the day as Carmen keys it, with the account Carmen's table gives it."""
+    """One row of the day as Carmen keys it, with the account Carmen's table gives it. No
+    amount: Carmen's preview carries none, and debit, credit and totals are its engine's."""
 
     key: str
     values: dict[str, str]
-    amount: str
     dept: str | None = None
     acc: str | None = None
     name: str | None = None
@@ -181,8 +171,10 @@ class PmsDayOut(BaseModel):
     error_message: str | None = None
     setting_code: str
     post_type: str
-    counter: PmsCounter
     key_columns: list[str]
+    # False when this PMS's rows could not be read here (another layout, a PMS Carmen fetches
+    # at post time): no rows are shown, and Carmen checks the mapping on Approve (#52).
+    preview: bool = True
     rows: list[PmsRow]
     mapped_count: int
     new_codes: list[PmsNewCode]
@@ -194,7 +186,7 @@ class PmsApproveIn(BaseModel):
 
 
 class PmsApproveOut(BaseModel):
-    # Carmen's engine answers "Posting complete." without the JV's number (CA-116).
+    # The JV's seq, from the engine's answer `Id` (ask D); null on "already posted".
     jv_no: str | None = None
     # Carmen had already posted this day (by its own Post button, or an earlier approve).
     already_posted: bool = False

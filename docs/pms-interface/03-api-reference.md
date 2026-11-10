@@ -99,23 +99,22 @@ checks:
   "reason_code": null,          // set when the pipeline stopped it (carmen_rejected, …)
   "error_message": null,        // Carmen's own words, for those
   "setting_code": "Comanche.PMS", "post_type": "REVENUE",
-  "counter": {"dept": "GEN", "acc": "1021001", "name": "…"},
   "key_columns": ["Code", "Description"],
-  "rows": [                     // every row of the day, in file order; Carmen's account where it has one
+  "rows": [                     // every row of the day, in Carmen's preview order; Carmen's account where it has one
     {"key": "[\"100\",\"Room Charge\"]", "values": {"Code": "100", "Description": "Room Charge"},
-     "amount": "153068.41", "dept": "101", "acc": "4010001", "name": "Room Revenue"}
+     "dept": "101", "acc": "4010001", "name": "Room Revenue"}
   ],
   "mapped_count": 23,
   "new_codes": [                // one per new key; the AI's pick when it made a usable one
-    {"key": "[\"729\",\"…\"]", "label": "729 · …", "values": {…}, "amount": "-849.62",
+    {"key": "[\"729\",\"…\"]", "label": "729 · …", "values": {…},
      "dept": "101", "acc": "4010006", "confidence": "low", "why": "…"}
   ]
 }
 ```
 
-`key` is opaque to the client: send it back unchanged as the key of `mappings`. `amount` is
-the string the PMS wrote. The review screen reads neither `amount` nor `confidence`/`why`
-(decision-log #47); they stay in the response as the day's record. **There is no side and no total.** `404` when the day is not
+`key` is opaque to the client: send it back unchanged as the key of `mappings`. There is no
+`amount`: Carmen's preview carries none (decision-log #54). The review screen does not read
+`confidence`/`why` (decision-log #47); they stay in the response as the day's record. **There is no side and no total.** `404` when the day is not
 `pending_review` for this BU, or has no payload.
 
 ## `POST /days/{id}/approve`
@@ -134,8 +133,8 @@ the string the PMS wrote. The review screen reads neither `amount` nor `confiden
 | `503` | Carmen's mapping could not be read (**nothing was written**), Carmen did not save the accounts, or the post could not reach Carmen | stays parked |
 
 A key that Carmen's table has meanwhile mapped (by its own screen) keeps Carmen's account, and
-the pick sent for it is ignored. `jv_no` is always `null`: the engine answers "Posting
-complete." without a number (CA-116).
+the pick sent for it is ignored. `jv_no` is the JV's seq from the engine's answer `Id`
+(ask D); `null` when Carmen had already posted the day.
 
 ## `POST /days/{id}/reject`
 
@@ -147,28 +146,32 @@ it is read again.
 
 All under `{carmen_uri}/Carmen.API/api/interface`, with the BU's menu token.
 
-| Call | Function | Answer we rely on | State, 2026-10-16 |
+| Call | Function | Answer we rely on | State, 2026-11-03 |
 |---|---|---|---|
 | `GET /{type}/{name}/{docType}/Date/{docDate}` | `carmen.get_databank_day` | a list of `ViewDataBank` rows (`Id`, `FileData`, `LastModified`, …), or an empty body | works. Needs `Inf.PMS.DataBank` View on the menu user (403 otherwise) |
-| `GET /interfacePost/Setting/GL` | `carmen.get_pms_settings` | every GL interface setting with its `Configuration` | **404 with the menu token.** The route exists only for the web JWT. **This blocks the merge** |
-| `GET /interfacePost/mapping/{code}/{postType}/GL` | `carmen.get_pms_mapping` | a .NET DataTable: `{"Rows": [{Code, Description, DeptCode, AccCode, AccDesc, …}]}` | **works since 2026-10-15** (Carmen added it; 33 rows for Comanche) |
+| `GET /interfaceThirdParties` | `carmen.get_interfaces` | the BU's interfaces × sections: `[{InterfaceType, InterfaceName, PostToModule, DocType, PostType, From}]`, e.g. `{"PMS", "Comanche", "GL", "REVENUE", "Json", "CarmenApi"}` | **works since 2026-11-03** (Carmen added it in place of the setting GET, which is still 404 with the menu token). Carmen's register of third-party integrations, not the BU's settings. `From` says how the third party's data reaches Carmen (the user, 2026-11-03): `CarmenApi` = the third party sends it into Carmen (the Data Bank, then our hook); `PartnerApi` = Carmen fetches it from the third party itself; `null` = a user imports the file (decision-log #51) |
+| `GET /interfacePost/mapping/{code}/{postType}/GL` | `carmen.get_pms_mapping` | a .NET DataTable: `{"Columns": [{ColumnName}…], "Rows": [{Code, Description, DeptCode, AccCode, AccDesc, …}]}`. `Columns` less the account columns is the mapping key. A setting Carmen lacks answers `303` `Code -400 "Configuration is missing"`, which we raise | **works since 2026-10-15** (Carmen added it; 33 rows for Comanche) |
 | `PUT /interfacePost/mapping/{code}/{postType}/GL` | `carmen.put_pms_mapping` | body `[{<key columns>, DeptCode, AccCode}]`. **Replaces the whole table** | works with the menu token (sandbox, 2026-10-14) |
+| `POST /interfacePreviewPostGL/{postType}` | `carmen.preview_pms_gl` | the post's body. Answers a .NET DataTable named `Mapping`, not the `ViewPostResult` Swagger names: the mapping table's columns, one row per line of the day keyed as the engine reads it, and the account each key has (null = none). No amounts, sides or refusals. `id` is optional (by date). `303` `-400 "No Data Found"` when there is no data; HTTP 500 for a closed period. It makes no JV and does not write the table | **works since 2026-11-10** (ask P; 500 on 11-09). Equal to our old reader on five dev days. The day's rows since decision-log #54 |
 | `POST /interfacePostGL/{postType}` | `carmen.post_pms_gl` | see below | works with the menu token |
 | account codes, departments | `carmen.get_account_codes`, `get_departments` | the BU's chart, for the AI and the approve checks | works |
 
 **`interfacePostGL/REVENUE`.** Body:
-`{"Code": "Comanche.PMS", "DateFrom": d, "DateTo": d, "DeptCode": counter, "AccCode": counter, "id": [databankId]}`.
+`{"Code": "Comanche.PMS", "DateFrom": d, "DateTo": d, "id": [databankId]}`. No `DeptCode`/`AccCode`:
+the counter account is Carmen's setting, and the engine reads it from there (decision-log #51).
 
 | Carmen answers | Means | We record |
 |---|---|---|
-| `200` `{"Result": true, "Code": 1}` | posted. **No JV number** | `posted` |
+| `200` `{"Result": true, "Code": 1, "Id": [1599]}` | posted. `Id` holds the JV's seq (ask D, since 2026-11-03; one day, one JV) | `posted`, `jv_no` = `Id[0]` |
 | `303` `{"Code": -200, "UserMessage": "Already Posted."}` | posted before (its own Post button, or an earlier approve) | `posted` + `already_posted` |
 | `303` `{"Code": -500, "UserMessage": "Mapping is incomplete."}` | a row has no account | parked `carmen_rejected` (pipeline) · `400` (approve) |
 | `303` `{"Code": -400, "UserMessage": "Configuration is missing"}` | no `Code` sent | the same |
-| `200` `{"Result": false, "ErrorList": […]}` | e.g. "Account code is empty" when the counter is missing | the same. **Only `Result: true` counts as posted** |
+| `200` `{"Result": false, "ErrorList": […]}` | e.g. "Account code is empty" if the engine cannot find the counter | the same. **Only `Result: true` counts as posted** |
 | `401` / `403` | the token is dead, or lacks a permission | `carmen_unauthorized` / `carmen_forbidden` |
 
 The 303s come back as values, not errors: `_json_or_raise` raises only at ≥ 400.
 
 We measured these on Carmen's `test.PMS` sandbox on 2026-10-14 and 10-15, and voided the JVs afterwards.
-`Code` and the counter are both required. `id` is optional: a date range alone also posts.
+`Code` is required. On 2026-10-15 the counter was too; since then Carmen fills it from its
+setting when it is not sent (proven 2026-11-03: JV 1594 on `test.PMS`). `id` is optional: a date
+range alone also posts.

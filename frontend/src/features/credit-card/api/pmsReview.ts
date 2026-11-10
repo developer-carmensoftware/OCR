@@ -1,11 +1,11 @@
 /**
  * A parked PMS day (CA-119) — the review modal's API. A day is one JV: Carmen's hook named
- * it, the server read it back from Carmen's Data Bank and parked it here.
+ * it, the server had Carmen's engine preview it (decision-log #54) and parked it here.
  *
  * Carmen's engine posts it, by the BU's PMS setting in Carmen (decision-log #43): debit,
- * credit and totals are never computed here, and the screen shows no amounts. The response
- * still carries each row's amount, the AI's confidence and reason, and the setting and counter
- * account Carmen posts with; nothing reads them.
+ * credit and totals are never computed here, and the rows carry no amounts. The response
+ * still carries the AI's confidence and reason, and the setting Carmen posts with; nothing
+ * reads them.
  */
 
 import { apiFetch } from '@/shared/api/client'
@@ -40,6 +40,9 @@ export interface PmsDay {
   error_message: string | null
   /** The mapping key's columns, in order (`Code`, `Description` for Comanche). */
   key_columns: string[]
+  /** False when this PMS's rows could not be read here (another layout, or a PMS Carmen
+   *  fetches itself): no rows to show, and Carmen checks the mapping on Approve (#52). */
+  preview?: boolean
   rows: PmsRow[]
   /** How many of the day's keys Carmen's table already maps. */
   mapped_count: number
@@ -47,7 +50,7 @@ export interface PmsDay {
 }
 
 export interface PmsApproveResult {
-  /** Carmen's engine does not return the JV's number yet (CA-116). */
+  /** The JV's seq, from the engine's answer `Id` (ask D); null when Carmen had already posted it. */
   jv_no: string | null
   /** Carmen had already posted this day — by its own Post button, or an earlier approve. */
   already_posted: boolean

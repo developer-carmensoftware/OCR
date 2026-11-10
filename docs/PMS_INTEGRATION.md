@@ -45,6 +45,9 @@ belongs to exactly that (host, BU) and PMS (decision-log #44).
 
 **Rules:**
 
+- **The hook carries the `cpk_…` key, never your Carmen token.** The Carmen token only proves
+  the Get token call (§6); a hook carrying it gets `401`. Whether the key works is
+  `key.last_used_at` in `GET …/carmen/pms/settings`: empty means no hook has got through yet.
 - A key is returned once, by `POST …/carmen/pms/keys`, and we keep only a hash. If it is lost,
   generate a new one.
 - **One live key per BU and PMS.** Generating a new one revokes the old one at once, so store
@@ -224,12 +227,31 @@ Tracked in CA-116, with what we found on the dev Data Bank:
 3. **The token we use to read the Data Bank and post,** per BU, with no user session. It
    needs to last longer than a few hours, and to hold `Inf.PMS.DataBank` View (a menu user
    without it gets 403).
-4. **The JV number** in `interfacePostGL`'s answer. Today it says "Posting complete." without
-   it.
+4. ~~**The JV number** in `interfacePostGL`'s answer.~~ Done 2026-11-03: the answer's `Id`
+   holds the JV's seq.
 5. **What a repeat hook means.** Is the hook sent on Add *and* on AddOrUpdate? Is a second
    hook for the same day a changed day that we should process again?
 6. **Is the gross Summary line intended?** For Comanche it is 2 × Guest Ledger to the
    counter account, against the Guest Ledger row's credit.
+7. **When a post is refused for mapping, name the missing keys.** Today `interfacePostGL`
+   answers `-500 "Mapping is incomplete."` and says nothing more. Your engine has just keyed
+   the day by the PMS's own setting and found which keys the mapping table lacks. Please list
+   them in the answer, in the mapping table's own column names:
+
+   ```json
+   {"Code": -500, "UserMessage": "Mapping is incomplete.",
+    "Missing": [{"HT_Code": "4100001", "HT_Description": "001 - Room Charge (Auto)", "Department": ""}]}
+   ```
+
+   It is one change in one place, for every PMS, and your users see which codes to map too.
+   Two questions with it:
+   - What does a post answer for a date with no data yet?
+   - Does a post for a PMS you fetch yourself (`From: PartnerApi`) take a date range with no
+     `id`?
+8. **`interfaceThirdParties` answers 500** on dev since 2026-11-05: *"The best overloaded
+   method match for 'string.IsNullOrWhiteSpace(string)' has some invalid arguments"*. It
+   answered on 2026-11-03. We read it first for every day, and its `From` tells us which PMSs
+   you fetch yourself.
 
 ---
 
@@ -242,14 +264,14 @@ generated through `routers/pms_carmen.py` (one live key per tenant and PMS,
 `backend/app/routers/pms.py`, `routers/pms_carmen.py`, `services/shared/api_keys.py`.
 Processing (CA-119) lives in
 `services/pms/`:
-- `carmen_config` reads Carmen's PMS setting (the INI in `ConfigBase64`, the mapping key, the
-  file layout);
+- `carmen_config` derives what Carmen's PMS setting says from `interfaceThirdParties`, the
+  mapping table's columns and the day itself (decision-log #51);
 - `mapping` holds the AI's picks for rows Carmen's table cannot place;
 - `process` is the job, and posts through Carmen's engine;
 - `review` handles approve/reject. Approve writes the mapping table back whole, because
   Carmen's PUT replaces it.
 
-The Carmen calls are in `services/shared/carmen.py` (`get_pms_settings`, `get_pms_mapping`,
+The Carmen calls are in `services/shared/carmen.py` (`get_interfaces`, `get_pms_mapping`,
 `put_pms_mapping`, `post_pms_gl`). Every call uses the BU's stored Carmen credential (#42),
 stored by the Settings API's writes (#44). Decisions:
 [email-automation decision log #39 to #44](email-automation/06-decision-log.md). Our side in full:

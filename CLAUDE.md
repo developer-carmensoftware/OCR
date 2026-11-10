@@ -47,18 +47,22 @@ Every meaningful change is logged in [`changelog/`](changelog/), **one file per 
 
 ## Versioning
 
-**SemVer, stored once in the repo-root [`VERSION`](VERSION) file.** Everything derives from it:
+**SemVer, stored once in the repo-root [`VERSION`](VERSION) file** (full guide: [docs/VERSIONING.md](docs/VERSIONING.md)). Everything derives from it:
 `backend/app/config.py` (`_read_version()` → `app_version` → `/api/version`, and `/docs` where
 `EXPOSE_API_DOCS=true` — dev/QA only, off on prod since 2026-10-30, decision-log #50),
 `frontend/vite.config.ts` (+ `vitest.config.js`) bake it in as `__APP_VERSION__` (shown on Home),
 and `deploy.yml` tags the GitHub Release `v$(cat VERSION)`. `APP_VERSION` in the env still
 overrides the backend value, but it is an override, not the source.
 
+**Phase: `0.x.z` until the PMS interface is complete** (baseline `0.1.0`, 2026-11-05; the product is
+"complete" only when PMS is). At `0.x`, MINOR covers both new capability and a breaking change, and there is no
+MAJOR; `1.0.0` is cut once, at PMS done. The table below applies in full from `1.0.0`. See VERSIONING.md.
+
 | Bump | When |
 |---|---|
 | **PATCH** | bug fix, prompt tweak, perf, copy fix — nothing new to learn |
 | **MINOR** | new user-visible capability: a module, a bank, an admin page, a wizard step |
-| **MAJOR** | breaks someone outside this repo — Carmen posting contract, `/api/v1` shape, forced re-onboard/re-consent |
+| **MAJOR** | breaks someone outside this repo — Carmen posting contract, `/api/v1` shape, forced re-onboard (a `CONSENT_VERSION` re-consent is only MINOR) |
 
 Refactors, CI, and dependency bumps bump **nothing** — same rule `releaseNotes.ts` uses. A deploy
 with no version bump hits the existing tag and simply skips the release; that is the intended path,
@@ -201,20 +205,34 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
       → pms_events, one row per BU × Data Bank day: event_id = "PMS/Comanche/Daily/2026-10-07"
       202 new day · 200 {duplicate:true} same day again (moves updated_at) · 401 · 403 · 413 · 422
   the hook carries no data: storing the day starts processing (services/pms/, process.kick;
-      pg_cron sweeps /api/v1/pms/process/run every 10 min for what a restart left)
+      pg_cron sweeps /api/v1/pms/process/run every 10 min for what a restart left;
+      it also OPENS yesterday's day after 08:00 ICT for each BU × PMS with a live key whose
+      interfaceThirdParties row says From: PartnerApi — Carmen fetches those, no hook comes; #52)
       all with the BU's ONE stored Carmen credential (email_ingest_settings, decision #42)
       NO RULES OF OUR OWN (decision #43): Carmen's engine posts, by Carmen's per-PMS config
-      carmen_config.py: the BU's interface setting (interfacePost/Setting/GL) → its active
-          REVENUE section → the INI in ConfigBase64: file layout + Mapping_MapCode
-          (Comanche [Code][Description]); a non-JSON layout → unsupported_pms_format
-      read the day back: GET /api/interface/PMS/{name}/{docType}/Date/{docDate}
-      Carmen's mapping table (interfacePost/mapping/{setting}/REVENUE/GL) → rows it can't place
+      the setting itself (its INI) is out of the menu token's reach, so carmen_config.py
+          DERIVES it (decision #51): GET /api/interface/interfaceThirdParties → the hook's
+          PMS × GL × REVENUE row (none → pms_setting_missing); code = {InterfaceName}.{InterfaceType}
+      Carmen's mapping table (interfacePost/mapping/{code}/REVENUE/GL): its Columns less
+          DeptCode/AccCode/AccDesc = the key (Comanche Code + Description)
+      the day's Data Bank row: GET /api/interface/PMS/{name}/{docType}/Date/{docDate} → the
+          newest Id only (FileData is never read)
+      the day's rows = CARMEN'S PREVIEW (decision #54): POST /api/interface/interfacePreviewPostGL/
+          REVENUE, the post's own body with that Id → a DataTable, one row per line keyed as
+          the engine reads it by the INI, any PMS, + each key's account (null = none). No
+          amounts (the AI gets none either). -400 No Data → day_not_ready; any other failure →
+          no rows (preview:false), and Carmen's engine checks the mapping when it posts
+          scripts/qa/pms_probe.py <PMS> <day>: the same reads, nothing posted — run it before
+          a PMS goes live
+      Carmen's -500 (sweep or Approve): its table's rows with no account (the keys it just
+          wrote) join the day's, with the AI's picks, to map HERE (process.with_carmen_keys)
+      the table's rows → the day's rows it can't place
       mapping.py: the LLM only for those, shown the BU's own mapped rows as examples
       any new row, or this PMS's auto_post off → pending_review; else post_day →
-          POST /api/interface/interfacePostGL/REVENUE {Code, DateFrom/To, counter, id:[DataBank Id]}
-          (Carmen decides Dr/Cr + the counter line; answers no JV no; -200 = already posted)
-      ⚠ the setting/mapping GETs have no /api/interface twin yet → carmen_config_unreadable
-        until Carmen adds them (CA-116). A repeat hook re-reads an unposted day.
+          POST /api/interface/interfacePostGL/REVENUE {Code, DateFrom/To, id:[DataBank Id]}
+          (no counter: Carmen decides Dr/Cr + the counter line from its setting; answers
+          `Id: [JvhSeq]` → pms_events.jv_no, the queue's Open JV; -200 = already posted).
+          A repeat hook re-reads an unposted day.
 
 #/CreditCardOCR (the AI JV Automation queue) lists PMS days beside email + manual rows
   services/credit_card/activity.py `_pms_*`: one row per BU × day, source "pms"
@@ -248,8 +266,9 @@ already holds one that works (decision-log #45). There is no
 PMS settings page of ours, and the queue's `no_credential` has no fix button: the fix is
 saving the PMS setting in Carmen. `#/admin/api-keys` stays as a support tool: list and
 revoke, **no issuing**. Revoking is how a PMS is switched off (no `modules` row yet).
-PMSs that Carmen's own post API fetches (no Data Bank, no hook) are not built: Carmen will
-list the PMS kinds first.
+PMSs that Carmen's own post API fetches (`From: PartnerApi`: no Data Bank, no hook) are opened
+by the sweep and posted by date alone; the engine's `-500` parks `pms_mapping_incomplete`
+with the keys Carmen named, which are mapped in our review (decision #53). Every PMS is reviewable.
 Contract for Carmen: [`docs/PMS_INTEGRATION.md`](docs/PMS_INTEGRATION.md). **Full docs: [`docs/pms-interface/`](docs/pms-interface/)**
 (requirements → architecture → API → data model → operations → decisions → status/Jira).
 

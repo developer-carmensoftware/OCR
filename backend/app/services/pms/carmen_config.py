@@ -1,140 +1,91 @@
-"""Carmen's own PMS posting config, read the way Carmen's engine reads it (decision-log #43).
+"""What Carmen's PMS posting config says, as far as the menu token can read it (decision-log #43, #51, #54).
 
-A BU's GL interface setting (`interfacePost/Setting/GL`) carries, per section, an INI file in
-base64 (`ConfigBase64`) that Carmen's engine posts a Data Bank day by: where the rows are,
-which of their fields key the mapping table, how debit and credit are told apart, and the
-counter account. Each PMS writes it differently — Comanche signs `Amount`, Hotelogix signs it
-the other way round, GuestLine and Opera carry a D/C column — so nothing about a day's
-sides is decided here. This module reads only what finding the day's mapping keys needs:
-the file layout and `Mapping_MapCode`. Pure: no database, no HTTP.
+Carmen's engine posts a Data Bank day by the BU's GL interface setting, an INI per PMS. The
+INI says:
+- where the rows are;
+- which fields key the mapping table;
+- how debit and credit are told apart;
+- which account is the counter.
+
+The menu token cannot read that setting, because `interfacePost/Setting` has no
+`/api/interface` twin. What it can read is enough:
+- `interfaceThirdParties`: the BU's interfaces and their sections;
+- the mapping table;
+- the engine's preview of a post.
+
+From those (decision-log #51, #54):
+- **The setting's code** is `{InterfaceName}.{InterfaceType}`, Carmen's own rule.
+- **The mapping key** is the table's own columns, less the account they map to.
+- **The day's rows** are what the engine's preview answers. It reads the day by the INI and
+  keys it exactly as a post would, for every PMS, so nothing here reads a PMS's own layout.
+
+Nothing about a day's sides or totals is decided here: those stay Carmen's engine's.
+Pure: no database, no HTTP.
 """
 
-import base64
 import json
-import re
 from dataclasses import dataclass
 
 # The one section posted (user decision 2026-10-14): a day is one JV.
 POST_TYPE = "REVENUE"
-
-
-class UnsupportedFormat(ValueError):
-    """The setting's file is not one this reader takes (only a JSON object for now)."""
-
-
-class UnreadableDay(ValueError):
-    """The Data Bank answered, but not with rows the setting describes."""
-
-
-def parse_ini(text: str) -> dict[str, dict[str, str]]:
-    """Carmen's INI: `[Section]` heads, `key=value` lines, `;` comments.
-
-    A key written twice keeps its last value (Comanche's `[System]` has `UseAccountMap`
-    twice). Lines before the first head belong to `System`.
-    """
-    sections: dict[str, dict[str, str]] = {}
-    current = sections.setdefault("System", {})
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith(";"):
-            continue
-        if line.startswith("[") and line.endswith("]"):
-            current = sections.setdefault(line[1:-1].strip(), {})
-        elif "=" in line:
-            key, value = line.split("=", 1)
-            current[key.strip()] = value.strip()
-    return sections
-
-
-def decode(b64: str) -> str:
-    raw = base64.b64decode(b64)
-    for encoding in ("utf-8-sig", "utf-16"):
-        try:
-            return raw.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return raw.decode("cp874", errors="replace")
+# What a mapping row maps its key to; every other column of the table is part of the key.
+_TARGET_COLUMNS = ("DeptCode", "AccCode", "AccDesc")
 
 
 @dataclass(frozen=True)
 class Section:
-    """The posted section of one setting: what the engine is asked to post with."""
+    """The posting section of one interface: what the engine is asked to post with."""
 
     setting_code: str
     interface: str
     post_type: str
-    counter_dept: str
-    counter_acc: str
-    counter_name: str
-    config: dict
+    file_type: str
 
 
-def find_section(settings: list[dict], interface: str) -> Section | None:
-    """The active PMS setting for `interface`, through its active REVENUE section, or None."""
-    for s in settings:
-        if str(s.get("InterfaceType") or "").upper() != "PMS" or not s.get("IsActive"):
+def find_section(interfaces: list, interface_type: str, interface: str) -> Section | None:
+    """The hook's interface posting REVENUE to GL, in Carmen's list of the BU's interfaces."""
+    for i in interfaces:
+        if not isinstance(i, dict):
             continue
-        if str(s.get("InterfaceName") or "").casefold() != interface.casefold():
-            continue
-        for name, sec in (s.get("Configuration") or {}).items():
-            if (
-                str(name).upper() == POST_TYPE
-                and isinstance(sec, dict)
-                and sec.get("Active")
-                and sec.get("ConfigBase64")
-            ):
-                return Section(
-                    setting_code=str(s.get("Code") or ""),
-                    interface=str(s.get("InterfaceName") or interface),
-                    post_type=POST_TYPE,
-                    counter_dept=str(sec.get("DeptCode") or ""),
-                    counter_acc=str(sec.get("AccCode") or ""),
-                    counter_name=str(sec.get("AccDesc") or ""),
-                    config=parse_ini(decode(sec["ConfigBase64"])),
-                )
+        itype, name = str(i.get("InterfaceType") or ""), str(i.get("InterfaceName") or "")
+        if (
+            itype.casefold() == interface_type.casefold()
+            and name.casefold() == interface.casefold()
+            and str(i.get("PostToModule") or "").upper() == "GL"
+            and str(i.get("DocType") or "").upper() == POST_TYPE
+        ):
+            return Section(
+                setting_code=f"{name}.{itype}",
+                interface=name,
+                post_type=POST_TYPE,
+                file_type=str(i.get("PostType") or ""),
+            )
     return None
 
 
-@dataclass(frozen=True)
-class Spec:
-    """Where a day's rows are and what keys them, as the setting says."""
+def partner_interfaces(interfaces: list) -> dict[str, str]:
+    """The PMSs Carmen fetches from the third party itself (`From: PartnerApi`), posting
+    REVENUE to GL: `{lower-cased name: name as Carmen writes it}`. No hook comes for them,
+    so their days are opened by our sweep (decision-log #52)."""
+    names: dict[str, str] = {}
+    for i in interfaces:
+        if not isinstance(i, dict):
+            continue
+        name = str(i.get("InterfaceName") or "")
+        if (
+            name
+            and str(i.get("InterfaceType") or "").casefold() == "pms"
+            and str(i.get("PostToModule") or "").upper() == "GL"
+            and str(i.get("DocType") or "").upper() == POST_TYPE
+            and str(i.get("From") or "").casefold() == "partnerapi"
+        ):
+            names[name.casefold()] = name
+    return names
 
-    json_keys: str
-    # (field in a Data Bank row, column of Carmen's mapping table), in `Mapping_MapCode` order.
-    pairs: tuple[tuple[str, str], ...]
-    amount_field: str
-    use_mapping: bool
 
-    @property
-    def columns(self) -> list[str]:
-        return [column for _, column in self.pairs]
-
-
-_PAIR = re.compile(r"\[([^:\]]+):([^\]]+)\]")
-
-
-def spec_of(config: dict) -> Spec:
-    system = config.get("System") or {}
-    file_type = system.get("FileType", "")
-    if (
-        file_type.lower() != "json"
-        or system.get("JsonType", "").lower() != "jsonobject"
-        or not system.get("JsonKeys")
-    ):
-        raise UnsupportedFormat(f"{file_type or 'a non-JSON'} file")
-    use_mapping = system.get("UseAccountMap", "").lower() == "true"
-    pairs = tuple(
-        (src.strip(), col.strip())
-        for src, col in _PAIR.findall(system.get("Mapping_MapCode") or "")
-    )
-    if use_mapping and not pairs:
-        raise UnsupportedFormat("a setting that maps accounts but names no mapping key")
-    return Spec(
-        json_keys=system["JsonKeys"],
-        pairs=pairs,
-        amount_field=(config.get("Amount") or {}).get("JsonKeyName", ""),
-        use_mapping=use_mapping,
-    )
+def key_columns(columns: list[str]) -> list[str]:
+    """The mapping table's key columns: all of them but the account a key maps to."""
+    return [c for c in columns if c not in _TARGET_COLUMNS]
 
 
 def key_id(values: list[str]) -> str:
@@ -152,51 +103,22 @@ def short_labels(keys: list[str]) -> list[str]:
     return list(dict.fromkeys(json.loads(k)[0] for k in keys if json.loads(k)))
 
 
-def _items(file_data, json_keys: str) -> list | None:
-    if isinstance(file_data, str):
-        try:
-            file_data = json.loads(file_data)
-        except ValueError:
-            return None
-    items = file_data.get(json_keys) if isinstance(file_data, dict) else None
-    return items if isinstance(items, list) else None
+def preview_rows(answer, columns: list[str]) -> list[dict] | None:
+    """The day's rows from the engine's preview: `[{"key", "values"}]`, in the engine's order.
 
-
-def newest_day(found: list[dict], json_keys: str) -> dict | None:
-    """The Data Bank row to read: the newest one that has rows under `json_keys`.
-
-    Carmen may hold more than one row for a day (a re-run night audit); `LastModified`
-    names the current one.
+    Returns None when the answer is not the preview's table, e.g. a `-400 "No Data Found"`.
+    Each key column reads the preview's column of that name. A blank or null value is `""`,
+    as `table_of` reads the table, so a key means the same thing on both sides. A key the
+    PMS wrote twice stays twice here: `new_keys` reads each once.
     """
-    days = [r for r in found if _items(r.get("FileData"), json_keys)]
-    return max(days, key=lambda r: str(r.get("LastModified") or ""), default=None)
-
-
-def rows_of(file_data, spec: Spec) -> list[dict]:
-    """The day's rows as Carmen keys them: `[{"key", "values", "amount"}]`, in file order.
-
-    `amount` is the field the setting names, as written, for the reviewer to read; nothing
-    here adds, signs or balances it.
-    """
-    items = _items(file_data, spec.json_keys)
-    if items is None:
-        raise UnreadableDay(f"FileData has no {spec.json_keys} list")
+    if not isinstance(answer, dict) or not isinstance(answer.get("Rows"), list):
+        return None
     out = []
-    for item in items:
-        if not isinstance(item, dict):
-            raise UnreadableDay(f"a {spec.json_keys} entry is not an object")
-        values = {
-            col: "" if item.get(src) is None else str(item.get(src)) for src, col in spec.pairs
-        }
-        out.append(
-            {
-                "key": key_id(list(values.values())),
-                "values": values,
-                "amount": ""
-                if item.get(spec.amount_field) is None
-                else str(item.get(spec.amount_field)),
-            }
-        )
+    for r in answer["Rows"]:
+        if not isinstance(r, dict):
+            continue
+        values = {c: str(r.get(c) or "") for c in columns}
+        out.append({"key": key_id(list(values.values())), "values": values})
     return out
 
 
@@ -213,10 +135,26 @@ def table_of(rows: list[dict], columns: list[str]) -> dict[str, dict]:
     return out
 
 
-def new_keys(rows: list[dict], table: dict[str, dict], spec_uses_mapping: bool = True) -> list[str]:
+def blank_keys(rows: list[dict], columns: list[str]) -> list[dict]:
+    """Carmen's mapping rows with no account, once each: `[{"key", "values"}]`.
+
+    Carmen's engine writes there every key a post found unmapped (its `-500`), so these are
+    the keys Carmen is waiting for a person to map, this day's and any earlier day's.
+    """
+    out, seen = [], set()
+    for r in rows:
+        if r.get("AccCode"):
+            continue
+        values = {c: str(r.get(c) or "") for c in columns}
+        key = key_id(list(values.values()))
+        if key not in seen:
+            seen.add(key)
+            out.append({"key": key, "values": values})
+    return out
+
+
+def new_keys(rows: list[dict], table: dict[str, dict]) -> list[str]:
     """The day's keys Carmen's table has no account for, in first-seen order."""
-    if not spec_uses_mapping:
-        return []
     return [k for k in dict.fromkeys(r["key"] for r in rows) if k not in table]
 
 

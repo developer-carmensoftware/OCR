@@ -194,7 +194,8 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
             "uq_credit_orders_one_open_per_tenant",
             "tenant_id",
             unique=True,
-            postgresql_where=text("status = 'in_progress' AND deleted_at IS NULL"),
+            # on_hold is still open (migration 20260701071021 widened the real index)
+            postgresql_where=text("status IN ('in_progress', 'on_hold') AND deleted_at IS NULL"),
         ),
     )
 
