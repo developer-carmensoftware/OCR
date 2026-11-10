@@ -1,12 +1,13 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-02 — AP Invoice Import (AI AP Invoice Automation)
-output: Carmen_Cloud_ERP_FRD-02_AP_Invoice_v1.1.docx
-Document Version: Version 1.1 (As-Built Developer & Test Spec)
+output: Carmen_Cloud_ERP_FRD-02_AP_Invoice_v1.2.docx
+iso-wp: SD
+Document Version: Version 1.2 (As-Built Developer & Test Spec)
 Module ID: `ap_invoice`
 Status: Built, merged to main, in production use
-Source of truth: repo developer-carmensoftware/OCR @ 945c63ea (26/10/2026)
-Date: 27 October 2026
+Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026)
+Date: 2 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 ---
 
@@ -16,6 +17,7 @@ Template: Carmen Cloud ERP FRD Template v1.1
 |---|---|---|---|---|
 | 1.0 | 25/08/2026 | Dev Team | ฉบับแรก — เขียนจากโค้ดที่ merge เข้า main แล้ว ครอบคลุม extraction, postprocess pipeline, field mapping ต่อผู้ขาย, การกระทบยอด และการส่งเข้า Carmen พร้อม gate ladder, error matrix และ QA matrix | Reviewed |
 | 1.1 | 27/10/2026 | Dev Team | ปรับตามโค้ด ณ `945c63ea` — CA-122: header `TaxStatus` เป็น `None` เมื่อผลรวมภาษีของบรรทัดเป็น 0 (เดิม `Pending` ทุกใบ); CA-123: กฎการอ่านเฉพาะผู้ขายตามเลขผู้เสียภาษี (`VENDOR_RULES`) พร้อมคำเตือน `apQtyPriceMismatch` และการแก้เครื่องหมายของบรรทัดส่วนลดที่ qty ติดลบ; บันทึก CA-125 เป็นปัญหาที่ยังเปิดอยู่; คำเตือนเป็น code ที่แปล EN/TH; ขั้นตอนเปลี่ยนเลขที่เมื่อ Carmen แจ้งว่าเลขซ้ำ; path ในตาราง feature ตามโครงสร้างหลัง refactor 25–28/09; API บันทึก field mapping เป็น PUT | Reviewed |
+| 1.2 | 02/11/2026 | Dev Team | ตรวจกับโค้ด ณ `2be6d7c9` แล้วแก้: Carmen ตอบ Code < 0 ได้ HTTP 200 พร้อม body ของ Carmen ไม่ใช่ 503 (EC-19, TC-MAP-07, diagram 8.4b); เลือกหน้าที่ไม่มีอยู่ = 400 ไม่ใช่ 422 (EC-08, §12.1); path ของ Carmen คือ `/accountCode` และ `/vendor` (§7); PDF เสีย = 422 ก่อนหักเครดิต (Gate 3); CA-125 ตัดสินแล้วว่าไม่แก้ prompt (26/10/2026) ยังเปิดไว้พร้อมผลทดสอบ; การลบชื่อไฟล์หลัง 12 เดือน (#322) | |
 
 <!-- pagebreak -->
 
@@ -72,7 +74,7 @@ flowchart LR
 | ไม่รองรับหลายไฟล์ต่อครั้ง | อัปโหลดทีละใบ — ต่างจาก Credit Card OCR ที่รับได้ 10 ไฟล์ |
 | ไม่เก็บส่วนลดรายบรรทัดลง Carmen | Carmen ไม่มี field ส่วนลดรายบรรทัด ระบบใช้ยอดสุทธิต่อบรรทัดแทน ส่วนลดเป็นตัวเลขสำหรับตรวจทานเท่านั้น |
 | ไม่ประมวลผลซ้ำอัตโนมัติ | เอกสารที่ extraction ล้มเหลวได้เครดิตคืน แต่ต้องอัปโหลดใหม่เอง |
-| แก้ปัญหา AI อ่านผู้ซื้อเป็นผู้ขาย และอ่านเลขข้างหัวเอกสาร (เช่น "BN-7") เป็นเลขที่เอกสาร (CA-125) | ยังอยู่ระหว่างแก้บน branch แยก ไม่อยู่ใน main — ผู้ใช้ต้องตรวจชื่อผู้ขาย เลขผู้เสียภาษี และเลขที่เอกสารใน Step 3 ทุกครั้ง |
+| แก้ปัญหา AI อ่านผู้ซื้อเป็นผู้ขาย และอ่านเลขข้างหัวเอกสาร (เช่น "BN-7") เป็นเลขที่เอกสาร (CA-125) | 26/10/2026 ตัดสินว่าไม่แก้ prompt เพราะทุกถ้อยคำที่ลองทำให้เอกสารอื่นอ่านผิด และอาการไม่เกิดซ้ำบน model 3.1 — CA-125 ยังเปิดไว้พร้อมผลทดสอบ จนกว่าจะเจอเอกสารจริงที่อ่านผิดอีก — ผู้ใช้ต้องตรวจชื่อผู้ขาย เลขผู้เสียภาษี และเลขที่เอกสารใน Step 3 ทุกครั้ง |
 | `InvhTotalAmt` ตามการแก้บรรทัดใน Step 3 | ยอดรวมของหัวเอกสารที่ส่ง Carmen เป็นยอดสุทธิตามเอกสาร ไม่ได้เปลี่ยนตามการแก้บรรทัด |
 | เพิ่มกฎการอ่านของผู้ขายรายใหม่โดยไม่ deploy | `VENDOR_RULES` อยู่ในโค้ด ต้อง deploy |
 
@@ -234,9 +236,9 @@ erDiagram
 |---|---|---|
 | OpenRouter (Vision LLM) | Step 1 — 1 ครั้งต่อการอัปโหลด | อ่านหัวเอกสารและตารางรายการ ทุก request แนบ data_collection: deny |
 | OpenRouter (Text LLM) | Step 4 | แนะนำ dept/account ให้ทุกบรรทัดพร้อมกันในคำขอเดียว |
-| `GET /account-codes` | ก่อนขอ suggestion | ผังบัญชีของ BU |
+| `GET /accountCode` | ก่อนขอ suggestion | ผังบัญชีของ BU (แอปเรียกผ่าน proxy `/api/v1/carmen/account-codes`) |
 | `GET /department` | ก่อนขอ suggestion | รายการแผนก |
-| `GET /vendors` | Step 3 | ค้นหาผู้ขายใน Carmen เพื่อผูกกับรหัสผู้ขายจริง |
+| `GET /vendor` | Step 3 | ค้นหาผู้ขายใน Carmen เพื่อผูกกับรหัสผู้ขายจริง (ผ่าน proxy `/api/v1/carmen/vendors`) |
 | `POST /invoice` | Step 4 กด Generate | สร้าง AP Invoice ใน Carmen — Code ≥ 0 คือสำเร็จ |
 
 **ข้อควรทราบ:** ถ้า Carmen ตอบ error ตอนขอผังบัญชีหรือแผนก endpoint /suggest จะคืน status code เดียวกับที่ Carmen ตอบมา ไม่ได้แปลงเป็น 503 — ผู้เรียกจึงเห็นสาเหตุจริงจากฝั่ง Carmen
@@ -376,7 +378,7 @@ flowchart TB
 |---|---|---|---|---|
 | 1 | selected_pages เป็น JSON array ของ index และไม่เกิน 5 หน้า | ValueError | 400 | ไม่เสีย |
 | 2 | นามสกุลรองรับ, ≤ 5 MB, magic bytes ตรง | ValidationError / FileTooLargeError | 400 / 413 | ไม่เสีย |
-| 3 | เปิดไฟล์ได้ด้วยรหัสที่ส่งมา และนับหน้าได้ | `pdf_password_required` | 400 | ไม่เสีย |
+| 3 | เปิดไฟล์ได้ด้วยรหัสที่ส่งมา และนับหน้าได้ | `pdf_password_required` / PDF เสีย (ExtractionError) | 400 / 422 | ไม่เสีย |
 | 4 | module ap_invoice เปิดให้ tenant นี้ | ModuleDisabled | 403 | ไม่เสีย |
 | 5 | มี allowance หรือ credit เหลือพอสำหรับจำนวนหน้าที่จะอ่าน | InsufficientCredits | 402 | ไม่เสีย |
 | — | **consume_document() หักเครดิต n หน่วย โดย n = จำนวนหน้า** | — | — | **เริ่มเสีย** |
@@ -419,7 +421,8 @@ flowchart TB
     G8 -->|yes| G9{Gate 9<br/>every line mapped}
     G9 -->|no| B9([UI blocks Generate])
     G9 -->|yes| G10{Gate 10<br/>Carmen accepts}
-    G10 -->|no| E10([503 invoice failed])
+    G10 -->|Code below 0| E10([200 with Carmen's message<br/>nothing stamped])
+    G10 -->|unreachable| E11([503 or 504 on timeout])
     G10 -->|yes| OK([submitted_at set<br/>audit SUBMIT])
 
     classDef good fill:#DCFCE7,stroke:#16A34A,color:#14532D
@@ -476,7 +479,7 @@ Gate 1–5 ตรวจได้โดยยังไม่ต้องเรี
 | EC-05 | pdf_password_required | PDF เข้ารหัส และไม่ได้ส่งรหัสหรือรหัสผิด | 400 | ไม่เสีย | ใส่รหัสแล้วส่งใหม่ |
 | EC-06 | module_disabled | admin ปิด module นี้ให้ tenant | 403 | ไม่เสีย | ติดต่อผู้ดูแลระบบ |
 | EC-07 | insufficient_credits | เครดิตเหลือไม่พอสำหรับจำนวนหน้าที่จะอ่าน | 402 | ไม่เสีย | ซื้อเครดิต หรือเลือกหน้าให้น้อยลง |
-| EC-08 | pages_out_of_range | เลือกหน้าที่เกินจำนวนหน้าจริงทั้งหมด | 422 | **คืน** | เลือกหน้าที่มีอยู่จริง |
+| EC-08 | pages_out_of_range | เลือกหน้าที่เกินจำนวนหน้าจริงทั้งหมด | 400 | **คืน** | เลือกหน้าที่มีอยู่จริง |
 | EC-09 | llm_unavailable | ต่อ OpenRouter ไม่ได้ หรือ upstream ล่ม | 503 | **คืนทั้ง n** | ลองใหม่ภายหลัง |
 | EC-10 | llm_parse_error | model ตอบมาในรูปแบบที่แปลงเป็นตารางไม่ได้ | 422 | **คืนทั้ง n** | ลองใหม่ หรือเลือกเฉพาะหน้าที่มีตาราง |
 | EC-11 | tax_type_guessed | ทั้ง Include และ Exclude ไม่กระทบยอดกับท้ายเอกสาร ระบบเลือกตัวที่ผิดน้อยกว่า | 200 + warning | ไม่คืน | **ต้องตรวจ taxType เอง** — ถ้าเดาผิดทุกบรรทัดจะเพี้ยนตามอัตราภาษี |
@@ -487,7 +490,7 @@ Gate 1–5 ตรวจได้โดยยังไม่ต้องเรี
 | EC-16 | mapping_incomplete | ยังมีบรรทัดที่ไม่มี dept หรือ account | — (UI) | ไม่คืน | เติมให้ครบ |
 | EC-17 | carmen_lookup_failed | ดึงผังบัญชีหรือแผนกจาก Carmen ไม่ได้ตอนขอ suggestion | ตาม Carmen | ไม่คืน | ลองใหม่ หรือตรวจสิทธิ์ใน Carmen |
 | EC-18 | llm_partial | AI แนะนำได้ไม่ครบทุกบรรทัด response มี llm_partial = true | 200 | ไม่คืน | เติม dept/account บรรทัดที่ขาดเอง |
-| EC-19 | carmen_rejected | Carmen ตอบ Code < 0 หรือต่อไม่ติดตอนสร้างเอกสาร | 503 | ไม่คืน | **ตรวจใน Carmen ก่อนส่งซ้ำ** — ระบบไม่ตรวจซ้ำที่ขั้นนี้ |
+| EC-19 | carmen_rejected | Carmen ตอบ Code < 0 (HTTP 200 พร้อมข้อความของ Carmen, `submitted_at` ไม่ถูก stamp) หรือต่อไม่ติดตอนสร้างเอกสาร (503 / timeout 504) | 200 / 503 / 504 | ไม่คืน | **ตรวจใน Carmen ก่อนส่งซ้ำ** — ระบบไม่ตรวจซ้ำที่ขั้นนี้ |
 | EC-20 | submit_bookkeeping_skipped | Carmen รับเอกสารแล้วแต่ ap_invoice_id ไม่ถูกส่งมาหรือรูปแบบผิด | 200 | ไม่คืน | **เอกสารเข้า Carmen แล้วแต่ draft ยังขึ้นว่ายังไม่ส่ง** |
 | EC-21 | credit_fail_open | DB มีปัญหาชั่วคราวตอนหักเครดิต ระบบปล่อยผ่านเพื่อไม่ให้งานสะดุด | 200 | ไม่เสีย (charged_docs = 0) | ไม่ต้องทำอะไร |
 | EC-22 | apQtyPriceMismatch (v1.1) | ผู้ขายใน `VENDOR_RULES` แต่บรรทัดยังคูณไม่ลงตัว | 200 + warning | ไม่คืน | ตรวจบรรทัดที่ระบุ — ไม่บล็อก |
@@ -512,7 +515,7 @@ Gate 1–5 ตรวจได้โดยยังไม่ต้องเรี
 ## 10.3 Audit Trail & Logging
 
 - บันทึก audit 3 จุด: EXTRACT ตอนอัปโหลด, SUGGEST_GL ตอนขอ AI แนะนำ, SUBMIT ตอนสร้างเอกสารใน Carmen สำเร็จ
-- ทุกงานถูกบันทึกใน ocr_tasks รวมทั้งที่ล้มเหลว พร้อม error_message และจำนวนหน้าที่หัก
+- ทุกงานถูกบันทึกใน ocr_tasks รวมทั้งที่ล้มเหลว พร้อม error_message และจำนวนหน้าที่หัก — หลัง 12 เดือน cron `scrub-old-filenames` ล้าง error_message, ตั้งชื่อไฟล์ใน ocr_tasks เป็น `'scrubbed'` และล้าง `ap_invoices.original_filename` (จำนวนหน้าและยอดยังอยู่)
 
 ## 10.4 Data Minimization
 
@@ -538,7 +541,7 @@ Gate 1–5 ตรวจได้โดยยังไม่ต้องเรี
 | เสร็จ | Audit logging EXTRACT / SUGGEST_GL / SUBMIT |
 | เสร็จ (v1.1) | `TaxStatus` None/Pending ตามผลรวมภาษีของบรรทัด (CA-122) |
 | เสร็จ (v1.1) | `VENDOR_RULES` + คำเตือน `apQtyPriceMismatch` + `_sign_on_price` (CA-123) |
-| กำลังแก้ | AI อ่านผู้ซื้อเป็นผู้ขาย / เลขที่เอกสารผิด (CA-125) — ยังไม่อยู่ใน main |
+| ไม่แก้ (ตัดสิน 26/10/2026) | AI อ่านผู้ซื้อเป็นผู้ขาย / เลขที่เอกสารผิด (CA-125) — ไม่เปลี่ยน prompt, ticket เปิดไว้พร้อมผลทดสอบ |
 
 ## 11.2 Acceptance Criteria
 
@@ -573,7 +576,8 @@ Gate 1–5 ตรวจได้โดยยังไม่ต้องเรี
 | 402 | เครดิตไม่พอสำหรับจำนวนหน้าที่จะอ่าน |
 | 403 | module ถูกปิดสำหรับ tenant นี้ |
 | 413 | ไฟล์ใหญ่เกิน 5 MB |
-| 422 | หน้าที่เลือกไม่มีอยู่จริง หรือ LLM ตอบมาในรูปแบบที่ใช้ไม่ได้ |
+| 400 | หน้าที่เลือกไม่มีอยู่จริง หรือ PDF มีรหัสแต่ไม่ได้ส่งรหัสมา |
+| 422 | PDF เสียเปิดไม่ได้ (ก่อนหักเครดิต) หรือ LLM ตอบมาในรูปแบบที่ใช้ไม่ได้ |
 | 500 | server ไม่ได้ตั้งค่า API key |
 | 503 | LLM หรือ Carmen ไม่ตอบ |
 | ตาม Carmen | endpoint /suggest ส่ง status code ของ Carmen ต่อมาตรง ๆ เมื่อดึงผังบัญชีหรือแผนกไม่ได้ |
@@ -629,7 +633,7 @@ Gate 1–5 ตรวจได้โดยยังไม่ต้องเรี
 | TC-MAP-04 | **Regression test สำคัญ:** ผลต่างของส่วนลดต้องไม่บล็อก. Pre: ทำให้ส่วนลดรวมต่างจากท้ายใบ | 1. ไปที่ Step 3 แล้ว Step 4 | ผลต่างแสดงให้เห็น แต่ปุ่ม Generate ยังกดได้ | **Fail ถ้าถูกบล็อก** |
 | TC-MAP-05 | เอกสารเองไม่สอดคล้อง | 1. อัปโหลดเอกสารที่ก่อนภาษี + ภาษี ≠ สุทธิ | ระบบแสดงคำเตือนแทนปุ่ม Adjust | **Fail ถ้าให้ปุ่ม Adjust ที่กดแล้ววนไม่จบ** |
 | TC-MAP-06 | AI แนะนำได้ไม่ครบ | 1. จำลอง LLM ตอบไม่ครบทุกบรรทัด | response มี llm_partial = true และ UI ให้เติมเอง | ไม่บล็อกทั้งหน้า |
-| TC-MAP-07 | Carmen ปฏิเสธ | 1. จำลอง Carmen ตอบ Code < 0 | HTTP 503 และ submitted_at ยังเป็น null | draft ยังอยู่ให้แก้ต่อ |
+| TC-MAP-07 | Carmen ปฏิเสธ | 1. จำลอง Carmen ตอบ Code < 0 | HTTP 200 พร้อมข้อความของ Carmen และ submitted_at ยังเป็น null | draft ยังอยู่ให้แก้ต่อ |
 | TC-MAP-08 | เอกสารซ้ำ. Pre: ผู้ขาย + เลขที่เอกสารนี้เคยส่งแล้ว | 1. อัปโหลดใบเดิม | is_duplicate = true และไม่สร้างแถวใน ap_invoices | ไม่คืนเครดิต |
 
 ## 13.5 Category 5: Security & Isolation
