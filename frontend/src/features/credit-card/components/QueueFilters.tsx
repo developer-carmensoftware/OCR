@@ -4,6 +4,7 @@ import { useT } from '@/i18n/LanguageContext'
 import type { TKey } from '@/i18n/dict'
 import { BANKS } from '@/shared/constants/banks'
 import {
+  cleanText,
   NO_NARROW,
   type ActivityFilter,
   type QueueNarrow,
@@ -60,15 +61,18 @@ const SEARCH_DEBOUNCE_MS = 300
 export function QueueSearch({ value, onCommit }: { value: string; onCommit: (q: string) => void }) {
   const { t } = useT()
   const [text, setText] = useState(value)
+  // An IME composition (Thai tone marks, CJK) is half-typed text: searching it is noise, and each
+  // step would be a request. Nothing is committed until the composition ends.
+  const [composing, setComposing] = useState(false)
 
   // The committed value moved without us typing (Clear, the no-match card): follow it.
   useEffect(() => setText(value), [value])
 
   useEffect(() => {
-    if (text.trim() === value) return
+    if (composing || text.trim() === value) return
     const id = window.setTimeout(() => onCommit(text.trim()), SEARCH_DEBOUNCE_MS)
     return () => window.clearTimeout(id)
-  }, [text, value, onCommit])
+  }, [text, value, composing, onCommit])
 
   return (
     <label className="rq-search">
@@ -76,7 +80,12 @@ export function QueueSearch({ value, onCommit }: { value: string; onCommit: (q: 
       <input
         type="search"
         value={text}
-        onChange={e => setText(e.target.value)}
+        onChange={e => setText(cleanText(e.target.value, 100))}
+        onCompositionStart={() => setComposing(true)}
+        onCompositionEnd={e => {
+          setText(cleanText(e.currentTarget.value, 100))
+          setComposing(false)
+        }}
         placeholder={t('review.searchPlaceholder')}
         aria-label={t('review.searchLabel')}
         maxLength={100}
@@ -249,6 +258,15 @@ export function FilterBar({ narrow, onChange, status, onStatus }: BarProps) {
       ...menuRef.current!.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([aria-disabled])'),
     ]
     const i = items.indexOf(document.activeElement as HTMLElement)
+    if (e.key === 'Tab') {
+      // Tab leaves the menu (the ARIA menu pattern), and a menu that stays open behind the focus is
+      // an orphan. Focus goes back to what opened it first, so the browser's own Tab / Shift+Tab then
+      // lands on the control after / before it instead of at the top of the page (the focused item
+      // is about to disappear).
+      opener.current?.focus()
+      setMenu(null)
+      return
+    }
     if (e.key === 'ArrowDown') items[(i + 1) % items.length]?.focus()
     else if (e.key === 'ArrowUp') items[(i - 1 + items.length) % items.length]?.focus()
     else if ((e.key === 'ArrowLeft' || e.key === 'Backspace') && menu?.attr && menu.viaList)
