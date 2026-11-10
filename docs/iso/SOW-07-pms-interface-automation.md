@@ -4,12 +4,12 @@ iso-wp: SOW
 iso-topic: 07_PMS_Interface_automation
 iso-reviewer: นายฐากร ประกอบสุพรรณ (TL)
 iso-approver: นายฉัตรชัย ธิติโรกาส (CUS)
-Document Version: Version 0.1 (Statement of Work)
+Document Version: Version 0.2 (Statement of Work)
 รหัสเอกสาร: SOW-AI-ERP-2026-001 (Hospitality Financial Automation & AI Integration Suite)
 ระยะเวลาตามแผน: 10/09/2026 – 30/09/2026
 รหัสความต้องการ: REQ-06
-เอกสารออกแบบที่เกี่ยวข้อง: FRD-11 PMS Interface Automation v1.2; RS-07
-Date: 4 November 2026
+เอกสารออกแบบที่เกี่ยวข้อง: FRD-11 PMS Interface Automation v1.4; RS-07
+Date: 10 November 2026
 ---
 
 ## Document Revision History
@@ -20,6 +20,7 @@ Date: 4 November 2026
 | 1.1 | 25/06/2026 | PM / TL | บรรจุ CR-2026-001 (ยื่น 18/06/2026): ขยาย AI JV Automation และ Input Tax Reconciliation ให้รองรับใบกำกับภาษีค่าธรรมเนียม MDR ของ Payment Gateway ไม่มีภาษีหัก ณ ที่จ่าย | ที่ประชุม MR #05 |
 | 1.2 | 29/09/2026 | PM / TL | บรรจุ CR-2026-002 (ยื่น 24/09/2026): เพิ่ม AI Transaction Monitoring Screen (Management by Exception, Side-by-Side, Audit Trail) | ที่ประชุม MR #12 |
 | 0.1 | 04/11/2026 | ทีมโครงการ | เขียนใหม่ตาม ISO/IEC 29110 template แยกเป็นรายการตามกำหนดการ 8 รายการ รวมเนื้อหาจาก SOW v1.0–1.2, CR-2026-001/002 และบันทึกการประชุม MR-AI-ERP-2026-ALL | |
+| 0.2 | 10/11/2026 | ทีมโครงการ | หัวข้อ 8 สถานะการพัฒนาจริง ตาม FRD-11 v1.4 (decision-log #51–#54) | |
 
 <!-- pagebreak -->
 
@@ -81,15 +82,15 @@ Date: 4 November 2026
 
 # 8. สถานะการพัฒนาจริง
 
-เทียบข้อกำหนดข้างต้นกับระบบที่พัฒนาเสร็จ ตามเอกสารออกแบบ FRD-11 PMS Interface Automation v1.2 ข้อกำหนดในหัวข้อ 3 คือสิ่งที่ตกลงไว้และไม่ได้แก้ให้ตรงกับระบบ
+เทียบข้อกำหนดข้างต้นกับระบบที่พัฒนาเสร็จ ตามเอกสารออกแบบ FRD-11 PMS Interface Automation v1.4 ข้อกำหนดในหัวข้อ 3 คือสิ่งที่ตกลงไว้และไม่ได้แก้ให้ตรงกับระบบ
 
 <!-- widths!: 26,17,57 -->
 | ข้อกำหนด | สถานะ | หมายเหตุ |
 |---|---|---|
-| REQ-06 การรับข้อมูลจาก PMS | สร้างแล้ว แต่ต่างจากที่ตกลง | FRD-11 v1.2: Carmen ส่ง hook บอกวันที่เขียนลง Data Bank แล้วระบบอ่านวันนั้น (Comanche) ไม่มีโหมด Real-time API และ Batch 03:30 ของระบบเอง งานตามเวลาทุก 10 นาทีเก็บวันที่ค้าง |
-| REQ-06 Mapping รหัสรายได้ | สร้างแล้ว แต่ต่างจากที่ตกลง | FRD-11: Mapping อยู่ในตารางของ Carmen ระบบให้ AI แนะนำเฉพาะแถวใหม่ให้คนยืนยัน แล้วเขียนกลับและสั่ง engine ของ Carmen post |
-| REQ-06 Retry 3 ครั้ง | สร้างแล้ว | FRD-11: ลองใหม่อัตโนมัติสูงสุด 3 ครั้งสำหรับสาเหตุที่อาจหายเอง |
-| สถานะการใช้งานจริง | รอ Carmen | FRD-11 v1.2 (02/11/2026): ทุกวันหยุดที่ carmen_config_unreadable จนกว่า Carmen เปิด PMS setting ใต้ /api/interface (CA-116) |
+| REQ-06 การรับข้อมูลจาก PMS | สร้างแล้ว แต่ต่างจากที่ตกลง | FRD-11 v1.4: Carmen ส่ง hook บอกวันที่เขียนลง Data Bank แล้วระบบขอ preview ของ engine ของ Carmen เพื่อได้แถวของวัน ใช้ได้กับทุก PMS (Comanche, HotelTime, Cloudbeds) ส่วน PMS ที่ Carmen ดึงข้อมูลเอง (PartnerApi) ระบบเปิดวันของเมื่อวานเองหลัง 08:00 ไม่มีโหมด Real-time API และ Batch 03:30 ของระบบเอง งานตามเวลาทุก 10 นาทีเก็บวันที่ค้าง |
+| REQ-06 Mapping รหัสรายได้ | สร้างแล้ว แต่ต่างจากที่ตกลง | FRD-11: Mapping อยู่ในตารางของ Carmen ระบบให้ AI แนะนำเฉพาะแถวใหม่ให้คนยืนยัน แล้วเขียนกลับและสั่ง engine ของ Carmen post การ post ของ Carmen เป็นตัวตรวจ mapping ถ้ายังมีรหัสที่ไม่มีบัญชี รหัสเหล่านั้นเข้ามาให้ map ในหน้าตรวจ |
+| REQ-06 Retry 3 ครั้ง | สร้างแล้ว | FRD-11: ลองใหม่อัตโนมัติสูงสุด 3 ครั้งสำหรับสาเหตุที่อาจหายเอง วันที่ Carmen ยังไม่มีข้อมูลลองทุกชั่วโมงจนครบ 24 ชั่วโมง |
+| สถานะการใช้งานจริง | รอ Carmen | FRD-11 v1.4 (10/11/2026): บน dev ทุก PMS ตรวจในคิวได้ และ HotelTime กับ Cloudbeds post ผ่าน engine ของ Carmen แล้ว hook จริงของ Carmen ยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) และ Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K) |
 
 # 9. ทีมงาน และข้อตกลงร่วมของโครงการ
 
