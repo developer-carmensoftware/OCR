@@ -1,7 +1,9 @@
 """JV queue filters — the data half of `jv_filters_ui.mjs`.
 
-    python scripts/qa/jv_filters_e2e.py setup      # three tenants, ~170 rows, sessions → fixture.json
-    python scripts/qa/jv_filters_e2e.py teardown   # delete everything `setup` wrote
+    python scripts/qa/jv_filters_e2e.py setup           # three tenants, ~170 rows, sessions → fixture.json
+    python scripts/qa/jv_filters_e2e.py setup --big     # + a fourth tenant with 20,000 rows (scale case X-09)
+    python scripts/qa/jv_filters_e2e.py explain         # EXPLAIN ANALYZE of the list + counts on that tenant
+    python scripts/qa/jv_filters_e2e.py teardown        # delete everything `setup` wrote
 
 **Local Supabase only** (127.0.0.1:54322), same rule as the PMS E2Es: the shared dev DB is swept
 by QA's backend, and these rows are not theirs. The script refuses any other DSN.
@@ -377,7 +379,7 @@ async def _insert_pms(conn, tenant, r: dict) -> None:
     )
 
 
-async def setup(conn: asyncpg.Connection) -> dict:
+async def setup(conn: asyncpg.Connection, big: bool = False) -> dict:
     from app.auth.session import create_session_jwt, encrypt_carmen_token
     from app.config import settings
 
@@ -484,22 +486,159 @@ async def setup(conn: asyncpg.Connection) -> dict:
     dupes = {k for k in keys if keys.count(k) > 1}
     assert not dupes, f"duplicate row keys in the fixture: {sorted(dupes)}"
 
+    if big:
+        await seed_big(conn, out)
+
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "fixture.json").write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
     return out
 
 
+BIG = {"email": 14_000, "manual": 4_000, "pms": 2_000}
+
+
+async def seed_big(conn: asyncpg.Connection, out: dict) -> None:
+    """Tenant D: 20,000 rows, to see what the list costs when a BU has been scanning for a while.
+
+    Bulk-loaded with COPY. Ages stay inside 85 days (the retention jobs would scrub older rows),
+    banks and outcomes cycle through the same tables as tenant A, and the names are searchable
+    (`qa-big-e<n>`), so a narrowed query and a search both have thousands of matches and thousands
+    of non-matches. The expected totals are worked out here and written next to the tenant.
+    """
+    from app.auth.session import create_session_jwt, encrypt_carmen_token
+    from app.config import settings
+
+    tid = await conn.fetchval(
+        "insert into tenants (host, bu_code, name) values ($1, $2, $2) returning id", HOST, "qa-jvf-big"
+    )
+    sid = uuid.uuid4()
+    await conn.execute(
+        "insert into ocr_sessions (id, tenant_id, carmen_user_id, username, carmen_token_encrypted,"
+        " carmen_uri, is_active) values ($1,$2,$3,$4,$5,$6,true)",
+        sid, tid, MARK, "qa-jvf", encrypt_carmen_token("not-a-real-carmen-token", settings.session_encryption_key),
+        f"https://{HOST}",
+    )
+    jwt = create_session_jwt(
+        session_id=str(sid), tenant_id=str(tid), carmen_user_id=MARK, username="qa-jvf",
+        secret=settings.ocr_jwt_secret, ttl_hours=8, carmen_uri=f"https://{HOST}", bu="qa-jvf-big",
+    )
+    out["tenants"]["d"] = {
+        "id": str(tid), "bu": "qa-jvf-big", "jwt": jwt,
+        "user": {"username": "qa-jvf", "bu": "qa-jvf-big", "uri": f"https://{HOST}", "tenant_id": str(tid)},
+    }
+
+    base = DAY_START - timedelta(minutes=1)
+    expect = {"review": 0, "success": 0, "unposted": 0, "noise": 0}
+
+    email_rows = []
+    for i in range(BIG["email"]):
+        status, reason, chip = EMAIL_CASES[i % len(EMAIL_CASES)]
+        bank = BANKS[(i // len(EMAIL_CASES)) % len(BANKS)]
+        at = base - timedelta(minutes=(i * 7) % (85 * 24 * 60)) - timedelta(microseconds=i)
+        if chip != "hidden":
+            expect[chip] += 1
+        email_rows.append((
+            uuid.uuid4(), tid, f"<big-{i}@qa-jvf>", f"qa-big-e{i}.pdf", status,
+            None if chip in ("noise", "hidden") else bank,
+            None if chip in ("noise", "hidden") else f"QA-BIG-{i}",
+            f"JV-BIG-{i}" if status == "posted" else None, reason, at, at,
+        ))
+    await conn.copy_records_to_table(
+        "email_documents", records=email_rows,
+        columns=["id", "tenant_id", "message_id", "attachment", "status", "bank_code", "doc_no",
+                 "jv_no", "reason_code", "created_at", "updated_at"],
+    )
+
+    tasks, cards = [], []
+    for i in range(BIG["manual"]):
+        posted = i % 2 == 0
+        bank = BANKS[i % 8]
+        at = base - timedelta(minutes=(i * 11) % (85 * 24 * 60)) - timedelta(microseconds=i)
+        task = uuid.uuid4()
+        tasks.append((task, tid, "credit_card_ocr", f"qa-big-m{i}.pdf", "completed", at))
+        cards.append((uuid.uuid4(), tid, task, bank, f"QA-BIGM-{i}", at if posted else None,
+                      f"JV-BIGM-{i}" if posted else None, at))
+        expect["success" if posted else "unposted"] += 1
+    await conn.copy_records_to_table(
+        "ocr_tasks", records=tasks,
+        columns=["id", "tenant_id", "module_id", "original_filename", "status", "created_at"],
+    )
+    await conn.copy_records_to_table(
+        "credit_cards", records=cards,
+        columns=["id", "tenant_id", "task_id", "bank_code", "doc_no", "submitted_at", "jv_no", "created_at"],
+    )
+
+    days = []
+    for i in range(BIG["pms"]):
+        name = PMS_NAMES[i % 3]
+        status, chip = PMS_STATUSES[(i // 3) % len(PMS_STATUSES)]
+        day = (DAY_START - timedelta(days=100 + i // 3)).date().isoformat()  # one day per (name, i//3)
+        at = base - timedelta(minutes=(i * 13) % (85 * 24 * 60)) - timedelta(microseconds=i)
+        payload = json.dumps({"InterfaceType": "PMS", "InterfaceName": name, "DocType": "Daily", "DocDate": day})
+        days.append((uuid.uuid4(), tid, f"PMS/{name}/Daily/{day}", "PMS", payload, status,
+                     f"JV-BIGP-{i}" if status == "posted" else None, at, at))
+        if chip != "hidden":
+            expect[chip] += 1
+    await conn.executemany(
+        "insert into pms_events (id, tenant_id, event_id, type, payload, status, jv_no, created_at, updated_at)"
+        " values ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9)", days,
+    )
+    out["big"] = {"expect": expect, "all": sum(expect.values()), "rows": sum(BIG.values())}
+
+
+async def explain(conn: asyncpg.Connection) -> None:
+    """EXPLAIN ANALYZE of what the list runs for tenant D: the email window and the counts."""
+    from sqlalchemy.dialects import postgresql
+
+    from app.services.credit_card.activity import _counts_stmt, _email_stmt, parse_narrow
+
+    fx = json.loads((OUT / "fixture.json").read_text(encoding="utf-8"))
+    tid = uuid.UUID(fx["tenants"]["d"]["id"])
+    for label, narrow in [
+        ("the whole log", parse_narrow("", "", "", "")),
+        ("a search", parse_narrow("qa-big-e1", "", "", "")),
+        ("source + bank + 30 days", parse_narrow("", "email", "KBANK", "30d")),
+    ]:
+        for what, stmt in [
+            ("list ", _email_stmt(tid, None, None, narrow).limit(100)),
+            ("count", _counts_stmt(tid, DAY_START, narrow)),
+        ]:
+            sql = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+            # A literal ESCAPE comes out with its backslash doubled; Postgres wants exactly one character.
+            sql = sql.replace("ESCAPE '" + chr(92) * 2 + "'", "ESCAPE '" + chr(92) + "'")
+            sql = sql.replace("escape '" + chr(92) * 2 + "'", "escape '" + chr(92) + "'")
+            rows = await conn.fetch("explain (analyze, format json) " + sql)
+            plan = json.loads(rows[0][0])[0]
+            nodes = []
+
+            def walk(n):
+                nodes.append(n["Node Type"])
+                for c in n.get("Plans", []):
+                    walk(c)
+
+            walk(plan["Plan"])
+            print(
+                f"{label:26} {what}  {plan['Execution Time']:8.1f} ms  planning {plan['Planning Time']:5.1f} ms"
+                f"  {'Seq Scan' if 'Seq Scan' in nodes else 'index only/other'}"
+            )
+
+
 async def main() -> int:
     _guard()
-    if len(sys.argv) != 2 or sys.argv[1] not in ("setup", "teardown"):
+    args = sys.argv[1:]
+    big = "--big" in args
+    args = [a for a in args if a != "--big"]
+    if len(args) != 1 or args[0] not in ("setup", "teardown", "explain"):
         print(__doc__)
         return 2
     conn = await asyncpg.connect(DSN, statement_cache_size=0)
     try:
-        if sys.argv[1] == "teardown":
+        if args[0] == "teardown":
             print(f"deleted {await teardown(conn)} tenant(s) and their rows")
+        elif args[0] == "explain":
+            await explain(conn)
         else:
-            res = await setup(conn)
+            res = await setup(conn, big=big)
             vis = [r for r in res["rows"] if r["chip"] != "hidden"]
             print(
                 f"setup ok: {len(res['rows'])} rows for A ({len(vis)} visible), "
