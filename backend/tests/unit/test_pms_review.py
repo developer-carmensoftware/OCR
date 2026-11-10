@@ -17,9 +17,8 @@ from app.services.pms import carmen_config as cfg
 from app.services.pms import review
 from app.services.pms.process import MappingIncomplete, PostRefused
 from app.services.shared.carmen import CarmenAPIError
-from tests.unit.test_pms_carmen_config import COLUMNS, DAY, TABLE, TABLE_COLUMNS
+from tests.unit.test_pms_carmen_config import COLUMNS, ROWS, TABLE, TABLE_COLUMNS
 
-ROWS = cfg.rows_of(DAY, "Transaction", COLUMNS)
 KEY = {r["values"]["Description"]: r["key"] for r in ROWS}
 MAPPED = cfg.table_of(TABLE, COLUMNS)
 GUESS = {
@@ -327,12 +326,9 @@ async def test_get_day_lists_the_rows_carmen_cannot_place_and_what_the_others_ma
         "Guest Ledger · Guest Ledger",
     ]
     vat = day["new_codes"][0]
-    assert (vat["amount"], vat["dept"], vat["acc"], vat["confidence"]) == (
-        "11525.06",
-        "GEN",
-        "2012003",
-        "high",
-    )
+    assert (vat["dept"], vat["acc"], vat["confidence"]) == ("GEN", "2012003", "high")
+    # No amount: Carmen's preview carries none (decision-log #54).
+    assert "amount" not in vat
     assert day["mapped_count"] == 1
     assert day["rows"][0] == {**ROWS[0], "dept": "103", "acc": "4010001", "name": "Room Revenue"}
     # A day processing could key shows its rows; one it could not says so (#52).

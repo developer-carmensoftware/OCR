@@ -8,10 +8,13 @@ restart, a Carmen outage or a missing credential left at `received`. A claim on
 **Carmen posts; we map** (decision-log #43). The BU's PMS setting in Carmen says how debit
 and credit are told apart and which account takes the counter line — each PMS differently —
 and Carmen's engine (`interfacePostGL`) posts the day by it. This module decides nothing
-about sides or totals. It reads Carmen's list of the BU's interfaces and the mapping table
-(the setting itself is out of the menu token's reach, decision-log #51), finds the day's rows
-the table has no account for, lets the AI suggest one, and asks the engine to post once
-nothing is missing.
+about sides or totals. The setting itself is out of the menu token's reach (decision-log
+#51), so this module:
+1. reads Carmen's list of the BU's interfaces and the mapping table;
+2. asks the engine's preview for the day's rows, keyed as a post would key them
+   (decision-log #54);
+3. finds the rows the table has no account for, and lets the AI suggest one;
+4. asks the engine to post once nothing is missing.
 
 A day with a row the table cannot place parks at `pending_review` with what the review
 needs in `review_payload`. So does every day of a PMS whose auto-post is off (the default;
@@ -149,6 +152,27 @@ def _jv_seq(result: dict) -> str | None:
     return str(ids[0]) if isinstance(ids, list) and ids and ids[0] else None
 
 
+def _engine_body(setting_code: str, doc_date: str, databank_id: Any) -> dict[str, Any]:
+    """What the engine's post and its preview both take: the setting, the day, and the Data
+    Bank row to read when there is one (a date alone otherwise)."""
+    body: dict[str, Any] = {"Code": setting_code, "DateFrom": doc_date, "DateTo": doc_date}
+    if databank_id is not None:
+        body["id"] = [databank_id]
+    return body
+
+
+def _no_data(result: Any) -> str | None:
+    """Carmen's words when the engine has nothing for the date yet, else None.
+
+    Its `-400` also means `Configuration is missing`, so the code alone does not decide: the
+    words have to say `No Data Found`.
+    """
+    if not isinstance(result, dict) or result.get("Code") != _NO_DATA:
+        return None
+    words = str(result.get("UserMessage") or "").strip()
+    return words[:500] if "no data found" in words.lower() else None
+
+
 async def post_day(
     section: dict, doc_date: str, databank_id: Any, carmen_token: str
 ) -> tuple[str, str | None]:
@@ -165,13 +189,7 @@ async def post_day(
     A day with no Data Bank row (a PartnerApi PMS, which Carmen fetches at post time) is
     posted by date alone, with no `id`.
     """
-    body: dict[str, Any] = {
-        "Code": section["setting_code"],
-        "DateFrom": doc_date,
-        "DateTo": doc_date,
-    }
-    if databank_id is not None:
-        body["id"] = [databank_id]
+    body = _engine_body(section["setting_code"], doc_date, databank_id)
     result = await carmen.post_pms_gl(section["post_type"], body, carmen_token)
     if isinstance(result, dict) and result.get("Result") is True:
         return "posted", _jv_seq(result)
@@ -179,13 +197,8 @@ async def post_day(
         return "already_posted", None
     if isinstance(result, dict) and result.get("Code") == _MAPPING_INCOMPLETE:
         raise MappingIncomplete(str(result.get("UserMessage") or "Mapping is incomplete.")[:500])
-    words = str(result.get("UserMessage") or "") if isinstance(result, dict) else ""
-    if (
-        isinstance(result, dict)
-        and result.get("Code") == _NO_DATA
-        and "no data found" in words.lower()
-    ):
-        raise NoDataYet(words.strip()[:500])
+    if words := _no_data(result):
+        raise NoDataYet(words)
     verdict = None
     if isinstance(result, dict):
         verdict = (
@@ -309,11 +322,7 @@ async def with_carmen_keys(payload: dict, token: str) -> dict:
         return payload
     rows = list(payload.get("rows") or [])
     have = {r["key"] for r in rows}
-    rows += [
-        {"key": b["key"], "values": b["values"], "amount": ""}
-        for b in cfg.blank_keys(current, columns)
-        if b["key"] not in have
-    ]
+    rows += [b for b in cfg.blank_keys(current, columns) if b["key"] not in have]
     table = cfg.table_of(current, columns)
     new = cfg.new_keys(rows, table)
     guessed = dict(payload.get("guessed") or {})
@@ -321,7 +330,7 @@ async def with_carmen_keys(payload: dict, token: str) -> dict:
     if todo:
         try:
             accounts, departments = await mapping.masters(token)
-            guessed |= await mapping.suggest(todo, rows, table, accounts, departments)
+            guessed |= await mapping.suggest(todo, table, accounts, departments, columns)
         except carmen.CarmenAPIError as exc:
             logger.warning("[pms] Could not read Carmen's GL for suggestions: %s", exc.detail)
     return {
@@ -416,19 +425,31 @@ async def _process(claimed) -> str:
                 "day_not_found",
                 f"Carmen's Data Bank has no {name} {doc_type} for {doc_date} yet.",
             )
-        # The preview: the day's rows as the mapping table keys them, a key column reading its
-        # own field or that name without a prefix (HotelTime's `HT_Code` ← `Code`), and none
-        # read from a list named after another section (`Statistic`, decision-log #53). A day
-        # with no list that fits (a CSV file, a PartnerApi day with no Data Bank row) does
-        # not fail: Carmen's engine checks the mapping when it is posted, and its `-500`
-        # names the keys it lacks (`with_carmen_keys`).
-        newest = cfg.newest_day(found or [], columns, cfg.other_doc_types(interfaces, itype, name))
-        databank = (
-            newest[0]
-            if newest
-            else max(found or [{}], key=lambda d: str(d.get("LastModified") or ""))
-        )
-        rows = cfg.rows_of(databank["FileData"], newest[1], columns) if newest else []
+        # Carmen may hold more than one row for a day (a night audit run again); `LastModified`
+        # names the current one. Only its id is used: the engine reads the row itself.
+        databank = max(found or [{}], key=lambda d: str(d.get("LastModified") or ""))
+        databank_id = databank.get("Id")
+
+        # The day's rows as Carmen's engine keys them, from its preview of the post
+        # (decision-log #54). It reads the day by the BU's INI, for any PMS, so no layout is
+        # ours to read. It is given the same Data Bank row the post will be.
+        try:
+            answer = await carmen.preview_pms_gl(
+                section.post_type,
+                _engine_body(section.setting_code, doc_date, databank_id),
+                token,
+            )
+        except carmen.CarmenAPIError as exc:
+            if exc.status_code in (401, 403):
+                return await _retry_or_fail(pk, attempts, _refusal(exc, ""), carmen_words(exc))
+            # The preview is not what posts. Without it the day parks with no rows, Carmen's
+            # engine checks the mapping when it is posted, and its `-500` brings the keys it
+            # lacks into the review (`with_carmen_keys`), as before decision-log #54.
+            logger.warning("[pms] Carmen's preview of %s %s: %s", name, doc_date, exc.detail)
+            answer = None
+        if words := _no_data(answer):
+            return await _not_ready(claimed, words)
+        rows = cfg.preview_rows(answer, columns) or []
 
         table = cfg.table_of(current, columns)
         new = cfg.new_keys(rows, table)
@@ -436,7 +457,7 @@ async def _process(claimed) -> str:
         if new:
             try:
                 accounts, departments = await mapping.masters(token)
-                guessed = await mapping.suggest(new, rows, table, accounts, departments)
+                guessed = await mapping.suggest(new, table, accounts, departments, columns)
             except carmen.CarmenAPIError as exc:
                 # No suggestion is not a reason to stop: the day parks with the rows
                 # unmapped and the reviewer picks them. A dead credential still is.
@@ -459,10 +480,10 @@ async def _process(claimed) -> str:
             "flags": mapping.flags(new, guessed),
             # Which keys those flags are about, for the queue row (`activity._pms_row`).
             **mapping.open_keys(new, guessed),
-            # False: the rows could not be read here, so the review shows none and Carmen
-            # checks the mapping when the day is posted.
-            "preview": newest is not None,
-            "databank_id": databank.get("Id"),
+            # False: Carmen's preview gave no rows, so the review shows none and Carmen checks
+            # the mapping when the day is posted.
+            "preview": bool(rows),
+            "databank_id": databank_id,
             "last_modified": databank.get("LastModified"),
         }
         if payload["flags"] or not (settings_row and settings_row.auto_post):

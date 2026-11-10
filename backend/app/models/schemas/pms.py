@@ -141,8 +141,6 @@ class PmsNewCode(BaseModel):
     key: str
     label: str
     values: dict[str, str]
-    # As the PMS wrote it; Carmen's engine decides which side it posts to.
-    amount: str
     # The AI's pick, when it made a usable one.
     dept: str | None = None
     acc: str | None = None
@@ -151,11 +149,11 @@ class PmsNewCode(BaseModel):
 
 
 class PmsRow(BaseModel):
-    """One row of the day as Carmen keys it, with the account Carmen's table gives it."""
+    """One row of the day as Carmen keys it, with the account Carmen's table gives it. No
+    amount: Carmen's preview carries none, and debit, credit and totals are its engine's."""
 
     key: str
     values: dict[str, str]
-    amount: str
     dept: str | None = None
     acc: str | None = None
     name: str | None = None

@@ -29,7 +29,6 @@ DAY = {
         {
             "key": KEY,
             "values": {"Code": "729", "Description": "Rebate - Misc. (VAT)"},
-            "amount": "-50.00",
         }
     ],
     "mapped_count": 0,
@@ -38,7 +37,6 @@ DAY = {
             "key": KEY,
             "label": "729 · Rebate - Misc. (VAT)",
             "values": {"Code": "729", "Description": "Rebate - Misc. (VAT)"},
-            "amount": "-50.00",
         }
     ],
 }

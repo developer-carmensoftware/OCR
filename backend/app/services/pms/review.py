@@ -14,7 +14,6 @@ day. Then it re-checks this BU's other parked days, which may now be fully mappe
 import logging
 import uuid
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import or_, select, update
@@ -42,14 +41,6 @@ from app.services.shared import api_keys, carmen
 logger = logging.getLogger(__name__)
 
 
-def _total(amounts: list[str]) -> str:
-    """The amount a key's rows add up to, as written — a key is usually one row."""
-    try:
-        return str(sum((Decimal(a) for a in amounts if a), Decimal(0)))
-    except InvalidOperation:
-        return amounts[0] if amounts else ""
-
-
 async def get_day(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) -> dict | None:
     """What the review modal shows for one parked day, or None when it is not waiting."""
     row = await db.scalar(
@@ -70,14 +61,12 @@ async def get_day(db: AsyncSession, tenant_id: uuid.UUID, event_pk: uuid.UUID) -
     for key in keys:
         if key in mapped:
             continue
-        mine = [r for r in rows if r["key"] == key]
         pick = guessed.get(key) or {}
         new_codes.append(
             {
                 "key": key,
                 "label": cfg.label(key),
-                "values": mine[0]["values"] if mine else {},
-                "amount": _total([r["amount"] for r in mine]),
+                "values": next((r["values"] for r in rows if r["key"] == key), {}),
                 "dept": pick.get("dept"),
                 "acc": pick.get("acc"),
                 "confidence": pick.get("confidence"),

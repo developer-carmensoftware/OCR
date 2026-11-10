@@ -436,6 +436,31 @@ async def post_pms_gl(post_type: str, body: dict, carmen_token: str) -> Any:
         raise wrap_network_error(e) from e
 
 
+async def preview_pms_gl(post_type: str, body: dict, carmen_token: str) -> Any:
+    """What Carmen's engine would post for `body`, without posting (ask P, decision-log #54).
+
+    Takes the same body as `post_pms_gl`. Swagger says it answers `ViewPostResult`, but what
+    Carmen actually sends is a .NET DataTable named `Mapping`:
+    - the mapping table's columns;
+    - one row per line of the day, keyed as the engine reads it;
+    - each row with the account the table gives that key (`AccCode` null = none).
+
+    It carries no amounts and no sides. A date with no data comes back as a value (303,
+    `Code -400`), as the post's does. Only ≥ 400 raises, and a closed period is one of those.
+    """
+    try:
+        resp = await get_http_client().post(
+            f"{_base_url()}/interfacePreviewPostGL/{_quoted(post_type)}",
+            json=body,
+            headers=_headers(carmen_token),
+        )
+        return _json_or_raise(resp)
+    except CarmenAPIError:
+        raise
+    except RequestError as e:
+        raise wrap_network_error(e) from e
+
+
 async def get_period_list(carmen_token: str) -> Any:
     try:
         resp = await get_http_client().get(

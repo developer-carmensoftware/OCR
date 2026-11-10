@@ -48,7 +48,7 @@ queue row (`activity._pms_row`).
   "interface_type": "PMS", "interface": "Comanche", "doc_type": "Daily", "doc_date": "2024-09-05",
   "setting_code": "Comanche.PMS", "post_type": "REVENUE",
   "key_columns": ["Code", "Description"],   // the mapping table's Columns, less the account
-  "rows": [{"key": "[\"100\",\"Room Charge\"]", "values": {…}, "amount": "153068.41"}],
+  "rows": [{"key": "[\"100\",\"Room Charge\"]", "values": {…}}],  // Carmen's preview (#54); older rows may still carry "amount"
   "mapped": {"<key>": {"dept", "acc", "name"}},   // Carmen's accounts for this day's keys, when read
   "guessed": {"<key>": {"dept", "acc", "confidence", "why"}},  // the AI's, for new keys
   "flags": ["mapping_missing", "mapping_guessed"],  // empty = may post unattended

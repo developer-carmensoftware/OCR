@@ -1,11 +1,11 @@
 /**
  * A parked PMS day (CA-119) — the review modal's API. A day is one JV: Carmen's hook named
- * it, the server read it back from Carmen's Data Bank and parked it here.
+ * it, the server had Carmen's engine preview it (decision-log #54) and parked it here.
  *
  * Carmen's engine posts it, by the BU's PMS setting in Carmen (decision-log #43): debit,
- * credit and totals are never computed here, and the screen shows no amounts. The response
- * still carries each row's amount, the AI's confidence and reason, and the setting Carmen posts
- * with; nothing reads them.
+ * credit and totals are never computed here, and the rows carry no amounts. The response
+ * still carries the AI's confidence and reason, and the setting Carmen posts with; nothing
+ * reads them.
  */
 
 import { apiFetch } from '@/shared/api/client'

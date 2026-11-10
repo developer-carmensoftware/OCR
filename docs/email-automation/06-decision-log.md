@@ -1793,3 +1793,67 @@ Carmen's own screen.
 - #52's fallback idea, a per-PMS field map, is dropped.
 - The AI is now asked for HotelTime's and Cloudbeds' new rows too.
 - `pms.rcMappingIncomplete` now says to map the codes in the review.
+
+## 54. Carmen's preview keys the day; our reader is gone (2026-11-10)
+
+**Status: built** (branch `feat/pms-preview-reader`). Replaces #53's reader. #53's `-500`
+fallback stays as a fallback.
+
+**Why.**
+- The user asked that a PMS new to us show its rows on day one, with no code of ours per PMS.
+  #53's reader guesses a PMS's layout from the mapping table's column names. A PMS that names
+  its fields unlike the columns would have shown no rows until a blind first Approve.
+- Carmen built a preview of a post: `POST /api/interface/interfacePreviewPostGL/{postType}`
+  (ask P), which takes the same body as the post. It answered 500 on 2026-11-09 and has worked
+  since 2026-11-10.
+
+**What the preview is** (dev, 2026-11-10).
+- **Shape.** Not the `ViewPostResult` Swagger names, but a .NET DataTable named `Mapping`:
+  - the mapping table's columns;
+  - one row per line of the day, keyed as Carmen's engine reads it by the BU's INI;
+  - each row with the account the table gives that key (`AccCode` null = unmapped).
+- **Equal to our reader.** On five days across all three PMSs on dev, its keys equal #53's
+  reader's in value and order, and its unmapped rows equal our new keys (Comanche 21,
+  HotelTime 42, Cloudbeds 78).
+- **No side effects.** It makes no JV and writes nothing into the mapping table.
+- **Other behaviour:**
+  - `id` is optional: it reads the day by date.
+  - It takes about 0.6 s.
+  - A date with no data answers 303 `-400 "No Data Found"`, as the post does.
+  - A closed period answers HTTP 500 with Carmen's words.
+- **Not covered:**
+  - amounts, Dr/Cr and the balance line;
+  - an already-posted day (it still answers rows);
+  - the post's own refusals: ask K (DrCr) and ask N (balance account).
+
+**Decision.**
+- **The day's rows come from the preview** (`carmen.preview_pms_gl`, `cfg.preview_rows`).
+  - The preview is given the Data Bank row a post would read: the newest `Id`, or the date
+    alone when there is none. So the review shows what Approve will post.
+  - `rows_key`, `field_for`, `rows_of`, `newest_day` and `other_doc_types` are deleted, and the
+    app no longer reads a day's `FileData` at all.
+- **The preview's own outcomes:**
+  - `-400 No Data` waits hourly (`day_not_ready`), as the post's does.
+  - 401 or 403 is the credential's reason.
+  - Any other failure parks the day with no rows (`preview: false`), and the `-500` fallback
+    brings in the keys Carmen lacks. The preview is not what posts, so it cannot fail a day.
+- **The AI sees no amounts** (user decision 2026-11-10). The preview carries none.
+  - Each key is shown under the BU's own column names (`HT_Code: 1115001 · HT_Description:
+    100 - ABF Revenue`), with the BU's mapped rows as examples.
+  - The prompt no longer assumes Comanche's `code · description` or its ` - VAT`/` - SERVICE`
+    rows.
+- **`amount` leaves the review API** (`PmsRow`, `PmsNewCode`). The screen never showed it
+  (#47), and nothing fills it any more.
+- **`scripts/qa/pms_probe.py`** checks a PMS for a BU before it goes live, posting nothing.
+  - With the menu token: the interface row, the mapping table's key, the Data Bank day, and
+    the preview's rows and new keys.
+  - With a web JWT as well: Revenue's PostType and balance account, failing when a Summary
+    balance account is not in the chart (ask N).
+
+**Consequences.**
+- A PMS keys correctly on its first day if Carmen's engine can read it, whatever its layout.
+  A CSV day is read too, if Carmen reads it.
+- A PMS no longer needs `Amount` to be told from its `Statistic` list. The preview reads only
+  what the INI's `JsonKeys` names.
+- The reviewer still learns of asks K and N only from the post. Carmen adding Amount, Dr/Cr
+  and those errors to the preview would bring them before Approve.

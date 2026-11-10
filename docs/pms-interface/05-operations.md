@@ -133,17 +133,30 @@ select reason_code, status, count(*) from pms_events
 
 **Never PUT Carmen's mapping table by hand with a partial list.** It replaces the whole table.
 
+**Before a PMS (or a BU) goes live, probe it.** Run `python scripts/qa/pms_probe.py <InterfaceName>
+<a day with data> [--uri …]`, with the BU's menu token in `CARMEN_AUTHORIZATION`. It posts nothing.
+
+- **With the menu token,** it reports four things, each PASS, WARN or FAIL, exactly as processing
+  would see them:
+  - the interface row;
+  - the mapping table's key;
+  - the Data Bank day;
+  - Carmen's preview, with the keys still to map.
+- **With `CARMEN_ADMIN_TOKEN` (a web JWT) as well,** it checks that Revenue's balance account is
+  in the BU's chart (ask N).
+
 ## Testing
 
 ```bash
 cd backend && venv\Scripts\activate
 pytest tests/unit/test_pms_carmen_config.py tests/unit/test_pms_process.py tests/unit/test_pms_review.py \
-       tests/unit/test_api_keys.py tests/integration/test_pms_*.py
+       tests/unit/test_pms_mapping.py tests/unit/test_api_keys.py tests/integration/test_pms_*.py
 ```
 
 | File | Covers |
 |---|---|
-| `unit/test_pms_carmen_config.py` | INI parsing, `find_section`, `spec_of` (JSON only), `rows_of`, `new_keys`, `merged_rows` (the whole table goes back) |
+| `unit/test_pms_carmen_config.py` | `find_section`, `key_columns`, `preview_rows` (Carmen's preview; blank and null alike; a non-table answer is no rows), `new_keys`, `merged_rows` (the whole table goes back) |
+| `unit/test_pms_mapping.py` | What the AI is shown: each key under its column names, the BU's examples, no amounts (decision-log #54) |
 | `unit/test_pms_process.py` | The gate ladder: each reason code, park vs post, `post_day`'s reading of Carmen's answers, requeue, wake |
 | `unit/test_pms_review.py` | Approve: a fresh read, Carmen's mapping winning over a stale pick, chart checks, PUT then post, claim release; reject; `recheck` |
 | `unit/test_api_keys.py` | Hashing, issue (revokes the key of the same BU and PMS, stores only the hash, a concurrent generate is a `409`), authenticate (stamps `last_used` only on success), admin revoke |
@@ -177,7 +190,8 @@ The real end to end is **CA-120**: a real Carmen menu click and real hooks. It n
 | No voucher number (`JvhNo`) | The JV NO. column shows the seq (as email does), not the number an accountant reads | Ask Carmen to add `JvhNo` to the answer beside `Id`; store it in a new column then |
 | Approve: a Carmen error while reading the chart (`mapping.masters`) is not wrapped | `500` instead of `503`. The claim is still released, and nothing is written (it comes before the PUT) | Wrap it like the mapping read |
 | The 403 Data Bank refusal retries 3× a day via the wake rule | Noise in the row's attempts while the permission is missing | Accept; it stops once the permission is granted |
-| Only JSON-object layouts, only REVENUE | Opera, GuestLine, Hotelogix and Custom fail `unsupported_pms_format` | A reader per layout in `carmen_config.rows_of` |
+| Only REVENUE | A PMS's `STATISTIC` or `MARKETSEGMENT` sections are not posted | A section of its own when a BU needs one (user decision 2026-10-14: one day, one JV) |
+| A post's own refusals show only on Approve | Asks K (DrCr) and N (balance account) come after the post, not in the review | Carmen adding Amount, Dr/Cr and those errors to its preview (decision-log #54). Before a PMS goes live, run `scripts/qa/pms_probe.py`, which checks the balance account with a web JWT |
 | `event_id` keeps `InterfaceName`'s casing | `Comanche` and `COMANCHE` are two rows for one day; the engine refuses the second post (`-200`) | Accepted (decision-log #44): Carmen sends one casing. Lower-casing it would split the days already stored |
 | PMSs that Carmen's own post API fetches (no Data Bank, no hook) | Such a PMS never reaches us: nothing calls it, and its key would never be used | Carmen lists the PMS kinds (the same for every BU); then a plan of its own (decision-log #44) |
 | `carmen.py`'s comment says neither config read has an `/api/interface` twin | Stale since 2026-10-15: the mapping GET has one | Update the comment on the next code change there |

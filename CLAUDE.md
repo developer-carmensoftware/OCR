@@ -215,13 +215,15 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
           PMS × GL × REVENUE row (none → pms_setting_missing); code = {InterfaceName}.{InterfaceType}
       Carmen's mapping table (interfacePost/mapping/{code}/REVENUE/GL): its Columns less
           DeptCode/AccCode/AccDesc = the key (Comanche Code + Description)
-      read the day back: GET /api/interface/PMS/{name}/{docType}/Date/{docDate}; its rows =
-          the FileData list answering the most key columns (decision #53, every PMS on dev):
-          a column reads its own field, else that name less a PREFIX_ (HotelTime HT_Code ←
-          Code), else blank, as Carmen's engine writes it (Department, Cloudbeds' Channel); a
-          list named after another section (Statistic) is skipped; a tie goes to the one with
-          Amount. A day with nothing to key (a CSV file, a PartnerApi day with no Data Bank
-          row) has no preview (preview:false), and Carmen's engine checks it when it posts
+      the day's Data Bank row: GET /api/interface/PMS/{name}/{docType}/Date/{docDate} → the
+          newest Id only (FileData is never read)
+      the day's rows = CARMEN'S PREVIEW (decision #54): POST /api/interface/interfacePreviewPostGL/
+          REVENUE, the post's own body with that Id → a DataTable, one row per line keyed as
+          the engine reads it by the INI, any PMS, + each key's account (null = none). No
+          amounts (the AI gets none either). -400 No Data → day_not_ready; any other failure →
+          no rows (preview:false), and Carmen's engine checks the mapping when it posts
+          scripts/qa/pms_probe.py <PMS> <day>: the same reads, nothing posted — run it before
+          a PMS goes live
       Carmen's -500 (sweep or Approve): its table's rows with no account (the keys it just
           wrote) join the day's, with the AI's picks, to map HERE (process.with_carmen_keys)
       the table's rows → the day's rows it can't place

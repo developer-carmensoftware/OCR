@@ -140,6 +140,31 @@ class TestCallTextLlm:
 
         assert result is None
 
+    async def test_B5_5_an_object_missing_only_its_last_brace_is_parsed(self):
+        """The suggestion model ended whole answers without their `}` (2026-11-10)."""
+        from app.llm.client import call_text_llm
+
+        self.mock_client.chat.completions.create.return_value = _make_response(
+            '```json\n{"L1": {"dept": "101", "acc": "4010001"}, '
+            '"L2": {"dept": "GEN", "acc": "1010001"}\n```'
+        )
+
+        result = await call_text_llm("test prompt")
+
+        assert result == {
+            "L1": {"dept": "101", "acc": "4010001"},
+            "L2": {"dept": "GEN", "acc": "1010001"},
+        }
+
+    async def test_B5_6_an_object_cut_mid_entry_is_still_refused(self):
+        from app.llm.client import call_text_llm
+
+        self.mock_client.chat.completions.create.return_value = _make_response(
+            '{"L1": {"dept": "101", "acc": "4010001"}, "L2": {"dept": "GE'
+        )
+
+        assert await call_text_llm("test prompt") is None
+
     async def test_empty_content_returns_none(self):
         from app.llm.client import call_text_llm
 

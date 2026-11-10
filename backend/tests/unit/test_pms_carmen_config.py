@@ -1,11 +1,10 @@
-"""Decision-log #43, #51 — deriving Carmen's PMS posting config (services/pms/carmen_config.py).
+"""Decision-log #43, #51, #54 — deriving Carmen's PMS posting config (services/pms/carmen_config.py).
 
-`INTERFACES` is what dev Carmen's `interfaceThirdParties` answered on 2026-11-03, and `DAY`
-the shape of a real Comanche Data Bank day. Nothing here computes a side or a total: those
-are Carmen's engine's.
+`INTERFACES` is what dev Carmen's `interfaceThirdParties` answered on 2026-11-03. `PREVIEW`
+is the shape of Carmen's engine previewing a real Comanche day (2026-11-10): a DataTable named
+`Mapping`, one row per line of the day. Nothing here computes a side or a total: those are
+Carmen's engine's.
 """
-
-import json
 
 import pytest
 
@@ -41,36 +40,33 @@ INTERFACES = [
 TABLE_COLUMNS = ["Code", "Description", "DeptCode", "AccCode", "AccDesc"]
 COLUMNS = ["Code", "Description"]
 
-DAY = {
-    "Information": {"DocDate": "2025-10-20T00:00:00.000Z"},
-    "Transaction": [
+
+def preview(columns: list[str], rows: list[dict]) -> dict:
+    """Carmen's preview answer: a .NET DataTable, as `interfacePreviewPostGL` sends it."""
+    return {
+        "TableName": "Mapping",
+        "Columns": [{"ColumnName": c, "DataType": "System.String"} for c in columns],
+        "Rows": rows,
+    }
+
+
+# A Comanche day as the engine keys it: its first row mapped, the others not (null account).
+PREVIEW = preview(
+    TABLE_COLUMNS,
+    [
         {
             "Code": "100",
             "Description": "Room Charge",
-            "TransactionType": "Revenue",
-            "Amount": "149674.74",
+            "DeptCode": "103",
+            "AccCode": "4010001",
+            "AccDesc": "Room Revenue",
         },
-        {
-            "Code": "100",
-            "Description": "Room Charge - VAT",
-            "TransactionType": "Revenue",
-            "Amount": "11525.06",
-        },
-        {
-            "Code": "900",
-            "Description": "Cash - Advance Payment",
-            "TransactionType": "Payment",
-            "Amount": "-4150.00",
-        },
-        {
-            "Code": "Guest Ledger",
-            "Description": "Guest Ledger",
-            "TransactionType": "Ledger",
-            "Amount": "101452.80",
-        },
+        {"Code": "100", "Description": "Room Charge - VAT", "DeptCode": None, "AccCode": None},
+        {"Code": "900", "Description": "Cash - Advance Payment", "DeptCode": None, "AccCode": None},
+        {"Code": "Guest Ledger", "Description": "Guest Ledger", "DeptCode": None, "AccCode": None},
     ],
-    "Statistic": [{"Description": "TOTAL ROOM AVAILABLE", "Value": "162.00"}],
-}
+)
+ROWS = cfg.preview_rows(PREVIEW, COLUMNS) or []
 
 
 def test_the_hooks_interface_posting_revenue_to_gl_is_found():
@@ -100,111 +96,72 @@ def test_the_key_is_the_mapping_tables_columns_less_the_account():
     assert cfg.key_columns(["DeptCode", "AccCode", "AccDesc"]) == []
 
 
-def test_the_rows_are_the_list_answering_the_most_key_columns():
-    assert cfg.rows_key(DAY, COLUMNS) == "Transaction"
-    assert cfg.rows_key(json.dumps(DAY), COLUMNS) == "Transaction"
-    # `Statistic` answers Description too; the REVENUE rows are the list carrying Amount.
-    assert cfg.rows_key(DAY, ["Description"]) == "Transaction"
-    # A column no field answers is blank; the list still fits on the others.
-    assert cfg.rows_key(DAY, ["Code", "Account"]) == "Transaction"
-    assert cfg.rows_key(DAY, ["Account"]) is None  # nothing answers: no list
-    assert cfg.rows_key({"Transaction": []}, COLUMNS) is None
-    assert cfg.rows_key("not json", COLUMNS) is None
-    assert cfg.rows_key(DAY, []) is None
+def test_the_days_rows_are_the_engines_preview_in_its_order():
+    assert [r["values"] for r in ROWS] == [
+        {"Code": "100", "Description": "Room Charge"},
+        {"Code": "100", "Description": "Room Charge - VAT"},
+        {"Code": "900", "Description": "Cash - Advance Payment"},
+        {"Code": "Guest Ledger", "Description": "Guest Ledger"},
+    ]
+    assert ROWS[1]["key"] == cfg.key_id(["100", "Room Charge - VAT"])
+    assert cfg.label(ROWS[1]["key"]) == "100 · Room Charge - VAT"
+    # No amount: the preview carries none, and the sides are the engine's.
+    assert set(ROWS[0]) == {"key", "values"}
 
 
-def test_a_list_named_after_another_section_is_not_revenues():
-    assert cfg.rows_key(DAY, ["Description"], frozenset({"statistic"})) == "Transaction"
-    stats_only = {"Statistic": DAY["Statistic"]}
-    assert cfg.rows_key(stats_only, ["Description"]) == "Statistic"
-    assert cfg.rows_key(stats_only, ["Description"], frozenset({"statistic"})) is None
+def test_a_blank_or_null_key_value_reads_as_blank_on_both_sides():
+    """HotelTime's `Department` and Cloudbeds' `Channel` come back blank or null (dev, 2026-11-10).
 
-
-def test_two_lists_alike_even_on_amount_are_not_guessed_between():
-    twins = {"Revenue": DAY["Transaction"], "Transaction": DAY["Transaction"]}
-    assert cfg.rows_key(twins, COLUMNS) is None
-
-
-def test_a_key_column_reads_its_own_field_else_the_name_without_its_prefix():
-    assert cfg.field_for("Code", ["code", "Description"]) == "code"  # any case
-    assert cfg.field_for("HT_Code", ["Code", "Description"]) == "Code"
-    assert cfg.field_for("HT_Description", ["Code", "Description"]) == "Description"
-    assert cfg.field_for("Department", ["Code", "Description"]) is None
-    assert cfg.field_for("Channel", ["Code"]) is None
-
-
-# HotelTime's day (dev Data Bank 171): rows in `Revenue`, keyed `HT_Code` / `HT_Description`
-# from `Code` / `Description`, and `Department`, which no field answers, blank. Some rows
-# have no `Code` at all. Carmen's engine wrote exactly these keys on its -500 (2026-11-06).
-HT_COLUMNS = ["HT_Code", "HT_Description", "Department"]
-HT_DAY = {
-    "Information": {"HotelCode": "HT"},
-    "Revenue": [
-        {
-            "Code": "4100001",
-            "Description": "001 - Room Charge (Auto)",
-            "AccountNature": "C",
-            "SegmentName": "Room",
-            "Amount": 42748.69,
-        },
-        {"Description": "Rounding", "AccountNature": "C", "SegmentName": "", "Amount": 0.01},
-    ],
-    "Statistic": [{"Description": "Rooms Occupied", "Value": 52}],
-}
-
-
-def test_hoteltime_keys_its_prefixed_columns_from_the_days_bare_fields():
-    assert cfg.rows_key(HT_DAY, HT_COLUMNS, frozenset({"statistic"})) == "Revenue"
-    rows = cfg.rows_of(HT_DAY, "Revenue", HT_COLUMNS)
+    Either reads `""`, as `table_of` reads Carmen's table, so a key the engine previews is
+    the same key the table maps.
+    """
+    ht = preview(
+        ["HT_Code", "HT_Description", "Department", "DeptCode", "AccCode", "AccDesc"],
+        [
+            {"HT_Code": "1115001", "HT_Description": "100 - ABF Revenue", "Department": ""},
+            {"HT_Code": None, "HT_Description": "Rounding", "Department": None},
+        ],
+    )
+    columns = ["HT_Code", "HT_Description", "Department"]
+    rows = cfg.preview_rows(ht, columns) or []
     assert [r["values"] for r in rows] == [
-        {"HT_Code": "4100001", "HT_Description": "001 - Room Charge (Auto)", "Department": ""},
+        {"HT_Code": "1115001", "HT_Description": "100 - ABF Revenue", "Department": ""},
         {"HT_Code": "", "HT_Description": "Rounding", "Department": ""},
     ]
-    assert rows[0]["amount"] == "42748.69"
-    assert cfg.label(rows[1]["key"]) == "Rounding"
-
-
-# Cloudbeds' day (dev Data Bank 184): `Transaction` and `Statistic` both carry its key fields,
-# and its table keys a `Channel` no list carries (Carmen added it on its first -500).
-CB_COLUMNS = ["Description", "MarketSegmentDesc", "Channel"]
-CB_DAY = {
-    "Information": {},
-    "Transaction": [
+    table = [
         {
-            "Code": "RM",
-            "Description": "Room Revenue",
-            "MarketSegmentDesc": "OTA",
-            "TransactionType": "credit",
-            "Amount": 3500,
-        },
-        {
-            "Code": "CL",
-            "Description": "cityledger",
-            "MarketSegmentDesc": "",
-            "TransactionType": "debit",
-            "Amount": -3500,
-        },
+            "HT_Code": "1115001",
+            "HT_Description": "100 - ABF Revenue",
+            "Department": None,
+            "DeptCode": "201",
+            "AccCode": "4110001",
+        }
+    ]
+    assert cfg.new_keys(rows, cfg.table_of(table, columns)) == [rows[1]["key"]]
+
+
+def test_a_key_the_pms_wrote_twice_is_two_rows_and_one_new_key():
+    twice = preview(TABLE_COLUMNS, [PREVIEW["Rows"][1], PREVIEW["Rows"][1]])
+    rows = cfg.preview_rows(twice, COLUMNS) or []
+    assert len(rows) == 2
+    assert cfg.new_keys(rows, {}) == [cfg.key_id(["100", "Room Charge - VAT"])]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"Code": -400, "UserMessage": "No Data Found on 08/11/2026 to 08/11/2026 "},
+        {"Rows": "not a list"},
+        None,
+        "not json",
     ],
-    "Statistic": [
-        {"Code": "RO", "Description": "Rooms Occupied", "MarketSegmentDesc": "OTA", "Value": 12}
-    ],
-}
+)
+def test_an_answer_that_is_not_the_previews_table_has_no_rows(answer):
+    assert cfg.preview_rows(answer, COLUMNS) is None
 
 
-def test_cloudbeds_reads_its_transaction_not_its_statistic():
-    assert cfg.rows_key(CB_DAY, CB_COLUMNS, frozenset({"statistic"})) == "Transaction"
-    assert cfg.rows_key(CB_DAY, CB_COLUMNS) == "Transaction"  # Amount decides, even unskipped
-    rows = cfg.rows_of(CB_DAY, "Transaction", CB_COLUMNS)
-    assert rows[1]["values"] == {
-        "Description": "cityledger",
-        "MarketSegmentDesc": "",
-        "Channel": "",
-    }
-
-
-def test_the_interfaces_other_sections_are_its_other_doc_types():
-    assert cfg.other_doc_types(INTERFACES, "pms", "comanche") == frozenset({"statistic"})
-    assert cfg.other_doc_types(INTERFACES, "PMS", "Opera") == frozenset()
+def test_a_preview_with_no_lines_has_no_rows_to_review():
+    assert cfg.preview_rows(preview(TABLE_COLUMNS, []), COLUMNS) == []
 
 
 def test_carmens_rows_with_no_account_are_the_keys_it_waits_for():
@@ -216,19 +173,6 @@ def test_carmens_rows_with_no_account_are_the_keys_it_waits_for():
     assert cfg.blank_keys(current, COLUMNS) == [
         {"key": cfg.key_id(["729", "Rebate"]), "values": {"Code": "729", "Description": "Rebate"}}
     ]
-
-
-def test_every_row_is_its_own_key_tax_rows_included():
-    rows = cfg.rows_of(DAY, "Transaction", COLUMNS)
-    assert [r["values"] for r in rows][:2] == [
-        {"Code": "100", "Description": "Room Charge"},
-        {"Code": "100", "Description": "Room Charge - VAT"},
-    ]
-    assert rows[2]["amount"] == "-4150.00"
-    assert len({r["key"] for r in rows}) == 4
-    assert cfg.label(rows[1]["key"]) == "100 · Room Charge - VAT"
-    # The same rows as a JSON string, the way the Data Bank sometimes returns FileData.
-    assert cfg.rows_of(json.dumps(DAY), "Transaction", COLUMNS) == rows
 
 
 TABLE = [
@@ -257,9 +201,8 @@ TABLE = [
 
 
 def test_new_keys_are_the_rows_carmens_table_has_no_account_for():
-    rows = cfg.rows_of(DAY, "Transaction", COLUMNS)
     table = cfg.table_of(TABLE, COLUMNS)
-    new = cfg.new_keys(rows, table)
+    new = cfg.new_keys(ROWS, table)
     # "Cash" is mapped, "Cash - Advance Payment" is not: the description is part of the key.
     assert [cfg.label(k) for k in new] == [
         "100 · Room Charge - VAT",
@@ -267,6 +210,17 @@ def test_new_keys_are_the_rows_carmens_table_has_no_account_for():
         "Guest Ledger · Guest Ledger",
     ]
     assert cfg.short_labels(new) == ["100", "900", "Guest Ledger"]
+
+
+def test_the_previews_unmapped_rows_are_the_new_keys():
+    """Its null accounts and our table read agree: checked on five dev days (2026-11-10)."""
+    unmapped = [
+        cfg.key_id([str(r.get(c) or "") for c in COLUMNS])
+        for r in PREVIEW["Rows"]
+        if not r.get("AccCode")
+    ]
+    table = [r for r in PREVIEW["Rows"] if r.get("AccCode")]
+    assert cfg.new_keys(ROWS, cfg.table_of(table, COLUMNS)) == unmapped
 
 
 def test_the_table_to_put_is_every_row_read_plus_the_picks():
@@ -291,14 +245,6 @@ def test_the_table_to_put_is_every_row_read_plus_the_picks():
             "AccCode": "2012003",
         },
     ]
-
-
-def test_the_newest_readable_data_bank_row_wins():
-    old = {"Id": 1, "LastModified": "2024-09-05T23:00:00", "FileData": DAY}
-    new = {"Id": 2, "LastModified": "2024-09-06T01:00:00", "FileData": json.dumps(DAY)}
-    junk = {"Id": 3, "LastModified": "2024-09-07T00:00:00", "FileData": "not json"}
-    assert cfg.newest_day([old, new, junk], COLUMNS) == (new, "Transaction")
-    assert cfg.newest_day([junk], COLUMNS) is None
 
 
 def test_the_pmss_carmen_fetches_itself_are_its_partner_interfaces():
