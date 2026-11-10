@@ -166,16 +166,17 @@ def preflight() -> int:
     return 0 if ok else 1
 
 
-async def _days_raw(keys: list[str]) -> dict[str, dict]:
+async def _days_raw() -> dict[str, dict]:
+    """Comanche's raw days: the staging below picks rows by `TransactionType`, which Carmen's
+    preview does not carry. The app itself no longer reads FileData (decision-log #54)."""
     out = {}
     for day in ALL_DAYS:
         found = await carmen.get_databank_day("PMS", NAME, "Daily", day, TOKEN)
-        newest = cfg.newest_day(found, keys)
-        if newest is None:
-            raise SystemExit(f"[abort] Data Bank has no readable {NAME} {day}")
-        row, json_keys = newest
+        if not found:
+            raise SystemExit(f"[abort] Data Bank has no {NAME} {day}")
+        row = max(found, key=lambda d: str(d.get("LastModified") or ""))
         data = row["FileData"]
-        items = (json.loads(data) if isinstance(data, str) else data)[json_keys]
+        items = (json.loads(data) if isinstance(data, str) else data)["Transaction"]
         out[day] = {"id": row["Id"], "items": items}
     return out
 
@@ -205,7 +206,7 @@ async def _setup() -> None:
 
     fill_rows, _ = await carmen.get_pms_mapping(FILL_FROM, POST_TYPE, TOKEN)
     union = {**cfg.table_of(fill_rows, keys), **cfg.table_of(rows, keys)}
-    days = await _days_raw(keys)
+    days = await _days_raw()
     day_keys = {d: [_key(i, keys) for i in v["items"]] for d, v in days.items()}
     needed = list(dict.fromkeys(k for ks in day_keys.values() for k in ks))
     if missing := [k for k in needed if k not in union]:
@@ -254,7 +255,7 @@ async def _setup() -> None:
     after, _ = await carmen.get_pms_mapping(SETTING, POST_TYPE, TOKEN)
     table = cfg.table_of(after, keys)
     new = {
-        d: cfg.new_keys(cfg.rows_of({"x": v["items"]}, "x", keys), table)
+        d: cfg.new_keys([{"key": _key(i, keys)} for i in v["items"]], table)
         for d, v in days.items()
     }
     state.update(

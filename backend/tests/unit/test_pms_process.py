@@ -17,7 +17,14 @@ from sqlalchemy.dialects import postgresql
 from app.services.pms import carmen_config as cfg
 from app.services.pms import process
 from app.services.shared.carmen import CarmenAPIError
-from tests.unit.test_pms_carmen_config import COLUMNS, DAY, INTERFACES, TABLE_COLUMNS
+from tests.unit.test_pms_carmen_config import (
+    COLUMNS,
+    INTERFACES,
+    PREVIEW,
+    ROWS,
+    TABLE_COLUMNS,
+    preview,
+)
 
 HOOK = {
     "InterfaceType": "PMS",
@@ -25,8 +32,8 @@ HOOK = {
     "DocType": "Daily",
     "DocDate": "2025-10-20",
 }
-DATABANK = [{"Id": 148, "LastModified": "2026-10-14T14:29:34+07:00", "FileData": DAY}]
-ROWS = cfg.rows_of(DAY, "Transaction", COLUMNS)
+# Only the row's id is read now: Carmen's preview reads the day itself (decision-log #54).
+DATABANK = [{"Id": 148, "LastModified": "2026-10-14T14:29:34+07:00", "FileData": {}}]
 # Carmen's table with every one of the day's rows mapped.
 FULL = [
     {
@@ -77,6 +84,7 @@ class _Run:
         target=("tok", "https://dev.carmen4.com"),
         interfaces=INTERFACES,
         databank=DATABANK,
+        preview=PREVIEW,
         table=FULL,
         columns=TABLE_COLUMNS,
         suggest=None,
@@ -104,6 +112,7 @@ class _Run:
             "write": patch.object(process, "_write", write),
             "interfaces": patch.object(process.carmen, "get_interfaces", _mock(interfaces)),
             "databank": patch.object(process.carmen, "get_databank_day", _mock(databank)),
+            "preview": patch.object(process.carmen, "preview_pms_gl", _mock(preview)),
             "mapping": patch.object(
                 process.carmen,
                 "get_pms_mapping",
@@ -140,6 +149,16 @@ async def test_auto_post_off_parks_even_a_fully_mapped_day():
     assert payload["key_columns"] == ["Code", "Description"]
     assert len(payload["rows"]) == 4 and len(payload["mapped"]) == 4
     assert payload["databank_id"] == 148
+    # The rows are Carmen's preview of the very Data Bank row a post would read.
+    post_type, body, token = run.m["preview"].await_args.args
+    assert (post_type, token) == ("REVENUE", "tok")
+    assert body == {
+        "Code": "Comanche.PMS",
+        "DateFrom": "2025-10-20",
+        "DateTo": "2025-10-20",
+        "id": [148],
+    }
+    assert payload["rows"] == ROWS
     run.m["post"].assert_not_awaited()
 
 
@@ -188,8 +207,9 @@ async def test_new_rows_are_suggested_from_the_bus_own_table_and_the_day_parks()
     pick = {key: {"dept": "GEN", "acc": "2012003", "confidence": "high", "why": "output tax"}}
     run = _Run(settings=AUTO, table=partial, suggest=pick)
     assert await run() == "pending_review"
-    new, rows, table = run.m["suggest"].await_args.args[:3]
-    assert new == [key] and rows == ROWS and len(table) == 3
+    new, table, _, _, columns = run.m["suggest"].await_args.args
+    # The AI sees the keys under the BU's column names, and no amounts (decision-log #54).
+    assert new == [key] and len(table) == 3 and columns == COLUMNS
     payload = run.last["review_payload"]
     assert payload["flags"] == ["mapping_guessed"] and payload["ai"] == [key]
     assert payload["guessed"] == pick
@@ -260,28 +280,31 @@ async def test_no_revenue_section_for_the_interface():
     run.m["mapping"].assert_not_awaited()
 
 
-# HotelTime's layout (dev Data Bank, 2026-10-06): its rows are `Revenue`, and its mapping
-# table keys them `HT_Code` / `HT_Description` / `Department`, which read the day's `Code` and
-# `Description`, `Department` blank (decision-log #53).
-HOTELTIME = [
-    {
-        "Id": 171,
-        "LastModified": "2026-10-07T03:32:57+07:00",
-        "FileData": {
-            "Revenue": [
-                {"Code": "4100001", "Description": "001 - Room Charge (Auto)", "Amount": 42748.69}
-            ]
-        },
-    }
-]
+# HotelTime (dev Data Bank 171, 2026-10-06): its mapping table keys `HT_Code` /
+# `HT_Description` / `Department`, and Carmen's preview keys the day the same way, `Department`
+# blank. Nothing here reads HotelTime's own layout (decision-log #54).
+HOTELTIME = [{"Id": 171, "LastModified": "2026-10-07T03:32:57+07:00", "FileData": {}}]
 HT_COLUMNS = ["HT_Code", "HT_Description", "Department", "DeptCode", "AccCode", "AccDesc"]
+HT_PREVIEW = preview(
+    HT_COLUMNS,
+    [
+        {
+            "HT_Code": "4100001",
+            "HT_Description": "001 - Room Charge (Auto)",
+            "Department": "",
+            "DeptCode": None,
+            "AccCode": None,
+            "AccDesc": "",
+        }
+    ],
+)
 
 
 @pytest.mark.asyncio
-async def test_hoteltime_is_keyed_from_its_bare_field_names_and_parks_with_its_rows():
+async def test_hoteltime_parks_with_the_rows_carmens_preview_keys():
     """Every PMS is reviewable (decision-log #53): HotelTime's rows show, keyed as Carmen's
-    engine keys them, and its new keys go to the AI like Comanche's."""
-    run = _Run(databank=HOTELTIME, table=[], columns=HT_COLUMNS)
+    engine keys them (#54), and its new keys go to the AI like Comanche's."""
+    run = _Run(databank=HOTELTIME, preview=HT_PREVIEW, table=[], columns=HT_COLUMNS)
     assert await run() == "pending_review"
     payload = run.last["review_payload"]
     assert payload["preview"] is True
@@ -299,7 +322,7 @@ async def test_hoteltime_is_keyed_from_its_bare_field_names_and_parks_with_its_r
 @pytest.mark.asyncio
 async def test_an_auto_post_bu_waits_for_any_pmss_new_rows_and_posts_a_mapped_day():
     """Auto-post posts what is ready (decision-log #24), whichever PMS it is."""
-    run = _Run(settings=AUTO, databank=HOTELTIME, table=[], columns=HT_COLUMNS)
+    run = _Run(settings=AUTO, databank=HOTELTIME, preview=HT_PREVIEW, table=[], columns=HT_COLUMNS)
     assert await run() == "pending_review"
     run.m["post"].assert_not_awaited()
     mapped = [
@@ -312,26 +335,36 @@ async def test_an_auto_post_bu_waits_for_any_pmss_new_rows_and_posts_a_mapped_da
             "AccDesc": "Room Revenue",
         }
     ]
-    run = _Run(settings=AUTO, databank=HOTELTIME, table=mapped, columns=HT_COLUMNS)
+    run = _Run(
+        settings=AUTO, databank=HOTELTIME, preview=HT_PREVIEW, table=mapped, columns=HT_COLUMNS
+    )
     assert await run() == "posted"
     assert run.m["post"].await_args.args[1]["id"] == [171]
 
 
 MINUS_500 = {"Code": -500, "UserMessage": "Mapping is incomplete."}
-CSV = [{"Id": 180, "LastModified": "2026-10-06", "FileData": "Code,Description\n100,Room"}]
+DATABANK_180 = [{"Id": 180, "LastModified": "2026-10-06", "FileData": "Code,Description\n100,Room"}]
+EMPTY = preview(TABLE_COLUMNS, [])
+# Carmen's preview while it was broken on dev (2026-11-09).
+PREVIEW_500 = CarmenAPIError(
+    500,
+    'HTTP 500: {"Code":-2147024809,'
+    '"UserMessage":"Object serialized to Array. JObject instance expected."}',
+)
 
 
 @pytest.mark.asyncio
 async def test_carmens_minus_500_puts_the_keys_it_named_in_the_review():
-    """A day nothing here could key posts by date (auto-post on). Carmen's -500 writes the
-    keys it lacks into its table with no account, and the day parks with them and the AI's
-    suggestions, to map here (decision-log #53)."""
+    """A day the preview gave no rows for posts by date (auto-post on). Carmen's -500 writes
+    the keys it lacks into its table with no account, and the day parks with them and the
+    AI's suggestions, to map here (decision-log #53)."""
     named = {"Code": "100", "Description": "Room", "DeptCode": None, "AccCode": None}
     key = cfg.key_id(["100", "Room"])
     guess = {key: {"dept": "103", "acc": "4010001", "confidence": "high", "why": "room"}}
     run = _Run(
         settings=AUTO,
-        databank=CSV,
+        databank=DATABANK_180,
+        preview=EMPTY,
         table=[],
         post=MINUS_500,
         after=([named], TABLE_COLUMNS),
@@ -341,7 +374,7 @@ async def test_carmens_minus_500_puts_the_keys_it_named_in_the_review():
     assert run.last["reason_code"] == "pms_mapping_incomplete"
     payload = run.last["review_payload"]
     assert payload["preview"] is True
-    assert [(r["key"], r["amount"]) for r in payload["rows"]] == [(key, "")]
+    assert [r["key"] for r in payload["rows"]] == [key]
     assert payload["guessed"][key]["acc"] == "4010001"
     assert payload["flags"] == ["mapping_guessed"]
     assert run.m["suggest"].await_args.args[0] == [key]
@@ -351,7 +384,8 @@ async def test_carmens_minus_500_puts_the_keys_it_named_in_the_review():
 async def test_the_day_still_parks_when_carmens_table_cannot_be_read_after_its_minus_500():
     run = _Run(
         settings=AUTO,
-        databank=CSV,
+        databank=DATABANK_180,
+        preview=EMPTY,
         table=[],
         post=MINUS_500,
         after=CarmenAPIError(503, "Carmen Server request timed out."),
@@ -362,17 +396,26 @@ async def test_the_day_still_parks_when_carmens_table_cannot_be_read_after_its_m
 
 
 @pytest.mark.asyncio
-async def test_a_file_that_is_not_json_is_not_a_failure_either():
-    """GuestLine's day is CSV: nothing here can key it, so Carmen does (decision-log #52)."""
-    csv = [{"Id": 180, "LastModified": "2026-10-06", "FileData": "Code,Description\n100,Room"}]
-    run = _Run(interfaces=[{**INTERFACES[0], "PostType": "Csv"}], databank=csv)
+async def test_a_preview_carmen_cannot_give_is_not_a_failure():
+    """Carmen's preview broke on dev on 2026-11-09. The day parks with no rows, as before
+    decision-log #54: Carmen's engine checks the mapping when it is posted."""
+    run = _Run(databank=DATABANK_180, preview=PREVIEW_500)
     assert await run() == "pending_review"
-    assert run.last["review_payload"]["preview"] is False
-    assert run.last["review_payload"]["databank_id"] == 180
+    payload = run.last["review_payload"]
+    assert (payload["preview"], payload["rows"], payload["databank_id"]) == (False, [], 180)
+    run.m["suggest"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_a_readable_day_keeps_its_preview():
+async def test_a_preview_refusing_the_credential_is_the_credentials_reason():
+    run = _Run(preview=CarmenAPIError(401, "HTTP 401: denied"))
+    assert await run() == "retry"
+    assert run.last["reason_code"] == "carmen_unauthorized"
+    run.m["post"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_day_with_rows_keeps_its_preview():
     run = _Run()
     assert await run() == "pending_review"
     assert run.last["review_payload"]["preview"] is True
@@ -385,8 +428,10 @@ async def test_a_day_the_sweep_opened_posts_by_date_alone_when_the_data_bank_has
     opened.payload = {**HOOK, "Source": process.OPENED_BY_SWEEP}
     run = _Run(settings=AUTO, databank=[], claimed=opened)
     assert await run() == "posted"
-    body = run.m["post"].await_args.args[1]
-    assert body == {"Code": "Comanche.PMS", "DateFrom": "2025-10-20", "DateTo": "2025-10-20"}
+    by_date = {"Code": "Comanche.PMS", "DateFrom": "2025-10-20", "DateTo": "2025-10-20"}
+    # The preview reads it by date too: what the review shows is what the post will read.
+    assert run.m["preview"].await_args.args[1] == by_date
+    assert run.m["post"].await_args.args[1] == by_date
     off = _claimed()
     off.payload = {**HOOK, "Source": process.OPENED_BY_SWEEP}
     run = _Run(databank=[], claimed=off)
@@ -611,14 +656,24 @@ NO_DATA = {"Code": -400, "UserMessage": "No Data Found on 05/11/2026 to 05/11/20
 
 @pytest.mark.asyncio
 async def test_a_day_carmen_has_no_data_for_yet_is_asked_again_hourly_without_spending_tries():
+    """Carmen's preview says so before anything posts; it answers as the post would (#54)."""
     opened = _claimed(attempts=2)
     opened.payload = {**HOOK, "Source": process.OPENED_BY_SWEEP}
-    run = _Run(settings=AUTO, databank=[], claimed=opened, post=NO_DATA)
+    run = _Run(settings=AUTO, databank=[], claimed=opened, preview=NO_DATA)
     assert await run() == "retry"
     assert run.last["reason_code"] == "day_not_ready"
     assert run.last["error_message"] == "No Data Found on 05/11/2026 to 05/11/2026"
     assert run.last["attempts"] == 1  # the claim's +1 is given back
     assert "status" not in run.last  # still `received`, for the next hourly try
+    run.m["post"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_posts_own_no_data_is_read_the_same_way():
+    """A preview that gave rows and a post that then finds no data: the same hourly wait."""
+    run = _Run(settings=AUTO, post=NO_DATA)
+    assert await run() == "retry"
+    assert run.last["reason_code"] == "day_not_ready"
 
 
 @pytest.mark.asyncio
@@ -627,7 +682,7 @@ async def test_a_day_still_without_data_after_a_day_is_given_up():
 
     stale = _claimed(created_at=datetime.now(UTC) - timedelta(hours=25))
     stale.payload = {**HOOK, "Source": process.OPENED_BY_SWEEP}
-    run = _Run(settings=AUTO, databank=[], claimed=stale, post=NO_DATA)
+    run = _Run(settings=AUTO, databank=[], claimed=stale, preview=NO_DATA)
     assert await run() == "failed"
     assert (run.last["status"], run.last["reason_code"]) == ("failed", "day_not_found")
 

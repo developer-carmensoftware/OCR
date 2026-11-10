@@ -1,10 +1,11 @@
 """What a PMS day's new rows should post to: the AI's pick, until a person approves it.
 
 The BU's mapping lives in Carmen (decision-log #43): Carmen's engine posts a day by its own
-mapping table, keyed the way the BU's PMS setting says (`[Code][Description]` for Comanche),
-and Carmen's own screen edits it. The LLM runs only for the rows that table has no account
-for, and it is shown the rows the BU has already mapped, so a new code's tax and service
-rows follow the house pattern rather than a guess. The pick travels in the day's
+mapping table, keyed the way the BU's PMS setting says (`Code`, `Description` for Comanche;
+`HT_Code`, `HT_Description`, `Department` for HotelTime), and Carmen's own screen edits it.
+The LLM runs only for the rows that table has no account for. It is shown the rows the BU has
+already mapped, so a new code's tax and service rows follow the house pattern rather than a
+guess. The pick travels in the day's
 `review_payload` until a person approves it; Approve writes it into Carmen's table.
 """
 
@@ -14,7 +15,6 @@ import logging
 from app.constants import Module
 from app.llm.client import call_text_llm
 from app.services.credit_card.gl_suggestion import _dept_allowed_map, _validate_codes
-from app.services.pms import carmen_config as cfg
 from app.services.shared import carmen
 from app.utils.gl_filter import parse_default_account
 
@@ -79,30 +79,33 @@ def flags(new: list[str], guessed: dict[str, dict]) -> list[str]:
     )
 
 
+def _line(key: str, columns: list[str]) -> str:
+    """One mapping key as the AI reads it: each non-blank value under its column's name
+    (`HT_Code: 1115001 · HT_Description: 100 - ABF Revenue`). Every PMS keys differently."""
+    return " · ".join(f"{c}: {v}" for c, v in zip(columns, json.loads(key), strict=False) if v)
+
+
 async def suggest(
     new: list[str],
-    rows: list[dict],
     table: dict[str, dict],
     accounts: list[dict],
     departments: list[dict],
+    columns: list[str],
 ) -> dict[str, dict]:
     """key → {"dept", "acc", "confidence", "why"} for each new key, from one LLM call;
     {} when it fails.
 
+    The AI sees each key under the BU's own column names, and the rows the BU has already
+    mapped, and nothing else of the day: no amounts (user decision 2026-11-10, decision-log
+    #54). Carmen's preview gives none, and the BU's own pattern is what decides a line's home.
     Only codes Carmen's chart of accounts actually has survive (`_validate_codes`), so a
     hallucinated account never reaches the review as if it were real.
     """
     if not new:
         return {}
-    amounts: dict[str, list[str]] = {}
-    for r in rows:
-        amounts.setdefault(r["key"], []).append(r["amount"])
-    items = [
-        {"id": f"L{i}", "line": cfg.label(key), "amounts": amounts.get(key, [])}
-        for i, key in enumerate(new, 1)
-    ]
+    items = [{"id": f"L{i}", "line": _line(key, columns)} for i, key in enumerate(new, 1)]
     examples = "\n".join(
-        f"  {cfg.label(k)} -> {m['dept']}/{m['acc']} {m['name']}"
+        f"  {_line(k, columns)} -> {m['dept']}/{m['acc']} {m['name']}"
         for k, m in list(table.items())[:_EXAMPLES]
     )
     postable = [a for a in accounts if a["type"] in _POSTABLE_TYPES] or accounts
@@ -116,11 +119,12 @@ async def suggest(
     prompt = f"""You map a hotel's PMS night-audit lines to the hotel's Carmen general ledger.
 
 Pick, for every new line, the GL department and account it posts to. Debit/credit is decided by
-Carmen, not by you. Each line is "<PMS code> · <description>"; lines ending " - VAT" and
-" - SERVICE" are the tax and service charge of the line before them.
+Carmen, not by you. Each line is one key of the hotel's PMS mapping: its values, each under the
+column it belongs to ({", ".join(columns)}). Each PMS names and fills these columns its own way.
 
 This hotel already maps these lines. Follow its pattern: the same kind of line goes to the same
-kind of account and department, and tax and service lines follow the ones already mapped.
+kind of account and department, and a line's tax or service charge goes where the hotel sends
+those of lines like it.
 {examples or "  (none yet)"}
 
 Departments (code name):

@@ -1,24 +1,26 @@
-"""What Carmen's PMS posting config says, as far as the menu token can read it (decision-log #43, #51).
+"""What Carmen's PMS posting config says, as far as the menu token can read it (decision-log #43, #51, #54).
 
-Carmen's engine posts a Data Bank day by the BU's GL interface setting: an INI per PMS that
-says where the rows are, which fields key the mapping table, how debit and credit are told
-apart, and the counter account. The menu token cannot read that setting (`interfacePost/
-Setting` has no `/api/interface` twin). It can read `interfaceThirdParties` — the BU's
-interfaces and their sections — and the mapping table, and the rest is derived from those
-two and from the day itself (decision-log #51):
+Carmen's engine posts a Data Bank day by the BU's GL interface setting, an INI per PMS. The
+INI says:
+- where the rows are;
+- which fields key the mapping table;
+- how debit and credit are told apart;
+- which account is the counter.
 
-- the setting's code is `{InterfaceName}.{InterfaceType}` (Carmen's own rule);
-- the mapping key is the table's own columns, less the account they map to;
-- the day's rows are the list in `FileData` whose fields answer the most key columns, a key
-  column reading the field of its own name, else that name without a `PREFIX_` (HotelTime's
-  `HT_Code` ← `Code`), else nothing, its value then blank as Carmen's engine writes it
-  (decision-log #53). A list named after another of the PMS's sections (`Statistic`) is not
-  REVENUE's.
+The menu token cannot read that setting, because `interfacePost/Setting` has no
+`/api/interface` twin. What it can read is enough:
+- `interfaceThirdParties`: the BU's interfaces and their sections;
+- the mapping table;
+- the engine's preview of a post.
 
-Checked against the keys Carmen's engine itself writes on a `-500` (HotelTime 46 of 46,
-Cloudbeds 78 of 78, 2026-11-06). A day no list fits has no preview, and Carmen's `-500` then
-names the keys it lacks. Nothing about a day's sides is decided here — Comanche signs `Amount`,
-other PMSs carry a D/C column — that stays Carmen's engine's. Pure: no database, no HTTP.
+From those (decision-log #51, #54):
+- **The setting's code** is `{InterfaceName}.{InterfaceType}`, Carmen's own rule.
+- **The mapping key** is the table's own columns, less the account they map to.
+- **The day's rows** are what the engine's preview answers. It reads the day by the INI and
+  keys it exactly as a post would, for every PMS, so nothing here reads a PMS's own layout.
+
+Nothing about a day's sides or totals is decided here: those stay Carmen's engine's.
+Pure: no database, no HTTP.
 """
 
 import json
@@ -28,9 +30,6 @@ from dataclasses import dataclass
 POST_TYPE = "REVENUE"
 # What a mapping row maps its key to; every other column of the table is part of the key.
 _TARGET_COLUMNS = ("DeptCode", "AccCode", "AccDesc")
-# ponytail: Comanche's amount field. Carmen's INI names it per PMS (`[Amount] JsonKeyName`);
-# read it from there if Carmen ever exposes the setting. Only the AI and the reviewer see it.
-AMOUNT_FIELD = "Amount"
 
 
 @dataclass(frozen=True)
@@ -84,45 +83,9 @@ def partner_interfaces(interfaces: list) -> dict[str, str]:
     return names
 
 
-def other_doc_types(interfaces: list, interface_type: str, interface: str) -> frozenset[str]:
-    """This interface's other sections in Carmen's list (`statistic`), lower-cased.
-
-    A Data Bank list named after one of them is that section's, not REVENUE's: Cloudbeds'
-    `Statistic` carries the same key fields as its `Transaction`.
-    """
-    out = set()
-    for i in interfaces:
-        if not isinstance(i, dict):
-            continue
-        doc = str(i.get("DocType") or "")
-        if (
-            doc
-            and doc.upper() != POST_TYPE
-            and str(i.get("InterfaceType") or "").casefold() == interface_type.casefold()
-            and str(i.get("InterfaceName") or "").casefold() == interface.casefold()
-        ):
-            out.add(doc.casefold())
-    return frozenset(out)
-
-
 def key_columns(columns: list[str]) -> list[str]:
     """The mapping table's key columns: all of them but the account a key maps to."""
     return [c for c in columns if c not in _TARGET_COLUMNS]
-
-
-def field_for(column: str, fields) -> str | None:
-    """The Data Bank field a key column reads, or None when the day has none for it.
-
-    The field of the column's own name (any case), else the name without a `PREFIX_`
-    (HotelTime's `HT_Code` ← `Code`). None leaves the key's value blank, which is what Carmen's
-    engine writes for such a column (HotelTime's `Department`, Cloudbeds' `Channel`).
-    """
-    by_name = {str(f).casefold(): f for f in fields}
-    name = column.casefold()
-    if name in by_name:
-        return by_name[name]
-    _, sep, bare = name.partition("_")
-    return by_name.get(bare) if sep and bare else None
 
 
 def key_id(values: list[str]) -> str:
@@ -140,83 +103,22 @@ def short_labels(keys: list[str]) -> list[str]:
     return list(dict.fromkeys(json.loads(k)[0] for k in keys if json.loads(k)))
 
 
-def _parsed(file_data) -> dict | None:
-    if isinstance(file_data, str):
-        try:
-            file_data = json.loads(file_data)
-        except ValueError:
-            return None
-    return file_data if isinstance(file_data, dict) else None
+def preview_rows(answer, columns: list[str]) -> list[dict] | None:
+    """The day's rows from the engine's preview: `[{"key", "values"}]`, in the engine's order.
 
-
-def _fields(items: list) -> set[str]:
-    """Every field any entry of a list carries: a row may lack one (HotelTime's no-`Code` rows)."""
-    return {k for i in items if isinstance(i, dict) for k in i}
-
-
-def rows_key(file_data, columns: list[str], skip: frozenset[str] = frozenset()) -> str | None:
-    """The list in `FileData` the day's rows are in, or None.
-
-    Of the lists not named after another of this PMS's sections (`skip`), the one whose fields
-    answer the most key columns (`field_for`). A tie goes to the one carrying `Amount`: the
-    REVENUE rows have it, a `Statistic` (`Description`, `Value`) does not. A tie even then is
-    a layout this cannot tell apart: None, not a guess.
+    Returns None when the answer is not the preview's table, e.g. a `-400 "No Data Found"`.
+    Each key column reads the preview's column of that name. A blank or null value is `""`,
+    as `table_of` reads the table, so a key means the same thing on both sides. A key the
+    PMS wrote twice stays twice here: `new_keys` reads each once.
     """
-    data = _parsed(file_data)
-    if data is None or not columns:
+    if not isinstance(answer, dict) or not isinstance(answer.get("Rows"), list):
         return None
-    scored = []
-    for name, items in data.items():
-        if not (isinstance(items, list) and items and all(isinstance(i, dict) for i in items)):
-            continue
-        if name.casefold() in skip:
-            continue
-        fields = _fields(items)
-        answered = sum(1 for c in columns if field_for(c, fields))
-        if answered:
-            scored.append(((answered, AMOUNT_FIELD in fields), name))
-    if not scored:
-        return None
-    best = max(score for score, _ in scored)
-    top = [name for score, name in scored if score == best]
-    return top[0] if len(top) == 1 else None
-
-
-def newest_day(
-    found: list[dict], columns: list[str], skip: frozenset[str] = frozenset()
-) -> tuple[dict, str] | None:
-    """The Data Bank row to read and the list its rows are in: the newest row that has one.
-
-    Carmen may hold more than one row for a day (a re-run night audit); `LastModified`
-    names the current one.
-    """
-    days = [(r, k) for r in found if (k := rows_key(r.get("FileData"), columns, skip))]
-    return max(days, key=lambda d: str(d[0].get("LastModified") or ""), default=None)
-
-
-def rows_of(file_data, json_keys: str, columns: list[str]) -> list[dict]:
-    """The day's rows as Carmen keys them: `[{"key", "values", "amount"}]`, in file order.
-
-    `file_data` is one `newest_day` vouched for. Each key column reads its `field_for`, and
-    a column with none (or a row without it) is blank. `amount` is as written, for the
-    reviewer and the AI to read; nothing here adds, signs or balances it.
-    """
-    items = (_parsed(file_data) or {})[json_keys]
-    source = {c: field_for(c, _fields(items)) for c in columns}
     out = []
-    for item in items:
-        values = {
-            c: "" if source[c] is None or item.get(source[c]) is None else str(item[source[c]])
-            for c in columns
-        }
-        amount = item.get(AMOUNT_FIELD)
-        out.append(
-            {
-                "key": key_id(list(values.values())),
-                "values": values,
-                "amount": "" if amount is None else str(amount),
-            }
-        )
+    for r in answer["Rows"]:
+        if not isinstance(r, dict):
+            continue
+        values = {c: str(r.get(c) or "") for c in columns}
+        out.append({"key": key_id(list(values.values())), "values": values})
     return out
 
 
