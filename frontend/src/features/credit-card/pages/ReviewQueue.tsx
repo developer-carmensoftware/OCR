@@ -7,6 +7,7 @@ import {
   FileX2,
   RefreshCw,
   ScanLine,
+  SearchX,
   Settings,
   Upload,
   type LucideIcon,
@@ -14,7 +15,7 @@ import {
 import AppHeader from '@/shared/components/common/AppHeader'
 import UsageIndicator from '@/shared/components/common/UsageIndicator'
 import Pager from '@/shared/components/common/Pager'
-import InlineSelect from '@/shared/components/common/InlineSelect'
+import { FilterBar } from '@/features/credit-card/components/QueueFilters'
 import QueueRow from '@/features/credit-card/components/QueueRow'
 import ReviewDocument from './ReviewDocument'
 import PmsReviewDocument from './PmsReviewDocument'
@@ -22,27 +23,29 @@ import { useReviewQueue } from '@/features/credit-card/hooks/useReviewQueue'
 import { prefetchGlMasters } from '@/features/credit-card/hooks/mapping/useGlMasters'
 import {
   ALL_SCOPES,
+  narrowCount,
+  NO_NARROW,
+  reconcileNarrow,
   QUEUE_CHIPS,
   type ActivityFilter,
+  type QueueNarrow,
+  type QueueRange,
+  type QueueSource,
 } from '@/features/credit-card/api/emailReview'
 import { useRowsPerPage } from '@/shared/hooks/useRowsPerPage'
 import { useT } from '@/i18n/LanguageContext'
 import type { TKey } from '@/i18n/dict'
 
 // Two chips (§24): the work, and the log. Today, Posted and Not posted were chips of their
-// own until the page was told to point at what somebody here has to do and nothing else;
-// they are now what the All chip's dropdown narrows the log to. `all` reads "All" on the
-// chip and "Everything" in the dropdown, where "All" beside "All" would say nothing.
+// own until the page was told to point at what somebody here has to do and nothing else. They
+// are now rows of the Filters popover — Status (Posted / Not posted) and Date (Today) — and
+// Posted / Not posted light the All chip, which is where the log lives.
 const FILTER_LABEL: Record<ActivityFilter, TKey> = {
   today: 'review.filterToday',
   review: 'review.filterReview',
   success: 'review.filterSuccess',
   unposted: 'review.filterUnposted',
   all: 'review.filterAll',
-}
-const SCOPE_LABEL: Record<(typeof ALL_SCOPES)[number], TKey> = {
-  ...FILTER_LABEL,
-  all: 'review.filterEverything',
 }
 
 // What an empty chip says, per chip — because the same sentence cannot answer five different
@@ -140,6 +143,47 @@ function filterFromHash(): ActivityFilter | null {
     : null
 }
 
+const SOURCE_IDS: readonly string[] = ['email', 'manual', 'pms']
+const RANGE_IDS: readonly string[] = ['today', '7d', '30d']
+
+/** The narrowing the URL asked to open on (`q`, `source`, `bank`, `range`) — a view pasted
+ *  from a colleague. Read once at mount, like `filterFromHash`; `syncUrl` below is what
+ *  writes it back. Unknown words are dropped rather than trusted. */
+function narrowFromHash(): QueueNarrow {
+  const query = window.location.hash.split('?')[1]
+  if (!query) return NO_NARROW
+  const p = new URLSearchParams(query)
+  const range = p.get('range') || ''
+  // `reconcileNarrow`: `?source=pms&bank=SCB` is a contradiction the API would refuse (400), so a
+  // pasted link repairs itself here — before the first request, not after a failed one.
+  return reconcileNarrow({
+    q: (p.get('q') || '').slice(0, 100),
+    sources: (p.get('source') || '')
+      .split(',')
+      .filter(x => SOURCE_IDS.includes(x)) as QueueSource[],
+    bank: (p.get('bank') || '').toUpperCase().slice(0, 20),
+    range: (RANGE_IDS.includes(range) ? range : '') as QueueRange,
+  })
+}
+
+/** The view, as the queue's own hash — so it survives a reload and can be pasted. Only the
+ *  queue route: while a document is open the hash belongs to the document. `replaceState`
+ *  rather than assigning the hash, so Back is not spent on every chip. */
+function syncUrl(filter: ActivityFilter, narrow: QueueNarrow, defaultFilter: ActivityFilter) {
+  const p = new URLSearchParams()
+  // The default is only the default for an un-narrowed page: a URL that carries a narrowing
+  // and no `filter` opens on All (`useReviewQueue`), so Review + a narrowing must say so, or
+  // a reload would land on a different tab than the one that was pasted.
+  if (filter !== defaultFilter || narrowCount(narrow) > 0) p.set('filter', filter)
+  if (narrow.q) p.set('q', narrow.q)
+  if (narrow.sources.length) p.set('source', narrow.sources.join(','))
+  if (narrow.bank) p.set('bank', narrow.bank)
+  if (narrow.range) p.set('range', narrow.range)
+  const qs = p.toString()
+  const next = qs ? `${QUEUE}?${qs}` : QUEUE
+  if (window.location.hash !== next) window.history.replaceState(null, '', next)
+}
+
 /** The skeleton is the real row with its content hidden, so the list does not jolt when
  *  data lands. A guessed height is what made OrderHistory jump; same lesson, same fix. */
 function RowSkeleton() {
@@ -210,6 +254,25 @@ function NoScansYet() {
   )
 }
 
+/** The narrowing matched nothing. Not `QueueEmpty`: that card's words are about a status
+ *  ("Nothing needs review") and would be false here, and its one link, "view all activity",
+ *  would leave the filters on. The way out is removing them. */
+function NoMatch({ onClear }: { onClear: () => void }) {
+  const { t } = useT()
+  return (
+    <div className="rq-empty">
+      <span className="rq-empty-icon rq-empty-icon--calm" aria-hidden="true">
+        <SearchX size={22} strokeWidth={1.75} />
+      </span>
+      <h2 className="rq-empty-title">{t('review.noMatchTitle')}</h2>
+      <p className="rq-empty-body">{t('review.noMatchBody')}</p>
+      <button type="button" className="btn btn-outline" onClick={onClear}>
+        {t('review.clearAll')}
+      </button>
+    </div>
+  )
+}
+
 export default function ReviewQueue() {
   const { t } = useT()
   // Page size is the reader's, shared with every other table in the app. The options top
@@ -217,8 +280,28 @@ export default function ReviewQueue() {
   // This one starts at 10 rather than the app-wide 15: the queue is a landing page, and a
   // reviewer should see the whole first page without scrolling. A stored choice still wins.
   const [limit, setLimit] = useRowsPerPage(10)
-  const { filter, setFilter, rows, total, counts, offset, setOffset, loading, error, reload } =
-    useReviewQueue(limit, filterFromHash())
+  // `today` is a date range now, so an old link to it lands on All + Today.
+  const [initial] = useState(() => {
+    const f = filterFromHash()
+    const n = narrowFromHash()
+    return f === 'today'
+      ? { filter: 'all' as const, narrow: { ...n, range: 'today' as const } }
+      : { filter: f, narrow: n }
+  })
+  const {
+    filter,
+    setFilter,
+    narrow,
+    setNarrow,
+    rows,
+    total,
+    counts,
+    offset,
+    setOffset,
+    loading,
+    error,
+    reload,
+  } = useReviewQueue(limit, initial.filter, initial.narrow)
   const [reloading, setReloading] = useState(false)
   const [openId, setOpenId] = useState(() => docIdFromHash())
   const [openPms, setOpenPms] = useState(pmsIdFromHash)
@@ -241,11 +324,19 @@ export default function ReviewQueue() {
   useEffect(() => {
     const onHash = () => {
       const f = filterFromHash()
-      if (f) setFilter(f)
+      if (!f) return
+      // Same translation as at mount.
+      if (f === 'today') {
+        setFilter('all')
+        setNarrow({ ...narrowFromHash(), range: 'today' })
+      } else {
+        setFilter(f)
+        setNarrow(narrowFromHash())
+      }
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
-  }, [setFilter])
+  }, [setFilter, setNarrow])
 
   // Carmen's chart of accounts is the slow half of opening a document, and it is the same
   // three lists whichever row is clicked. Fetched here, while the queue is being read, the
@@ -267,10 +358,21 @@ export default function ReviewQueue() {
   }
 
   const hasWork = rows.length > 0
-  // Nothing at all, from either source — not merely an empty chip.
-  const nothingEver = (counts.all ?? 0) === 0
+  const narrowed = narrowCount(narrow) > 0
+  // Nothing at all, from any source — not merely an empty chip. Counts are taken under the
+  // narrowing, so a search that matches nothing must not read as a BU that never scanned.
+  const nothingEver = !narrowed && (counts.all ?? 0) === 0
   // Every filter that is not the work is a view of the log, so it lights the All chip.
   const chip = filter === 'review' ? 'review' : 'all'
+
+  // The URL follows the view, but never while a document is open: then the hash is that
+  // document's, and closing it re-runs this with both ids cleared and restores the view.
+  useEffect(() => {
+    if (openId || openPms) return
+    const [route] = window.location.hash.split('?')
+    if (route.toLowerCase() !== QUEUE.toLowerCase()) return
+    syncUrl(filter, narrow, counts.review === undefined || counts.review > 0 ? 'review' : 'all')
+  }, [filter, narrow, openId, openPms, counts.review])
 
   return (
     <div className="app-container">
@@ -293,7 +395,8 @@ export default function ReviewQueue() {
           No dot on either chip (§24). It used to point at anomalies nobody had looked at;
           the Review count already says there is work, and the bell rings for what it rings
           for. What neither covers — a sender the BU never allowed, a paused rule — is under
-          All → Not posted, by decision. */}
+          Filters → Status → Not posted, by decision. There is no Posted or Not posted chip
+          either, by decision: the page is for what somebody here has to do. */}
       <div className="rq-bar">
         {!nothingEver && (
           <div className="rq-tabs" role="tablist" aria-label={t('review.tabsLabel')}>
@@ -320,18 +423,6 @@ export default function ReviewQueue() {
           </div>
         )}
         <div className="rq-bar-actions">
-          {/* What the log is narrowed to — only on All, so Review has nothing on screen but
-              the work. `InlineSelect` for the same reason the Pager uses it: a native
-              <select> hands its option list to the OS and wears none of the app's tokens. */}
-          {!nothingEver && chip === 'all' && (
-            <InlineSelect
-              className="rq-scope"
-              value={filter}
-              onChange={v => setFilter(v as ActivityFilter)}
-              options={ALL_SCOPES.map(id => ({ value: id, label: t(SCOPE_LABEL[id]) }))}
-              aria-label={t('review.scopeLabel')}
-            />
-          )}
           <button
             type="button"
             className="btn-icon"
@@ -367,6 +458,13 @@ export default function ReviewQueue() {
           </button>
         </div>
       </div>
+
+      {/* Which documents, beside the strip's what-became-of-them. A row of its own: the
+          strip plus three buttons already fill the bar at tablet width. Hidden with the
+          strip while the BU has no rows at all. */}
+      {!nothingEver && (
+        <FilterBar narrow={narrow} onChange={setNarrow} status={filter} onStatus={setFilter} />
+      )}
 
       {/* A failed fetch is never the empty state: "nothing is waiting" and "we could not
           ask" mean opposite things to someone deciding whether to go home. */}
@@ -415,6 +513,8 @@ export default function ReviewQueue() {
             !hasWork &&
             (nothingEver ? (
               <NoScansYet />
+            ) : narrowed ? (
+              <NoMatch onClear={() => setNarrow(NO_NARROW)} />
             ) : (
               <QueueEmpty filter={filter} onShowAll={() => setFilter('all')} />
             ))}

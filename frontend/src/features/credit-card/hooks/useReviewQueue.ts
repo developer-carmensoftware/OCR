@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   listActivity,
+  narrowCount,
+  NO_NARROW,
   type ActivityFilter,
+  type QueueNarrow,
   type ReviewDocument,
 } from '@/features/credit-card/api/emailReview'
 /** Where the page opens before the counts have said otherwise: the work. */
@@ -13,6 +16,9 @@ export interface ReviewQueueController {
    *  not visibly hop. */
   filter: ActivityFilter
   setFilter: (f: ActivityFilter) => void
+  /** Search / source / bank / range, beside the status. Applied to rows and counts alike. */
+  narrow: QueueNarrow
+  setNarrow: (n: QueueNarrow) => void
   rows: ReviewDocument[]
   total: number
   /** Keyed by filter name. Every chip is present even at zero — one that appears only
@@ -40,15 +46,23 @@ export function useReviewQueue(
   /** Skips the fall-through below and opens straight on this filter — how the bell's
    *  blocked/failed rows land on All filtered to `unposted` (`ReviewQueue.tsx`'s
    *  `filterFromHash`). Read once, on mount, same as every other opening decision here. */
-  initialFilter?: ActivityFilter | null
+  initialFilter?: ActivityFilter | null,
+  /** A narrowed view pasted from a colleague's URL. Opening on one is as explicit as naming
+   *  a filter: there is nothing to guess, and Review under a narrowing says little about
+   *  the work, so it opens on All unless told otherwise. */
+  initialNarrow: QueueNarrow = NO_NARROW
 ): ReviewQueueController {
+  const narrowed = narrowCount(initialNarrow) > 0
   // The page opens on the work: it is for what somebody here has to do (§24).
-  const [filter, setFilterState] = useState<ActivityFilter>(initialFilter || REVIEW)
+  const [filter, setFilterState] = useState<ActivityFilter>(
+    initialFilter || (narrowed ? 'all' : REVIEW)
+  )
+  const [narrow, setNarrowState] = useState<QueueNarrow>(initialNarrow)
   // Whether the opening chip has been settled. The fall-through runs once, so a refresh
   // never throws the reader back to the top and neither does working a chip down to zero.
   // Already settled when the caller named a filter explicitly — the fall-through exists to
   // guess one, and there is nothing to guess.
-  const landed = useRef(!!initialFilter)
+  const landed = useRef(!!initialFilter || narrowed)
   const [rows, setRows] = useState<ReviewDocument[]>([])
   const [total, setTotal] = useState(0)
   const [counts, setCounts] = useState<Record<string, number>>({})
@@ -64,7 +78,7 @@ export function useReviewQueue(
     let alive = true
     let hopped = false
     setLoading(true)
-    listActivity(filter, limit, offset)
+    listActivity(filter, limit, offset, narrow)
       .then(page => {
         if (!alive) return
 
@@ -104,12 +118,20 @@ export function useReviewQueue(
     return () => {
       alive = false
     }
-  }, [filter, limit, offset, nonce])
+  }, [filter, limit, offset, narrow, nonce])
 
   // Switching filter always starts at the top. Keeping the offset would land someone on
   // page 3 of a filter that has two rows, which reads as an empty list.
   const setFilter = useCallback((next: ActivityFilter) => {
     setFilterState(next)
+    setOffset(0)
+  }, [])
+
+  // Same reason: page 3 of a narrower pile is past its end.
+  // An equal value keeps the old object: the page re-reads the URL on every hashchange, and a
+  // fresh-but-identical `narrow` would refetch a list nobody changed.
+  const setNarrow = useCallback((next: QueueNarrow) => {
+    setNarrowState(prev => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
     setOffset(0)
   }, [])
 
@@ -124,6 +146,8 @@ export function useReviewQueue(
   return {
     filter,
     setFilter,
+    narrow,
+    setNarrow,
     rows,
     total,
     counts,
