@@ -46,7 +46,7 @@ const PAGE_W = ISO ? 9071 : 9746 // A4 minus the margins (ISO 3 cm left, 2 cm ri
 // Latin-only Consolas runs are scaled down to match it.
 const SZ = ISO ? { body: 32, cell: 28, h: [40, 36, 32] } : { body: 21, cell: 20, h: [30, 25, 22] }
 const INK = c => (ISO ? '000000' : c) // the ISO template is black throughout
-const META_SKIP = ['eyebrow', 'title', 'output', 'check-ignore', 'iso-topic', 'iso-ref', 'iso-wp']
+const META_SKIP = ['eyebrow', 'title', 'output', 'check-ignore', 'iso-topic', 'iso-ref', 'iso-wp', 'iso-reviewer', 'iso-approver']
 const CHROME = path.join(process.env.LOCALAPPDATA || '', 'ms-playwright/chromium-1223/chrome-win64/chrome.exe')
 const MERMAID = 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js'
 const ROOT = path.resolve(__dirname, '../..')
@@ -282,6 +282,7 @@ const WP = {
   RS: ['Requirements Specification', 'ข้อกำหนดความต้องการ'],
   SD: ['Software Design', 'เอกสารออกแบบซอฟต์แวร์'],
   TR: ['Traceability Record', 'บันทึกการสอบกลับ'],
+  SOW: ['Statement of Work', 'เอกสารขอบเขตงาน'],
 }
 const isoWp = m => (WP[m['iso-wp']] ? m['iso-wp'] : 'RS')
 const isoVersion = m => ((m['Document Version'] || '').match(/\d+(\.\d+)+/) || ['0.1'])[0]
@@ -296,13 +297,13 @@ function isoCover(meta, rev) {
   const label = (k, v) => [new d.TextRun({ text: k, bold: true }), new d.TextRun(v)]
   return [
     P([new d.TextRun(`${WP[isoWp(m)][0]} – ${m.title} (${isoWp(m)}) – ${WP[isoWp(m)][1]}`)], { heading: d.HeadingLevel.TITLE }),
-    P([...label('โครงการ: ', 'carmen - ai ocr  |  '), ...label('รหัสเอกสาร: ', `${isoWp(m)}  |  `), ...label('เวอร์ชัน: ', `${isoVersion(m)}  |  `), ...label('มาตรฐาน: ', 'ISO/IEC 29110-5-1-2 (Basic Profile) – กระบวนการ SI')]),
+    P([...label('โครงการ: ', 'carmen - ai ocr  |  '), ...label('รหัสเอกสาร: ', `${isoWp(m)}  |  `), ...label('เวอร์ชัน: ', `${isoVersion(m)}  |  `), ...label('มาตรฐาน: ', `ISO/IEC 29110-5-1-2 (Basic Profile) – กระบวนการ ${isoWp(m) === 'SOW' ? 'PM' : 'SI'}`)]),
     grid([
       ['รายการ', 'ข้อมูล'],
       ['วันที่เอกสาร', last[1] || ''],
       ['ผู้จัดทำ', last[2] || '[ระบุผู้จัดทำ]'],
-      ['ผู้ทบทวน', '[ระบุผู้ทบทวน]'],
-      ['ผู้อนุมัติ', '[ระบุผู้อนุมัติ]'],
+      ['ผู้ทบทวน', m['iso-reviewer'] || '[ระบุผู้ทบทวน]'],
+      ['ผู้อนุมัติ', m['iso-approver'] || '[ระบุผู้อนุมัติ]'],
       ['สถานะ', 'Draft'],
       ...meta.filter(([k]) => ![...META_SKIP, 'Document Version', 'Date', 'Template'].includes(k)).map(([k, v]) => [k === 'Status' ? 'สถานะระบบ' : k, v]),
     ], [2835, 6236]),
