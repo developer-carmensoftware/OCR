@@ -825,3 +825,127 @@ def test_the_pms_queries_hide_a_day_being_read_and_select_by_chip():
     counted = str(_pms_counts_stmt(tenant, NOW).compile(compile_kwargs={"literal_binds": True}))
     assert "'received'" not in counted
     assert "pms_events.status IN ('pending_review', 'posted', 'rejected', 'failed')" in counted
+
+
+# ── The reader's narrowing: search / source / bank / range ──────────────────────
+
+
+def _sql(stmt) -> str:
+    return str(stmt.compile(compile_kwargs={"literal_binds": True})).lower()
+
+
+def test_narrowing_reaches_the_list_and_the_counts_alike():
+    """The strip's numbers and the table must describe one pile, so the same predicates ride
+    both statements — for every source that has a window and a count."""
+    from app.services.credit_card.activity import Narrow, _manual_stmt, _pms_stmt
+
+    n = Narrow(q="kb", bank="KBANK", since=datetime(2026, 11, 1, tzinfo=UTC))
+    t = uuid.uuid4()
+    for stmt in (_email_stmt(t, None, None, n), _counts_stmt(t, NOW, n)):
+        sql = _sql(stmt)
+        assert "email_documents.bank_code = 'kbank'" in sql
+        assert "email_documents.created_at >=" in sql
+        assert "like lower('%kb%')" in sql
+    assert "credit_cards.bank_code = 'kbank'" in _sql(_manual_stmt(t, None, None, n))
+    assert "credit_cards.bank_code = 'kbank'" in _sql(_manual_counts_stmt(t, NOW, n))
+    # A PMS day has no bank: asking for one is asking for none of them.
+    assert "false" in _sql(_pms_stmt(t, None, None, n))
+    assert "false" in _sql(_pms_counts_stmt(t, NOW, n))
+
+
+def test_a_switched_off_source_lists_nothing_and_unnarrowed_adds_no_predicate():
+    from app.services.credit_card.activity import Narrow, parse_narrow
+
+    only_pms = parse_narrow("", "pms,bogus", "", "")
+    assert only_pms.sources == frozenset({"pms"})
+    assert "false" in _sql(_email_stmt(uuid.uuid4(), None, None, only_pms))
+    # No narrowing → byte-identical SQL to the pre-narrowing statement.
+    t = uuid.uuid4()
+    assert _sql(_email_stmt(t, None, None, Narrow())) == _sql(_email_stmt(t, None))
+
+
+def test_search_escapes_like_wildcards():
+    from app.services.credit_card.activity import _like
+
+    bs = chr(92)
+    assert _like("50%_x") == "%50" + bs + "%" + bs + "_x%"
+    assert _like("a" + bs + "b") == "%a" + bs + bs + "b%"
+
+
+def test_range_is_the_bu_midnight_n_days_back_and_unknown_is_ignored():
+    from app.services.credit_card.activity import _day_start, parse_narrow
+
+    assert parse_narrow("", "", "", "7d").since == _day_start() - timedelta(days=6)
+    assert parse_narrow("", "", "", "forever").since is None
+
+
+# ── The guard: PMS days carry no bank, so the two cannot be asked for together ────────────
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["pms", "email,pms", "pms,manual", "PMS", " pms ", "bogus,pms", "pms,pms"],
+)
+def test_a_bank_with_pms_among_the_sources_is_refused(source):
+    """Whatever the order, case or padding, and whether or not PMS is alone — a contradiction
+    is a 400 at the boundary, not a quietly empty list."""
+    from app.exceptions import ValidationError
+    from app.services.credit_card.activity import parse_narrow
+
+    with pytest.raises(ValidationError, match="bank cannot be combined with source=pms"):
+        parse_narrow("", source, "kbank", "")
+
+
+@pytest.mark.parametrize(
+    ("source", "bank"),
+    [
+        ("pms", ""),  # PMS on its own is fine
+        ("email", "KBANK"),
+        ("manual", "SCB"),
+        ("email,manual", "BBL"),
+        ("", "KBANK"),  # no source + a bank = "documents with that bank"; PMS is simply left out
+        ("bogus", "KBANK"),  # an unknown source is ignored, so it is "no source" — not a refusal
+        ("pms", "   "),  # a blank bank is no bank
+    ],
+)
+def test_every_other_combination_still_parses(source, bank):
+    from app.services.credit_card.activity import parse_narrow
+
+    n = parse_narrow("", source, bank, "")
+    assert n.bank == bank.strip().upper()
+
+
+def test_source_is_normalised_before_it_is_compared():
+    from app.services.credit_card.activity import parse_narrow
+
+    assert parse_narrow("", " Email , PMS ,x", "", "").sources == frozenset({"email", "pms"})
+
+
+def test_the_route_answers_400_with_the_reason_not_an_empty_page():
+    db = _db(statuses={"posted": 1}, manual_count=0, emails=[], manuals=[])
+    with make_test_client(db, session=SESSION) as client:
+        bad = client.get(f"{BASE}?filter=all&source=pms&bank=KBANK", headers=AUTH)
+        mixed = client.get(f"{BASE}?filter=all&source=email,pms&bank=SCB", headers=AUTH)
+    for r in (bad, mixed):
+        assert r.status_code == 400
+        assert "bank cannot be combined with source=pms" in r.text
+    # Nothing ran: the guard is before every query, so a refused request costs no round trip.
+    assert db.execute.call_count == 0
+
+
+def test_a_bank_with_no_source_is_not_refused_and_leaves_pms_out():
+    from app.services.credit_card.activity import Narrow, parse_narrow
+
+    n = parse_narrow("", "", "KBANK", "")
+    assert isinstance(n, Narrow)
+    assert "false" in _sql_of(_pms_stmt_for(n))
+
+
+def _pms_stmt_for(n):
+    from app.services.credit_card.activity import _pms_stmt
+
+    return _pms_stmt(uuid.uuid4(), None, None, n)
+
+
+def _sql_of(stmt) -> str:
+    return str(stmt.compile(compile_kwargs={"literal_binds": True})).lower()

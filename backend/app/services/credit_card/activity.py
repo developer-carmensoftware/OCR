@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import and_, case, func, literal_column, or_, select
+from sqlalchemy import and_, case, false, func, literal, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.exceptions import ValidationError
 from app.models.business import CreditCard, OCRTask
 from app.models.email_automation import EmailDocument
 from app.models.pms import PmsEvent
@@ -137,6 +139,150 @@ NOISE_REASONS = ("unreadable_document",)
 # Sorting key for a row whose timestamp is NULL. Aware, because everything it is compared
 # against comes back from Postgres aware and Python refuses to order the two together.
 _EPOCH = datetime.min.replace(tzinfo=UTC)
+
+
+# ── The reader's own narrowing (search / source / bank / date range) ───────────
+#
+# Orthogonal to the status chip: the chip says what became of a document, these say which
+# documents. They are applied to the list **and** to the counts by the same predicates, for
+# the reason `_visible()` gives — the strip's numbers and the table must describe one pile.
+#
+# A source the reader switched off is `false()` in its own queries rather than a skipped
+# query: the handler keeps its fixed sequence of round trips, and an excluded source simply
+# returns nothing.
+SOURCES = ("email", "manual", "pms")
+RANGES = {"today": 0, "7d": 6, "30d": 29}  # days back from the BU's midnight
+_ESC = "\\"
+
+
+@dataclass(frozen=True)
+class Narrow:
+    q: str = ""
+    sources: frozenset[str] = frozenset()  # empty = every source
+    bank: str = ""
+    since: datetime | None = None
+
+    def wants(self, source: str) -> bool:
+        return not self.sources or source in self.sources
+
+
+def _like(q: str) -> str:
+    """`%q%` with LIKE's own wildcards escaped, so searching `50%` finds `50%`."""
+    esc = q.replace(_ESC, _ESC * 2).replace("%", _ESC + "%").replace("_", _ESC + "_")
+    return f"%{esc}%"
+
+
+def parse_narrow(q: str, source: str, bank: str, range_: str) -> Narrow:
+    """The query string's words → a `Narrow`. Unknown sources and ranges are ignored, not
+    400s — same stance as an unknown `filter`: a stale bookmark should land somewhere useful.
+
+    **One thing is refused: a bank together with PMS.** A PMS day has no bank, so `source=pms`
+    with `bank=KBANK` can only ever be empty — and a quietly empty list reads as "nothing
+    happened" rather than "you asked for a contradiction". The screen cannot build the
+    combination (the Bank filter locks while PMS is a source, and PMS locks while a bank is set),
+    so this is the trust boundary for a script or a stale client. A bank with **no** source is
+    fine: it means "documents with that bank", which leaves PMS out.
+    """
+    since = None
+    if range_ in RANGES:
+        since = _day_start() - timedelta(days=RANGES[range_])
+    narrow = Narrow(
+        q=q.strip()[:100],
+        sources=frozenset(
+            x for x in (w.strip().lower() for w in source.split(",")) if x in SOURCES
+        ),
+        bank=bank.strip().upper()[:20],
+        since=since,
+    )
+    if narrow.bank and "pms" in narrow.sources:
+        raise ValidationError(
+            "bank cannot be combined with source=pms: PMS days carry no bank. "
+            "Drop the bank, or drop pms from source."
+        )
+    return narrow
+
+
+def _email_narrow(n: Narrow | None) -> list:
+    if n is None:
+        return []
+    if not n.wants("email"):
+        return [false()]
+    c = []
+    if n.since is not None:
+        c.append(EmailDocument.created_at >= n.since)
+    if n.bank:
+        c.append(EmailDocument.bank_code == n.bank)
+    if n.q:
+        like = _like(n.q)
+        c.append(
+            or_(
+                EmailDocument.attachment.ilike(like, escape=_ESC),
+                EmailDocument.doc_no.ilike(like, escape=_ESC),
+                EmailDocument.bank_code.ilike(like, escape=_ESC),
+            )
+        )
+    return c
+
+
+def _manual_narrow(n: Narrow | None) -> list:
+    if n is None:
+        return []
+    if not n.wants("manual"):
+        return [false()]
+    c = []
+    if n.since is not None:
+        c.append(_manual_when >= n.since)
+    if n.bank:
+        c.append(CreditCard.bank_code == n.bank)
+    if n.q:
+        like = _like(n.q)
+        c.append(
+            or_(
+                OCRTask.original_filename.ilike(like, escape=_ESC),
+                CreditCard.doc_no.ilike(like, escape=_ESC),
+                CreditCard.bank_code.ilike(like, escape=_ESC),
+            )
+        )
+    return c
+
+
+def _pms_words():
+    """What a reader can see of a PMS day, as one string: `PMS Comanche Daily 2026-11-08 08/11/2026`.
+
+    **Values, not the JSON.** Searching `cast(payload as text)` matched the hook's own field names
+    too — `InterfaceType`, `DocType`, `DocDate` — so typing "type" or "doc" listed every PMS day the
+    BU has. The words are the three fields the row prints (the date both as the hook sends it and
+    as the row shows it, `DD/MM/YYYY`) and the word PMS, which is what the row's bank column says.
+    """
+    p = PmsEvent.payload
+    day = p["DocDate"].as_string()
+    dmy = case(
+        (
+            func.length(day) == 10,
+            func.concat(
+                func.substr(day, 9, 2), "/", func.substr(day, 6, 2), "/", func.substr(day, 1, 4)
+            ),
+        ),
+        else_="",
+    )
+    return func.concat_ws(
+        " ", literal("PMS"), p["InterfaceName"].as_string(), p["DocType"].as_string(), day, dmy
+    )
+
+
+def _pms_narrow(n: Narrow | None) -> list:
+    """A PMS day has no bank, so a bank filter excludes them (`parse_narrow` refuses the two
+    together when PMS is asked for by name; this covers a bank with no source at all)."""
+    if n is None:
+        return []
+    if not n.wants("pms") or n.bank:
+        return [false()]
+    c = []
+    if n.since is not None:
+        c.append(PmsEvent.created_at >= n.since)
+    if n.q:
+        c.append(_pms_words().ilike(_like(n.q), escape=_ESC))
+    return c
 
 
 def _visible():
@@ -309,7 +455,7 @@ def _day_start() -> datetime:
     return datetime.now(ICT).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def _counts_stmt(tenant_id: uuid.UUID, day_start: datetime):
+def _counts_stmt(tenant_id: uuid.UUID, day_start: datetime, narrow: Narrow | None = None):
     """Every bucket's count, in one GROUP BY.
 
     The counts span the tenant's whole history. The one clock is `day_start`, which is the
@@ -340,7 +486,7 @@ def _counts_stmt(tenant_id: uuid.UUID, day_start: datetime):
             # on the page that pays for its own answer.
             func.count().filter(EmailDocument.created_at >= day_start).label("today"),
         )
-        .where(EmailDocument.tenant_id == tenant_id, _visible())
+        .where(EmailDocument.tenant_id == tenant_id, _visible(), *_email_narrow(narrow))
         .group_by(literal_column("chip"))
     )
 
@@ -349,6 +495,7 @@ def _email_stmt(
     tenant_id: uuid.UUID,
     chip: str | None,
     since: datetime | None = None,
+    narrow: Narrow | None = None,
 ):
     """The window, filtered by the same expression the counts group by.
 
@@ -362,7 +509,9 @@ def _email_stmt(
     do not read, and what clears a cause is a setting rather than any of the rows behind it.
     Every one of those attachments is under `all` in time order, like all the others.
     """
-    stmt = select(EmailDocument).where(EmailDocument.tenant_id == tenant_id, _visible())
+    stmt = select(EmailDocument).where(
+        EmailDocument.tenant_id == tenant_id, _visible(), *_email_narrow(narrow)
+    )
     if chip is not None:
         stmt = stmt.where(_chip_expr() == chip)
     if since is not None:
@@ -394,12 +543,17 @@ def _manual_where(tenant_id: uuid.UUID):
     )
 
 
-def _manual_stmt(tenant_id: uuid.UUID, since: datetime | None = None, posted: bool | None = None):
+def _manual_stmt(
+    tenant_id: uuid.UUID,
+    since: datetime | None = None,
+    posted: bool | None = None,
+    narrow: Narrow | None = None,
+):
     """The manual window. `posted` narrows it — see `MANUAL_CHIPS`."""
     stmt = (
         select(CreditCard, OCRTask)
         .join(OCRTask, OCRTask.id == CreditCard.task_id)
-        .where(*_manual_where(tenant_id))
+        .where(*_manual_where(tenant_id), *_manual_narrow(narrow))
     )
     if posted is True:
         stmt = stmt.where(CreditCard.submitted_at.is_not(None))
@@ -410,13 +564,18 @@ def _manual_stmt(tenant_id: uuid.UUID, since: datetime | None = None, posted: bo
     return stmt.order_by(_manual_when.desc())
 
 
-def _manual_counts_stmt(tenant_id: uuid.UUID, day_start: datetime):
+def _manual_counts_stmt(tenant_id: uuid.UUID, day_start: datetime, narrow: Narrow | None = None):
     """Posted, never-posted and today's manual scans, in one round trip."""
-    return select(
-        func.count().filter(CreditCard.submitted_at.is_not(None)).label("posted"),
-        func.count().filter(CreditCard.submitted_at.is_(None)).label("unposted"),
-        func.count().filter(_manual_when >= day_start).label("today"),
-    ).where(*_manual_where(tenant_id))
+    return (
+        select(
+            func.count().filter(CreditCard.submitted_at.is_not(None)).label("posted"),
+            func.count().filter(CreditCard.submitted_at.is_(None)).label("unposted"),
+            func.count().filter(_manual_when >= day_start).label("today"),
+        )
+        # The join is for `_manual_narrow`'s filename search; every card has its task.
+        .join(OCRTask, OCRTask.id == CreditCard.task_id)
+        .where(*_manual_where(tenant_id), *_manual_narrow(narrow))
+    )
 
 
 # ── PMS days (CA-119): the third source ───────────────────────────────────────
@@ -436,19 +595,26 @@ def _pms_chip_expr():
     )
 
 
-def _pms_counts_stmt(tenant_id: uuid.UUID, day_start: datetime):
+def _pms_counts_stmt(tenant_id: uuid.UUID, day_start: datetime, narrow: Narrow | None = None):
     """Every chip's PMS count, in one round trip."""
     return select(
         func.count().filter(PmsEvent.status == PENDING).label("review"),
         func.count().filter(PmsEvent.status == "posted").label("success"),
         func.count().filter(PmsEvent.status.in_(("rejected", "failed"))).label("unposted"),
         func.count().filter(PmsEvent.created_at >= day_start).label("today"),
-    ).where(PmsEvent.tenant_id == tenant_id, PmsEvent.status.in_(_PMS_VISIBLE))
+    ).where(
+        PmsEvent.tenant_id == tenant_id, PmsEvent.status.in_(_PMS_VISIBLE), *_pms_narrow(narrow)
+    )
 
 
-def _pms_stmt(tenant_id: uuid.UUID, chip: str | None, since: datetime | None = None):
+def _pms_stmt(
+    tenant_id: uuid.UUID,
+    chip: str | None,
+    since: datetime | None = None,
+    narrow: Narrow | None = None,
+):
     stmt = select(PmsEvent).where(
-        PmsEvent.tenant_id == tenant_id, PmsEvent.status.in_(_PMS_VISIBLE)
+        PmsEvent.tenant_id == tenant_id, PmsEvent.status.in_(_PMS_VISIBLE), *_pms_narrow(narrow)
     )
     if chip is not None:
         stmt = stmt.where(_pms_chip_expr() == chip)
@@ -457,8 +623,10 @@ def _pms_stmt(tenant_id: uuid.UUID, chip: str | None, since: datetime | None = N
     return stmt.order_by(PmsEvent.created_at.desc())
 
 
-async def _pms_counts(db: AsyncSession, tenant_id: uuid.UUID, day_start: datetime):
-    return (await db.execute(_pms_counts_stmt(tenant_id, day_start))).one()
+async def _pms_counts(
+    db: AsyncSession, tenant_id: uuid.UUID, day_start: datetime, narrow: Narrow | None = None
+):
+    return (await db.execute(_pms_counts_stmt(tenant_id, day_start, narrow))).one()
 
 
 def _dmy(iso: str) -> str:
@@ -500,14 +668,25 @@ def _pms_row(e: PmsEvent) -> ActivityRow:
 
 
 async def _pms_rows(
-    db: AsyncSession, tenant_id: uuid.UUID, chip: str | None, since: datetime | None, window: int
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    chip: str | None,
+    since: datetime | None,
+    window: int,
+    narrow: Narrow | None = None,
 ) -> list[ActivityRow]:
-    days = (await db.execute(_pms_stmt(tenant_id, chip, since).limit(window))).scalars().all()
+    stmt = _pms_stmt(tenant_id, chip, since, narrow).limit(window)
+    days = (await db.execute(stmt)).scalars().all()
     return [_pms_row(d) for d in days]
 
 
 async def list_activity(
-    db: AsyncSession, tenant_id: uuid.UUID, filter: str, limit: int, offset: int
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    filter: str,
+    limit: int,
+    offset: int,
+    narrow: Narrow | None = None,
 ) -> ActivityPage:
     """`GET /api/v1/credit-card/activity` — see the route's docstring for the filters."""
     if filter not in CHIPS:
@@ -518,15 +697,15 @@ async def list_activity(
     day_start = _day_start()
     since = day_start if filter == TODAY else None
 
-    email_stmt = _email_stmt(tenant_id, chip, since)
+    email_stmt = _email_stmt(tenant_id, chip, since, narrow)
     wants_manual = filter in MANUAL_CHIPS
-    manual_stmt = _manual_stmt(tenant_id, since, MANUAL_CHIPS.get(filter))
+    manual_stmt = _manual_stmt(tenant_id, since, MANUAL_CHIPS.get(filter), narrow)
 
-    # Counts span every row, not the page: one GROUP BY for email plus one aggregate each for
-    # manual and PMS, rather than a round trip per chip.
-    groups = (await db.execute(_counts_stmt(tenant_id, day_start))).all()
-    manual = (await db.execute(_manual_counts_stmt(tenant_id, day_start))).one()
-    pms = await _pms_counts(db, tenant_id, day_start)
+    # Counts span every row the reader's narrowing admits, not the page: one GROUP BY for
+    # email plus one aggregate each for manual and PMS, rather than a round trip per chip.
+    groups = (await db.execute(_counts_stmt(tenant_id, day_start, narrow))).all()
+    manual = (await db.execute(_manual_counts_stmt(tenant_id, day_start, narrow))).one()
+    pms = await _pms_counts(db, tenant_id, day_start, narrow)
     counts = dict.fromkeys(LEDGER_BUCKETS, 0)
     for g in groups:
         counts[g.chip] += g.n
@@ -565,7 +744,7 @@ async def list_activity(
             _manual_row(card, task, names.get(str(card.carmen_user_id or "")))
             for card, task in manuals
         ]
-    rows += await _pms_rows(db, tenant_id, chip, since, window)
+    rows += await _pms_rows(db, tenant_id, chip, since, window, narrow)
     rows.sort(key=lambda r: r.created_at or _EPOCH, reverse=True)
 
     return ActivityPage(
