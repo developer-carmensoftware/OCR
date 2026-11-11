@@ -173,7 +173,8 @@ async function signIn(bu) {
   if (!session) throw new Stop('SSO exchange left no session token')
 }
 
-/** The queue's two tabs are Review and All; Posted / Not posted are All's "Show" scopes. */
+/** The queue's two tabs are Review and All; Posted / Not posted are the `Filter` menu's Status
+ *  values (the filter bar of #359), picked as jv_filters_ui.mjs's `pill` does. */
 async function chip(name) {
   await page.goto(`${APP}/#/CreditCardOCR`)
   // Going to the hash the page is already on refetches nothing: reload, so the rows are
@@ -183,8 +184,11 @@ async function chip(name) {
   await tab.waitFor({ timeout: 30000 })
   await tab.click()
   if (name !== 'Review' && name !== 'All') {
-    await page.getByRole('button', { name: 'Show' }).click()
-    await page.getByRole('option', { name, exact: true }).click()
+    const menu = page.locator('.rq-menu')
+    await page.getByRole('button', { name: /^Filter$/ }).click()
+    await menu.getByRole('menuitem', { name: /^Status/ }).click()
+    await menu.locator('[role^="menuitem"]').filter({ hasText: new RegExp(`^${name}(\\s|$)`) }).click()
+    await page.mouse.click(4, 4) // close the menu as a reader does
   }
   await page.waitForTimeout(1500)
 }
@@ -333,12 +337,16 @@ async function run() {
     newKeys(again?.payload).length === 3, `HTTP ${r.status} duplicate=${r.json?.duplicate}`)
 
   r = await hook(keys[`${BU}/comanche`], 'Comanche', '2026-10-08')
-  // Decision-log #52: no list keyed like the table is no preview, not a failure. With
-  // auto-post off the day waits for Approve, and Carmen's engine checks the mapping then.
-  const junk = await until(rows => rows.find(x => x.event_id.toLowerCase() === 'pms/comanche/daily/2026-10-08' && x.status === 'pending_review'))
-  check('A-04', 'a Data Bank day with no list keyed like the table parks with no preview, unguessed',
-    junk?.payload?.preview === false && (junk?.payload?.rows || []).length === 0 && !junk?.reason_code,
-    `${junk?.status} preview=${junk?.payload?.preview} reason=${junk?.reason_code}`)
+  // Decision-log #54: the day's rows are Carmen's preview of the post. A Data Bank row its
+  // engine reads nothing from answers -400 "No Data Found", which waits hourly as day_not_ready,
+  // as the post's own -400 does. Nothing is guessed and no AI is asked (E-03).
+  const junk = await until(rows => {
+    const d = keyOf(rows, BU, '2026-10-08')
+    return d?.reason_code ? d : null
+  })
+  check('A-04', "a Data Bank day Carmen's engine reads nothing from waits as day_not_ready (its preview: No Data Found)",
+    junk?.status === 'received' && junk?.reason_code === 'day_not_ready' && /No Data Found/i.test(junk?.error_message || ''),
+    `${junk?.status}/${junk?.reason_code} "${(junk?.error_message || '').slice(0, 80)}"`)
 
   r = await hook(keys[`${BU}/comanche`], 'Comanche', '2023-01-01')
   const absent = await until(rows => {
@@ -383,7 +391,7 @@ async function run() {
 
     await chip('Not posted')
     const npText = (await page.getByRole('table').innerText().catch(() => '')).replace(/\s+/g, ' ')
-    check('B-02', 'Not posted shows the opera day with its reason; the unkeyable day waits in Review instead (#52)',
+    check('B-02', 'Not posted shows the opera day with its reason; the day with no data is not failed (it waits, #54)',
       /Carmen has no PMS posting setting for this interface/.test(npText) &&
         !/Could not read this day from the Data Bank/.test(npText),
       npText.slice(0, 200))

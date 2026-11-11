@@ -414,6 +414,14 @@ def _rate_limit_error():
     return RateLimitError("throttled", response=httpx.Response(429, request=req), body=None)
 
 
+def _status_error(status):
+    import httpx
+    from openai import APIStatusError
+
+    req = httpx.Request("POST", "http://x")
+    return APIStatusError(f"HTTP {status}", response=httpx.Response(status, request=req), body=None)
+
+
 class TestCapacityPool:
     async def test_acquire_raises_capacity_error_when_saturated(self):
         from app.exceptions import LLMCapacityError
@@ -488,3 +496,56 @@ class TestCapacityPool:
                 await client._call_with_pool(
                     "vision", lambda cl: cl.chat.completions.create(), "vision"
                 )
+
+    async def test_call_with_pool_fails_over_a_key_out_of_credit(self):
+        """QA 2026-11-11: a spent key in the pool (402) took every overlapping call down."""
+        from app.llm import client
+
+        c1, c2 = AsyncMock(), AsyncMock()
+        c1.chat.completions.create.side_effect = _status_error(402)
+        c2.chat.completions.create.return_value = _make_response("ok")
+        pool = _multi_key_pool(2, clients=[c1, c2])
+        with patch.object(client, "_get_pool", return_value=pool):
+            _, used = await client._call_with_pool(
+                "text", lambda cl: cl.chat.completions.create(), "text"
+            )
+        assert used == "key2"
+
+    async def test_call_with_pool_every_key_dead_raises_at_once(self):
+        from openai import APIStatusError
+
+        from app.llm import client
+
+        c1, c2 = AsyncMock(), AsyncMock()
+        c1.chat.completions.create.side_effect = _status_error(401)
+        c2.chat.completions.create.side_effect = _status_error(402)
+        pool = _multi_key_pool(2, clients=[c1, c2])
+        sleep = AsyncMock()
+        with (
+            patch.object(client, "_get_pool", return_value=pool),
+            patch.object(client.asyncio, "sleep", sleep),
+        ):
+            with pytest.raises(APIStatusError) as raised:
+                await client._call_with_pool(
+                    "text", lambda cl: cl.chat.completions.create(), "text"
+                )
+        assert raised.value.status_code == 402
+        sleep.assert_not_awaited()  # no backoff: waiting revives no dead key
+        assert c1.chat.completions.create.await_count == 1  # each dead key tried once
+        assert c2.chat.completions.create.await_count == 1
+
+    async def test_call_with_pool_does_not_fail_over_a_bad_request(self):
+        """A 400 is the request's fault: every key would refuse it the same way."""
+        from openai import APIStatusError
+
+        from app.llm import client
+
+        c1, c2 = AsyncMock(), AsyncMock()
+        c1.chat.completions.create.side_effect = _status_error(400)
+        pool = _multi_key_pool(2, clients=[c1, c2])
+        with patch.object(client, "_get_pool", return_value=pool):
+            with pytest.raises(APIStatusError):
+                await client._call_with_pool(
+                    "text", lambda cl: cl.chat.completions.create(), "text"
+                )
+        c2.chat.completions.create.assert_not_awaited()

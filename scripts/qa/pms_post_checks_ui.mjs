@@ -7,9 +7,12 @@
 //   node scripts/qa/pms_post_checks_ui.mjs
 //
 // S setup · O opening PartnerApi days (first: the BU's interface list is cached once a day) ·
-// N HotelTime reviewed in the browser · A auto-post · R a repeat hook · L language and phone ·
+// N HotelTime reviewed in the browser: rejected and brought back (N-08), read in Thai and on a
+// phone (L) while it is parked, then approved (N-04) · A auto-post · R a repeat hook ·
 // CB Cloudbeds through Carmen's engine to a JV · E hygiene · T teardown (always).
 // Rows the AI leaves without an account get GEN/1021001 by hand (`fillMissing`).
+// Since ask N closed (HotelTime's balance account is in the chart), Carmen's engine posts
+// HotelTime: N-04 and A-02 each make a JV, and every case takes either answer.
 //
 // Needs the stack of pms_third_parties_ui.mjs, with the backend started by
 // scripts/qa/pms_backend_stub.py (interface list switchable from .playwright-mcp/pms-pc/interfaces.json).
@@ -19,8 +22,8 @@
 // **Carmen dev writes:** HotelTime's mapping table (N-04's Approve writes the day's accounts, A-02
 // maps the rest; teardown puts the snapshot back). Cloudbeds' empty table gets the day's 78 keys
 // with the accounts Approve wrote, and the post may make **one real JV, voided at once** (CB-04
-// stops the run if it cannot be); teardown empties the table again. A HotelTime post that Carmen
-// makes into a JV after all is voided at once too.
+// stops the run if it cannot be); teardown empties the table again. HotelTime's JVs (N-04, A-02)
+// are voided at once too, so a full run makes up to three real JVs and leaves none.
 
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -143,6 +146,13 @@ async function posts(since) {
   if (r.code !== 0) throw new Error(`posts-since failed: ${r.err.slice(-300)}`)
   return Number(r.out.trim().split('\n').pop())
 }
+/** interfacePreviewPostGL calls since `since`: how a day is read since decision-log #54. */
+async function previews(since) {
+  await sleep(11000)
+  const r = py('previews-since', since)
+  if (r.code !== 0) throw new Error(`previews-since failed: ${r.err.slice(-300)}`)
+  return Number(r.out.trim().split('\n').pop())
+}
 const setSwitch = mode => {
   fs.mkdirSync(OUT, { recursive: true })
   fs.writeFileSync(SWITCH, JSON.stringify(mode))
@@ -179,8 +189,12 @@ async function chip(name) {
   await tab.waitFor({ timeout: 30000 })
   await tab.click()
   if (name !== 'Review' && name !== 'All') {
-    await page.getByRole('button', { name: 'Show' }).click()
-    await page.getByRole('option', { name, exact: true }).click()
+    // Posted / Not posted are the `Filter` menu's Status values (the filter bar of #359).
+    const menu = page.locator('.rq-menu')
+    await page.getByRole('button', { name: /^Filter$/ }).click()
+    await menu.getByRole('menuitem', { name: /^Status/ }).click()
+    await menu.locator('[role^="menuitem"]').filter({ hasText: new RegExp(`^${name}(\\s|$)`) }).click()
+    await page.mouse.click(4, 4) // close the menu as a reader does
   }
   await page.waitForTimeout(1500)
 }
@@ -314,22 +328,23 @@ async function run() {
       /No Data Found/.test(opened?.error_message || ''),
     `${opened?.status}/${opened?.reason_code} attempts=${opened?.attempts} "${opened?.error_message}"`)
   const eid = opened?.event_id
-  let p0 = await posts(t0)
+  // Carmen is asked through its preview of the post (decision-log #54), so count previews.
+  let p0 = await previews(t0)
   await sweep()
   await sweep()
   rows = pyJson('state')
-  let pNow = await posts(t0)
+  let pNow = await previews(t0)
   check('O-03', 'two more sweeps within the hour: no new day, Carmen not asked again',
     daysOf(rows, BU, YESTERDAY).length === 1 && pNow === p0 && dayOf(rows, BU, YESTERDAY)?.reason_code === 'day_not_ready',
-    `posts ${p0}→${pNow}`)
+    `previews ${p0}→${pNow}`)
   py('backdate', eid, '61', '0')
   p0 = pNow
   await sweep()
   await sleep(3000)
   const again = dayOf(pyJson('state'), BU, YESTERDAY)
-  pNow = await posts(t0)
+  pNow = await previews(t0)
   check('O-04', 'an hour on: Carmen is asked again, still day_not_ready, still no try spent',
-    again?.reason_code === 'day_not_ready' && again?.attempts === 0 && pNow === p0 + 1, `posts ${p0}→${pNow} attempts=${again?.attempts}`)
+    again?.reason_code === 'day_not_ready' && again?.attempts === 0 && pNow === p0 + 1, `previews ${p0}→${pNow} attempts=${again?.attempts}`)
   py('backdate', eid, '61', '25')
   await sweep()
   const gone = await until(rs => {
@@ -340,7 +355,9 @@ async function run() {
 
   // ── N — HotelTime, reviewable now: its own table, its new rows, the AI (#53) ─────────
   r = await carmenApi('PUT', '/settings', { uri: URI, bu: BU, pms: 'hoteltime', auto_post: false })
-  const htBlank0 = pyJson('ht-table').blank // Carmen's rows waiting for an account
+  const ht0 = pyJson('ht-table')
+  const htBlank0 = ht0.blank // Carmen's rows waiting for an account
+  const htMapped0 = new Set(ht0.mapped) // keys Carmen's table already has an account for
   const llmN = llmNow()
   r = await hook(keys[`${BU}/hoteltime`], DAY_N)
   const dN = await until(rs => {
@@ -350,12 +367,15 @@ async function run() {
   const pN = dN?.payload
   const nKeys = new Set((pN?.rows || []).map(x => x.key)).size
   const nNew = openOf(pN)
-  check('N-01', `hook → HotelTime ${DAY_N} parks with its rows keyed HT_Code ← Code, Department blank; every key new, the AI asked`,
+  // Keyed as the helper keys the table: the key columns' values joined by "|".
+  const keyText = x => (pN?.key_columns || []).map(c => x.values[c] ?? '').join('|')
+  const nMappedHere = new Set((pN?.rows || []).map(keyText).filter(k => htMapped0.has(k))).size
+  check('N-01', `hook → HotelTime ${DAY_N} parks with its rows keyed HT_Code ← Code, Department blank; every key Carmen's table has no account for is new, the AI asked`,
     r.status === 202 && pN?.preview === true && pN?.databank_id === 171 &&
       JSON.stringify(pN?.key_columns) === '["HT_Code","HT_Description","Department"]' &&
-      pN.rows.length > 0 && pN.rows.every(x => x.values.Department === '') && nNew === nKeys &&
+      pN.rows.length > 0 && pN.rows.every(x => x.values.Department === '') && nNew === nKeys - nMappedHere && nNew > 0 &&
       (pN?.flags || []).length > 0 && !dN?.reason_code && llmNow() === llmN + 1,
-    `HTTP ${r.status} preview=${pN?.preview} rows=${pN?.rows?.length} keys=${nKeys} new=${nNew} ai=${pN?.ai?.length} flags=${pN?.flags}`)
+    `HTTP ${r.status} preview=${pN?.preview} rows=${pN?.rows?.length} keys=${nKeys} mapped in Carmen=${nMappedHere} new=${nNew} ai=${pN?.ai?.length} flags=${pN?.flags}`)
 
   const browser = await chromium.launch({ headless: true, executablePath: fs.existsSync(CHROME) ? CHROME : undefined })
   context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
@@ -380,36 +400,11 @@ async function run() {
         new RegExp(`Adds the new rows \\(${nNew}\\) to Carmen's HotelTime mapping`).test(body),
       `head="${head}" pickers=${pickers} AI tags=${await dialog.locator('.pms-tag-ai').count()}`)
     await shot('N-03-dialog')
+    await closeDialog()
 
-    const handN = await fillMissing(dialog)
-    await approveIn(dialog).click()
-    const outN = await outcome(dialog, DAY_N, 'hoteltime')
-    rows = pyJson('state')
-    const htAfter = pyJson('ht-table')
-    const madeN = pyJson('jvs', DAY_N)
-    if (madeN.length) py('void', ...madeN.map(String)) // posted after all: undone at once
-    check('N-04', "every new row has an account (the AI's, else by hand) → Approve writes them into Carmen's table, which passes the mapping: Carmen posts, or answers its next fault",
-      (outN.posted ||
-        (/Carmen didn't post the day/.test(outN.refusal) && !/Mapping is incomplete/.test(outN.refusal) &&
-          dayOf(rows, BU, DAY_N)?.reason_code === 'carmen_rejected')) &&
-        htAfter.blank === htBlank0 - nNew,
-      `by hand=${handN} ${outN.posted ? `posted JV ${outN.posted.jv_no}, voided` : `"${outN.refusal.slice(0, 120)}"`} Carmen's blank rows ${htBlank0}→${htAfter.blank}`)
-    await shot('N-04-approved')
-
-    if (!outN.posted) {
-      await closeDialog()
-      dialog = await openDay(DAY_N)
-      const banner = (await dialog.locator('.mapping-alert').first().innerText().catch(() => '')).trim()
-      const errN = dayOf(pyJson('state'), BU, DAY_N)?.error_message || ''
-      check('N-05', "reopened: the banner carries Carmen's own words",
-        !!errN && banner.includes(errN.slice(0, 40)), `banner="${banner.slice(0, 120)}"`)
-      await page.keyboard.press('Control+Enter')
-      const said6 = await alertIn(dialog).catch(() => '')
-      check('N-06', "Ctrl+Enter approves; with the accounts in Carmen now, nothing is written and Carmen answers the same",
-        /Carmen didn't post the day/.test(said6) && !/Mapping is incomplete/.test(said6), said6.slice(0, 120))
-      await closeDialog()
-    }
-
+    // N-08 before Approve: Carmen's engine posts HotelTime now (ask N closed), so a day to
+    // reject has to be one that is still parked. Rejecting writes nothing into Carmen's table,
+    // so the repeat hook finds the same new keys and asks the AI again.
     dialog = await openDay(DAY_N)
     await dialog.getByRole('button', { name: /^reject$/i }).click()
     await page.getByText('Reject this day?').waitFor({ timeout: 15000 })
@@ -422,9 +417,71 @@ async function run() {
       const d = dayOf(rs, BU, DAY_N)
       return d?.status === 'pending_review' && d?.payload?.preview === true && !d?.reason_code ? d : null
     })
-    check('N-08', "Reject → rejected, payload cleared; a repeat hook brings it back, its keys now mapped in Carmen: nothing new, no AI",
-      rej?.payload == null && r.status === 200 && !!back && (back.payload.flags || []).length === 0 && llmNow() === llm8,
-      `rejected=${rej?.status} back=${back?.status} flags=${back?.payload?.flags}`)
+    check('N-08', "Reject → rejected, payload cleared; a repeat hook brings it back with the same new keys, the AI asked again",
+      rej?.payload == null && r.status === 200 && !!back && openOf(back.payload) === nNew && llmNow() === llm8 + 1,
+      `rejected=${rej?.status} back=${back?.status} new=${openOf(back?.payload)}/${nNew} flags=${back?.payload?.flags}`)
+
+    // ── L — Thai, and a phone (on the parked day, by the dialog's own address) ──────────
+    const idN = back?.id
+    const direct = async () => {
+      await page.goto(`${APP}/#/CreditCardOCR/review?pms=${idN}`)
+      await page.reload()
+      const d = page.getByRole('dialog').first()
+      await d.getByText('HotelTime · Daily', { exact: false }).waitFor({ timeout: 60000 })
+      return d
+    }
+    await page.evaluate(() => localStorage.setItem('lang', 'th'))
+    dialog = await direct().catch(() => null)
+    const th = dialog ? (await dialog.innerText()).replace(/\s+/g, ' ') : ''
+    check('L-01', "in Thai, HotelTime's review reads Thai (its table and Approve)",
+      /อนุมัติและโพสต์/.test(th) && /บัญชี/.test(th) && /HT_CODE|HT_Code/i.test(th), th.slice(0, 120))
+    await shot('L-01-thai')
+    await page.evaluate(() => localStorage.setItem('lang', 'en'))
+    await page.setViewportSize({ width: 390, height: 844 })
+    dialog = await direct()
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth)
+    check('L-02', "at 390 px HotelTime's table fits: no sideways scroll",
+      wide <= 390 && (await dialog.getByRole('table').count()) > 0, `scrollWidth=${wide}`)
+    await shot('L-02-phone')
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await closeDialog()
+
+    dialog = await openDay(DAY_N)
+    const handN = await fillMissing(dialog)
+    await approveIn(dialog).click()
+    const outN = await outcome(dialog, DAY_N, 'hoteltime')
+    rows = pyJson('state')
+    const htAfter = pyJson('ht-table')
+    const madeN = pyJson('jvs', DAY_N)
+    if (madeN.length) py('void', ...madeN.map(String)) // a real JV: undone at once
+    check('N-04', "every new row has an account (the AI's, else by hand) → Approve writes them into Carmen's table, which passes the mapping: Carmen posts, or answers its next fault",
+      (outN.posted ||
+        (/Carmen didn't post the day/.test(outN.refusal) && !/Mapping is incomplete/.test(outN.refusal) &&
+          dayOf(rows, BU, DAY_N)?.reason_code === 'carmen_rejected')) &&
+        htAfter.blank === htBlank0 - nNew,
+      `by hand=${handN} ${outN.posted ? `posted JV ${outN.posted.jv_no}, voided` : `"${outN.refusal.slice(0, 120)}"`} Carmen's blank rows ${htBlank0}→${htAfter.blank}`)
+    await shot('N-04-approved')
+
+    if (outN.posted) {
+      r = await hook(keys[`${BU}/hoteltime`], DAY_N)
+      await sleep(6000)
+      const still = dayOf(pyJson('state'), BU, DAY_N)
+      check('N-07', 'a repeat hook for the posted day changes nothing: still posted, with its own JV',
+        r.status === 200 && r.json?.duplicate === true && still?.status === 'posted' && String(still?.jv_no) === String(outN.posted.jv_no),
+        `HTTP ${r.status} status=${still?.status} jv=${still?.jv_no}`)
+    } else {
+      await closeDialog()
+      dialog = await openDay(DAY_N)
+      const banner = (await dialog.locator('.mapping-alert').first().innerText().catch(() => '')).trim()
+      const errN = dayOf(pyJson('state'), BU, DAY_N)?.error_message || ''
+      check('N-05', "reopened: the banner carries Carmen's own words",
+        !!errN && banner.includes(errN.slice(0, 40)), `banner="${banner.slice(0, 120)}"`)
+      await page.keyboard.press('Control+Enter')
+      const said6 = await alertIn(dialog).catch(() => '')
+      check('N-06', "Ctrl+Enter approves; with the accounts in Carmen now, nothing is written and Carmen answers the same",
+        /Carmen didn't post the day/.test(said6) && !/Mapping is incomplete/.test(said6), said6.slice(0, 120))
+      await closeDialog()
+    }
 
     // ── A — auto-post: any PMS's new rows wait for a person; a mapped day posts ────────
     await carmenApi('PUT', '/settings', { uri: URI, bu: BU, pms: 'hoteltime', auto_post: true })
@@ -447,20 +504,23 @@ async function run() {
     check('A-02', `mapped in Carmen, a repeat hook re-reads ${DAY_A1}: nothing to map, so auto-post sends it; Carmen posts or answers its next fault`,
       r.status === 200 && (dA2?.status === 'posted' || dA2?.reason_code === 'carmen_rejected'),
       `filled=${filledA.filled} ${dA2?.status}/${dA2?.reason_code} "${(dA2?.error_message || '').slice(0, 100)}" JVs=${madeA}`)
-    // The first sweep since auto-post went on sends what is ready: DAY_N, re-read by N-08 with
-    // its keys mapped ("Ready to post"). After that, refused days are not sent again.
-    const sw3 = await sweep()
-    const madeS = pyJson('jvs', DAY_N)
-    if (madeS.length) py('void', ...madeS.map(String))
+    // A-03: with auto-post on, the sweep sends only what is ready and waiting. Nothing is: the
+    // days Carmen posted stay posted, and a day it refused is not sent again (no loop).
     const p2 = await posts(t0)
+    const sw3 = await sweep()
     await sweep()
     await sweep()
     const p2Now = await posts(t0)
+    const madeS = pyJson('jvs', DAY_N, DAY_A1)
+    if (madeS.length) py('void', ...madeS.map(String))
     rows = pyJson('state')
-    check('A-03', `the next sweep sends ${DAY_N}, ready since N-08, and Carmen answers it; then refused days are not sent again (no loop)`,
-      (sw3.json?.requeued ?? 0) >= 1 && p2Now === p2 && madeS.length === 0 &&
-        dayOf(rows, BU, DAY_N)?.reason_code === 'carmen_rejected' && dayOf(rows, BU, DAY_A1)?.reason_code === 'carmen_rejected',
-      `requeued=${sw3.json?.requeued} posts ${p2}→${p2Now} reasons ${dayOf(rows, BU, DAY_N)?.reason_code}/${dayOf(rows, BU, DAY_A1)?.reason_code}`)
+    const settled = d => {
+      const x = dayOf(rows, BU, d)
+      return x?.status === 'posted' || x?.reason_code === 'carmen_rejected'
+    }
+    check('A-03', `auto-post on, three sweeps: ${DAY_N} and ${DAY_A1} are not sent again (posted stays posted, refused is no loop); no JV`,
+      sw3.status === 200 && p2Now === p2 && madeS.length === 0 && settled(DAY_N) && settled(DAY_A1),
+      `requeued=${sw3.json?.requeued} posts ${p2}→${p2Now} ${DAY_N}=${dayOf(rows, BU, DAY_N)?.status}/${dayOf(rows, BU, DAY_N)?.reason_code} ${DAY_A1}=${dayOf(rows, BU, DAY_A1)?.status}/${dayOf(rows, BU, DAY_A1)?.reason_code} JVs=${madeS}`)
 
     // ── R — a repeat hook re-reads a refused day ────────────────────────────────────
     await carmenApi('PUT', '/settings', { uri: URI, bu: BU, pms: 'hoteltime', auto_post: false })
@@ -483,30 +543,6 @@ async function run() {
     check('O-05', 'the failed opened day shows under Not posted, "Data Bank does not have this day"',
       /Data Bank does not have this day/.test(rowGone), rowGone.slice(0, 140))
     await shot('O-05-not-posted')
-
-    // ── L — Thai, and a phone ───────────────────────────────────────────────────────
-    // By the dialog's own address: the queue's button is worded in the reader's language.
-    const idN = dayOf(pyJson('state'), BU, DAY_N)?.id
-    const direct = async () => {
-      await page.goto(`${APP}/#/CreditCardOCR/review?pms=${idN}`)
-      await page.reload()
-      const d = page.getByRole('dialog').first()
-      await d.getByText('HotelTime · Daily', { exact: false }).waitFor({ timeout: 60000 })
-      return d
-    }
-    await page.evaluate(() => localStorage.setItem('lang', 'th'))
-    dialog = await direct().catch(() => null)
-    const th = dialog ? (await dialog.innerText()).replace(/\s+/g, ' ') : ''
-    check('L-01', "in Thai, HotelTime's review reads Thai (its table and Approve)",
-      /อนุมัติและโพสต์/.test(th) && /บัญชี/.test(th) && /HT_CODE|HT_Code/i.test(th), th.slice(0, 120))
-    await shot('L-01-thai')
-    await page.evaluate(() => localStorage.setItem('lang', 'en'))
-    await page.setViewportSize({ width: 390, height: 844 })
-    dialog = await direct()
-    const wide = await page.evaluate(() => document.documentElement.scrollWidth)
-    check('L-02', "at 390 px HotelTime's table fits: no sideways scroll",
-      wide <= 390 && (await dialog.getByRole('table').count()) > 0, `scrollWidth=${wide}`)
-    await shot('L-02-phone')
 
     // ── CB — Cloudbeds: reviewable too, through Carmen's engine to a JV ──────────────
     // Its day carries the key columns in two lists; `Statistic` is another section, so the
@@ -620,7 +656,7 @@ async function run() {
   const fives = log.split('\n').filter(l => /\/(pms|carmen\/pms)\//.test(l) && /" 5\d\d /.test(l))
   check('E-02', 'no 5xx from the PMS routes', log && fives.length === 0, fives.slice(0, 3).join(' | ') || (log ? '' : 'no log'))
   const llm1 = llmNow()
-  const llmWant = 2 + (cbRan ? 2 : 0) // N-01, A-01 (and CB-01, CB-07): the days with new rows
+  const llmWant = 3 + (cbRan ? 2 : 0) // N-01, N-08's re-read, A-01 (and CB-01, CB-07): the days with new rows
   check('E-03', 'the AI was asked once per day with new rows, and for no other', llm1 === llm0 + llmWant,
     `calls ${llm0}→${llm1}, expected +${llmWant}`)
   const made = pyJson('jvs', ...HT_DAYS, YESTERDAY)
