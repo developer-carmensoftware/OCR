@@ -14,7 +14,13 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import httpx
-from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncOpenAI,
+    RateLimitError,
+)
 
 from app.config import settings
 from app.exceptions import LLMCapacityError, LLMParseError, LLMServiceError
@@ -23,6 +29,10 @@ logger = logging.getLogger(__name__)
 
 _RETRYABLE = (APITimeoutError, APIConnectionError, RateLimitError)
 _MAX_ATTEMPTS = 3
+# A key OpenRouter refuses outright: invalid (401), its account out of credit (402), or
+# forbidden (403). Another key of the pool may be on a funded account, so the call moves
+# on, and waiting will not revive this one, so it is not tried again in a later round.
+_DEAD_KEY_STATUSES = frozenset({401, 402, 403})
 
 # Hard timeout per LLM call. Vision extractions typically finish in 2-10s;
 # 120s leaves headroom for multi-page documents while preventing indefinite worker stall.
@@ -244,13 +254,23 @@ async def _call_with_pool(kind: _Kind, build_call, label: str):
     key by _with_retry. Only when ALL keys are throttled in a sweep do we back off and
     sweep again (up to _MAX_ATTEMPTS rounds) — this mirrors the old single-key backoff.
 
+    A key refused outright (_DEAD_KEY_STATUSES, e.g. 402 when its account is out of credit)
+    also fails over at once, and stays out of later rounds. Without this, least-loaded
+    routing sent every call that overlapped another to the dead key, and it failed there
+    (QA, 2026-11-11: two of three PMS days at once got no AI picks).
+
     Returns (response, key_label). Raises the last RateLimitError when every key stays
-    throttled across all rounds, or LLMCapacityError when no slot can be reserved in time.
+    throttled across all rounds, the last refusal when every key is dead, or
+    LLMCapacityError when no slot can be reserved in time.
     """
     n = len(_get_pool())
     last_rate_exc: RateLimitError | None = None
+    last_dead_exc: APIStatusError | None = None
+    # ponytail: dead keys are found again on every call (one fast refused request each);
+    # remember them across calls for a while if a dead key is ever left in a pool for long.
+    dead: set[str] = set()
     for round_idx in range(_MAX_ATTEMPTS):
-        tried: set[str] = set()
+        tried: set[str] = set(dead)
         while len(tried) < n:
             ks = await _acquire(kind, exclude=frozenset(tried))
             try:
@@ -260,9 +280,24 @@ async def _call_with_pool(kind: _Kind, build_call, label: str):
                 last_rate_exc = exc
                 tried.add(ks.label)
                 logger.warning("LLM key %s rate-limited; failing over to next key", ks.label)
+            except APIStatusError as exc:
+                if exc.status_code not in _DEAD_KEY_STATUSES:
+                    raise
+                last_dead_exc = exc
+                dead.add(ks.label)
+                tried.add(ks.label)
+                logger.warning(
+                    "LLM key %s refused (HTTP %d); failing over to next key",
+                    ks.label,
+                    exc.status_code,
+                )
             finally:
                 _release(ks, kind)
-        # Every key was throttled this sweep. Back off (3s, 6s) then sweep again, unless
+        if len(dead) == n:  # every key refused outright: backing off revives none
+            assert last_dead_exc is not None
+            logger.error("All %d LLM key(s) refused (last HTTP %d)", n, last_dead_exc.status_code)
+            raise last_dead_exc
+        # Every live key was throttled this sweep. Back off (3s, 6s) then sweep again, unless
         # this was the final round — re-raise the original RateLimitError so the caller's
         # `except (*_RETRYABLE, ...)` maps it to 503.
         if round_idx == _MAX_ATTEMPTS - 1:
