@@ -6,6 +6,7 @@
 //             the rate limits in its own process only — the suite makes ~6,000 requests)
 //   frontend: vite on 3012 proxying /api to 8012
 //   node scripts/qa/jv_filters_ui.mjs                    (APP_URL / API_URL override the ports)
+//   HEADED=1 SLOWMO=250 node scripts/qa/jv_filters_ui.mjs   watch it in a real window (default: headless)
 //   python scripts/qa/jv_filters_e2e.py teardown
 //
 // One pass/fail line per test case ID; exit 1 on any failure. Screenshots → OUT.
@@ -84,7 +85,11 @@ const ageOf = new Map(FIX.rows.map(r => [r.key, r.age]))
 
 // ── Harness ───────────────────────────────────────────────────────────────────────────────
 const results = []
-const browser = await chromium.launch({ executablePath: CHROME })
+const browser = await chromium.launch({
+  executablePath: CHROME,
+  headless: process.env.HEADED !== '1', // HEADED=1 SLOWMO=250 to watch it run
+  slowMo: Number(process.env.SLOWMO) || 0,
+})
 
 // ONLY=M-,G-  runs just the cases whose id starts with one of those (while iterating).
 const ONLY = (process.env.ONLY || '').split(',').filter(Boolean)
