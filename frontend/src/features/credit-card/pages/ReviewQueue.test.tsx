@@ -953,6 +953,82 @@ describe('the guard: a PMS day has no bank, so the two are never asked for toget
   })
 })
 
+describe('what arrives in the search box and the address bar is cleaned before it is sent', () => {
+  const COUNTS = { ...ZERO, all: 9, review: 2, success: 7 }
+  // Built, not typed: a literal NUL in a source file is a bad idea.
+  const NUL = String.fromCharCode(0)
+
+  it('cleanText drops control characters (NUL included) and caps the length', async () => {
+    const { cleanText } = await import('@/features/credit-card/api/emailReview')
+    expect(cleanText(`a${NUL}b`, 100)).toBe('ab')
+    expect(cleanText('x\ty\nz\r', 100)).toBe('xyz')
+    expect(cleanText(`${NUL}${NUL}`, 100)).toBe('')
+    expect(cleanText('k'.repeat(150), 100)).toHaveLength(100)
+    expect(cleanText('ใบแจ้งหนี้ 😀', 100)).toBe('ใบแจ้งหนี้ 😀') // text is left alone
+  })
+
+  it('a NUL pasted into the box never reaches the server (it would be a 422, an error card)', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    const box = screen.getByRole('searchbox', { name: 'Search documents' })
+    fireEvent.change(box, { target: { value: `a${NUL}b` } })
+    expect(box).toHaveValue('ab')
+    await waitFor(() => expect(lastCall()[3]).toMatchObject({ q: 'ab' }))
+    expect(vi.mocked(api.listActivity).mock.calls.every(c => !c[3]?.q.includes(NUL))).toBe(true)
+  })
+
+  it('a link carrying a NUL or a control character in q or bank opens a list, with the text cleaned', async () => {
+    window.location.hash = '#/CreditCardOCR?filter=all&q=a%00b&bank=KB%09ANK'
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    expect(vi.mocked(api.listActivity).mock.calls[0][3]).toMatchObject({ q: 'ab', bank: 'KBANK' })
+    expect(screen.queryByText('Could not load the queue')).not.toBeInTheDocument()
+  })
+
+  it('waits out an IME composition: nothing is searched half-typed, one request when it ends', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    const box = screen.getByRole('searchbox', { name: 'Search documents' })
+    const before = vi.mocked(api.listActivity).mock.calls.length
+    fireEvent.compositionStart(box)
+    fireEvent.change(box, { target: { value: 'ใบ' } })
+    fireEvent.change(box, { target: { value: 'ใบแจ้ง' } })
+    // Longer than the 300 ms debounce, still composing.
+    await new Promise(r => setTimeout(r, 450))
+    expect(vi.mocked(api.listActivity).mock.calls.length).toBe(before)
+    fireEvent.change(box, { target: { value: 'ใบแจ้งหนี้' } })
+    fireEvent.compositionEnd(box, { data: 'ใบแจ้งหนี้' })
+    await waitFor(() => expect(lastCall()[3]).toMatchObject({ q: 'ใบแจ้งหนี้' }))
+    expect(vi.mocked(api.listActivity).mock.calls.length).toBe(before + 1)
+  })
+})
+
+describe('the menu lets go of the keyboard', () => {
+  const COUNTS = { ...ZERO, all: 9, review: 2, success: 7 }
+
+  it('Tab closes the menu and focus goes back to what opened it, so the next Tab is the next control', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    const opener = screen.getByRole('button', { name: 'Filter' })
+    fireEvent.click(opener)
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' })
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(opener).toHaveFocus()
+  })
+
+  it('and so does Shift+Tab, from a value list too', async () => {
+    mount([doc()], COUNTS)
+    await screen.findByText('KTC')
+    const opener = screen.getByRole('button', { name: 'Filter' })
+    fireEvent.click(opener)
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Source/ }))
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab', shiftKey: true })
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(opener).toHaveFocus()
+  })
+})
+
 describe('the actions column', () => {
   it('offers Review only on a document that is actually waiting', async () => {
     mount([doc()])

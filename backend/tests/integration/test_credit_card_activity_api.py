@@ -949,3 +949,98 @@ def _pms_stmt_for(n):
 
 def _sql_of(stmt) -> str:
     return str(stmt.compile(compile_kwargs={"literal_binds": True})).lower()
+
+
+# ── Parameter edges the matrix could not see ──────────────────────────────────────────────
+# Found by probing the route with hostile input: a NUL in `q` or `bank` reached Postgres (which
+# refuses it in a text parameter) and came back as a 500, and an `offset` past int64 overflowed
+# `limit + offset` the same way. Both are now refused at the boundary with a 422.
+
+
+@pytest.mark.parametrize("qs", ["q=%00", "q=a%00b", "bank=%00", "bank=KB%00ANK"])
+def test_a_nul_byte_in_a_text_filter_is_a_422_not_a_500(qs):
+    db = _db(statuses={"posted": 1}, manual_count=0, emails=[], manuals=[])
+    with make_test_client(db, session=SESSION) as client:
+        r = client.get(f"{BASE}?filter=all&{qs}", headers=AUTH)
+    assert r.status_code == 422, r.text
+    # Refused before any query ran: the database never sees it.
+    assert db.execute.call_count == 0
+
+
+@pytest.mark.parametrize(
+    ("offset", "status"),
+    [
+        (0, 200),
+        (1_000_000, 200),
+        (1_000_001, 422),
+        (2**31, 422),
+        (2**63, 422),
+        (10**30, 422),
+        (-1, 422),
+    ],
+)
+def test_offset_has_a_ceiling_so_limit_plus_offset_cannot_overflow(offset, status):
+    db = _db(statuses={"posted": 1}, manual_count=0, emails=[], manuals=[])
+    with make_test_client(db, session=SESSION) as client:
+        r = client.get(f"{BASE}?filter=all&offset={offset}", headers=AUTH)
+    assert r.status_code == status, r.text
+
+
+@pytest.mark.parametrize(
+    "qs",
+    ["q=%ED%A0%80", "q=%E2%80%AEabc", "q=a%E2%80%8Db", "source=%00", "range=%00", "filter=%00"],
+)
+def test_other_odd_text_is_answered_not_crashed(qs):
+    """Invalid UTF-8, an RTL override and a zero-width joiner are just text that matches
+    nothing; a NUL in the parameters that never reach a query is ignored like any unknown word."""
+    db = _db(statuses={"posted": 1}, manual_count=0, emails=[], manuals=[])
+    with make_test_client(db, session=SESSION) as client:
+        r = client.get(f"{BASE}?{qs}", headers=AUTH)
+    assert r.status_code == 200, r.text
+
+
+# ── The BU's day, at the edges the browser suite cannot reach ──────────────────────────────
+
+
+class _Frozen(datetime):
+    """`datetime` whose `now()` is a chosen instant, so a month or year edge can be tested."""
+
+    _at: datetime
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls._at.astimezone(tz) if tz else cls._at
+
+
+@pytest.mark.parametrize(
+    ("now_utc", "today_ict", "seven", "thirty"),
+    [
+        # One second before / at the BU's midnight (ICT = UTC+7, so 17:00 UTC).
+        ("2026-11-09T16:59:59", "2026-11-09", "2026-11-03", "2026-10-11"),
+        ("2026-11-09T17:00:00", "2026-11-10", "2026-11-04", "2026-10-12"),
+        # Across a year: 7 and 30 days back from 1 January.
+        ("2026-12-31T17:00:00", "2027-01-01", "2026-12-26", "2026-12-03"),
+        # Leap day: 29 days back from 1 March 2028 is 1 February; in 2027 it is 31 January.
+        ("2028-02-29T17:00:00", "2028-03-01", "2028-02-24", "2028-02-01"),
+        ("2027-02-28T17:00:00", "2027-03-01", "2027-02-23", "2027-01-31"),
+    ],
+)
+def test_the_date_filters_are_cut_on_the_bu_midnight_not_utc(
+    monkeypatch, now_utc, today_ict, seven, thirty
+):
+    from datetime import UTC
+    from datetime import date as _date
+
+    from app.services.credit_card import activity as svc
+
+    _Frozen._at = datetime.fromisoformat(now_utc).replace(tzinfo=UTC)
+    monkeypatch.setattr(svc, "datetime", _Frozen)
+
+    def midnight(day: str) -> datetime:
+        d = _date.fromisoformat(day)
+        return datetime(d.year, d.month, d.day, tzinfo=svc.ICT)
+
+    assert svc._day_start() == midnight(today_ict)
+    assert svc.parse_narrow("", "", "", "today").since == midnight(today_ict)
+    assert svc.parse_narrow("", "", "", "7d").since == midnight(seven)
+    assert svc.parse_narrow("", "", "", "30d").since == midnight(thirty)
