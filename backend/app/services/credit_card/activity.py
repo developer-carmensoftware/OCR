@@ -680,6 +680,110 @@ async def _pms_rows(
     return [_pms_row(d) for d in days]
 
 
+# `limit + offset` past which a page is built from keys, not from rows. A shallow window costs
+# one query per source and nothing else; a deep one pays two round trips per source to avoid
+# hydrating the whole window, so it only wins once the window is big.
+DEEP_WINDOW = 500
+
+
+async def _deep_rows(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    chip: str | None,
+    since: datetime | None,
+    narrow: Narrow | None,
+    wants_manual: bool,
+    email_stmt,
+    manual_stmt,
+    offset: int,
+    limit: int,
+) -> list[ActivityRow]:
+    """The page at `offset`, without loading the `offset` rows before it.
+
+    1. **Keys.** Each source's own statement, reduced to `(id, when)`, ordered `when DESC, id
+       DESC`, `LIMIT limit+offset`. `when` is what `_email_row` / `_manual_row` / `_pms_row`
+       put in `created_at`, so the merge sorts on the same value the rows would have carried.
+    2. **Slice.** Concatenated email → manual → PMS and stable-sorted, as the shallow path
+       does, then `[offset : offset+limit]` — at most `limit` ids.
+    3. **Rows.** Only those ids are loaded, per source, and `_email_cards` / `username_map`
+       look up for that page alone.
+
+    Rows with the same instant have no order the database promises on the shallow path; here
+    ties break by `id`, so two tied rows can swap places across `DEEP_WINDOW`. Timestamps are
+    microsecond `timestamptz`, which makes a tie at a page edge rare.
+    """
+    window = offset + limit
+
+    def keyed(stmt, model, when):
+        return (
+            stmt.with_only_columns(model.id, when, maintain_column_froms=True)
+            .order_by(None)
+            .order_by(when.desc(), model.id.desc())
+            .limit(window)
+        )
+
+    # (when, source, id): 0 email, 1 manual, 2 PMS — the order the shallow path concatenates in.
+    keys: list[tuple[datetime, int, Any]] = []
+    for rank, stmt, model, when in (
+        (0, email_stmt, EmailDocument, EmailDocument.created_at),
+        (1, manual_stmt if wants_manual else None, CreditCard, _manual_when),
+        (2, _pms_stmt(tenant_id, chip, since, narrow), PmsEvent, PmsEvent.created_at),
+    ):
+        if stmt is None:
+            continue
+        found = (await db.execute(keyed(stmt, model, when))).all()
+        keys += [(w or _EPOCH, rank, i) for i, w in found]
+    keys.sort(key=lambda k: k[0], reverse=True)
+    page = keys[offset : offset + limit]
+
+    def ids(rank: int) -> list[Any]:
+        return [i for _, r, i in page if r == rank]
+
+    built: dict[tuple[int, Any], ActivityRow] = {}
+    if ids(0):
+        emails = (
+            (
+                await db.execute(
+                    select(EmailDocument).where(
+                        EmailDocument.tenant_id == tenant_id, EmailDocument.id.in_(ids(0))
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        cards = await _email_cards(db, tenant_id, emails)
+        built.update({(0, e.id): _email_row(e, cards.get(e.task_id)) for e in emails})
+    if ids(1):
+        manuals = (
+            await db.execute(
+                select(CreditCard, OCRTask)
+                .join(OCRTask, OCRTask.id == CreditCard.task_id)
+                .where(CreditCard.tenant_id == tenant_id, CreditCard.id.in_(ids(1)))
+            )
+        ).all()
+        names = await username_map(db, [c.carmen_user_id for c, _ in manuals])
+        built.update(
+            {
+                (1, c.id): _manual_row(c, t, names.get(str(c.carmen_user_id or "")))
+                for c, t in manuals
+            }
+        )
+    if ids(2):
+        days = (
+            (
+                await db.execute(
+                    select(PmsEvent).where(PmsEvent.tenant_id == tenant_id, PmsEvent.id.in_(ids(2)))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        built.update({(2, d.id): _pms_row(d) for d in days})
+    # In the order phase 1 settled, and a row deleted in between is simply not there.
+    return [built[(r, i)] for _, r, i in page if (r, i) in built]
+
+
 async def list_activity(
     db: AsyncSession,
     tenant_id: uuid.UUID,
@@ -722,12 +826,17 @@ async def list_activity(
     # can never print a number over a table holding a different pile.
     total = counts[filter]
 
-    # ponytail: merged in Python, not a SQL UNION. Two ordered selects, fetch limit+offset
-    # from each, concat, sort, slice. Correct at this repo's volumes (largest business
-    # table holds 342 rows — docs/SQL_PERFORMANCE_AUDIT.md) and far more readable than a
-    # UNION ALL over two subqueries with hand-aliased columns. Swap it for one if a BU
-    # ever pages deep enough for the double-fetch to show up.
+    # ponytail: merged in Python, not a SQL UNION. Ordered selects, fetch limit+offset from
+    # each, concat, sort, slice — far more readable than a UNION ALL over subqueries with
+    # hand-aliased columns. Fine for the first pages, which is nearly every request. Past
+    # `DEEP_WINDOW` rows it hands over to `_deep_rows`, which sorts keys instead of rows:
+    # 20,000 hydrated rows was 1.1 s at the last page (p50), the same keys are cheap.
     window = limit + offset
+    if window > DEEP_WINDOW:
+        deep = await _deep_rows(
+            db, tenant_id, chip, since, narrow, wants_manual, email_stmt, manual_stmt, offset, limit
+        )
+        return ActivityPage(total=total, limit=limit, offset=offset, data=deep, counts=counts)
     emails = (await db.execute(email_stmt.limit(window))).scalars().all()
     cards = await _email_cards(db, tenant_id, emails)
     rows = [_email_row(e, cards.get(e.task_id)) for e in emails]

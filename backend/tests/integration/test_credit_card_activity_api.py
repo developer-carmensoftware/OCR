@@ -1044,3 +1044,210 @@ def test_the_date_filters_are_cut_on_the_bu_midnight_not_utc(
     assert svc.parse_narrow("", "", "", "today").since == midnight(today_ict)
     assert svc.parse_narrow("", "", "", "7d").since == midnight(seven)
     assert svc.parse_narrow("", "", "", "30d").since == midnight(thirty)
+
+
+# ── The deep page: keys first, rows only for the page ──────────────────────────────────────
+#
+# Past `DEEP_WINDOW` rows `list_activity` stops hydrating `limit + offset` rows per source
+# (1.1 s at the last page of 20,000) and builds the page from `(id, when)` keys. The real-DB
+# equivalence — the whole browser suite and the oracle matrix with the threshold at 0 — is
+# `scripts/qa/jv_filters_backend.py --deep-window 0`; these pin the shape a mock can see.
+
+
+def _pms_day(**overrides):
+    day = SimpleNamespace(
+        id=uuid.uuid4(),
+        created_at=NOW,
+        payload={"InterfaceName": "Comanche", "DocType": "Daily", "DocDate": "2026-10-07"},
+        status="posted",
+        review_payload=None,
+        jv_no=None,
+        reason_code=None,
+        error_message=None,
+        reviewed_by_name=None,
+        reviewed_at=None,
+    )
+    for k, v in overrides.items():
+        setattr(day, k, v)
+    return day
+
+
+def _keys_result(rows):
+    """What a keys-only select answers: `(id, when)` pairs, `.all()`."""
+    r = MagicMock()
+    r.all.return_value = [(x.id, x.created_at) for x in rows]
+    return r
+
+
+def _scalars_result(rows):
+    r = MagicMock()
+    r.scalars.return_value.all.return_value = rows
+    return r
+
+
+def _pairs_result(pairs):
+    r = MagicMock()
+    r.all.return_value = pairs
+    return r
+
+
+def _ago(minutes):
+    return NOW - timedelta(minutes=minutes)
+
+
+def _deep_world():
+    """Ten rows over three sources, newest first: E10 P20 M30 E40 P50 M60 E70 P80 M90 E100."""
+    emails = [_email(created_at=_ago(m), doc_no=f"E{m}") for m in (10, 40, 70, 100)]
+    manuals = [_manual(submitted_at=_ago(m), doc_no=f"M{m}") for m in (30, 60, 90)]
+    for card, _ in manuals:
+        card.created_at = card.submitted_at
+    pms = [_pms_day(created_at=_ago(m)) for m in (20, 50, 80)]
+    return emails, manuals, pms
+
+
+async def _deep(db, offset, limit, wants_manual=True):
+    from app.services.credit_card.activity import _deep_rows
+
+    tenant = uuid.UUID(TENANT)
+    return await _deep_rows(
+        db,
+        tenant,
+        None,
+        None,
+        None,
+        wants_manual,
+        _email_stmt(tenant, None, None, None),
+        _manual_stmt(tenant, None, None, None),
+        offset,
+        limit,
+    )
+
+
+def _in_lists(stmt):
+    """The id lists a statement's `IN (...)` carries."""
+    return [v for v in stmt.compile().params.values() if isinstance(v, list | tuple)]
+
+
+@pytest.mark.asyncio
+async def test_deep_page_is_the_merged_slice_and_loads_only_those_rows():
+    emails, manuals, pms = _deep_world()
+    db = make_mock_db()
+    # offset 3, limit 4 of E10 P20 M30 | E40 P50 M60 E70 | P80 M90 E100
+    db.execute.side_effect = [
+        _keys_result(emails),
+        _keys_result([c for c, _ in manuals]),
+        _keys_result(pms),
+        _scalars_result([emails[1], emails[2]]),  # hydrate: E40, E70
+        _pairs_result([manuals[1]]),  # M60
+        _scalars_result([pms[1]]),  # P50
+    ]
+    rows = await _deep(db, offset=3, limit=4)
+
+    assert [r.doc_no for r in rows if r.source != "pms"] == ["E40", "M60", "E70"]
+    assert [r.source for r in rows] == ["email", "pms", "manual", "email"]
+    # Three key reads, three hydrations, nothing else — and each hydration names the page's
+    # ids alone, never the window.
+    assert db.execute.call_count == 6
+    hydrations = [c.args[0] for c in db.execute.call_args_list[3:]]
+    assert [len(_in_lists(s)[0]) for s in hydrations] == [2, 1, 1]
+
+
+@pytest.mark.asyncio
+async def test_deep_page_past_the_end_is_empty_and_hydrates_nothing():
+    emails, manuals, pms = _deep_world()
+    db = make_mock_db()
+    db.execute.side_effect = [
+        _keys_result(emails),
+        _keys_result([c for c, _ in manuals]),
+        _keys_result(pms),
+    ]
+    assert await _deep(db, offset=10, limit=5) == []
+    assert db.execute.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_deep_page_skips_the_manual_source_when_the_filter_excludes_it():
+    emails, _, pms = _deep_world()
+    db = make_mock_db()
+    db.execute.side_effect = [
+        _keys_result(emails),
+        _keys_result(pms),
+        _scalars_result([emails[0]]),
+        _scalars_result([pms[0]]),
+    ]
+    rows = await _deep(db, offset=0, limit=2, wants_manual=False)
+    assert [r.source for r in rows] == ["email", "pms"]
+    assert db.execute.call_count == 4
+
+
+@pytest.mark.asyncio
+async def test_deep_page_survives_a_row_deleted_between_the_two_reads():
+    emails, manuals, pms = _deep_world()
+    db = make_mock_db()
+    db.execute.side_effect = [
+        _keys_result(emails),
+        _keys_result([c for c, _ in manuals]),
+        _keys_result(pms),
+        _scalars_result([emails[0]]),
+        _pairs_result([]),  # M30 was soft-deleted in between
+        _scalars_result([pms[0]]),
+    ]
+    rows = await _deep(db, offset=0, limit=3)
+    assert [r.source for r in rows] == ["email", "pms"]
+
+
+@pytest.mark.asyncio
+async def test_the_key_statements_select_only_id_and_when_and_keep_their_joins():
+    emails, manuals, pms = _deep_world()
+    db = make_mock_db()
+    db.execute.side_effect = [
+        _keys_result(emails),
+        _keys_result([c for c, _ in manuals]),
+        _keys_result(pms),
+        *[_scalars_result([]), _pairs_result([]), _scalars_result([])],
+    ]
+    await _deep(db, offset=0, limit=2)
+    email_sql, manual_sql, pms_sql = (
+        str(c.args[0].compile()) for c in db.execute.call_args_list[:3]
+    )
+    for sql in (email_sql, manual_sql, pms_sql):
+        select_list = sql.split("FROM", 1)[0]
+        assert "LIMIT" in sql and "ORDER BY" in sql
+        assert "attachment" not in select_list and "payload" not in select_list
+    # The manual keys still join the task: the filename search lives on it.
+    assert "JOIN ocr_tasks" in manual_sql
+    assert "coalesce" in manual_sql.split("FROM", 1)[0].lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("offset, deep", [(400, False), (401, True)])
+async def test_the_window_decides_which_path_a_page_takes(offset, deep):
+    from app.services.credit_card import activity as svc
+
+    db = _db(statuses={}, manual_count=0, emails=[], manuals=[])
+    with patch.object(svc, "_deep_rows", AsyncMock(return_value=[])) as spy:
+        page = await svc.list_activity(db, uuid.UUID(TENANT), "all", 100, offset)
+    assert svc.DEEP_WINDOW == 500
+    assert spy.await_count == (1 if deep else 0)
+    assert (page.limit, page.offset) == (100, offset)
+
+
+@pytest.mark.asyncio
+async def test_deep_page_keeps_the_shallow_paths_source_order_for_the_same_instant():
+    """Email, then manual, then PMS — the order the shallow path concatenates in, which a
+    stable sort leaves alone when two rows share a timestamp."""
+    e = _email(created_at=_ago(5), doc_no="E")
+    m, task = _manual(submitted_at=_ago(5), doc_no="M")
+    m.created_at = m.submitted_at
+    p = _pms_day(created_at=_ago(5))
+    db = make_mock_db()
+    db.execute.side_effect = [
+        _keys_result([e]),
+        _keys_result([m]),
+        _keys_result([p]),
+        _scalars_result([e]),
+        _pairs_result([(m, task)]),
+        _scalars_result([p]),
+    ]
+    rows = await _deep(db, offset=0, limit=3)
+    assert [r.source for r in rows] == ["email", "manual", "pms"]
