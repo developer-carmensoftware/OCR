@@ -23,6 +23,7 @@ import { useReviewQueue } from '@/features/credit-card/hooks/useReviewQueue'
 import { prefetchGlMasters } from '@/features/credit-card/hooks/mapping/useGlMasters'
 import {
   ALL_SCOPES,
+  cleanText,
   narrowCount,
   NO_NARROW,
   reconcileNarrow,
@@ -157,11 +158,11 @@ function narrowFromHash(): QueueNarrow {
   // `reconcileNarrow`: `?source=pms&bank=SCB` is a contradiction the API would refuse (400), so a
   // pasted link repairs itself here — before the first request, not after a failed one.
   return reconcileNarrow({
-    q: (p.get('q') || '').slice(0, 100),
+    q: cleanText(p.get('q') || '', 100),
     sources: (p.get('source') || '')
       .split(',')
       .filter(x => SOURCE_IDS.includes(x)) as QueueSource[],
-    bank: (p.get('bank') || '').toUpperCase().slice(0, 20),
+    bank: cleanText(p.get('bank') || '', 20).toUpperCase(),
     range: (RANGE_IDS.includes(range) ? range : '') as QueueRange,
   })
 }

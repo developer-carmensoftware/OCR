@@ -152,6 +152,13 @@ export const NO_NARROW: QueueNarrow = { q: '', sources: [], bank: '', range: '' 
 export const reconcileNarrow = (n: QueueNarrow): QueueNarrow =>
   n.bank && n.sources.includes('pms') ? { ...n, bank: '' } : n
 
+/** Text that is going to be searched or compared: control characters out, length capped. A NUL
+ *  cannot be a database text parameter (the API answers 422), a newline or tab has no place in a
+ *  one-line box, and neither can be typed on purpose — but both arrive by paste and by a link. */
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u001f\u007f]/g
+export const cleanText = (s: string, max: number): string => s.replace(CONTROL, '').slice(0, max)
+
 export const narrowCount = (n: QueueNarrow) =>
   (n.q ? 1 : 0) + n.sources.length + (n.bank ? 1 : 0) + (n.range ? 1 : 0)
 

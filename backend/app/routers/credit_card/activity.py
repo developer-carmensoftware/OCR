@@ -39,15 +39,29 @@ from app.services.credit_card.input_tax import (
 
 router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card Activity"])
 
+# A NUL byte cannot be a Postgres text parameter: `q` and `bank` reach a query as bound text, so
+# one in either came back as a 500 (found by probing the route with hostile input). Refused here
+# as a 422, before any query runs. The other text parameters are only compared in Python, where
+# a NUL is just an unknown word.
+_NO_NUL = r"^[^\x00]*$"
+
+# Past this a page is not a page. It also keeps `limit + offset` — the window each source is
+# asked for — far inside int64: 2**63 used to overflow it into a 500.
+MAX_OFFSET = 1_000_000
+
 
 @router.get("/activity", response_model=ActivityPage)
 async def list_activity(
     filter: str = Query("all", description="all | today | review | success | unposted"),
     limit: int = Query(25, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    q: str = Query("", max_length=100, description="search doc no / filename / bank"),
+    offset: int = Query(0, ge=0, le=MAX_OFFSET),
+    q: str = Query(
+        "", max_length=100, pattern=_NO_NUL, description="search doc no / filename / bank"
+    ),
     source: str = Query("", max_length=40, description="comma list of email,manual,pms"),
-    bank: str = Query("", max_length=20, description="bank code; excludes PMS days"),
+    bank: str = Query(
+        "", max_length=20, pattern=_NO_NUL, description="bank code; excludes PMS days"
+    ),
     range: str = Query("", max_length=8, description="today | 7d | 30d"),
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
@@ -63,8 +77,9 @@ async def list_activity(
     `useReviewQueue`). Every chip's count travels with this response precisely so that
     decision costs no extra round trip when there is work.
 
-    `today`, `success` and `unposted` are no longer chips of their own (§24) — they are what
-    the All chip's dropdown narrows the log to — but the filters are unchanged here.
+    `today`, `success` and `unposted` are no longer chips of their own (§24): Posted / Not posted
+    are the filter bar's Status choice (they light the All chip) and Today is one of its Date
+    choices. The filters are unchanged here.
 
     `today` is the one filter that is not about state — it is every row since midnight ICT,
     whatever became of it. So it overlaps all of the others by construction, which is why

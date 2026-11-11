@@ -404,16 +404,13 @@
     min-height: 44px;
   }
 
-  /* On All the dropdown joins the row, and dropdown + two icons + "Upload documents" no longer
-     fit 327px: the label broke onto two lines inside its button. Wrap the group instead, and
-     keep the label on one line. */
+  /* Wrap the group when it does not fit. The label itself is NOT pinned to one line: it was, back
+     when a dropdown crowded this row at 375px, and `nowrap` then made the button wider than the
+     screen at 320px with 200% text (found by X-11). Two icons and "Upload documents" fit 375px
+     on one line anyway. */
   .rq-bar-actions {
     flex-wrap: wrap;
     justify-content: flex-end;
-  }
-
-  .rq-bar-actions .btn-primary {
-    white-space: nowrap;
   }
 }
 
@@ -750,6 +747,9 @@
   .rq-menu {
     position: static;
     flex: 0 0 100%;
+    /* `13rem` is a floor for the popover; in the flow it is the row's width. At 200% text 13rem is
+       416px, wider than a 320px screen (found by X-11). */
+    min-width: 0;
     max-width: none;
     box-shadow: none;
   }

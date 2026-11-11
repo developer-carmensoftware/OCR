@@ -29,6 +29,8 @@ const CHROME =
   process.env.CHROME_EXE || path.join(LOCAL, 'ms-playwright/chromium-1223/chrome-win64/chrome.exe')
 const { chromium } = createRequire(import.meta.url)(PW)
 
+// CSP_LISTEN=1: report every `securitypolicyviolation` (the app is served with the enforced CSP).
+const CSP_LISTEN = process.env.CSP_LISTEN === '1'
 const FIX = JSON.parse(fs.readFileSync(path.join(OUT, 'fixture.json'), 'utf8'))
 const T = FIX.tenants
 
@@ -141,6 +143,13 @@ async function open(
     },
     { jwt: t.jwt, user: t.user, lang, theme, rows }
   )
+  if (CSP_LISTEN)
+    await ctx.addInitScript(() => {
+      window.__csp = []
+      document.addEventListener('securitypolicyviolation', e =>
+        window.__csp.push(`${e.violatedDirective} ${e.blockedURI || e.sample || ''}`.trim())
+      )
+    })
   const page = await ctx.newPage()
   const h = { ctx, page, calls: [], done: [], pending: 0, errors: [], statuses: [] }
   const isActivity = u => new URL(u).pathname === '/api/v1/credit-card/activity'
@@ -180,7 +189,19 @@ async function open(
   await idle(h)
   return h
 }
-const close = h => h.ctx.close()
+/** Closing a page is also the moment to ask what the browser refused: with CSP_LISTEN=1 the suite
+ *  runs against `vite preview` serving vercel.json's enforced headers, and one blocked resource
+ *  fails the case that caused it. */
+async function close(h) {
+  if (CSP_LISTEN) {
+    const seen = await h.page.evaluate(() => window.__csp || []).catch(() => [])
+    if (seen.length) {
+      await h.ctx.close()
+      throw new Error(`the CSP refused ${seen.length} thing(s): ${[...new Set(seen)].slice(0, 4).join(' | ')}`)
+    }
+  }
+  await h.ctx.close()
+}
 
 /** Quiet: nothing in flight and no new request for a beat — a debounce has fired or it won't. */
 async function idle(h, quiet = 600) {
@@ -1649,6 +1670,311 @@ await test('H-01', 'history: chips and tabs replace, never push — Back leaves 
   st.narrow.bank = 'KBANK'
   st.narrow.range = '7d'
   await expectState(h, st, 'and the page shows it')
+  await close(h)
+})
+
+// ═══ X: what the matrix could not see ═══════════════════════════════════════════════════
+await test('X-01', 'hostile and odd parameters: NUL, invalid UTF-8, RTL override, zero-width joiner, an emoji at the 100-char cut, over-long — never a 5xx, and the right 4xx where one is owed', async () => {
+  const cases = [
+    ['q NUL', 'q=%00', 422],
+    ['q a NUL b', 'q=a%00b', 422],
+    ['bank NUL', 'bank=%00', 422],
+    ['bank KB NUL ANK', 'bank=KB%00ANK', 422],
+    ['source NUL', 'source=%00', 200],
+    ['range NUL', 'range=%00', 200],
+    ['filter NUL', 'filter=%00', 200],
+    ['limit NUL', 'limit=%00', 422],
+    ['offset NUL', 'offset=%00', 422],
+    ['q invalid UTF-8', 'q=%ED%A0%80', 200],
+    ['q overlong UTF-8', 'q=%C0%AF', 200],
+    ['q RTL override', 'q=%E2%80%AEabc', 200],
+    ['q zero-width joiner', 'q=a%E2%80%8Db', 200],
+    ['q emoji across the cut', 'q=' + 'a'.repeat(99) + '%F0%9F%98%80', 200],
+    ['q exactly 100', 'q=' + 'a'.repeat(100), 200],
+    ['q 101', 'q=' + 'a'.repeat(101), 422],
+    ['q 5 kB', 'q=' + 'z'.repeat(5000), 422],
+    ['bank 21 chars', 'bank=' + 'A'.repeat(21), 422],
+    ['source 41 chars', 'source=' + 'a'.repeat(41), 422],
+    ['NFD accent', 'q=cafe%CC%81', 200],
+    ['Thai with combining marks', 'q=' + encodeURIComponent('ก\u0e48\u0e49'), 200],
+    ['duplicated parameters', 'filter=all&filter=review&q=a&q=b', 200],
+    ['percent-encoded keys', '%66ilter=all', 200],
+    ['SQL in every text parameter', `q=${encodeURIComponent("' OR 1=1 --")}&bank=${encodeURIComponent("'; DROP TABLE x;--")}`, 200],
+  ]
+  for (const [name, qs, want] of cases) {
+    const r = await apiGet('a', `${qs.startsWith('filter') || qs.includes('limit') || qs.includes('offset') ? '' : 'filter=all&'}${qs}`)
+    if (r.status >= 500) throw new Error(`${name} (?${qs.slice(0, 60)}) → ${r.status} ${JSON.stringify(r.body)}`)
+    eq(r.status, want, `${name} (?${qs.slice(0, 60)})`)
+    if (r.status === 200) {
+      ok(typeof r.body.total === 'number' && Array.isArray(r.body.data), `${name}: a well-formed page`)
+      ok(r.body.counts && typeof r.body.counts.all === 'number', `${name}: counts present`)
+    }
+  }
+  eq((await apiGet('a', 'filter=all&limit=1')).body.total, oracle('all').total, 'and the table is intact afterwards')
+})
+
+await test('X-01b', 'the same odd text typed, pasted or linked into the PAGE never produces an error card', async () => {
+  const h = await open('a', '#/CreditCardOCR?filter=all')
+  // Pasted (insertText respects maxlength like a real paste): NUL, control characters, newlines,
+  // RTL override, zero-width joiner, emoji.
+  for (const text of ['a\u0000b', '\u0000', 'x\ty', 'line1\nline2', '\u202eabc', 'a\u200db', '😀', 'ก\u0e48\u0e49']) {
+    await searchBox(h).fill('')
+    await idle(h, 400)
+    await searchBox(h).focus()
+    await h.page.keyboard.insertText(text)
+    await idle(h, 700)
+    eq(await h.page.getByText('Could not load the queue').count(), 0, `pasting ${JSON.stringify(text)} must not break the list`)
+    const v = await searchBox(h).inputValue()
+    ok(!/[\u0000-\u001f\u007f]/.test(v), `no control character stays in the box: ${JSON.stringify(v)}`)
+  }
+  // Linked: a NUL, a control character and an over-long value in the address.
+  for (const hash of ['#/CreditCardOCR?filter=all&q=%00', '#/CreditCardOCR?filter=all&bank=KB%00', '#/CreditCardOCR?filter=all&q=a%09b', '#/CreditCardOCR?filter=all&bank=' + 'X'.repeat(60)]) {
+    await h.page.goto(`${APP}/${hash}`)
+    await h.page.reload()
+    await h.page.waitForSelector('.rq-tab, .rq-empty', { timeout: 30000 })
+    await idle(h, 700)
+    eq(await h.page.getByText('Could not load the queue').count(), 0, `${hash} opens a list, not an error`)
+  }
+  eq(h.errors, [], 'console clean')
+  await close(h)
+})
+
+await test('X-02', 'paging extremes: every limit 1..100 and offsets from 0 to past the end return exactly the oracle slice', async () => {
+  const all = oracle('all')
+  for (const limit of [1, 2, 3, 7, 10, 25, 50, 99, 100]) {
+    const r = await apiGet('a', `filter=all&limit=${limit}&offset=0`)
+    eq(r.body.data.map(apiKey), all.keys.slice(0, limit), `limit ${limit}`)
+    eq(r.body.total, all.total, `limit ${limit}: total`)
+  }
+  for (const offset of [0, 1, 7, 99, 100, all.total - 1, all.total, all.total + 1, 1000, 999_999, 1_000_000]) {
+    const r = await apiGet('a', `filter=all&limit=10&offset=${offset}`)
+    eq(r.status, 200, `offset ${offset}`)
+    eq(r.body.data.map(apiKey), all.keys.slice(offset, offset + 10), `offset ${offset}`)
+    eq(r.body.total, all.total, `offset ${offset}: total`)
+    eq(r.body.counts.all, all.counts.all, `offset ${offset}: counts`)
+  }
+  for (const bad of ['limit=0', 'limit=101', 'limit=-1', 'limit=1.5', 'limit=x', 'offset=-1', 'offset=1000001', 'offset=2147483648', 'offset=9223372036854775808', 'offset=1e3'])
+    eq((await apiGet('a', `filter=all&${bad}`)).status, 422, bad)
+})
+
+await test('X-03', 'the menu closes when focus leaves it (Tab, Shift+Tab) and never leaves two menus open; a resize keeps it on screen', async () => {
+  const h = await open('a', '#/CreditCardOCR?filter=unposted&bank=SCB&range=30d')
+  const where = () =>
+    h.page.evaluate(() => {
+      const a = document.activeElement
+      const opener = document.querySelector('.rq-addfilter')
+      return {
+        menus: document.querySelectorAll('.rq-menu').length,
+        body: a === document.body,
+        inMenu: !!a?.closest('.rq-menu'),
+        after: !!(opener.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING),
+        before: !!(opener.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_PRECEDING),
+        what: a?.className || a?.tagName,
+      }
+    })
+  // Tab off the menu.
+  await filtersBtn(h).click()
+  eq((await where()).menus, 1, 'open')
+  await h.page.keyboard.press('Tab')
+  let w = await where()
+  eq(w.menus, 0, 'Tab closes the menu')
+  ok(!w.body && !w.inMenu && w.after, `and focus moves FORWARD to a real control, not the top of the page (${w.what})`)
+  // Shift+Tab off the menu.
+  await filtersBtn(h).click()
+  await h.page.keyboard.press('Shift+Tab')
+  w = await where()
+  eq(w.menus, 0, 'Shift+Tab closes the menu')
+  ok(!w.body && !w.inMenu && w.before, `and focus moves BACK to a real control (${w.what})`)
+  // From a value list too.
+  await filtersBtn(h).click()
+  await menu(h).getByRole('menuitem', { name: /^Source/ }).click()
+  await h.page.keyboard.press('Tab')
+  eq((await where()).menus, 0, 'Tab closes a value list as well')
+  // Opening a chip's list while another menu is open replaces it.
+  await filtersBtn(h).click()
+  await h.page.getByRole('button', { name: 'Bank: SCB', exact: true }).click()
+  eq((await where()).menus, 1, 'exactly one menu at a time')
+  eq(await menu(h).getAttribute('class'), 'rq-menu', 'and it is a menu')
+  // A resize with a menu open: still one, still on screen.
+  await h.page.setViewportSize({ width: 375, height: 760 })
+  await h.page.waitForTimeout(300)
+  const m = await h.page.evaluate(() => {
+    const r = document.querySelector('.rq-menu')?.getBoundingClientRect()
+    return { n: document.querySelectorAll('.rq-menu').length, right: r?.right, left: r?.left, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth }
+  })
+  ok(m.n <= 1, `at most one menu after a resize (${m.n})`)
+  if (m.n) ok(m.right <= 375.5 && m.left >= -0.5, `the menu stays inside the viewport (${m.left}..${m.right})`)
+  ok(m.overflow <= 0, 'no sideways scroll')
+  await close(h)
+})
+
+await test('X-04', 'an open menu survives a refetch: window focus while choosing does not close it or lose a checkbox', async () => {
+  const h = await open('a', '#/CreditCardOCR?filter=all')
+  await filtersBtn(h).click()
+  await menu(h).getByRole('menuitem', { name: /^Source/ }).click()
+  await options(h).filter({ hasText: /^Email/ }).click() // multi: stays open, now checked
+  await idle(h)
+  const before = h.calls.length
+  await h.page.evaluate(() => window.dispatchEvent(new Event('focus'))) // what returning to the tab does
+  await idle(h, 900)
+  ok(h.calls.length > before, 'the window focus really refetched')
+  eq(await menu(h).count(), 1, 'the menu is still open')
+  eq(await options(h).filter({ hasText: /^Email/ }).getAttribute('aria-checked'), 'true', 'the checkbox kept its state')
+  await options(h).filter({ hasText: /^Manual/ }).click()
+  await idle(h)
+  await expectState(h, { filter: 'all', narrow: { q: '', sources: ['email', 'manual'], bank: '', range: '' } }, 'and the next pick still lands')
+  await close(h)
+})
+
+await test('X-05', 'mount/unmount hygiene: twelve round trips to another page leak no listener and double no request', async () => {
+  const h = await open('a', '#/CreditCardOCR?filter=all')
+  const cdp = await h.ctx.newCDPSession(h.page)
+  const count = async expr => {
+    const { result } = await cdp.send('Runtime.evaluate', { expression: expr })
+    const { listeners } = await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId })
+    const by = {}
+    for (const l of listeners) by[l.type] = (by[l.type] || 0) + 1
+    return by
+  }
+  const snap = async () => ({ document: await count('document'), window: await count('window') })
+  await h.page.waitForTimeout(800)
+  const before = await snap()
+  for (let i = 0; i < 12; i++) {
+    await h.page.evaluate(() => (location.hash = '#/pricing'))
+    await h.page.waitForTimeout(350)
+    await h.page.evaluate(() => (location.hash = '#/CreditCardOCR?filter=all'))
+    await h.page.waitForSelector('.rq-tab', { timeout: 30000 })
+  }
+  await idle(h, 800)
+  await h.page.waitForTimeout(800)
+  const after = await snap()
+  for (const target of ['document', 'window'])
+    for (const type of ['mousedown', 'keydown', 'hashchange', 'focus', 'touchstart', 'resize', 'scroll']) {
+      const a = before[target][type] || 0
+      const b = after[target][type] || 0
+      ok(b <= a, `${target} "${type}" listeners grew from ${a} to ${b} over twelve round trips`)
+    }
+  const n = h.calls.length
+  await pill(h, 'Posted')
+  await idle(h)
+  eq(h.calls.length - n, 1, 'one change → exactly one request')
+  eq(h.errors, [], 'console clean')
+  await close(h)
+})
+
+await test('X-07', 'the list failing — 400, 429, 500, a dead connection, an unreadable body — shows an error card with Retry, keeps the filters, and recovers', async () => {
+  const modes = {
+    '400 (a contradiction that slipped through)': r => r.fulfill({ status: 400, contentType: 'application/json', body: '{"detail":"bank cannot be combined with source=pms"}' }),
+    '429 (rate limited)': r => r.fulfill({ status: 429, contentType: 'application/json', body: '{"detail":"Too many requests"}' }),
+    '500': r => r.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"Internal server error"}' }),
+    'dropped connection': r => r.abort('connectionreset'),
+    'unreadable body': r => r.fulfill({ status: 200, contentType: 'application/json', body: 'not json at all' }),
+    'empty 200': r => r.fulfill({ status: 200, contentType: 'application/json', body: '' }),
+  }
+  for (const [name, handler] of Object.entries(modes)) {
+    // Mid-session: a good list, then the next change fails.
+    const h = await open('a', '#/CreditCardOCR?filter=all&bank=KBANK')
+    await h.page.route('**/api/v1/credit-card/activity*', handler)
+    await pill(h, 'Last 7 days').catch(() => {})
+    await h.page.waitForSelector('text=Could not load the queue', { timeout: 15000 })
+    ok(await h.page.getByRole('button', { name: 'Try again' }).isVisible(), `${name}: Retry is offered`)
+    eq(await h.page.getByText('No documents match').count(), 0, `${name}: a failure is never the empty state`)
+    ok((await chips(h)).includes('Bank: KBANK'), `${name}: the chips are still there`)
+    await h.page.unroute('**/api/v1/credit-card/activity*')
+    await h.page.getByRole('button', { name: 'Try again' }).click()
+    await idle(h, 700)
+    await expectView(h, 'all', { bank: 'KBANK', range: '7d' }, `${name}: after Retry`)
+    eq(h.errors.filter(e => e.startsWith('pageerror')), [], `${name}: no unhandled rejection`)
+    await close(h)
+    // First load: the same failure before anything was shown.
+    const f = await open('a', null)
+    await f.page.route('**/api/v1/credit-card/activity*', handler)
+    await f.page.goto(`${APP}/#/CreditCardOCR?filter=all`)
+    await f.page.waitForSelector('text=Could not load the queue', { timeout: 15000 })
+    await f.page.unroute('**/api/v1/credit-card/activity*')
+    await f.page.getByRole('button', { name: 'Try again' }).click()
+    await idle(f, 700)
+    await expectView(f, 'all', {}, `${name}: first load, after Retry`)
+    eq(f.errors.filter(e => e.startsWith('pageerror')), [], `${name}: first load, no unhandled rejection`)
+    await close(f)
+  }
+})
+
+await test('X-11', 'reflow and zoom: 320 CSS px wide and 200% text size — no sideways scroll, the bar, the menu and the chips stay usable', async () => {
+  for (const [name, hash, act] of [
+    ['bar at rest', '#/CreditCardOCR?filter=all', async () => {}],
+    ['menu open', '#/CreditCardOCR?filter=all', async h => filtersBtn(h).click()],
+    ['four chips', '#/CreditCardOCR?filter=unposted&source=email,manual&bank=SCB&range=30d', async () => {}],
+    ['bank list', '#/CreditCardOCR?filter=all', async h => {
+      await filtersBtn(h).click()
+      await menu(h).getByRole('menuitem', { name: /^Bank/ }).click()
+    }],
+  ]) {
+    const h = await open('a', hash, { vp: { width: 320, height: 568 } })
+    await h.page.addStyleTag({ content: 'html { font-size: 200% !important }' })
+    await h.page.waitForTimeout(300)
+    await act(h)
+    await h.page.waitForTimeout(300)
+    const m = await h.page.evaluate(() => {
+      const r = s => document.querySelector(s)?.getBoundingClientRect()
+      const inView = e => e && e.left >= -0.5 && e.right <= innerWidth + 0.5
+      return {
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        search: inView(r('.rq-search')),
+        add: inView(r('.rq-addfilter')),
+        menu: document.querySelector('.rq-menu') ? inView(r('.rq-menu')) : true,
+        chipsOk: [...document.querySelectorAll('.rq-chip')].every(c => inView(c.getBoundingClientRect())),
+      }
+    })
+    ok(m.overflow <= 0, `${name}: sideways scroll by ${m.overflow}px`)
+    ok(m.search && m.add && m.menu && m.chipsOk, `${name}: something is clipped ${JSON.stringify(m)}`)
+    await shot(h, `X-11-${name.replace(/ /g, '-')}`)
+    await close(h)
+  }
+})
+
+await test('X-12', 'search input: an IME composition commits once with the finished text, not the half-typed one; a 5 kB paste is capped at 100 with one request', async () => {
+  const h = await open('a', '#/CreditCardOCR?filter=all')
+  await searchBox(h).focus()
+  const before = h.calls.length
+  // A composition: compositionstart, the text growing, a pause longer than the debounce, then end.
+  await h.page.evaluate(() => {
+    const el = document.querySelector('.rq-search input')
+    const set = v => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+      setter.call(el, v)
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, data: v }))
+    }
+    el.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+    set('ใบ')
+    set('ใบแจ้ง')
+  })
+  await h.page.waitForTimeout(900) // longer than the 300 ms debounce, still composing
+  const mid = h.calls.slice(before).map(c => c.get('q') || '')
+  ok(mid.every(q => !q), `nothing was searched while the composition was open: ${JSON.stringify(mid)}`)
+  await h.page.evaluate(() => {
+    const el = document.querySelector('.rq-search input')
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+    setter.call(el, 'ใบแจ้งหนี้')
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, data: 'ใบแจ้งหนี้' }))
+    el.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: 'ใบแจ้งหนี้' }))
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: false, data: 'ใบแจ้งหนี้' }))
+  })
+  await idle(h, 900)
+  const sent = h.calls.slice(before).map(c => c.get('q') || '').filter(Boolean)
+  eq(sent, ['ใบแจ้งหนี้'], 'one request, with the finished text')
+  await expectView(h, 'all', { q: 'ใบแจ้งหนี้' }, 'the rows for it')
+  // A 5 kB paste: the browser enforces maxlength on a real paste.
+  await searchBox(h).fill('')
+  await idle(h, 500)
+  const n = h.calls.length
+  await searchBox(h).focus()
+  await h.page.keyboard.insertText('x'.repeat(5000))
+  await idle(h, 900)
+  eq((await searchBox(h).inputValue()).length, 100, 'capped at 100 characters')
+  eq(h.calls.length - n, 1, 'one request')
+  eq(h.calls.at(-1).get('q').length, 100, 'carrying exactly the capped text')
+  eq(await h.page.getByText('Could not load the queue').count(), 0, 'no error card')
   await close(h)
 })
 
