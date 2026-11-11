@@ -1054,7 +1054,7 @@ def test_the_date_filters_are_cut_on_the_bu_midnight_not_utc(
 # `scripts/qa/jv_filters_backend.py --deep-window 0`; these pin the shape a mock can see.
 
 
-def _pms_day(**overrides):
+def _deep_pms_day(**overrides):
     day = SimpleNamespace(
         id=uuid.uuid4(),
         created_at=NOW,
@@ -1101,7 +1101,7 @@ def _deep_world():
     manuals = [_manual(submitted_at=_ago(m), doc_no=f"M{m}") for m in (30, 60, 90)]
     for card, _ in manuals:
         card.created_at = card.submitted_at
-    pms = [_pms_day(created_at=_ago(m)) for m in (20, 50, 80)]
+    pms = [_deep_pms_day(created_at=_ago(m)) for m in (20, 50, 80)]
     return emails, manuals, pms
 
 
@@ -1239,7 +1239,7 @@ async def test_deep_page_keeps_the_shallow_paths_source_order_for_the_same_insta
     e = _email(created_at=_ago(5), doc_no="E")
     m, task = _manual(submitted_at=_ago(5), doc_no="M")
     m.created_at = m.submitted_at
-    p = _pms_day(created_at=_ago(5))
+    p = _deep_pms_day(created_at=_ago(5))
     db = make_mock_db()
     db.execute.side_effect = [
         _keys_result([e]),
