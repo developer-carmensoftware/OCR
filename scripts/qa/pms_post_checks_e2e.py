@@ -11,6 +11,7 @@
     python scripts/qa/pms_post_checks_e2e.py ht-stage 2026-10-06   # give that day's keys an account (GEN/1021001)
     python scripts/qa/pms_post_checks_e2e.py backdate EVENT_ID MIN HOURS   # processed_at MIN minutes ago, created_at HOURS ago
     python scripts/qa/pms_post_checks_e2e.py posts-since ISO       # interfacePostGL calls since ISO (outbound_call_logs)
+    python scripts/qa/pms_post_checks_e2e.py previews-since ISO    # interfacePreviewPostGL calls since ISO (how a day is read, #54)
     python scripts/qa/pms_post_checks_e2e.py llm                   # pms_interface LLM calls of the two tenants
     python scripts/qa/pms_post_checks_e2e.py reset                 # delete the two tenants' days (a clean run)
     python scripts/qa/pms_post_checks_e2e.py jvs DATE [DATE...]    # live engine JVs dated those days (web JWT)
@@ -72,6 +73,9 @@ async def _table_info(setting: str, on: list[str] | None = None) -> dict:
         "rows": len(rows),
         "blank": sum(1 for r in rows if not _norm(r.get("AccCode")).strip()),
         "keys": sorted({_key_text(r, keys) for r in rows}),
+        "mapped": sorted(
+            {_key_text(r, keys) for r in rows if _norm(r.get("AccCode")).strip()}
+        ),
     }
 
 
@@ -198,16 +202,17 @@ async def _backdate(event_id: str, minutes: int, hours: int) -> int:
         return result.rowcount
 
 
-async def _posts_since(iso: str) -> int:
+async def _posts_since(iso: str, path: str = "interfacePostGL") -> int:
+    """Calls to Carmen's `path` since `iso`: its posts, or (`interfacePreviewPostGL`) the
+    previews that read a day since decision-log #54."""
     # Outbound rows are buffered and written every 10 s (`outbound_log`): read after that.
     since = datetime.fromisoformat(iso.replace("Z", "+00:00"))
     async with base.async_session() as db:
         return await db.scalar(
             text(
-                "select count(*) from outbound_call_logs where url like '%interfacePostGL%'"
-                " and created_at > :t"
+                "select count(*) from outbound_call_logs where url like :u and created_at > :t"
             ),
-            {"t": since},
+            {"u": f"%/{path}/%", "t": since},
         )
 
 
@@ -279,6 +284,9 @@ def main() -> int:
         return 0
     if cmd == "posts-since":
         print(asyncio.run(_posts_since(sys.argv[2])))
+        return 0
+    if cmd == "previews-since":
+        print(asyncio.run(_posts_since(sys.argv[2], "interfacePreviewPostGL")))
         return 0
     if cmd == "llm":
         print(asyncio.run(base._llm()))
