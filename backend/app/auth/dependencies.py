@@ -7,7 +7,7 @@ import time
 from datetime import UTC, datetime
 
 from fastapi import Header, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import update
 
 from app.auth.session import SessionInfo, decode_session_jwt, decrypt_carmen_token
 from app.config import settings
@@ -47,25 +47,36 @@ async def _resolve_session_token(session_id: str) -> tuple[str | None, bool]:
         encrypted_token, _expiry, last_used_at = cached
         return encrypted_token, (now - last_used_at) < _LAST_USED_THROTTLE_SECONDS
 
+    # One statement on a miss: stamp last_used_at and read the token back. This used to be a SELECT
+    # in one session and, right after, the throttled UPDATE in another — two pool checkouts for
+    # something that happens once per cache expiry per session. The cache TTL equals the throttle, so
+    # every miss was followed by a touch anyway. An inactive or deleted row matches nothing, which
+    # is the same answer the SELECT gave for it (401), without writing to a revoked session.
     async with async_session() as db:
         result = await db.execute(
-            select(OcrSession.carmen_token_encrypted, OcrSession.is_active).where(
+            update(OcrSession)
+            .where(
                 OcrSession.id == session_id,
                 OcrSession.deleted_at.is_(None),
+                OcrSession.is_active.is_(True),
             )
+            .values(last_used_at=datetime.now(UTC))
+            .returning(OcrSession.carmen_token_encrypted)
         )
         row = result.first()
+        await db.commit()
 
-    if not row or not row.is_active:
+    if not row:
         _session_cache.pop(session_id, None)
         return None, False
 
     encrypted_token = str(row.carmen_token_encrypted)
-    _session_cache[session_id] = (encrypted_token, now + _SESSION_CACHE_TTL_SECONDS, 0.0)
+    # Persisted just now, so the caller's throttled touch is skipped.
+    _session_cache[session_id] = (encrypted_token, now + _SESSION_CACHE_TTL_SECONDS, now)
     # Periodic cheap cleanup — keep the cache from growing past dead sessions.
     if len(_session_cache) > 1000:
         _prune_session_cache(now)
-    return encrypted_token, False
+    return encrypted_token, True
 
 
 async def _touch_session_last_used(session_id: str) -> None:
