@@ -1,12 +1,13 @@
 // Decision-log #52/#53 — Carmen's post checks the mapping, and every PMS is reviewable: the
 // full-system E2E. HotelTime (`Revenue` rows, `HT_Code` columns) and Cloudbeds (`Transaction`
 // beside `Statistic`, a `Channel` column) park with their own tables, new rows and the AI's
-// picks; Approve writes the accounts into Carmen, whose engine then posts or answers. A
-// PartnerApi PMS's days are opened by the sweep. Data half: pms_post_checks_e2e.py.
+// picks; Approve writes the accounts into Carmen, whose engine then posts or answers. The
+// sweep opens yesterday's day for every PMS a BU has a key for, from 06:00 ICT (#52, #55).
+// Data half: pms_post_checks_e2e.py.
 //
 //   node scripts/qa/pms_post_checks_ui.mjs
 //
-// S setup · O opening PartnerApi days (first: the BU's interface list is cached once a day) ·
+// S setup · O the sweep opening yesterday's days (first: the BU's interface list is cached once a day) ·
 // N HotelTime reviewed in the browser: rejected and brought back (N-08), read in Thai and on a
 // phone (L) while it is parked, then approved (N-04) · A auto-post · R a repeat hook ·
 // CB Cloudbeds through Carmen's engine to a JV · E hygiene · T teardown (always).
@@ -69,7 +70,7 @@ const ict = new Date(Date.now() + 7 * 3600e3)
 const YESTERDAY = new Date(Date.UTC(ict.getUTCFullYear(), ict.getUTCMonth(), ict.getUTCDate() - 1))
   .toISOString()
   .slice(0, 10)
-const AFTER_EIGHT = ict.getUTCHours() >= 8
+const AFTER_SIX = ict.getUTCHours() >= 6
 
 const results = []
 const pageErrors = []
@@ -299,8 +300,9 @@ async function run() {
   const t0 = new Date().toISOString()
   const llm0 = Number(py('llm').out.trim().split('\n').pop())
 
-  // ── O — the sweep opens PartnerApi days (yesterday, after 08:00 ICT) ───────────
-  if (!AFTER_EIGHT) throw new Stop('before 08:00 ICT: the sweep opens nothing yet; run again later')
+  // ── O — the sweep opens yesterday's days (from 06:00 ICT, every PMS with a key) ────
+  // HotelTime is listed as PartnerApi by our stub; Comanche and Cloudbeds stay CarmenApi.
+  if (!AFTER_SIX) throw new Stop('before 06:00 ICT: the sweep opens nothing yet; run again later')
   // O-07 setup: the second BU's hook for yesterday comes first, spelled as the hook spells it.
   let r = await hook(keys[`${BU_B}/hoteltime`], YESTERDAY)
   check('O-07', `a hook stores ${BU_B}'s ${YESTERDAY} first`, r.status === 202, `HTTP ${r.status}`)
@@ -320,9 +322,13 @@ async function run() {
   const bDays = daysOf(rows, BU_B, YESTERDAY)
   check('O-07', 'the day a hook stored in another casing (HotelTime vs Carmen\'s Hoteltime) is not opened again',
     bDays.length === 1 && bDays[0].event_id === `PMS/HotelTime/Daily/${YESTERDAY}`, bDays.map(d => d.event_id).join(','))
-  const com = rows.filter(x => x.bu === BU && x.event_id.toLowerCase() === `pms/comanche/daily/${YESTERDAY}`)
-  check('O-01', `the sweep opened ${BU}'s HotelTime ${YESTERDAY} once, and not Comanche (a CarmenApi PMS)`,
-    daysOf(rows, BU, YESTERDAY).length === 1 && com.length === 0, `hoteltime=${daysOf(rows, BU, YESTERDAY).length} comanche=${com.length}`)
+  const opens = ['hoteltime', 'comanche', 'cloudbeds'].map(p => daysOf(rows, BU, YESTERDAY, p).length)
+  check('O-01', `the sweep opened ${BU}'s ${YESTERDAY} once for every PMS it has a key for: HotelTime (PartnerApi), and Comanche and Cloudbeds (CarmenApi, no hook needed, #55)`,
+    opens.every(n => n === 1), `hoteltime/comanche/cloudbeds=${opens}`)
+  const hooked = ['comanche', 'cloudbeds'].map(p => dayOf(rows, BU, YESTERDAY, p))
+  check('O-08', "a CarmenApi day the sweep opened before Carmen has it waits as day_not_ready (hourly, no try spent), not day_not_found",
+    hooked.every(d => d?.status === 'received' && d?.reason_code === 'day_not_ready' && d?.attempts === 0),
+    hooked.map(d => `${d?.event_id}: ${d?.status}/${d?.reason_code} attempts=${d?.attempts}`).join(' | '))
   check('O-02', "Carmen has no data for it: day_not_ready, still received, no try spent",
     opened?.status === 'received' && opened?.reason_code === 'day_not_ready' && opened?.attempts === 0 &&
       /No Data Found/.test(opened?.error_message || ''),
@@ -394,11 +400,16 @@ async function run() {
     const head = (await dialog.locator('table thead').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
     const pickers = await accountInputs(dialog).count()
     const body = (await dialog.innerText()).replace(/\s+/g, ' ')
-    check('N-03', "the dialog is HotelTime's own table: its key columns, a picker per new row, what Approve writes",
+    // A row the AI left without an account blocks Approve, and the footer says so instead of
+    // what Approve writes. How many it leaves varies by run (38–42 of 42 seen).
+    const blankN = (pN?.missing || []).length
+    const footer = blankN
+      ? /Pick an account for every new row\./.test(body)
+      : new RegExp(`Adds the new rows \\(${nNew}\\) to Carmen's HotelTime mapping`).test(body)
+    check('N-03', "the dialog is HotelTime's own table: its key columns, a picker per new row, and the footer for its state (blocked, or what Approve writes)",
       /HT_CODE/i.test(head) && /HT_DESCRIPTION/i.test(head) && /DEPARTMENT/i.test(head) && pickers === nNew &&
-        !/rows can't be shown here/.test(body) &&
-        new RegExp(`Adds the new rows \\(${nNew}\\) to Carmen's HotelTime mapping`).test(body),
-      `head="${head}" pickers=${pickers} AI tags=${await dialog.locator('.pms-tag-ai').count()}`)
+        !/rows can't be shown here/.test(body) && footer,
+      `head="${head}" pickers=${pickers} AI tags=${await dialog.locator('.pms-tag-ai').count()} left blank=${blankN}`)
     await shot('N-03-dialog')
     await closeDialog()
 

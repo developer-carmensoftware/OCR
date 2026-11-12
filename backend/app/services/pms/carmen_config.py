@@ -63,10 +63,11 @@ def find_section(interfaces: list, interface_type: str, interface: str) -> Secti
     return None
 
 
-def partner_interfaces(interfaces: list) -> dict[str, str]:
-    """The PMSs Carmen fetches from the third party itself (`From: PartnerApi`), posting
-    REVENUE to GL: `{lower-cased name: name as Carmen writes it}`. No hook comes for them,
-    so their days are opened by our sweep (decision-log #52)."""
+def revenue_interfaces(interfaces: list) -> dict[str, str]:
+    """The PMSs this BU posts REVENUE to GL with: `{lower-cased name: name as Carmen writes
+    it}`. Our sweep opens each one's days (decision-log #55), whatever its `From`: a hook
+    (`CarmenApi`, or a user's import) only brings a day sooner, and for a PMS Carmen fetches
+    itself (`PartnerApi`, decision-log #52) no hook comes at all."""
     names: dict[str, str] = {}
     for i in interfaces:
         if not isinstance(i, dict):
@@ -77,7 +78,6 @@ def partner_interfaces(interfaces: list) -> dict[str, str]:
             and str(i.get("InterfaceType") or "").casefold() == "pms"
             and str(i.get("PostToModule") or "").upper() == "GL"
             and str(i.get("DocType") or "").upper() == POST_TYPE
-            and str(i.get("From") or "").casefold() == "partnerapi"
         ):
             names[name.casefold()] = name
     return names
