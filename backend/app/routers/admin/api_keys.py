@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.admin import APIKey
+from app.services.pms import review as pms_review
 from app.services.shared import api_keys
 from app.services.shared.audit import AuditAction, log_admin_action
 from app.services.shared.tenant_lookup import tenant_info_map
@@ -79,8 +80,16 @@ async def revoke_api_key(
         reason=reason,
         tenant_id=None if admin.is_global else admin.tenant_scope,
     )
-    if not revoked:
+    if revoked is None:
         raise HTTPException(status_code=404, detail="Active key not found")
+    # The same off switch as Carmen's PMS setting (decision-log #56): a PMS key's open days
+    # close and its auto-post goes off, in this transaction. A key from before keys named
+    # their PMS has nothing to switch off.
+    closed = 0
+    if revoked.interface_name:
+        closed = await pms_review.switch_off(
+            db, revoked.tenant_id, revoked.interface_name, actor=f"admin:{admin.admin_id}"
+        )
     await db.commit()
     await log_admin_action(
         admin_user_id=admin.admin_id,
@@ -88,7 +97,7 @@ async def revoke_api_key(
         resource="api_keys",
         target_type="api_key",
         target_id=str(key_id),
-        after_value={"reason": reason},
+        after_value={"reason": reason, "closed_days": closed},
         ip_address=get_client_ip(request),
     )
-    return {"id": str(key_id), "revoked": True}
+    return {"id": str(key_id), "revoked": True, "closed_days": closed}

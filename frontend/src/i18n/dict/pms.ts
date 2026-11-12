@@ -46,6 +46,7 @@ export const en = {
   'pms.rcForbidden': 'Carmen denied this access',
   'pms.rcMappingIncomplete':
     'Carmen has no account for some codes. Map them in the review, then approve again',
+  'pms.rcSwitchedOff': "Switched off in Carmen's PMS setting",
 } as const
 
 export const th: Record<keyof typeof en, string> = {
@@ -89,4 +90,5 @@ export const th: Record<keyof typeof en, string> = {
   'pms.rcForbidden': 'Carmen ไม่ให้สิทธิ์นี้เข้าถึง',
   'pms.rcMappingIncomplete':
     'Carmen ยังไม่มีบัญชีของบางรหัส ให้ map ในหน้ารีวิว แล้วกดอนุมัติอีกครั้ง',
+  'pms.rcSwitchedOff': 'ปิดการใช้งานแล้วในหน้าตั้งค่า PMS ของ Carmen',
 }

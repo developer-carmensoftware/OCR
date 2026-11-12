@@ -29,7 +29,7 @@ Carmen's PMS setting screen, one per BU and PMS. The contract for Carmen is
 | `GET` | `/settings` | `?uri&bu&pms` | This PMS's settings. A BU that never opened the app reads the defaults; nothing is created | `200` |
 | `PUT` | `/settings` | `{uri, bu, pms, auto_post}` | Replace this PMS's auto-post switch | `200` |
 | `POST` | `/keys` | `{uri, bu, pms}` | A new hook key; the previous one is revoked. **`api_key` is in this response only** | `201` |
-| `DELETE` | `/keys` | `?uri&bu&pms` | Revoke this PMS's live key (the off switch) | `204` · `404` none |
+| `DELETE` | `/keys` | `?uri&bu&pms` | The off switch: revoke this PMS's live key, close its open days (`rejected`/`pms_switched_off`) and turn its auto-post off (decision-log #56) | `204` · `404` none |
 
 All four answer `{pms, auto_post, key: {prefix, created_at, last_used_at} | null, has_credential}`
 (`PmsCarmenSettingsOut`), except `DELETE`. `pms` is lower-cased on the way in.

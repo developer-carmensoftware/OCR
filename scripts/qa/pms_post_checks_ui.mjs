@@ -8,6 +8,7 @@
 //   node scripts/qa/pms_post_checks_ui.mjs
 //
 // S setup · O the sweep opening yesterday's days (first: the BU's interface list is cached once a day) ·
+// X switching a PMS off (DELETE /keys): its open days close, auto-post off, nothing more opens ·
 // N HotelTime reviewed in the browser: rejected and brought back (N-08), read in Thai and on a
 // phone (L) while it is parked, then approved (N-04) · A auto-post · R a repeat hook ·
 // CB Cloudbeds through Carmen's engine to a JV · E hygiene · T teardown (always).
@@ -359,6 +360,33 @@ async function run() {
   }, 30000)
   check('O-05', 'a day on, still no data: failed as day_not_found', gone?.reason_code === 'day_not_found', `${gone?.status}/${gone?.reason_code}`)
 
+  // ── X — switching a PMS off: revoking its key stops everything of it (decision-log #56) ──
+  // pms-pc-b × HotelTime: a parked day (DAY_N) and yesterday's waiting one (O-07), auto-post on.
+  r = await hook(keys[`${BU_B}/hoteltime`], DAY_N)
+  const xParked = await until(rs => (dayOf(rs, BU_B, DAY_N)?.status === 'pending_review' ? dayOf(rs, BU_B, DAY_N) : null))
+  const xOn = await carmenApi('PUT', '/settings', { uri: URI, bu: BU_B, pms: 'hoteltime', auto_post: true })
+  rows = pyJson('state')
+  const xWaiting = dayOf(rows, BU_B, YESTERDAY)
+  check('X-01', `${BU_B} has a parked day and a waiting one, with auto-post on`,
+    r.status === 202 && !!xParked && xWaiting?.status === 'received' && xOn.json?.auto_post === true,
+    `parked=${xParked?.status} waiting=${xWaiting?.status}/${xWaiting?.reason_code} auto_post=${xOn.json?.auto_post}`)
+  const xOff = await carmenApi('DELETE', `/keys?${new URLSearchParams({ uri: URI, bu: BU_B, pms: 'hoteltime' })}`)
+  check('X-02', "Carmen's PMS setting switches HotelTime off for the BU (DELETE /keys)", xOff.status === 204, `HTTP ${xOff.status}`)
+  rows = pyJson('state')
+  const xDays = daysOf(rows, BU_B, DAY_N).concat(daysOf(rows, BU_B, YESTERDAY))
+  const xSettings = await carmenApi('GET', `/settings?${new URLSearchParams({ uri: URI, bu: BU_B, pms: 'hoteltime' })}`)
+  check('X-03', 'its open days close as switched off (payload cleared), its auto-post is off and it has no key',
+    xDays.length === 2 && xDays.every(d => d.status === 'rejected' && d.reason_code === 'pms_switched_off' && d.payload == null) &&
+      xSettings.json?.auto_post === false && xSettings.json?.key == null,
+    `${xDays.map(d => `${d.event_id}: ${d.status}/${d.reason_code}`).join(' | ')} auto_post=${xSettings.json?.auto_post} key=${JSON.stringify(xSettings.json?.key)}`)
+  const xCount = rows.filter(x => x.bu === BU_B).length
+  r = await hook(keys[`${BU_B}/hoteltime`], DAY_A1)
+  const xSweep = await sweep()
+  rows = pyJson('state')
+  check('X-04', 'the old key is refused, and the sweep opens nothing more for it',
+    r.status === 401 && xSweep.status === 200 && rows.filter(x => x.bu === BU_B).length === xCount,
+    `hook HTTP ${r.status} · ${BU_B} days ${xCount}→${rows.filter(x => x.bu === BU_B).length}`)
+
   // ── N — HotelTime, reviewable now: its own table, its new rows, the AI (#53) ─────────
   r = await carmenApi('PUT', '/settings', { uri: URI, bu: BU, pms: 'hoteltime', auto_post: false })
   const ht0 = pyJson('ht-table')
@@ -389,6 +417,13 @@ async function run() {
     if (!localStorage.getItem('lang')) localStorage.setItem('lang', 'en')
   })
   try {
+    // X-05, seen: the switched-off BU's closed days under Not posted, with the reason.
+    await signIn(BU_B)
+    await chip('Not posted')
+    const xText = (await page.getByRole('table').innerText().catch(() => '')).replace(/\s+/g, ' ')
+    check('X-05', `${BU_B}'s Not posted shows its two closed days, "Switched off in Carmen's PMS setting"`,
+      (xText.match(/Switched off in Carmen's PMS setting/g) || []).length === 2, xText.slice(0, 200))
+    await shot('X-05-switched-off')
     await signIn(BU)
     await chip('Review')
     const rowN = (await queueRow(DAY_N).innerText().catch(() => '')).replace(/\s+/g, ' ')
@@ -667,7 +702,7 @@ async function run() {
   const fives = log.split('\n').filter(l => /\/(pms|carmen\/pms)\//.test(l) && /" 5\d\d /.test(l))
   check('E-02', 'no 5xx from the PMS routes', log && fives.length === 0, fives.slice(0, 3).join(' | ') || (log ? '' : 'no log'))
   const llm1 = llmNow()
-  const llmWant = 3 + (cbRan ? 2 : 0) // N-01, N-08's re-read, A-01 (and CB-01, CB-07): the days with new rows
+  const llmWant = 4 + (cbRan ? 2 : 0) // X-01, N-01, N-08's re-read, A-01 (and CB-01, CB-07): the days with new rows
   check('E-03', 'the AI was asked once per day with new rows, and for no other', llm1 === llm0 + llmWant,
     `calls ${llm0}→${llm1}, expected +${llmWant}`)
   const made = pyJson('jvs', ...HT_DAYS, YESTERDAY)

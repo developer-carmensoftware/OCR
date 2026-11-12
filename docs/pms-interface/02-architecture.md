@@ -308,6 +308,17 @@ does not fail:
   - **For the others,** the hook only brings the day sooner.
   - **A day Carmen does not have yet** waits hourly (`day_not_ready`), and fails as
     `day_not_found` after 24 hours. A later hook re-reads it.
+- **Switching a PMS off (decision-log #56):** revoking its key, from Carmen's PMS setting
+  (`DELETE /keys`) or `#/admin/api-keys`, calls `pms_review.switch_off` in the same
+  transaction.
+  - **Its open days close:** `received` and `pending_review` become `rejected` with
+    `pms_switched_off`, and the payload is cleared. A day a reviewer is approving right now
+    is left to finish.
+  - **Its auto-post goes off.**
+  - **Nothing posts by itself afterwards:** `_process` closes any day it meets whose PMS has
+    no live key, before any Carmen call, and `_requeue_ready_days` only re-sends days of a PMS
+    that still has one.
+  - **Replacing a key** (`api_keys.issue`) is not a switch-off.
 
 ## What the AI is asked (`mapping.suggest`)
 

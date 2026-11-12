@@ -1906,3 +1906,65 @@ days to every PMS, and moves it from 08:00 to 06:00 ICT.
   - A `PartnerApi` PMS is read live from the third party. At 06:00 it could give a hotel's day
     before the night audit closed. None posts REVENUE yet; look again when one does.
   - Each BU × PMS with new rows asks the AI once a morning.
+
+## 56. Revoking a PMS's key switches it off: its open days close, its auto-post goes off (2026-11-12)
+
+**Status: built** (branch `feat/pms-switch-off`).
+
+**Why.**
+- Revoking a key is the only off switch for a BU × PMS (#44), from Carmen's PMS setting
+  (`DELETE /api/v1/carmen/pms/keys`) or `#/admin/api-keys`.
+- **Before this, it stopped only new days:** the hook got 401, and the 06:00 sweep (#55) opens
+  only for a live key. Days already with us kept running:
+  - `_due` took a `received` day whatever its key;
+  - `_requeue_ready_days` looked only at `auto_post`;
+  - `auto_post` stayed on.
+- **So a BU that tried the system, switched it off and posted by hand could see a day it had
+  posted itself posted again by us.** A day waiting for its data (`day_not_ready`) would get it,
+  find nothing to map, and auto-post would send it.
+  - If the BU posted through Carmen's PMS interface, our post gets "already posted".
+  - If it keyed a JV by hand, there are **two JVs**.
+- The user asked for all three of: no live key, no automatic post; close the open days on
+  revoke; turn auto-post off on revoke.
+
+**Decision** (the user, 2026-11-12).
+- **`pms_review.switch_off(db, tenant_id, interface, actor)`**, called in the revoke's own
+  transaction by both revoke paths, **but not by `api_keys.issue`**: replacing a key keeps the
+  PMS on.
+  - **Its open days close.** Every `received` or `pending_review` day of this BU × PMS becomes
+    `rejected` with `pms_switched_off` and "Switched off in Carmen's PMS setting.", and its
+    `review_payload` is cleared, as every closed day's is.
+    - The PMS is matched on the event id's PMS part (`lower(split_part(event_id, '/', 2))`).
+      That covers a hook's casing and Carmen's list's alike (`HotelTime` / `Hoteltime`), and
+      unlike `LIKE` it cannot read a `_` in a name as a wildcard.
+    - **A day a reviewer is approving right now** (an active claim, `REVIEW_CLAIM_TTL`) is left
+      to finish, the same rule a repeat hook follows.
+  - **Its auto-post goes off.** Switching back on (a new key) starts with every day waiting for
+    a person.
+- **The closed days show under Not posted.** They are `rejected`, and `reviewReasons`
+  `pms_switched_off` reads "Switched off in Carmen's PMS setting", so the BU sees which days to
+  post by hand. There is no fix button: switching back on is done in Carmen.
+- **No live key, no automatic post.** `_process` checks for this BU × PMS's live key first,
+  before any Carmen call or AI. A day without one closes the same way (`rejected`,
+  `pms_switched_off`). `_requeue_ready_days` only re-sends days of a PMS that has auto-post on
+  **and** a live key.
+- **The admin revoke** answers `closed_days` and records it in the audit's `after_value`, and its
+  dialog says a PMS key's revoke switches the PMS off. Carmen's `DELETE /keys` still answers
+  `204`, and the count goes to the log.
+
+**What did not change.**
+- No migration: `status` and `reason_code` are free text.
+- Mappings already approved stay in Carmen's table. They are Carmen's, and the BU can post by
+  hand through Carmen's engine with them.
+- The BU's stored Carmen credential stays: email automation may share it.
+
+**Consequences.**
+- **Switching back on** (Generate key) starts with auto-post off. The sweep opens yesterday's day
+  again, and the days closed by the switch-off stay closed unless Carmen sends a hook for one
+  (a repeat hook re-reads any day not posted).
+- **Accepted:** a worker that passed the live-key check an instant before the revoke can still
+  post that one day. The window is seconds wide, and a second post through Carmen's engine
+  answers "already posted".
+- **Carmen's PMS setting screen** needs a "stop using" action that calls `DELETE /keys`. Turning
+  auto-post off is not that: the PMS keeps running and every day waits for a person.
+  `PMS_INTEGRATION.md` §2 says so.

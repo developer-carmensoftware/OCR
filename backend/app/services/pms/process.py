@@ -43,7 +43,7 @@ from app.models.pms import PmsEvent, PmsSettings
 from app.services.email_automation import credential
 from app.services.pms import carmen_config as cfg
 from app.services.pms import mapping
-from app.services.shared import carmen
+from app.services.shared import api_keys, carmen
 
 logger = logging.getLogger(__name__)
 
@@ -375,6 +375,19 @@ async def _process(claimed) -> str:
     async with async_session() as db:
         token, uri = await _target(db, tenant_id)
         settings_row = await db.get(PmsSettings, (tenant_id, name.lower()))
+        key = await api_keys.live_key(db, tenant_id, name.lower())
+    if key is None:
+        # The BU switched this PMS off (its key was revoked) while the day waited, or in the
+        # instant of the revoke: it never posts, whatever auto-post says (decision-log #56).
+        # Closed as `switch_off` closes the PMS's other days, before any Carmen call or AI.
+        await _write(
+            pk,
+            status="rejected",
+            reason_code="pms_switched_off",
+            error_message="Switched off in Carmen's PMS setting.",
+            review_payload=None,
+        )
+        return "rejected"
     if not token or not uri:
         return await _retry_or_fail(
             pk,
@@ -532,9 +545,17 @@ async def _requeue_ready_days() -> int:
             (t, name)
             for t, name in (
                 await db.execute(
-                    select(PmsSettings.tenant_id, PmsSettings.interface_name).where(
-                        PmsSettings.auto_post.is_(True)
+                    # Auto-post on, and the PMS still switched on: a live key (decision-log #56).
+                    select(PmsSettings.tenant_id, PmsSettings.interface_name)
+                    .join(
+                        APIKey,
+                        and_(
+                            APIKey.tenant_id == PmsSettings.tenant_id,
+                            APIKey.interface_name == PmsSettings.interface_name,
+                            APIKey.revoked_at.is_(None),
+                        ),
                     )
+                    .where(PmsSettings.auto_post.is_(True))
                 )
             ).all()
         }

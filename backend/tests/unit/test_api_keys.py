@@ -9,7 +9,7 @@ against the dev DB instead.
 import hashlib
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -151,11 +151,53 @@ _REQUEST = SimpleNamespace(client=SimpleNamespace(host="203.0.113.9"), headers={
 async def test_revoking_a_key_that_is_not_live_is_404():
     from app.routers.admin.api_keys import revoke_api_key
 
-    db = MagicMock(execute=AsyncMock(return_value=MagicMock(rowcount=0)), commit=AsyncMock())
+    db = MagicMock(
+        execute=AsyncMock(return_value=MagicMock(first=lambda: None)), commit=AsyncMock()
+    )
     with pytest.raises(HTTPException) as exc:
         await revoke_api_key(uuid4(), _REQUEST, None, db, _admin())
     assert exc.value.status_code == 404
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_admin_revoking_a_pms_key_switches_that_pms_off():
+    """Decision-log #56: the support revoke is the same off switch as Carmen's, so the
+    PMS's open days close and its auto-post goes off, in the revoke's own transaction."""
+    from app.routers.admin.api_keys import revoke_api_key
+
+    tenant_id = uuid4()
+    row = SimpleNamespace(tenant_id=tenant_id, interface_name="hoteltime")
+    db = MagicMock(execute=AsyncMock(return_value=MagicMock(first=lambda: row)), commit=AsyncMock())
+    with (
+        patch("app.routers.admin.api_keys.pms_review.switch_off", AsyncMock(return_value=3)) as off,
+        patch("app.routers.admin.api_keys.log_admin_action", AsyncMock()) as audit,
+    ):
+        out = await revoke_api_key(uuid4(), _REQUEST, "BU stopped using it", db, _admin())
+    assert out["revoked"] is True and out["closed_days"] == 3
+    assert off.await_args.args[1:] == (tenant_id, "hoteltime")
+    assert off.await_args.kwargs == {"actor": "admin:a-1"}
+    db.commit.assert_awaited_once()
+    assert audit.await_args.kwargs["after_value"] == {
+        "reason": "BU stopped using it",
+        "closed_days": 3,
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_admin_revoking_a_key_with_no_pms_switches_nothing_off():
+    """A key from before keys named their PMS has nothing to switch off."""
+    from app.routers.admin.api_keys import revoke_api_key
+
+    row = SimpleNamespace(tenant_id=uuid4(), interface_name=None)
+    db = MagicMock(execute=AsyncMock(return_value=MagicMock(first=lambda: row)), commit=AsyncMock())
+    with (
+        patch("app.routers.admin.api_keys.pms_review.switch_off", AsyncMock()) as off,
+        patch("app.routers.admin.api_keys.log_admin_action", AsyncMock()),
+    ):
+        out = await revoke_api_key(uuid4(), _REQUEST, None, db, _admin())
+    assert out == {"id": out["id"], "revoked": True, "closed_days": 0}
+    off.assert_not_awaited()
 
 
 def test_a_row_names_its_business_unit_by_code_and_host():

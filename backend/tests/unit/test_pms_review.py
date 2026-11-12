@@ -371,6 +371,38 @@ async def test_recheck_clears_the_flags_once_carmens_table_has_the_rows():
 
 
 @pytest.mark.asyncio
+async def test_switching_a_pms_off_closes_its_open_days_and_turns_auto_post_off():
+    """Decision-log #56: revoking a PMS's key switches it off. Nothing of it keeps running:
+    its days still in our hands close (they show under Not posted, for the BU to post by
+    hand), and auto-post is off, so turning it back on starts safe."""
+    from sqlalchemy.dialects import postgresql
+
+    db = MagicMock(execute=AsyncMock(side_effect=[MagicMock(rowcount=2), MagicMock(rowcount=1)]))
+    tenant_id = uuid4()
+    assert await review.switch_off(db, tenant_id, "hoteltime", actor="user:u-1") == 2
+
+    days, auto = (c.args[0] for c in db.execute.await_args_list)
+    sql = str(days.compile(dialect=postgresql.dialect()))
+    params = days.compile(dialect=postgresql.dialect()).params
+    assert sql.startswith("UPDATE pms_events SET")
+    # This BU × PMS only, matched on the event id's PMS part (`PMS/Hoteltime/Daily/…`).
+    assert "pms_events.tenant_id =" in sql and tenant_id in params.values()
+    assert "lower(split_part(pms_events.event_id" in sql and "hoteltime" in params.values()
+    # Only what is still open; a posted, failed or rejected day keeps its record.
+    assert "pms_events.status IN" in sql
+    assert ["received", "pending_review"] in params.values()
+    # A day a reviewer is approving this minute is left to finish (as a repeat hook does).
+    assert "pms_events.posting_started_at IS NULL OR pms_events.posting_started_at <" in sql
+    assert params["status"] == "rejected" and params["reason_code"] == "pms_switched_off"
+    assert params["review_payload"] is None and params["reviewed_by"] == "user:u-1"
+
+    sql = str(auto.compile(dialect=postgresql.dialect()))
+    params = auto.compile(dialect=postgresql.dialect()).params
+    assert sql.startswith("UPDATE pms_settings SET auto_post=")
+    assert params["auto_post"] is False and "hoteltime" in params.values()
+
+
+@pytest.mark.asyncio
 async def test_settings_round_trip_is_per_pms():
     stored = {}
 

@@ -16,7 +16,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.context import current_carmen_uri
@@ -385,3 +385,56 @@ async def save_settings(
     row.auto_post = auto_post
     row.updated_by = actor
     await db.flush()
+
+
+SWITCHED_OFF = "Switched off in Carmen's PMS setting."
+
+
+async def switch_off(
+    db: AsyncSession, tenant_id: uuid.UUID, interface_name: str, *, actor: str
+) -> int:
+    """This BU stopped using this PMS (its key was revoked, decision-log #56). Returns how
+    many of its days were closed. The caller commits, in the revoke's own transaction.
+
+    Nothing of the PMS keeps running after the switch-off:
+    - its days still in our hands (`received`, `pending_review`) close as `rejected` /
+      `pms_switched_off`, so none of them posts later by itself, and they show under Not
+      posted for the BU to post by hand. A day a reviewer is approving right now is left
+      to finish, as a repeat hook leaves it (`routers/pms.py`);
+    - its auto-post goes off, so switching the PMS back on starts with every day waiting
+      for a person.
+    Not called when a key is *replaced* (`api_keys.issue`): that PMS is still on.
+    """
+    now = datetime.now(UTC)
+    closed = await db.execute(
+        update(PmsEvent)
+        .where(
+            PmsEvent.tenant_id == tenant_id,
+            # `PMS/{InterfaceName}/{DocType}/{DocDate}`: a hook's casing or Carmen's list's.
+            func.lower(func.split_part(PmsEvent.event_id, "/", 2)) == interface_name,
+            PmsEvent.status.in_(("received", "pending_review")),
+            or_(
+                PmsEvent.posting_started_at.is_(None),
+                PmsEvent.posting_started_at < now - REVIEW_CLAIM_TTL,
+            ),
+        )
+        .values(
+            status="rejected",
+            reason_code="pms_switched_off",
+            error_message=SWITCHED_OFF,
+            review_payload=None,
+            posting_started_at=None,
+            reviewed_by=actor[:36],
+            reviewed_at=now,
+        )
+    )
+    await db.execute(
+        update(PmsSettings)
+        .where(
+            PmsSettings.tenant_id == tenant_id,
+            PmsSettings.interface_name == interface_name,
+            PmsSettings.auto_post.is_(True),
+        )
+        .values(auto_post=False, updated_by=actor)
+    )
+    return closed.rowcount or 0
