@@ -594,8 +594,8 @@ async def get_active_subscription(tenant_id: str) -> TenantSubscription | None:
 async def get_usage(tenant_id: str) -> tuple[int, TenantSubscription | None]:
     """The two pools `consume_document()` charges, for GET /auth/usage, on ONE session.
 
-    That is one pool checkout instead of two, and a checkout is the expensive part (pre-ping,
-    BEGIN, `SET statement_timeout`, ROLLBACK: five server statements around the one query).
+    That is one pool checkout instead of two, and a checkout is the expensive part: measured, the
+    server sees two BEGIN/ROLLBACK pairs per checkout (one pair is the pre-ping) around the one query.
     Each half keeps its own fail-soft, as `get_credit_balance` and `get_active_subscription` do:
     a failed read gives 0 / None for that half only. A failed statement aborts the transaction,
     so the session is rolled back before the other half runs.
