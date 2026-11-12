@@ -82,6 +82,10 @@ create index if not exists ix_credit_cards_doc_date     on credit_cards (doc_dat
 create index if not exists ix_credit_cards_doc_no       on credit_cards (doc_no);
 create index if not exists ix_credit_cards_carmen_user  on credit_cards (carmen_user_id);
 create index if not exists ix_credit_cards_created_at   on credit_cards (created_at);
+-- The JV queue orders manual scans by when they happened; must match `_manual_when` in activity.py.
+create index if not exists ix_credit_cards_tenant_when
+    on credit_cards (tenant_id, (coalesce(submitted_at, created_at)) desc)
+    where deleted_at is null;
 create index if not exists ix_credit_cards_deleted_at   on credit_cards (deleted_at);
 
 -- Duplicate-check: same doc_no per bank per tenant must not be submitted twice.
