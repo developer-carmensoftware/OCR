@@ -70,16 +70,19 @@ _MAPPING_INCOMPLETE = -500
 # …and a date it has no data for with -400 "No Data Found on …" (seen 2026-11-06). -400 also
 # means "Configuration is missing", so the words decide, not the code alone.
 _NO_DATA = -400
-# A day with no data yet (a PartnerApi PMS before the hotel's day is in) is asked again this
-# often, without spending its attempts, and given up on this long after it was stored.
+# A day with no data yet (the hotel's day is not in Carmen yet) is asked again this often,
+# without spending its attempts, and given up on this long after it was stored.
 NOT_READY_WAIT = timedelta(hours=1)
 NOT_READY_FOR = timedelta(hours=24)
-# A day the sweep opens itself (a PartnerApi PMS, decision-log #52) says so in its payload.
+# A day the sweep opens itself (decision-log #52, #55) says so in its payload.
 OPENED_BY_SWEEP = "sweep"
-# PartnerApi days are opened for yesterday, once the hotel's night audit is surely done.
-# ponytail: one fixed hour for every BU; per-BU hours if a hotel closes its day later.
+# Yesterday's days are opened from 06:00 ICT, so a day is in the queue before people start
+# work (the user, 2026-11-12). A day not in Carmen by then waits hourly (`NOT_READY_WAIT`).
+# ponytail: one fixed hour for every BU; per-BU hours if a hotel closes its day later. A PMS
+# Carmen fetches live (`PartnerApi`) could give a hotel's day before its night audit closed:
+# none posts REVENUE yet; look again when one does (decision-log #55).
 ICT = timezone(timedelta(hours=7))
-OPEN_AFTER_HOUR = 8
+OPEN_AFTER_HOUR = 6
 
 _sweep_lock = asyncio.Lock()
 # asyncio keeps only a weak reference to a task; these are held until they finish.
@@ -410,8 +413,9 @@ async def _process(claimed) -> str:
                 f"Carmen's {section.setting_code} mapping table names no key columns.",
             )
 
-        # A day our sweep opened belongs to a PMS Carmen fetches at post time: there may be no
-        # Data Bank row for it at all. A hooked day is in the Data Bank, or about to be.
+        # A day our sweep opened may have no Data Bank row: none ever, for a PMS Carmen fetches
+        # at post time, or not yet, for one whose day the hotel has not sent. Carmen's preview
+        # then answers No Data and the day waits hourly. A hooked day is in the Data Bank.
         opened = hook.get("Source") == OPENED_BY_SWEEP
         try:
             found = await carmen.get_databank_day(itype, name, doc_type, doc_date, token)
@@ -629,15 +633,15 @@ async def _wake_for_new_credential() -> int:
     return len(woken)
 
 
-# The PartnerApi PMSs of each BU, read from Carmen's interface list once a day: a list that
-# failed to read is not cached, so the next sweep asks again.
-_partner_cache: dict[uuid.UUID, tuple[date, dict[str, str]]] = {}
+# The PMSs each BU posts REVENUE with, read from Carmen's interface list once a day: a list
+# that failed to read is not cached, so the next sweep asks again.
+_listed_cache: dict[uuid.UUID, tuple[date, dict[str, str]]] = {}
 
 
-async def _partner_names(tenant_id: uuid.UUID, today: date) -> dict[str, str] | None:
-    """`{lower-cased name: name}` of this BU's PartnerApi PMSs, or None when Carmen's list
-    could not be read (no credential, a refusal, Carmen's own 500)."""
-    hit = _partner_cache.get(tenant_id)
+async def _listed_pms(tenant_id: uuid.UUID, today: date) -> dict[str, str] | None:
+    """`{lower-cased name: name}` of the PMSs this BU posts REVENUE to GL with, or None when
+    Carmen's list could not be read (no credential, a refusal, Carmen's own 500)."""
+    hit = _listed_cache.get(tenant_id)
     if hit and hit[0] == today:
         return hit[1]
     async with async_session() as db:
@@ -646,22 +650,23 @@ async def _partner_names(tenant_id: uuid.UUID, today: date) -> dict[str, str] | 
         return None
     ctx = current_carmen_uri.set(uri)
     try:
-        names = cfg.partner_interfaces(await carmen.get_interfaces(token))
+        names = cfg.revenue_interfaces(await carmen.get_interfaces(token))
     except carmen.CarmenAPIError as exc:
         logger.warning("[pms] Carmen's interface list for %s: %s", tenant_id, exc.detail)
         return None
     finally:
         current_carmen_uri.reset(ctx)
-    _partner_cache[tenant_id] = (today, names)
+    _listed_cache[tenant_id] = (today, names)
     return names
 
 
-async def _open_partner_days(now: datetime | None = None) -> int:
-    """Open yesterday's day for every PartnerApi PMS a BU has switched on (decision-log #52).
+async def _open_days(now: datetime | None = None) -> int:
+    """Open yesterday's day for every PMS a BU has switched on (decision-log #52, #55).
 
-    Carmen fetches such a PMS's day itself when it posts, so no hook announces it and the
-    Data Bank may never hold it. After `OPEN_AFTER_HOUR` (ICT) each BU × PMS with a live key
-    whose interface-list row says `From: PartnerApi` gets the row a hook would have stored.
+    From `OPEN_AFTER_HOUR` (ICT) each BU × PMS with a live key that Carmen's interface list
+    names as posting REVENUE to GL gets the row a hook would have stored, whatever its
+    `From`. A PMS Carmen fetches itself (`PartnerApi`) never sends a hook; for the others the
+    hook only brings the day sooner, and a lost or refused hook no longer loses the day.
     Only an INSERT: the sweep then works through the days one at a time, so a hundred BUs
     never reach Carmen at once. A day that already has a row (a hook came) is left alone.
     """
@@ -687,12 +692,12 @@ async def _open_partner_days(now: datetime | None = None) -> int:
         keys.setdefault(tenant_id, set()).add(interface)
     opened = 0
     for tenant_id, interfaces in keys.items():
-        partner = await _partner_names(tenant_id, local.date())
-        if not partner:
+        listed = await _listed_pms(tenant_id, local.date())
+        if not listed:
             continue
         async with async_session() as db:
-            for lowered in sorted(interfaces & partner.keys()):
-                name = partner[lowered]
+            for lowered in sorted(interfaces & listed.keys()):
+                name = listed[lowered]
                 hook = {"InterfaceType": "PMS", "InterfaceName": name, "DocType": "Daily"}
                 payload = {**hook, "DocDate": day, "Source": OPENED_BY_SWEEP}
                 event_id = f"PMS/{name}/Daily/{day}"
@@ -719,7 +724,7 @@ async def run_pms_processing(limit: int = 50) -> dict:
         summary: dict = {"status": "ok", "opened": 0, "requeued": 0, "woken": 0}
         error = None
         try:
-            summary["opened"] = await _open_partner_days()
+            summary["opened"] = await _open_days()
             summary["requeued"] = await _requeue_ready_days()
             summary["woken"] = await _wake_for_new_credential()
             now = datetime.now(UTC)

@@ -519,7 +519,7 @@ async def test_the_sweep_wakes_those_days_before_it_picks():
     pk = uuid4()
     _, session = _db_returning([pk])
     with (
-        patch.object(process, "_open_partner_days", AsyncMock(return_value=2)) as opener,
+        patch.object(process, "_open_days", AsyncMock(return_value=2)) as opener,
         patch.object(process, "_requeue_ready_days", AsyncMock(return_value=0)),
         patch.object(process, "_wake_for_new_credential", AsyncMock(return_value=1)),
         patch.object(process, "async_session", session),
@@ -528,7 +528,7 @@ async def test_the_sweep_wakes_those_days_before_it_picks():
     ):
         summary = await process.run_pms_processing()
     assert summary["woken"] == 1 and summary["pending_review"] == 1
-    # PartnerApi days are opened first, so the same sweep works through them.
+    # Yesterday's days are opened first, so the same sweep works through them.
     opener.assert_awaited_once()
     assert summary["opened"] == 2
     one.assert_awaited_once_with(pk)
@@ -560,7 +560,7 @@ async def test_ready_days_of_an_auto_post_pms_are_sent_back_others_stay():
     assert update_stmt.compile().params["id_1"] == [ready]
 
 
-# ── PartnerApi days: opened by the sweep (decision-log #52) ────────────────────────
+# ── Yesterday's days, opened by the sweep for every PMS (decision-log #52, #55) ──────
 
 
 @asynccontextmanager
@@ -568,21 +568,26 @@ async def _no_db():
     yield MagicMock()
 
 
-PARTNER_LIST = [{**INTERFACES[0], "InterfaceName": "HotelTime", "From": "PartnerApi"}, *INTERFACES]
+# Carmen's list for a BU with a PMS it fetches itself (HotelTime) and a hooked one (Comanche).
+LISTED = [{**INTERFACES[0], "InterfaceName": "HotelTime", "From": "PartnerApi"}, *INTERFACES]
 
 
 @pytest.mark.asyncio
-async def test_no_day_opens_before_the_hotels_day_is_closed():
+async def test_no_day_opens_before_six_in_the_morning():
     with patch.object(process, "async_session") as session:
-        at_7_59 = datetime(2026, 11, 6, 0, 59, tzinfo=UTC)  # 07:59 ICT
-        assert await process._open_partner_days(at_7_59) == 0
+        at_5_59 = datetime(2026, 11, 5, 22, 59, tzinfo=UTC)  # 05:59 ICT on 2026-11-06
+        assert await process._open_days(at_5_59) == 0
     session.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_yesterday_opens_for_each_partner_pms_a_bu_switched_on():
+async def test_yesterday_opens_at_six_for_every_listed_pms_a_bu_has_a_key_for():
+    """However a PMS's day reaches Carmen (a hook, Carmen's own fetch, a user's import), the
+    sweep opens it: a hook only brings it sooner (decision-log #55)."""
     bu, other = uuid4(), uuid4()
-    live = MagicMock(all=lambda: [(bu, "hoteltime"), (bu, "comanche"), (other, "guestline")])
+    live = MagicMock(
+        all=lambda: [(bu, "hoteltime"), (bu, "comanche"), (bu, "test"), (other, "guestline")]
+    )
     db = MagicMock(
         execute=AsyncMock(return_value=live),
         scalar=AsyncMock(return_value=None),
@@ -593,21 +598,23 @@ async def test_yesterday_opens_for_each_partner_pms_a_bu_switched_on():
     async def session():
         yield db
 
-    # Comanche is a hooked PMS (not on the list); the other BU's list could not be read.
-    names = {bu: {"hoteltime": "HotelTime"}, other: None}
+    # `test` has a key but Carmen does not list it; the other BU's list could not be read.
+    names = {bu: {"hoteltime": "HotelTime", "comanche": "Comanche"}, other: None}
     stored = AsyncMock(return_value=uuid4())
     with (
         patch.object(process, "async_session", session),
-        patch.object(process, "_partner_names", AsyncMock(side_effect=lambda t, d: names[t])),
+        patch.object(process, "_listed_pms", AsyncMock(side_effect=lambda t, d: names[t])),
         patch.object(process, "store_day", stored),
     ):
-        at_nine = datetime(2026, 11, 6, 2, 0, tzinfo=UTC)  # 09:00 ICT
-        assert await process._open_partner_days(at_nine) == 1
-    tenant, event_id, type_, payload = stored.await_args.args[1:]
-    assert (tenant, event_id, type_) == (bu, "PMS/HotelTime/Daily/2026-11-05", "PMS")
+        at_six = datetime(2026, 11, 5, 23, 0, tzinfo=UTC)  # 06:00 ICT on 2026-11-06
+        assert await process._open_days(at_six) == 2
+    opened = {c.args[2]: (c.args[1], c.args[3], c.args[4]) for c in stored.await_args_list}
+    assert set(opened) == {"PMS/Comanche/Daily/2026-11-05", "PMS/HotelTime/Daily/2026-11-05"}
+    tenant, type_, payload = opened["PMS/Comanche/Daily/2026-11-05"]
+    assert (tenant, type_) == (bu, "PMS")
     assert payload == {
         "InterfaceType": "PMS",
-        "InterfaceName": "HotelTime",
+        "InterfaceName": "Comanche",
         "DocType": "Daily",
         "DocDate": "2026-11-05",
         "Source": process.OPENED_BY_SWEEP,
@@ -615,19 +622,18 @@ async def test_yesterday_opens_for_each_partner_pms_a_bu_switched_on():
     # A day already stored (a hook came first, or an earlier sweep) is not opened twice.
     with (
         patch.object(process, "async_session", session),
-        patch.object(process, "_partner_names", AsyncMock(side_effect=lambda t, d: names[t])),
+        patch.object(process, "_listed_pms", AsyncMock(side_effect=lambda t, d: names[t])),
         patch.object(process, "store_day", AsyncMock(return_value=None)),
     ):
-        assert await process._open_partner_days(at_nine) == 0
+        assert await process._open_days(at_six) == 0
 
 
 @pytest.mark.asyncio
 async def test_carmens_list_is_read_once_a_day_and_a_failure_is_asked_again():
-    process._partner_cache.clear()
+    process._listed_cache.clear()
     bu = uuid4()
-    lists = AsyncMock(
-        side_effect=[CarmenAPIError(500, "HTTP 500: IsNullOrWhiteSpace"), PARTNER_LIST]
-    )
+    lists = AsyncMock(side_effect=[CarmenAPIError(500, "HTTP 500: IsNullOrWhiteSpace"), LISTED])
+    both = {"hoteltime": "HotelTime", "comanche": "Comanche"}
     target = AsyncMock(return_value=("tok", "https://dev.carmen4.com"))
     today = date(2026, 11, 6)
     try:
@@ -636,17 +642,17 @@ async def test_carmens_list_is_read_once_a_day_and_a_failure_is_asked_again():
             patch.object(process, "_target", target),
             patch.object(process.carmen, "get_interfaces", lists),
         ):
-            assert await process._partner_names(bu, today) is None
-            assert await process._partner_names(bu, today) == {"hoteltime": "HotelTime"}
-            assert await process._partner_names(bu, today) == {"hoteltime": "HotelTime"}
+            assert await process._listed_pms(bu, today) is None
+            assert await process._listed_pms(bu, today) == both
+            assert await process._listed_pms(bu, today) == both
         assert lists.await_count == 2
         with (
             patch.object(process, "async_session", _no_db),
             patch.object(process, "_target", AsyncMock(return_value=("", ""))),
         ):
-            assert await process._partner_names(uuid4(), today) is None
+            assert await process._listed_pms(uuid4(), today) is None
     finally:
-        process._partner_cache.clear()
+        process._listed_cache.clear()
 
 
 # Carmen's answer for a date it has no data for (dev, 2026-11-06). -400 alone is not it:
@@ -656,7 +662,9 @@ NO_DATA = {"Code": -400, "UserMessage": "No Data Found on 05/11/2026 to 05/11/20
 
 @pytest.mark.asyncio
 async def test_a_day_carmen_has_no_data_for_yet_is_asked_again_hourly_without_spending_tries():
-    """Carmen's preview says so before anything posts; it answers as the post would (#54)."""
+    """Carmen's preview says so before anything posts; it answers as the post would (#54).
+    The day is Comanche's, a hooked PMS the sweep opened before its Data Bank row came in
+    (decision-log #55): it waits like a PartnerApi day, not as `day_not_found`."""
     opened = _claimed(attempts=2)
     opened.payload = {**HOOK, "Source": process.OPENED_BY_SWEEP}
     run = _Run(settings=AUTO, databank=[], claimed=opened, preview=NO_DATA)
@@ -718,10 +726,10 @@ async def test_a_day_a_hook_stored_in_another_casing_is_not_opened_again():
     stored = AsyncMock(return_value=uuid4())
     with (
         patch.object(process, "async_session", session),
-        patch.object(process, "_partner_names", AsyncMock(return_value={"hoteltime": "Hoteltime"})),
+        patch.object(process, "_listed_pms", AsyncMock(return_value={"hoteltime": "Hoteltime"})),
         patch.object(process, "store_day", stored),
     ):
-        assert await process._open_partner_days(datetime(2026, 11, 6, 2, 0, tzinfo=UTC)) == 0
+        assert await process._open_days(datetime(2026, 11, 6, 2, 0, tzinfo=UTC)) == 0
     stored.assert_not_awaited()
     held = str(db.scalar.await_args.args[0].compile(dialect=postgresql.dialect()))
     assert "lower(pms_events.event_id)" in held
