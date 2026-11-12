@@ -129,13 +129,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Pinned, not `latest`: CLI 3.0.0 (2026-11-03) refuses this repo's config.toml
-      # ("[inbucket] … is no longer supported. Use [local_smtp]"), which failed this job on
-      # every PR. 2.121.0 is the version the local recipe uses. Move to 3.x together with a
-      # config.toml migration, in its own PR.
+      # Pinned, not `latest`: a CLI major changes what config.toml accepts (3.0 refused
+      # `[inbucket]` and failed this job on every PR until the config moved to 3.x). Move the
+      # version deliberately, with the config, and keep it equal to deploy.yml's.
       - uses: supabase/setup-cli@v3
         with:
-          version: 2.121.0
+          version: 3.1.0
 
       # `supabase db reset` boots the bundled Supabase Postgres (ships pg_cron,
       # pgvector, partitioning) and applies schemas/ + migrations/ + seed. Fails
