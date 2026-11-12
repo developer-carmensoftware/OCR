@@ -153,22 +153,21 @@ async def test_notify_collapsed_does_not_fold_into_a_different_reasons_row():
 
 
 def _paged_db(items, total, unread):
-    """Mock AsyncSession for list_notifications: total, then rows, then unread."""
+    """Mock AsyncSession for list_notifications: one aggregate (total, unread), then the page."""
     calls = []
 
     async def fake_execute(_stmt):
         result = MagicMock()
         calls.append(_stmt)
-        if len(calls) == 1:  # paginate's COUNT(*)
-            result.scalar_one.return_value = total
-        elif len(calls) == 2:  # paginate's windowed rows
+        if len(calls) == 1:  # total and unread, one statement
+            result.one.return_value = (total, unread)
+        else:  # the windowed rows
             result.scalars.return_value.all.return_value = items
-        else:  # unread COUNT(*)
-            result.scalar_one.return_value = unread
         return result
 
     db = AsyncMock()
     db.execute = fake_execute
+    db.calls = calls
     return db
 
 
@@ -209,6 +208,33 @@ async def test_offset_past_the_end_is_an_empty_page_not_an_error():
     assert rows == []
     assert total == 3  # the caller can still tell how far to clamp back
     assert unread == 0
+
+
+@pytest.mark.asyncio
+async def test_list_costs_two_statements_not_three():
+    """Total and unread share one aggregate; the page is the only other statement."""
+    tid = uuid.uuid4()
+    db = _paged_db([_notif(tid)], total=1, unread=1)
+
+    await notification_service.list_notifications(db, tid)
+
+    assert len(db.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_the_aggregate_counts_unread_with_a_filter_over_the_tenants_rows():
+    from sqlalchemy.dialects import postgresql
+
+    tid = uuid.uuid4()
+    db = _paged_db([], total=0, unread=0)
+
+    await notification_service.list_notifications(db, tid)
+
+    sql = str(db.calls[0].compile(dialect=postgresql.dialect()))
+    assert "count(*) FILTER (WHERE user_notifications.read_at IS NULL)" in sql
+    assert "user_notifications.tenant_id =" in sql
+    # The window belongs to the second statement; the counts must not be windowed.
+    assert "LIMIT" not in sql and "OFFSET" not in sql
 
 
 # ── has_notification() ───────────────────────────────────────────────────────

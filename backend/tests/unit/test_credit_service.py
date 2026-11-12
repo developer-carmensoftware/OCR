@@ -421,6 +421,85 @@ class TestGetActiveSubscriptionDisplayReset:
 # ── proration_credit ─────────────────────────────────────────────────────────
 
 
+class TestGetUsage:
+    """GET /auth/usage reads both pools on ONE session — one pool checkout, not two."""
+
+    async def test_opens_one_session_for_balance_and_subscription(self):
+        start = datetime(2026, 6, 24, tzinfo=UTC)
+        sub = _make_sub(
+            period_start=start,
+            period_end=datetime(2026, 7, 23, tzinfo=UTC),
+            cycle_start=start,
+            billing_period="monthly",
+        )
+        mock_db = AsyncMock()
+        # balance, then the cycle lookup for the subscription
+        mock_db.execute = AsyncMock(side_effect=[_result(scalar=7), _result(scalar=start)])
+        mock_db.expunge = MagicMock()
+        opener = MagicMock(return_value=_session_ctx(mock_db))
+
+        with (
+            patch.object(credit_service, "async_session", opener),
+            patch.object(credit_service, "active_subscription", AsyncMock(return_value=sub)),
+        ):
+            balance, got = await credit_service.get_usage("t-001")
+
+        assert opener.call_count == 1
+        assert balance == 7
+        assert got is sub
+
+    async def test_a_failed_balance_does_not_hide_the_subscription(self):
+        """Each half is fail-soft on its own, as the two single-purpose functions are."""
+        start = datetime(2026, 6, 24, tzinfo=UTC)
+        sub = _make_sub(
+            period_start=start,
+            period_end=datetime(2026, 7, 23, tzinfo=UTC),
+            cycle_start=start,
+            billing_period="monthly",
+        )
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(side_effect=[RuntimeError("boom"), _result(scalar=start)])
+        mock_db.expunge = MagicMock()
+
+        with (
+            patch.object(credit_service, "async_session", return_value=_session_ctx(mock_db)),
+            patch.object(credit_service, "active_subscription", AsyncMock(return_value=sub)),
+        ):
+            balance, got = await credit_service.get_usage("t-001")
+
+        assert balance == 0
+        assert got is sub
+        # A failed statement aborts the transaction: it must be rolled back before the next read.
+        mock_db.rollback.assert_awaited_once()
+
+    async def test_a_failed_subscription_keeps_the_balance(self):
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=_result(scalar=12))
+
+        with (
+            patch.object(credit_service, "async_session", return_value=_session_ctx(mock_db)),
+            patch.object(
+                credit_service, "active_subscription", AsyncMock(side_effect=RuntimeError("boom"))
+            ),
+        ):
+            balance, got = await credit_service.get_usage("t-001")
+
+        assert balance == 12
+        assert got is None
+        mock_db.rollback.assert_awaited_once()
+
+    async def test_an_unreachable_database_answers_zero_and_none(self):
+        opener = MagicMock(side_effect=RuntimeError("no pool"))
+        with patch.object(credit_service, "async_session", opener):
+            assert await credit_service.get_usage("t-001") == (0, None)
+
+    async def test_empty_tenant_costs_no_session(self):
+        opener = MagicMock()
+        with patch.object(credit_service, "async_session", opener):
+            assert await credit_service.get_usage("") == (0, None)
+        opener.assert_not_called()
+
+
 class TestProrationCredit:
     def test_full_period_remaining(self):
         from decimal import Decimal
