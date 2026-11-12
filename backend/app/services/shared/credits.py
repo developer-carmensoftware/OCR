@@ -372,18 +372,20 @@ async def grant_signup_credits(db: AsyncSession, tenant_id: str) -> int:
     )
 
 
+async def _balance(db: AsyncSession, tenant_id: str) -> int:
+    bal = (
+        await db.execute(select(TenantCredit.balance).where(TenantCredit.tenant_id == tenant_id))
+    ).scalar_one_or_none()
+    return int(bal) if bal is not None else 0  # Numeric → int
+
+
 async def get_credit_balance(tenant_id: str) -> int:
     """Return the current top-up credit balance for a tenant (0 if none)."""
     if not tenant_id:
         return 0
     try:
         async with async_session() as db:
-            bal = (
-                await db.execute(
-                    select(TenantCredit.balance).where(TenantCredit.tenant_id == tenant_id)
-                )
-            ).scalar_one_or_none()
-            return int(bal) if bal is not None else 0  # Numeric → int
+            return await _balance(db, tenant_id)
     except Exception as exc:
         logger.error("get_credit_balance failed: %s", exc)
         return 0
@@ -561,31 +563,62 @@ async def active_subscription_map(db: AsyncSession, tenant_uuids: list) -> dict[
     }
 
 
-async def get_active_subscription(tenant_id: str) -> TenantSubscription | None:
-    """
-    active_subscription() with its own session — for read-only callers (/usage).
+async def _effective_subscription(db: AsyncSession, tenant_id: str) -> TenantSubscription | None:
+    """active_subscription() with the *effective* docs_used, on the caller's session.
 
-    Exposes the *effective* docs_used: 0 when the monthly cycle has rolled but the
-    tenant hasn't consumed yet this cycle (consume would reset it on next use).
-    The detached, never-committed row carries the display value only.
+    0 when the monthly cycle has rolled but the tenant hasn't consumed yet this cycle (consume
+    would reset it on next use). The detached, never-committed row carries the display value only.
     """
+    sub = await active_subscription(db, tenant_id)
+    if sub is None:
+        return None
+    target = (await db.execute(select(func.fn_cycle_start(sub.period_start, func.now())))).scalar()
+    if sub.cycle_start is not None and target is not None and sub.cycle_start < target:
+        sub.docs_used = 0  # type: ignore[assignment]  # display only — expunged, never persists
+    db.expunge(sub)
+    return sub
+
+
+async def get_active_subscription(tenant_id: str) -> TenantSubscription | None:
+    """active_subscription() with its own session — for read-only callers."""
     if not tenant_id:
         return None
     try:
         async with async_session() as db:
-            sub = await active_subscription(db, tenant_id)
-            if sub is None:
-                return None
-            target = (
-                await db.execute(select(func.fn_cycle_start(sub.period_start, func.now())))
-            ).scalar()
-            if sub.cycle_start is not None and target is not None and sub.cycle_start < target:
-                sub.docs_used = 0  # type: ignore[assignment]  # display only — expunged, never persists
-            db.expunge(sub)
-            return sub
+            return await _effective_subscription(db, tenant_id)
     except Exception as exc:
         logger.error("get_active_subscription failed: %s", exc)
         return None
+
+
+async def get_usage(tenant_id: str) -> tuple[int, TenantSubscription | None]:
+    """The two pools `consume_document()` charges, for GET /auth/usage, on ONE session.
+
+    That is one pool checkout instead of two, and a checkout is the expensive part (pre-ping,
+    BEGIN, `SET statement_timeout`, ROLLBACK: five server statements around the one query).
+    Each half keeps its own fail-soft, as `get_credit_balance` and `get_active_subscription` do:
+    a failed read gives 0 / None for that half only. A failed statement aborts the transaction,
+    so the session is rolled back before the other half runs.
+    """
+    if not tenant_id:
+        return 0, None
+    balance: int = 0
+    sub: TenantSubscription | None = None
+    try:
+        async with async_session() as db:
+            try:
+                balance = await _balance(db, tenant_id)
+            except Exception as exc:
+                logger.error("get_usage: balance failed: %s", exc)
+                await db.rollback()
+            try:
+                sub = await _effective_subscription(db, tenant_id)
+            except Exception as exc:
+                logger.error("get_usage: subscription failed: %s", exc)
+                await db.rollback()
+    except Exception as exc:
+        logger.error("get_usage failed: %s", exc)
+    return balance, sub
 
 
 async def activate_subscription(

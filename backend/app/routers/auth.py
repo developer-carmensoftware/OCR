@@ -314,11 +314,9 @@ async def revoke_session(
 async def get_usage(_session: SessionInfo = Depends(get_current_session)):
     """Get credit balance + active subscription for the tenant — the two pools
     consume_document() charges, in the order it charges them."""
-    from app.services.shared.credits import get_active_subscription, get_credit_balance
+    from app.services.shared.credits import get_usage as get_credit_usage
 
-    credit_balance = await get_credit_balance(_session.tenant_id)
-
-    sub = await get_active_subscription(_session.tenant_id)
+    credit_balance, sub = await get_credit_usage(_session.tenant_id)
     subscription = (
         {
             "plan_code": sub.plan_code,
