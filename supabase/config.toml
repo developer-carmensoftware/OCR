@@ -22,6 +22,10 @@ max_rows = 1000
 # default. Set to `true` to keep the legacy behaviour of auto-exposing new entities; this is
 # deprecated and the field is removed on 2026-10-30 once the always-revoked behaviour is permanent.
 # auto_expose_new_tables = true
+# Left unset on purpose. CLI 3.x's own docs say an unset value falls back to `true`, but measured: a full
+# `db reset` on 2.121.0 and on 3.1.0 gives identical schema, grants, default ACLs and extensions, and
+# anon/authenticated hold nothing either way (migration 20261030000000 revokes it; security.test.sql checks).
+# Pinning it to `false` would instead strip service_role's default privileges, which 2.x never did.
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
@@ -118,7 +122,8 @@ openai_api_key = "env(OPENAI_API_KEY)"
 
 # Email testing server. Emails sent with the local dev setup are not actually sent - rather, they
 # are monitored, and you can view the emails that would have been sent from the web interface.
-[inbucket]
+# Renamed from [inbucket] for CLI 3.x (2.121.0 already accepts this name).
+[local_smtp]
 enabled = true
 # Port to use for the email testing server web interface.
 port = 54324
@@ -233,8 +238,8 @@ web3 = 30
 # secret = ""
 
 [auth.email]
-# Allow/disallow new user signups via email to your project.
-enable_signup = true
+# CLI 3.x renamed `enable_signup` to `enabled` here (the email provider as a whole). Same value as before.
+enabled = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
@@ -271,8 +276,8 @@ otp_expiry = 3600
 # content_path = "./templates/password_changed_notification.html"
 
 [auth.sms]
-# Allow/disallow new user signups via SMS to your project.
-enable_signup = false
+# CLI 3.x renamed `enable_signup` to `enabled` here (the phone provider as a whole). Same value as before.
+enabled = false
 # If enabled, users need to confirm their phone number before signing in.
 enable_confirmations = false
 # Template for sending OTP to users
@@ -420,9 +425,10 @@ s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
 
-# [experimental.pgdelta]
+# CLI 3.x turns pg-delta on by default for `db diff` / `db pull`; pinned off to keep the engine we used on 2.x.
+[experimental.pgdelta]
 # When enabled, pg-delta becomes the active engine for supported schema flows.
-# enabled = false
+enabled = false
 # Directory under `supabase/` where declarative files are written.
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
