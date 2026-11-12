@@ -713,12 +713,6 @@
   color: var(--text-2);
 }
 
-.rq-menu-note {
-  margin: 0.25rem 0.6rem 0.4rem;
-  font-size: 0.75rem;
-  color: var(--text-2);
-}
-
 .rq-menu-hint {
   font-weight: 400;
   color: var(--text-2);
