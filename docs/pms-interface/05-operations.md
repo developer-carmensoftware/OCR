@@ -48,6 +48,15 @@ select cron.schedule('pms-process', '*/10 * * * *', $$
 $$);
 ```
 
+Each run of `run_pms_processing`:
+
+1. **Opens yesterday's days** from 06:00 ICT for every BU × PMS with a live key that Carmen's
+   `interfaceThirdParties` lists as posting REVENUE to GL (`_open_days`, decision-log #55).
+   Each BU's list is read once a day; a list that failed to read is asked again next run.
+2. **Re-sends** an auto-post PMS's parked days that have nothing left to map.
+3. **Wakes** the days waiting for a credential once a new one is stored.
+4. **Works through** the days due: new, retrying, or `day_not_ready` after an hour.
+
 Check it from the **Supabase SQL Editor**. An ad-hoc script while `uvicorn` runs hits the
 15-connection Supavisor cap.
 
@@ -193,5 +202,7 @@ The real end to end is **CA-120**: a real Carmen menu click and real hooks. It n
 | Only REVENUE | A PMS's `STATISTIC` or `MARKETSEGMENT` sections are not posted | A section of its own when a BU needs one (user decision 2026-10-14: one day, one JV) |
 | A post's own refusals show only on Approve | Asks K (DrCr) and N (balance account) come after the post, not in the review | Carmen adding Amount, Dr/Cr and those errors to its preview (decision-log #54). Before a PMS goes live, run `scripts/qa/pms_probe.py`, which checks the balance account with a web JWT |
 | `event_id` keeps `InterfaceName`'s casing | `Comanche` and `COMANCHE` are two rows for one day; the engine refuses the second post (`-200`) | Accepted (decision-log #44): Carmen sends one casing. Lower-casing it would split the days already stored |
-| PMSs that Carmen's own post API fetches (no Data Bank, no hook) | Such a PMS never reaches us: nothing calls it, and its key would never be used | Carmen lists the PMS kinds (the same for every BU); then a plan of its own (decision-log #44) |
+| The sweep opens only yesterday | A day the sweep missed entirely (the server down all day) is not opened later; it waits for its hook | Open the last N days if it ever matters (decision-log #55) |
+| A `PartnerApi` day at 06:00 | Carmen reads such a PMS live, so a hotel whose night audit closes after 06:00 could give an incomplete day, and auto-post would post it | None posts REVENUE yet. Look again when one does: a later hour for `PartnerApi`, or per BU (decision-log #55) |
+| A day Carmen never gets fails daily | On QA's test BUs (no recent days in the dev Data Bank), one failed row per PMS per day under Not posted | Revoke the test keys not in use. On a live BU it is a real signal |
 | `carmen.py`'s comment says neither config read has an `/api/interface` twin | Stale since 2026-10-15: the mapping GET has one | Update the comment on the next code change there |

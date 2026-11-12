@@ -4,12 +4,12 @@ iso-wp: SOW
 iso-topic: 07_PMS_Interface_automation
 iso-reviewer: นายฐากร ประกอบสุพรรณ (TL)
 iso-approver: นายฉัตรชัย ธิติโรกาส (CUS)
-Document Version: Version 0.2 (Statement of Work)
+Document Version: Version 0.3 (Statement of Work)
 รหัสเอกสาร: SOW-AI-ERP-2026-001 (Hospitality Financial Automation & AI Integration Suite)
 ระยะเวลาตามแผน: 10/09/2026 – 30/09/2026
 รหัสความต้องการ: REQ-06
-เอกสารออกแบบที่เกี่ยวข้อง: FRD-11 PMS Interface Automation v1.4; RS-07
-Date: 10 November 2026
+เอกสารออกแบบที่เกี่ยวข้อง: FRD-11 PMS Interface Automation v1.5; RS-07
+Date: 12 November 2026
 ---
 
 ## Document Revision History
@@ -21,6 +21,7 @@ Date: 10 November 2026
 | 1.2 | 29/09/2026 | PM / TL | บรรจุ CR-2026-002 (ยื่น 24/09/2026): เพิ่ม AI Transaction Monitoring Screen (Management by Exception, Side-by-Side, Audit Trail) | ที่ประชุม MR #12 |
 | 0.1 | 04/11/2026 | ทีมโครงการ | เขียนใหม่ตาม ISO/IEC 29110 template แยกเป็นรายการตามกำหนดการ 8 รายการ รวมเนื้อหาจาก SOW v1.0–1.2, CR-2026-001/002 และบันทึกการประชุม MR-AI-ERP-2026-ALL | |
 | 0.2 | 10/11/2026 | ทีมโครงการ | หัวข้อ 8 สถานะการพัฒนาจริง ตาม FRD-11 v1.4 (decision-log #51–#54) | |
+| 0.3 | 12/11/2026 | ทีมโครงการ | หัวข้อ 8 REQ-06 ตาม FRD-11 v1.5 (decision-log #55): ระบบเปิดวันของเมื่อวานเองทุกเช้า 06:00 ให้ทุก PMS ที่มี key ไม่ต้องรอ hook | |
 
 <!-- pagebreak -->
 
@@ -87,7 +88,7 @@ Date: 10 November 2026
 <!-- widths!: 26,17,57 -->
 | ข้อกำหนด | สถานะ | หมายเหตุ |
 |---|---|---|
-| REQ-06 การรับข้อมูลจาก PMS | สร้างแล้ว แต่ต่างจากที่ตกลง | FRD-11 v1.4: Carmen ส่ง hook บอกวันที่เขียนลง Data Bank แล้วระบบขอ preview ของ engine ของ Carmen เพื่อได้แถวของวัน ใช้ได้กับทุก PMS (Comanche, HotelTime, Cloudbeds) ส่วน PMS ที่ Carmen ดึงข้อมูลเอง (PartnerApi) ระบบเปิดวันของเมื่อวานเองหลัง 08:00 ไม่มีโหมด Real-time API และ Batch 03:30 ของระบบเอง งานตามเวลาทุก 10 นาทีเก็บวันที่ค้าง |
+| REQ-06 การรับข้อมูลจาก PMS | สร้างแล้ว แต่ต่างจากที่ตกลง | FRD-11 v1.5: Carmen ส่ง hook บอกวันที่เขียนลง Data Bank แล้วระบบขอ preview ของ engine ของ Carmen เพื่อได้แถวของวัน ใช้ได้กับทุก PMS (Comanche, HotelTime, Cloudbeds) และทุกเช้าตั้งแต่ 06:00 ระบบเปิดวันของเมื่อวานเองให้ทุก PMS ที่มี key (รวม PMS ที่ Carmen ดึงข้อมูลเอง ซึ่งไม่มี hook) จึงไม่ต้องรอ hook ไม่มีโหมด Real-time API และ Batch 03:30 ของระบบเอง งานตามเวลาทุก 10 นาทีเก็บวันที่ค้าง |
 | REQ-06 Mapping รหัสรายได้ | สร้างแล้ว แต่ต่างจากที่ตกลง | FRD-11: Mapping อยู่ในตารางของ Carmen ระบบให้ AI แนะนำเฉพาะแถวใหม่ให้คนยืนยัน แล้วเขียนกลับและสั่ง engine ของ Carmen post การ post ของ Carmen เป็นตัวตรวจ mapping ถ้ายังมีรหัสที่ไม่มีบัญชี รหัสเหล่านั้นเข้ามาให้ map ในหน้าตรวจ |
 | REQ-06 Retry 3 ครั้ง | สร้างแล้ว | FRD-11: ลองใหม่อัตโนมัติสูงสุด 3 ครั้งสำหรับสาเหตุที่อาจหายเอง วันที่ Carmen ยังไม่มีข้อมูลลองทุกชั่วโมงจนครบ 24 ชั่วโมง |
 | สถานะการใช้งานจริง | รอ Carmen | FRD-11 v1.4 (10/11/2026): บน dev ทุก PMS ตรวจในคิวได้ และ HotelTime กับ Cloudbeds post ผ่าน engine ของ Carmen แล้ว hook จริงของ Carmen ยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) และ Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K) |

@@ -117,8 +117,12 @@ nobody.
   `llm_usage_logs.module_id` is a foreign key.
 - **Carmen gates the screen; we check nothing twice.** We have no role check. Any token Carmen
   accepts may manage that BU's keys and settings, and approve its days.
-- **PMSs that Carmen's post API fetches itself** (no Data Bank, no hook) are not handled yet.
-  Carmen will list the PMS kinds, which are the same for every BU (decision-log #44).
+- **Every day reaches us without depending on Carmen's hook.** From 06:00 ICT our sweep opens
+  yesterday's day for every PMS a BU has a key for (decision-log #52, #55). This covers the PMSs
+  Carmen's post API fetches itself, which have no Data Bank and no hook.
+  - **Which PMSs a BU has** is read from Carmen's `interfaceThirdParties` for that BU, so no
+    list of ours is kept. The same PMS may reach Carmen one way for one BU and another way for
+    another.
 
 ## Out of scope (for now)
 
