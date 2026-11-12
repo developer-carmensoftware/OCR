@@ -17,7 +17,8 @@ uvicorn app.main:app --reload --port 8010
 # Frontend — http://localhost:3010 (proxies /api/* → :8010)
 cd frontend && npm run dev
 
-# Schema changes — apply to remote Supabase project
+# Schema changes — apply to remote Supabase project (CLI 3.1.0, pinned in ci.yml and deploy.yml;
+# via npx: `npx supabase@3.1.0 db push`, not the floating `npx supabase`)
 supabase db push
 ```
 

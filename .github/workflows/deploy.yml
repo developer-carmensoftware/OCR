@@ -38,9 +38,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Pinned, not `latest`, and equal to ci.yml's: a floating CLI major can stop `db push`
+      # from reading config.toml (3.0 did), and a prod deploy must not change under us.
       - uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: 3.1.0
 
       # 0. Optional: raise the maintenance wall BEFORE migrating, so no request hits
       #    the DB mid-schema-change. Only on a manual run with maintenance=true.
