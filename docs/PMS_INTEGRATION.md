@@ -68,7 +68,17 @@ belongs to exactly that (host, BU) and PMS (decision-log #44).
   without case (`Comanche` = `comanche`).
 - `Bearer ` is optional. A bare `Authorization: cpk_…` works too.
 - Keys do not expire. **Revocation** (`DELETE …/carmen/pms/keys`) is immediate and is how a
-  PMS is switched off. A revoked key gets `401`.
+  PMS is switched off for a BU (decision-log #56). It stops everything of that PMS:
+  - a revoked key gets `401`, and our 06:00 sweep opens no more of its days;
+  - its days still waiting with us (not posted yet) close, and show in the BU's queue under
+    Not posted as "Switched off in Carmen's PMS setting", so the BU can see which days to post
+    by hand;
+  - its auto-post turns off.
+
+  **Please give the PMS setting screen a "stop using" action that calls this.** Turning
+  auto-post off is not the same: the PMS keeps running and every day waits for a person.
+  **To switch it back on,** generate a new key; auto-post starts off. Generating a key to
+  replace one is not a switch-off: nothing closes.
 - Server-to-server only, over HTTPS. Never put the key in a browser or a URL.
 - Our admins can also see and revoke any BU's keys (`#/admin/api-keys`), for support. They
   cannot generate one: your screen is the only place a key comes from.
@@ -198,7 +208,7 @@ permission model allows; we check no roles of our own.
 | `GET` | `/settings` | `?uri=&bu=&pms=` | `200` the settings below |
 | `PUT` | `/settings` | `{"uri", "bu", "pms", "auto_post": true}` | `200` the settings below |
 | `POST` | `/keys` | `{"uri", "bu", "pms"}` | `201` the settings below, plus `"api_key": "cpk_…"` **once** |
-| `DELETE` | `/keys` | `?uri=&bu=&pms=` | `204`, or `404` when this PMS has no live key |
+| `DELETE` | `/keys` | `?uri=&bu=&pms=` | `204` (the PMS is switched off: see §2), or `404` when this PMS has no live key |
 
 - `uri` is your Carmen origin (`https://hotel.carmen4.com`), as sent to `/auth/exchange`.
 - `pms` is exactly the `InterfaceName` your hook sends (1–40 characters, no `/`). We compare

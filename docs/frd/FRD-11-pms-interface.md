@@ -1,12 +1,12 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-11 — PMS Interface Automation
-output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.5.docx
+output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.6.docx
 iso-wp: SD
-Document Version: Version 1.5 (As-Built Developer & Test Spec)
+Document Version: Version 1.6 (As-Built Developer & Test Spec)
 Module ID: `pms_interface` (ใช้บันทึก LLM usage เท่านั้น ไม่คิดเครดิต)
 Status: Built — แถวของวันมาจาก preview ของ engine ของ Carmen (decision-log #54) · การ post ของ Carmen เป็นตัวตรวจ mapping (#52, #53) · sweep เปิดวันของเมื่อวานให้ทุก PMS ตั้งแต่ 06:00 ICT จึงไม่ต้องรอ hook (decision-log #55) · hook จริงของ Carmen ยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K)
-Source of truth: repo developer-carmensoftware/OCR @ 93df1c59 (12/11/2026) + branch feat/pms-sweep-opens-every-pms
+Source of truth: repo developer-carmensoftware/OCR @ 6eba2efe (12/11/2026) + branch feat/pms-switch-off
 Date: 12 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-10-07, interfacePostGL/REVENUE, interfacePreviewPostGL/REVENUE, GET /interfacePost/mapping/{code}/{postType}/GL, PUT /interfacePost/mapping/{code}/{postType}/GL, COMANCHE
@@ -23,6 +23,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 | 1.2 | 02/11/2026 | Dev Team | ตรวจกับโค้ด ณ `2be6d7c9` แล้วแก้: ข้อยกเว้นของ #45 — ถ้ามีวันที่ค้างที่ `carmen_forbidden` token ใหม่จากหน้าจอ Carmen แทน credential เดิมแม้ยังใช้ได้ (`stopped_by_permission`) (§2.1, §5); ข้อความแถวที่ post แล้วคือ "Reviewed and posted by {name}"; `pms_events.review_payload` ถูกเข้ารหัส (#319) และทุกตารางเปิด RLS (#321) | |
 | 1.3 | 04/11/2026 | Dev Team | ตามโค้ด ณ da06eb2f (decision-log #51): ระบบอ่าน `interfaceThirdParties` แทน PMS setting และ INI แล้วหารหัส setting, คอลัมน์ key, รายการของวัน และรูปแบบไฟล์เอง วันไม่หยุดที่ `carmen_config_unreadable` ทุกวันแล้ว · การ post ไม่ส่งบัญชีพัก (engine ของ Carmen ใช้จาก setting ของมันเอง) · เหตุผล `pms_setting_missing` / `unsupported_pms_format` / `unreadable_day` ตามกติกาใหม่ · Comanche.PMS ยังถูก Carmen ปฏิเสธ (ask K) | |
 | 1.5 | 12/11/2026 | Dev Team | ตาม decision-log #55: sweep เปิดวันของเมื่อวานให้ทุก PMS ที่ BU มี key และ `interfaceThirdParties` บอกว่าลง REVENUE → GL ไม่ว่า `From` จะเป็นอะไร (เดิมเฉพาะ PartnerApi) และเปิดตั้งแต่ 06:00 ICT (เดิม 08:00) · hook จึงเป็นทางให้วันมาเร็วขึ้น ไม่ใช่ทางเดียว · วันที่ Carmen ยังไม่มีรอ `day_not_ready` ทุกชั่วโมง และเป็น `day_not_found` หลัง 24 ชั่วโมง (§2.1, §3, §8.6) | |
+| 1.6 | 12/11/2026 | Dev Team | ตาม decision-log #56: การ revoke key (จากหน้าจอ Carmen หรือ `#/admin/api-keys`) = ปิด PMS นั้นของ BU — ปิดวันที่ยังเปิดอยู่เป็น `rejected` / `pms_switched_off` (ยกเว้นวันที่มีคนกำลัง approve) และปิด auto-post · processing ปิดวันที่ไม่มี key ที่ใช้ได้ก่อนเรียก Carmen และ requeue เลือกเฉพาะ PMS ที่ยังมี key · การแทน key ไม่ใช่การปิด (§2.2, §5, §8.6, §9) | |
 | 1.4 | 10/11/2026 | Dev Team | ตาม decision-log #52–#54 และ ask D: การ post ของ Carmen เป็นตัวตรวจ mapping (`-500` → `pms_mapping_incomplete` พร้อม key ที่ Carmen เขียนไว้) ทุก PMS review ได้ แถวของวันมาจาก preview ของ engine (`interfacePreviewPostGL`) แทนการอ่าน FileData เอง (`unreadable_day` และ `unsupported_pms_format` ไม่ถูกเขียนแล้ว) เปิดวันของ PMS แบบ PartnerApi เอง `-400` No Data → `day_not_ready` เก็บเลข JV จาก `Id` ใน `jv_no` AI ไม่เห็นยอดเงินและลองใหม่หนึ่งครั้ง และ `scripts/qa/pms_probe.py` | |
 
 <!-- pagebreak -->
@@ -153,7 +154,7 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 |---|---|
 | `auto_post` (ต่อ BU × PMS, ค่าเริ่มต้น false) | เปิด: วันที่ไม่มีแถวใหม่ post เอง / ปิด: ทุกวันรอคน — วันที่มีแถวใหม่รอคนเสมอทั้งสองแบบ |
 | Generate key | ออก key `cpk_…` ใหม่ (แสดง plaintext ครั้งเดียว) และเพิกถอน key เดิมของ PMS นั้น |
-| Revoke key | ปิด PMS นั้นของ BU — hook ถัดไปได้ 401 |
+| Revoke key | ปิด PMS นั้นของ BU (decision-log #56) — hook ถัดไปได้ 401, sweep ไม่เปิดวันใหม่, วันที่ยังเปิดอยู่ถูกปิดเป็น `rejected` / `pms_switched_off` (ขึ้นใน Not posted) และ auto-post ปิด · การ Generate key ใหม่แทนอันเดิมไม่ใช่การปิด |
 
 # 5. Action Buttons & Business Logic
 
@@ -167,7 +168,7 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 | เปลี่ยนบัญชี / Undo | Edit | เปลี่ยนแผนกหรือบัญชีของแถวใหม่ (ป้าย AI หายไป) หรือ Undo กลับไปค่าของ AI — Approve เปิดเมื่อแถวใหม่ทุกแถวมีแผนกและบัญชี |
 | Approve | Form Submit | `POST /api/v1/pms/days/{id}/approve` `{mappings}` → claim → อ่านตารางสด → แถวที่ Carmen map ไปแล้วระหว่างนั้นใช้บัญชีของ Carmen → ทุกแถวที่เหลือต้องมีแผนกและบัญชี → ตรวจกับผังบัญชี (แผนกมีจริง, บัญชีมีจริง, แผนกอนุญาตบัญชีนั้น) → PUT ทั้งตาราง → `interfacePostGL/REVENUE` → `posted` (เก็บ `jv_no`) แล้ว recheck วันอื่นของ BU / ถ้า engine ตอบ `-500` อ่านตารางอีกครั้ง แถวที่ไม่มีบัญชีเข้ามาในวันนั้น และวันยังรอ (400) |
 | Reject | Form Submit | `POST /api/v1/pms/days/{id}/reject` → `rejected`, reason `rejected_by_reviewer`, ล้าง payload |
-| Revoke (admin) | Confirm | `#/admin/api-keys` — เพิกถอนทันที พร้อมเหตุผล |
+| Revoke (admin) | Confirm | `#/admin/api-keys` — เพิกถอนทันที พร้อมเหตุผล และปิด PMS นั้นเหมือนการ revoke จากหน้าจอ Carmen (บอกในหน้าต่างยืนยัน และ toast บอกจำนวนวันที่ปิด) |
 
 <!-- pagebreak -->
 
@@ -435,7 +436,7 @@ sequenceDiagram
 ## 8.6 Sweep ทุก 10 นาที (`pms-process`)
 
 0. **เปิดวันของเมื่อวาน** (`_open_days`, decision-log #55): ตั้งแต่ 06:00 ICT เปิดวันของเมื่อวานให้ BU × PMS ที่มี key ที่ใช้ได้ และ `interfaceThirdParties` บอกว่าลง REVENUE → GL ไม่ว่า `From` จะเป็นอะไร (อ่านรายการของแต่ละ BU วันละครั้ง) — Data Bank ยังไม่มีวันนั้นก็ไม่เป็นไร: preview ตอบ No Data แล้ววันรอ `day_not_ready` — วันที่ hook เก็บไว้แล้ว (แม้ตัวพิมพ์ต่าง) ไม่เปิดซ้ำ
-1. **Requeue:** วันที่รออยู่ของ BU × PMS ที่เปิด auto-post ซึ่งไม่มี reason และไม่มี flag เหลือแล้ว (เพราะ approve วันอื่นไป หรือเพิ่งเปิด auto-post) กลับไป `received` และถูกอ่านใหม่ทั้งหมดก่อน post
+1. **Requeue:** วันที่รออยู่ของ BU × PMS ที่เปิด auto-post และยังมี key ที่ใช้ได้ (decision-log #56) ซึ่งไม่มี reason และไม่มี flag เหลือแล้ว (เพราะ approve วันอื่นไป หรือเพิ่งเปิด auto-post) กลับไป `received` และถูกอ่านใหม่ทั้งหมดก่อน post
 2. **ปลุกเมื่อมี credential ใหม่:** วันที่ `received`/`failed` ด้วย `no_credential`, `carmen_unauthorized`, `carmen_forbidden`, `carmen_config_unreadable` กลับมาใหม่ (attempts รีเซ็ต) เมื่อ `carmen_token_verified_at` ใหม่กว่า `processed_at` ของวันนั้น
 3. **ประมวลผล** วัน `received` ไม่เกิน 50 วัน เก่าก่อน — `job_runs` บันทึกเฉพาะรอบที่มีงานหรือล้มเหลว
 
@@ -466,6 +467,7 @@ sequenceDiagram
 | `pms_mapping_incomplete` | engine ตอบ `-500`: มี key ที่ไม่มีบัญชี | `pending_review` พร้อมแถวที่ Carmen เขียนไว้ | ผู้ตรวจ map ใน dialog แล้ว Approve |
 | `carmen_rejected` | engine ปฏิเสธด้วยเหตุอื่น (เช่น บัญชีไม่อยู่ในผัง, ไม่มีค่า DrCr) | `pending_review` | ผู้ตรวจ พร้อมข้อความของ Carmen — ส่วนใหญ่แก้ที่ setting ของ Carmen |
 | `rejected_by_reviewer` | คนกด Reject | `rejected` | — |
+| `pms_switched_off` | BU ปิด PMS นี้ (revoke key, decision-log #56): วันที่ยังเปิดอยู่ตอนนั้น หรือวันที่ประมวลผลโดยไม่มี key ที่ใช้ได้ | `received` / `pending_review` → `rejected` (ไม่เรียก Carmen ไม่ post) | เปิด PMS ใหม่ใน Carmen (Generate key) แล้วให้ Carmen ส่ง hook ของวันนั้นใหม่ หรือ post เอง |
 | `already_posted` | Carmen post วันนั้นเองไปก่อน | `posted` | — |
 
 | Case ID | Scenario | ระบบทำอะไร |

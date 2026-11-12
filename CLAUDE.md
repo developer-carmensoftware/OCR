@@ -267,7 +267,10 @@ PMS, and a write stores the token it was proven with as the BU's credential unle
 already holds one that works (decision-log #45). There is no
 PMS settings page of ours, and the queue's `no_credential` has no fix button: the fix is
 saving the PMS setting in Carmen. `#/admin/api-keys` stays as a support tool: list and
-revoke, **no issuing**. Revoking is how a PMS is switched off (no `modules` row yet).
+revoke, **no issuing**. Revoking is how a PMS is switched off (no `modules` row yet), from either
+place, and it stops the PMS for good (decision #56): `pms_review.switch_off` closes its open days
+(`rejected`/`pms_switched_off`, under Not posted) and turns its auto-post off, and processing
+closes any day it meets without a live key. Replacing a key (`api_keys.issue`) is not a switch-off.
 **The sweep opens yesterday's day for every PMS with a live key, from 06:00 ICT** (decision #55),
 so the loop does not wait on Carmen's hook: the hook only brings a day sooner, and a day Carmen
 never gets fails after 24 hours under Not posted. PMSs that Carmen's own post API fetches

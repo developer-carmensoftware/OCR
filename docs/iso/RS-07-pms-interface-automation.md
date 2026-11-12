@@ -3,11 +3,11 @@ title: PMS Interface Automation
 iso-wp: RS
 iso-topic: 07_PMS_Interface_Automation
 iso-ref: RS-07|PMS-[A-Z]+\d
-Document Version: Version 0.3 (Requirements Specification)
+Document Version: Version 0.4 (Requirements Specification)
 แผนงาน: PMS Interface automation (10/09 – 30/09/2026)
 Module ID: `pms_interface` (บันทึกการใช้ LLM เท่านั้น ไม่คิดเครดิต)
-รายละเอียดการออกแบบ: FRD-11 PMS Interface Automation v1.5 (Software Design) และ `docs/pms-interface/`
-Source of truth: repo developer-carmensoftware/OCR @ 93df1c59 (12/11/2026) + branch feat/pms-sweep-opens-every-pms
+รายละเอียดการออกแบบ: FRD-11 PMS Interface Automation v1.6 (Software Design) และ `docs/pms-interface/`
+Source of truth: repo developer-carmensoftware/OCR @ 6eba2efe (12/11/2026) + branch feat/pms-switch-off
 สถานะระบบ: แถวของวันมาจาก preview ของ engine ของ Carmen (decision-log #54) · การ post ของ Carmen เป็นตัวตรวจ mapping (#52, #53) · sweep เปิดวันของเมื่อวานให้ทุก PMS ตั้งแต่ 06:00 ICT จึงไม่ต้องรอ hook (#55) · hook จริงยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K)
 Date: 12 November 2026
 ---
@@ -19,6 +19,7 @@ Date: 12 November 2026
 | 0.1 | 02/11/2026 | Dev Team | จัดทำฉบับแรก — สรุปข้อกำหนดจาก FRD-11 v1.2 ที่ตรวจกับโค้ดแล้ว | |
 | 0.2 | 10/11/2026 | Dev Team | ตาม FRD-11 v1.4 (decision-log #52–#54): แถวของวันมาจาก preview ของ engine, `-500` นำ key ที่ขาดเข้าการตรวจ, เปิดวันของ PMS แบบ PartnerApi, `day_not_ready`, เก็บเลข JV, AI ไม่เห็นยอดเงิน — PMS-F05/F06/F08/F13, I01, Q04 แก้ และเพิ่ม PMS-F14 | |
 | 0.3 | 12/11/2026 | Dev Team | ตาม FRD-11 v1.5 (decision-log #55): PMS-F14 แก้ — เปิดวันของเมื่อวานให้ทุก PMS ที่ลง REVENUE → GL ไม่ว่า `From` จะเป็นอะไร ตั้งแต่ 06:00 ICT (เดิมเฉพาะ PartnerApi หลัง 08:00) | |
+| 0.4 | 12/11/2026 | Dev Team | ตาม FRD-11 v1.6 (decision-log #56): เพิ่ม PMS-F15 — revoke key = ปิด PMS: ปิดวันที่ยังเปิดอยู่และ auto-post, ไม่มี key ที่ใช้ได้ไม่ post อัตโนมัติ | |
 
 <!-- pagebreak -->
 
@@ -65,6 +66,7 @@ Date: 12 November 2026
 | PMS-F12 | ระบบต้องไม่ส่ง Dr/Cr หรือยอดรวมของตัวเองไป Carmen การ post ต้องผ่าน engine ของ Carmen ตาม PMS setting เท่านั้น | ทดสอบ | §1, §11.2 |
 | PMS-F13 | เมื่อ engine ของ Carmen ตอบ `-500` (มี key ที่ไม่มีบัญชี) วันต้องพักเป็น `pms_mapping_incomplete` พร้อมแถวที่ Carmen เขียนลงตารางและคำแนะนำของ AI และเมื่อ preview ใช้ไม่ได้ วันต้องพักโดยไม่มีแถว (ไม่ล้ม) | ทดสอบ | §2.1, §8.4, §9 |
 | PMS-F14 | ระบบต้องเปิดวันของเมื่อวานเองตั้งแต่ 06:00 ICT ให้ BU × PMS ที่มี key ที่ใช้ได้และ `interfaceThirdParties` บอกว่าลง REVENUE → GL ไม่ว่า `From` จะเป็นอะไร — hook แค่ทำให้วันมาเร็วขึ้น (PMS แบบ `PartnerApi` ไม่มี hook เลย) และวันที่ hook เก็บไว้แล้วต้องไม่ถูกเปิดซ้ำ | ทดสอบ | §2.1, §8.6 |
+| PMS-F15 | เมื่อ BU revoke key ของ PMS (จากหน้าตั้งค่า Carmen หรือ `#/admin/api-keys`) ระบบต้องปิด PMS นั้นทั้งหมด: วันที่ยังเปิดอยู่ (`received`, `pending_review`) ต้องถูกปิดเป็น `rejected` / `pms_switched_off` และแสดงใน Not posted ยกเว้นวันที่มีคนกำลังกด Approve, auto-post ต้องถูกปิด และวันที่ประมวลผลโดยไม่มี key ที่ใช้ได้ต้องไม่ถูก post อัตโนมัติ — การออก key ใหม่แทนอันเดิมไม่ใช่การปิด | ทดสอบ | §2.2, §8.6, §9 |
 
 # 3. ข้อกำหนดด้านส่วนติดต่อผู้ใช้
 
