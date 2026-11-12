@@ -545,15 +545,15 @@ await test('F-01', 'Source: one and several; rows and counts both drop the rest'
   await close(h)
 })
 
-await test('F-02', 'Bank leaves PMS days out and says so; releasing it brings them back', async () => {
+await test('F-02', 'Bank leaves PMS days out; releasing it brings them back', async () => {
   const h = await open('a', '#/CreditCardOCR?filter=all')
   await pill(h, 'KBANK')
   await expectView(h, 'all', { bank: 'KBANK' }, 'KBANK')
-  // The note sits in the Bank list itself: said where the choice is made.
+  // No note in the Bank list: the lock on the PMS item (G-01..G-03) is where this is said.
   await closeMenu(h)
   await filtersBtn(h).click()
   await menu(h).getByRole('menuitem', { name: /^Bank/ }).click()
-  ok(await menu(h).getByText(/PMS days have no bank/).isVisible(), 'the note')
+  ok(!(await menu(h).getByText(/PMS days have no bank/).count()), 'no note in the Bank list')
   await menu(h).locator('[aria-checked="true"]').click() // the picked bank, picked again: released
   await idle(h)
   await expectView(h, 'all', {}, 'released')
@@ -2138,7 +2138,6 @@ const CONTRAST = () => {
   check('menu-item', document.querySelector('.rq-menuitem'))
   check('menu-item-on', document.querySelector('.rq-menuitem[aria-checked="true"]'))
   check('menu-hint', document.querySelector('.rq-menu-hint'))
-  check('menu-note', document.querySelector('.rq-menu-note'))
   return out
 }
 await test('L-02', 'contrast of every new text element ≥ 4.5:1, light and dark', async () => {
