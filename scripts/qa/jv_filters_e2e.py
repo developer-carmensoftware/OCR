@@ -587,10 +587,19 @@ async def seed_big(conn: asyncpg.Connection, out: dict) -> None:
 
 
 async def explain(conn: asyncpg.Connection) -> None:
-    """EXPLAIN ANALYZE of what the list runs for tenant D: the email window and the counts."""
+    """EXPLAIN ANALYZE of what the list runs for tenant D: each source's window and counts,
+    with where the rows come from (Seq = a sequential scan, Idx = the index used)."""
     from sqlalchemy.dialects import postgresql
 
-    from app.services.credit_card.activity import _counts_stmt, _email_stmt, parse_narrow
+    from app.services.credit_card.activity import (
+        _counts_stmt,
+        _email_stmt,
+        _manual_counts_stmt,
+        _manual_stmt,
+        _pms_counts_stmt,
+        _pms_stmt,
+        parse_narrow,
+    )
 
     fx = json.loads((OUT / "fixture.json").read_text(encoding="utf-8"))
     tid = uuid.UUID(fx["tenants"]["d"]["id"])
@@ -600,8 +609,12 @@ async def explain(conn: asyncpg.Connection) -> None:
         ("source + bank + 30 days", parse_narrow("", "email", "KBANK", "30d")),
     ]:
         for what, stmt in [
-            ("list ", _email_stmt(tid, None, None, narrow).limit(100)),
-            ("count", _counts_stmt(tid, DAY_START, narrow)),
+            ("email list ", _email_stmt(tid, None, None, narrow).limit(100)),
+            ("email count", _counts_stmt(tid, DAY_START, narrow)),
+            ("manual list", _manual_stmt(tid, None, None, narrow).limit(100)),
+            ("manual cnt ", _manual_counts_stmt(tid, DAY_START, narrow)),
+            ("pms list   ", _pms_stmt(tid, None, None, narrow).limit(100)),
+            ("pms count  ", _pms_counts_stmt(tid, DAY_START, narrow)),
         ]:
             sql = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
             # A literal ESCAPE comes out with its backslash doubled; Postgres wants exactly one character.
@@ -612,14 +625,19 @@ async def explain(conn: asyncpg.Connection) -> None:
             nodes = []
 
             def walk(n):
-                nodes.append(n["Node Type"])
+                # Where the rows come from: `Seq email_documents`, `Idx ix_email_documents_task_id`.
+                kind = n["Node Type"]
+                if kind == "Seq Scan":
+                    nodes.append(f"Seq {n['Relation Name']}")
+                elif "Index" in kind:
+                    nodes.append(f"Idx {n.get('Index Name', '?')}")
                 for c in n.get("Plans", []):
                     walk(c)
 
             walk(plan["Plan"])
             print(
-                f"{label:26} {what}  {plan['Execution Time']:8.1f} ms  planning {plan['Planning Time']:5.1f} ms"
-                f"  {'Seq Scan' if 'Seq Scan' in nodes else 'index only/other'}"
+                f"{label:24} {what}  {plan['Execution Time']:8.1f} ms"
+                f"  {', '.join(dict.fromkeys(nodes)) or '-'}"
             )
 
 
