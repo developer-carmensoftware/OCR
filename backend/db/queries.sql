@@ -791,3 +791,56 @@ WHERE e.deleted_at IS NULL AND e.bank_code IS NULL
                   WHERE cc.tenant_id = c.tenant_id AND cc.deleted_at IS NULL
                     AND cc.bank_code IS NOT NULL)
 GROUP BY t.bu_code;
+
+
+-- ============================================================
+-- SQL PASS FOLLOW-UP, 2026-11 (items 31-33; docs/SQL_PERFORMANCE_AUDIT.md section 7)
+-- Read-only. Run from the Supabase SQL Editor, one at a time.
+-- ============================================================
+
+-- 31. Cron routes against real traffic, last 7 days.
+--
+-- The cron routes (/carmen/email-ingest/confirmations every minute, /email/ingest and
+-- /pms/process/run every ten) are logged to performance_logs like any request. This shows how much
+-- of the table they are and what ONE idle tick costs: the confirmations route does a single SELECT
+-- in a single session and returns, so its latency is the cleanest control we have for per-request
+-- connection overhead. The August audit measured it at p50 2,297 ms.
+SELECT
+    endpoint,
+    COUNT(*)                                                                      AS calls_7d,
+    ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY duration_ms)::NUMERIC, 0)  AS p50_ms,
+    ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms)::NUMERIC, 0)  AS p95_ms
+FROM performance_logs
+WHERE created_at >= NOW() - INTERVAL '7 days'
+GROUP BY endpoint
+ORDER BY calls_7d DESC
+LIMIT 15;
+
+-- 32. Did the JV-queue index migration land, and are its indexes used?
+-- (20261112000000_activity_queue_indexes.sql). idx_scan only counts since the last stats reset;
+-- give it a working day of traffic before reading a 0 as "unused".
+SELECT version FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 3;
+
+SELECT indexrelname, idx_scan, pg_size_pretty(pg_relation_size(indexrelid)) AS size
+FROM pg_stat_user_indexes
+WHERE indexrelname IN ('ix_email_documents_task_id', 'ix_credit_cards_tenant_when');
+
+-- 33. Per-checkout overhead, as the server sees it.
+--
+-- Locally, a warm checkout shows the server two BEGIN/ROLLBACK pairs around the query (one pair is
+-- pool_pre_ping), and `SET statement_timeout` arrives ONCE PER PHYSICAL CONNECTION, not per checkout
+-- (`db_roundtrips.py --app-engine --breakdown`). So on production:
+--   BEGIN calls / SET statement_timeout calls  =  checkouts per connection.
+--   A ratio near 1-3 means almost every checkout opens a fresh connection: churn, which is what
+--   ~3.2 pooler authentications per request (August audit, section 3.1e) would look like.
+--   A ratio in the hundreds is a warm pool, and the 3.2 came from somewhere else.
+-- DISCARD ALL calls are the pooler recycling a server connection when a client one closes.
+SELECT LEFT(query, 50) AS statement, calls
+FROM pg_stat_statements
+WHERE query ILIKE 'SET statement_timeout%'
+   OR query ILIKE 'DISCARD ALL%'
+   OR query ILIKE 'SELECT 1%'
+   OR query IN ('BEGIN', 'ROLLBACK', 'COMMIT')
+ORDER BY calls DESC;
+
+SELECT SUM(calls) AS all_calls FROM pg_stat_statements;

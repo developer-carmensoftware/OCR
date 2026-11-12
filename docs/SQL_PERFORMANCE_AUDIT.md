@@ -811,6 +811,62 @@ migration could have been silently wrong rather than loudly broken.
 
 ---
 
+## 7. 2026-11 follow-up
+
+A second pass, three months on, after email ingest, PMS, the JV queue and encrypted columns had arrived. The verdict did not move:
+SQL is still a sliver of request time. What it added is below; every number is local (a 20,000-row tenant on a local Postgres 17) unless
+marked production, and production numbers are still to be pasted in from `queries.sql` items 31–33.
+
+### 7.1 What shipped, and what was measured and rejected
+
+| Change | Measured | Status |
+|---|---|---|
+| Deep activity page built from `(id, when)` keys, not rows (PR #366) | last page p50 1,124 → ~235 ms, p95 1,865 → ~335 ms | merged |
+| `ix_email_documents_task_id`, `ix_credit_cards_tenant_when` (PR #368) | manual list 8.3 → 0.6 ms; 39 other statements re-planned, none gains a Seq Scan; writes +8% | merged; **not applied to production yet** |
+| Fewer round trips: `/auth/usage`, session validation, `/notifications` | `/auth/usage` 2 → 1 checkouts, 10 → 6 server statements | built, not merged |
+| `pms_events (tenant_id, created_at desc)` | the existing single-column index already serves the list at 0.1 ms | **rejected** |
+| Covering index for the queue's chip counts | the planner kept its sequential scan (4.4 ms) | **rejected** |
+| Dropping the 105 never-used indexes (F7) | 16 kB each; each drop is a migration line for no measurable return | **rejected again** |
+
+### 7.2 What one pool checkout costs, measured
+
+`scripts/qa/db_roundtrips.py --breakdown` lists the statements the server saw for one warm request. For `/auth/usage` (two checkouts, two
+queries) it saw **4 BEGIN, 4 ROLLBACK and the 2 queries**, ten in all; with `--no-pre-ping`, 2 BEGIN, 2 ROLLBACK and the 2 queries, six. So each
+checkout is two BEGIN/ROLLBACK pairs around its queries, and one of those pairs is `pool_pre_ping`.
+
+`--matrix` (checkouts / ORM statements / server statements, one warm request):
+
+| case | as the app is | no pre-ping | no timeout listener | neither |
+|---|---|---|---|---|
+| `/auth/usage` (before PR-B) | 2/2/10 | 2/2/6 | 2/2/10 | 2/2/6 |
+| `/notifications` (before PR-B) | 1/3/7 | 1/3/5 | 1/3/7 | 1/3/5 |
+| `/email/documents` | 1/2/6 | 1/2/4 | 1/2/6 | 1/2/4 |
+| `/credit-card/activity`, first page | 1/6/10 | 1/6/8 | 1/6/10 | 1/6/8 |
+
+(One cell, activity/review without the listener, read 11 instead of 9: `pg_stat_statements` counts every session in the database, so a stray
+statement from another connection can add one or two. The pattern is the other 27 cells.)
+
+**A correction to what this repository said before.** `database.py` and §6.2 above describe `SET statement_timeout` as re-applied "on every
+checkout". On the app's own engine it is not: the server sees it **once per physical connection** (first checkout of a connection shows
+`SET statement_timeout = '30000'`; checkouts 2–4 on the same connection show only the BEGIN/ROLLBACK pairs), while `SHOW statement_timeout`
+reads `30s` inside every checkout. The mechanism was not chased (the asyncpg adapter is the likely place). Locally that is harmless; it
+means the listener costs a warm request nothing.
+
+### 7.3 What is still open, and how to close it
+
+1. **Connection churn.** The ~3.2 pooler authentications per request (§3.1e) is unexplained. Locally there is none (0 new connects on a warm
+   pool). `queries.sql` item 33 turns this into a measurement on production: `BEGIN` calls ÷ `SET statement_timeout` calls is checkouts per
+   connection (the SET arrives once per connection). A ratio near 1–3 is churn; hundreds is a warm pool.
+2. **The idle-tick control.** `/carmen/email-ingest/confirmations` does one SELECT in one session and was p50 2,297 ms in August. Item 31 reads it
+   again. If it is still seconds, connection setup (not SQL) is the cost, and it is the case to watch while changing anything about the pool.
+3. **Two changes only a real pooler can validate**, so they are *not* made here: dropping `pool_pre_ping` (it would save two statements per checkout,
+   but stale connections after Supavisor drops an idle one only show up there), and `ALTER ROLE ... SET statement_timeout` replacing the listener
+   (whether it survives Supavisor's `DISCARD ALL`). To test them: on a QA project, with a **disposable role** and the session-mode port 5432, never the
+   transaction pooler on 6543 and never a shared role (a read-only setting once leaked that way): create the role with the setting, connect as it
+   through the pooler, `SHOW statement_timeout`, disconnect, reconnect, `SHOW` again. Run `db_roundtrips.py --matrix` on the same build for the app side.
+
+---
+
 ## Appendix — reproducing this report
 
 1. Open the Supabase SQL Editor for the production project. **Not** psql, and **not** an
