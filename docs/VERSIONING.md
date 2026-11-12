@@ -25,18 +25,29 @@ What `0.1.0` contains, and why it counts as MINOR-level only, is in
 for real**, not simulated. Concretely, on a real BU in a real Carmen environment:
 
 1. Carmen's PMS setting screen generates the key and sets auto-post through our Settings API.
-2. Carmen's hook calls `POST /api/v1/pms/events` with that key and we store the day.
+2. The day reaches us: Carmen's hook calls `POST /api/v1/pms/events` with that key, or, when no
+   hook came, our sweep opens yesterday's day from 06:00 ICT for that BU × PMS (decision-log #55).
+   The hook only brings a day sooner; it is not required for the loop.
 3. We read the day back from Carmen, map the rows, and park it for review or post it.
 4. A person approves in the queue and Carmen's engine **posts** the day (no `Result:false`).
 5. The JV number comes back and the queue's *Open JV* opens it.
-6. This works for **every PMS that interfaces with Carmen**, not one vendor. Carmen owns the list of PMSs
-   (it has said it will announce kinds as they come); the list is recorded here when Carmen confirms it, and
-   each PMS on it must pass steps 1–5. Until then Comanche is the only one exercised. It is on prod, not only QA.
+6. This works for **every PMS that interfaces with Carmen**, not one vendor: every PMS that
+   `interfaceThirdParties` lists for the BUs going live passes steps 1–5. Each BU's own list is read,
+   so no Carmen-wide list is needed, and one PMS may reach Carmen differently per BU. It is on prod,
+   not only QA.
 
-Status as of 2026-11-05 (from [pms-interface/07-status.md](pms-interface/07-status.md)): **not met yet.**
-The first real end-to-end (CA-120) is still To Do; the prod release (CA-118) is open; and Comanche.PMS
-refuses to post (item K, "Line No. 30,31 has no DrCr value", a Carmen-side setting). The steps above
-are the checklist; update this block rather than writing a second definition.
+**The user decides when 1.0.0 is cut**, after everything is fully tested, even if every step above
+looks met (2026-11-12). Until then `VERSION` stays `0.x.z`.
+
+Status as of 2026-11-12 (from [pms-interface/07-status.md](pms-interface/07-status.md)): **not met yet.**
+
+- **Steps 3–5 work on QA** for HotelTime and Cloudbeds (JVs posted and voided, 2026-11-11). The 06:00
+  sweep (#55) means step 2 no longer waits on the hook.
+- **Step 1:** Carmen's setting screen is not confirmed (ask H).
+- **Step 4 for Comanche:** Comanche.PMS refuses every post (ask K, a Carmen-side setting).
+- **Not started:** the first real end-to-end (CA-120) and the prod release (CA-118).
+
+The steps above are the checklist; update this block rather than writing a second definition.
 
 ## What each digit means (from 1.0.0)
 

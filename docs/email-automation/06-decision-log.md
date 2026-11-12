@@ -1857,3 +1857,52 @@ fallback stays as a fallback.
   what the INI's `JsonKeys` names.
 - The reviewer still learns of asks K and N only from the post. Carmen adding Amount, Dr/Cr
   and those errors to the preview would bring them before Approve.
+
+## 55. The sweep opens every PMS's day from 06:00; the hook only brings it sooner (2026-11-12)
+
+**Status: built** (branch `feat/pms-sweep-opens-every-pms`). Widens #52's opening of PartnerApi
+days to every PMS, and moves it from 08:00 to 06:00 ICT.
+
+**Why.**
+- A `CarmenApi` PMS (Comanche, HotelTime, Cloudbeds) reached us only through Carmen's hook. On
+  2026-11-12 the hook still sends Carmen's own token, not the PMS's key, so it gets 401:
+  - auto-post and the review queue did not work for any of them;
+  - a lost hook would lose its day without anyone noticing.
+- The user asked for the queue to be filled before people start work, so 06:00 rather than 08:00.
+
+**Decision** (the user, 2026-11-12).
+- **The sweep opens yesterday's day for every PMS a BU has a live key for**, when Carmen's
+  `interfaceThirdParties` names it as posting REVENUE to GL, **whatever its `From`**:
+  - `CarmenApi`: the hook only brings the day sooner;
+  - `PartnerApi`: no hook ever comes (#52);
+  - empty, where a user imports a file: the same, until Carmen says whether an import fires
+    the hook.
+- **From 06:00 ICT** (`OPEN_AFTER_HOUR = 6`), for every BU and every kind.
+- `cfg.partner_interfaces` → `cfg.revenue_interfaces` (no `From` filter);
+  `_open_partner_days` → `_open_days`; `_partner_names`/`_partner_cache` →
+  `_listed_pms`/`_listed_cache`.
+
+**What did not need changing.**
+- **A day the sweep opened may have no Data Bank row yet.** `process._process` already let
+  such a day through to Carmen's preview, whose `-400 No Data` waits hourly as `day_not_ready`
+  without spending tries, and gives up after 24 hours as `day_not_found`. A hooked `CarmenApi`
+  day opened before the hotel's night audit reaches Carmen takes that same path.
+- **A day is one row.** A hook that comes after the sweep is a repeat (200, `duplicate`), and
+  re-reads the day if it is not posted, a failed one included. A day the hook stored first is
+  not opened again (the lower-cased `event_id` check of #52).
+- **The cron schedule** (`pms-process`, every 10 minutes) and its migration.
+
+**Consequences.**
+- The loop no longer waits on Carmen's hook: a key from Carmen's PMS setting screen (ask H)
+  is enough. The 1.0.0 gate's step 2 now reads "hook or sweep" (`docs/VERSIONING.md`).
+- **A day Carmen never gets fails after 24 hours** and shows under Not posted ("Carmen's Data
+  Bank does not have this day").
+  - For a live BU that is a real signal: the hotel's day is missing.
+  - On QA's test BUs, whose dev Data Bank holds no recent days, it is a failed row per PMS
+    per day. Revoke the test keys not in use.
+- **Known limits.**
+  - Only yesterday is opened. A day the sweep missed entirely (the server down all day)
+    waits for its hook.
+  - A `PartnerApi` PMS is read live from the third party. At 06:00 it could give a hotel's day
+    before the night audit closed. None posts REVENUE yet; look again when one does.
+  - Each BU × PMS with new rows asks the AI once a morning.

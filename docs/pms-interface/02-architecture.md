@@ -301,8 +301,13 @@ does not fail:
 - **Carmen's answer decides:** a `-500` parks `pms_mapping_incomplete`. The table's rows
   without an account (the keys the engine just wrote) join the review with the AI's picks
   (`with_carmen_keys`).
-- **Opening PartnerApi days:** the `pms-process` sweep opens yesterday's day for each BU × PMS
-  that has a live key and whose `interfaceThirdParties` row says `From: PartnerApi`.
+- **Opening days (decision-log #55):** from 06:00 ICT the `pms-process` sweep opens
+  yesterday's day for each BU × PMS that has a live key and an `interfaceThirdParties` row
+  posting REVENUE to GL, whatever its `From`.
+  - **A `PartnerApi` PMS** never sends a hook.
+  - **For the others,** the hook only brings the day sooner.
+  - **A day Carmen does not have yet** waits hourly (`day_not_ready`), and fails as
+    `day_not_found` after 24 hours. A later hook re-reads it.
 
 ## What the AI is asked (`mapping.suggest`)
 

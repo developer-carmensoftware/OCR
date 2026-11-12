@@ -16,6 +16,17 @@ that day. It carries no PMS data: we read the day back from the Data Bank oursel
 integration for now: one URL for the hook, and a key per BU and PMS that your PMS setting
 screen generates through our Settings API (§2, §6).
 
+**Without a hook, the day still comes, just later** (decision-log #55).
+
+- **When:** every morning from 06:00 ICT, we open yesterday's day ourselves for every PMS a BU
+  has a key for, as `interfaceThirdParties` lists it for that BU (posting REVENUE to GL).
+- **Same rules as a hook:** a day you already hooked is not opened twice, and a day not yet in
+  your Data Bank is asked again hourly for 24 hours.
+- **A hook only brings the day sooner.** It is still worth sending: it starts processing the
+  moment the day lands, and it re-reads a day you load again.
+- **A PMS you fetch yourself (`From: PartnerApi`)** sends no hook at all, and is handled the
+  same way.
+
 ---
 
 ## 1. Endpoint
@@ -216,42 +227,33 @@ naming the field, `429` with `Retry-After`.
 
 ## 7. Open questions for Carmen
 
-Tracked in CA-116, with what we found on the dev Data Bank:
+Tracked in CA-116. Settled ones are kept, struck through, so the numbers stay stable.
 
 1. **Settled (2026-10-14):** the AI maps, Carmen posts. The day goes through
    `interfacePostGL/REVENUE`, by the BU's PMS setting and its mapping table in Carmen.
-2. **A GET for the setting and the mapping on `/api/interface`** (blocker). The menu's token
-   opens only `/api/interface/*`, and `interfacePost/Setting` and `interfacePost/mapping`
-   have no GET there. Without one, an unattended day cannot know what to map or which
-   setting posts it.
-3. **The token we use to read the Data Bank and post,** per BU, with no user session. It
-   needs to last longer than a few hours, and to hold `Inf.PMS.DataBank` View (a menu user
-   without it gets 403).
+2. ~~**A GET for the setting and the mapping on `/api/interface`.**~~ Settled 2026-11-03:
+   `interfaceThirdParties` names each PMS's setting, and the mapping table has a GET there
+   (decision-log #51).
+3. **The token we use to read and post,** per BU, with no user session. It must not expire,
+   and must hold `Inf.PMS.DataBank` View. On 2026-11-12 one token answered
+   `"SecurityToken has Expired"`. Does the token your setting screen sends expire, and does
+   opening the menu again revoke the old one?
 4. ~~**The JV number** in `interfacePostGL`'s answer.~~ Done 2026-11-03: the answer's `Id`
    holds the JV's seq.
-5. **What a repeat hook means.** Is the hook sent on Add *and* on AddOrUpdate? Is a second
-   hook for the same day a changed day that we should process again?
+5. **What a repeat hook means.** Is the hook sent on Add *and* on AddOrUpdate? We re-read any
+   day not posted yet either way.
 6. **Is the gross Summary line intended?** For Comanche it is 2 × Guest Ledger to the
    counter account, against the Guest Ledger row's credit.
-7. **When a post is refused for mapping, name the missing keys.** Today `interfacePostGL`
-   answers `-500 "Mapping is incomplete."` and says nothing more. Your engine has just keyed
-   the day by the PMS's own setting and found which keys the mapping table lacks. Please list
-   them in the answer, in the mapping table's own column names:
-
-   ```json
-   {"Code": -500, "UserMessage": "Mapping is incomplete.",
-    "Missing": [{"HT_Code": "4100001", "HT_Description": "001 - Room Charge (Auto)", "Department": ""}]}
-   ```
-
-   It is one change in one place, for every PMS, and your users see which codes to map too.
-   Two questions with it:
-   - What does a post answer for a date with no data yet?
-   - Does a post for a PMS you fetch yourself (`From: PartnerApi`) take a date range with no
-     `id`?
-8. **`interfaceThirdParties` answers 500** on dev since 2026-11-05: *"The best overloaded
-   method match for 'string.IsNullOrWhiteSpace(string)' has some invalid arguments"*. It
-   answered on 2026-11-03. We read it first for every day, and its `From` tells us which PMSs
-   you fetch yourself.
+7. ~~**Name the missing keys when a post is refused for mapping.**~~ Not needed
+   (decision-log #53): on `-500` your engine writes the missing keys into the mapping table, and
+   we read them back. Its two side questions are answered: a date with no data answers `-400
+   "No Data Found on …"`, and a post without `id` goes by date.
+8. ~~**`interfaceThirdParties` answers 500.**~~ Closed 2026-11-06: it answers again.
+9. **A PMS whose day a user imports from a file** (`From` empty in `interfaceThirdParties`):
+   does the import land in the Data Bank and send the hook, as for a `CarmenApi` PMS? We open
+   its day at 06:00 either way (decision-log #55).
+10. **`Comanche.PMS` refuses every post** (`"Line No. 30,31 has no DrCr value."`). The same day
+    with the same mapping table posts through `test.PMS`, so it is the setting, on your side.
 
 ---
 

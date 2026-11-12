@@ -247,15 +247,24 @@ def test_the_table_to_put_is_every_row_read_plus_the_picks():
     ]
 
 
-def test_the_pmss_carmen_fetches_itself_are_its_partner_interfaces():
-    """`From: PartnerApi` means no hook comes: our sweep opens those days (decision-log #52)."""
+def test_every_pms_posting_revenue_to_gl_is_listed_whatever_its_from():
+    """Decision-log #55: our sweep opens a day for every PMS a BU posts REVENUE to GL with,
+    however the day reaches Carmen. A hook only brings a day sooner."""
     listed = [
-        *INTERFACES,
+        *INTERFACES,  # Comanche: CarmenApi, a hooked PMS
         {**INTERFACES[0], "InterfaceName": "HotelTime", "From": "PartnerApi"},
         {**INTERFACES[0], "InterfaceName": "GuestLine", "From": "partnerapi"},
+        {**INTERFACES[0], "InterfaceName": "Fidelio", "From": None},  # the user imports a file
         {**INTERFACES[0], "InterfaceName": "Opera", "From": "PartnerApi", "DocType": "STATISTIC"},
         {**INTERFACES[0], "InterfaceName": "Vento", "From": "PartnerApi", "PostToModule": "AR"},
+        {**INTERFACES[0], "InterfaceName": "Pos", "InterfaceType": "POS"},
         "not a row",
     ]
-    assert cfg.partner_interfaces(listed) == {"hoteltime": "HotelTime", "guestline": "GuestLine"}
-    assert cfg.partner_interfaces(INTERFACES) == {}
+    assert cfg.revenue_interfaces(listed) == {
+        "comanche": "Comanche",
+        "hoteltime": "HotelTime",
+        "guestline": "GuestLine",
+        "fidelio": "Fidelio",
+    }
+    assert cfg.revenue_interfaces(INTERFACES) == {"comanche": "Comanche"}
+    assert cfg.revenue_interfaces([]) == {}
