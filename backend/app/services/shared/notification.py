@@ -11,7 +11,6 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.billing import UserNotification
-from app.utils.pagination import paginate
 
 
 def notify(
@@ -88,18 +87,25 @@ async def list_notifications(
     `unread_count` deliberately ignores the window: the bell's badge must report every
     unread notification, not just the unread ones that happen to be on this page.
     """
+    # Total and unread are two aggregates over the same rows: one statement, then the page. (It was
+    # `paginate()`'s COUNT, its page, and a separate unread COUNT: three round trips for two numbers.)
+    total, unread = (
+        await db.execute(
+            select(
+                func.count(),
+                func.count().filter(UserNotification.read_at.is_(None)),
+            ).where(UserNotification.tenant_id == tenant_id)
+        )
+    ).one()
     stmt = (
         select(UserNotification)
         .where(UserNotification.tenant_id == tenant_id)
         .order_by(UserNotification.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     )
-    items, total = await paginate(db, stmt, limit, offset)
-    unread_q = select(func.count()).where(
-        UserNotification.tenant_id == tenant_id,
-        UserNotification.read_at.is_(None),
-    )
-    unread = (await db.execute(unread_q)).scalar_one()
-    return items, total, unread
+    items = (await db.execute(stmt)).scalars().all()
+    return list(items), total, unread
 
 
 async def has_notification(

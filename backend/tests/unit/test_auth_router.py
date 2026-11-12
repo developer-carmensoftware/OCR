@@ -553,3 +553,43 @@ class TestUpsertTenant:
         # The loser of the race must NOT grant — the winner already did.
         assert created is False
         assert db.execute.call_count == 3
+
+
+class TestUsageEndpoint:
+    """GET /auth/usage — one `get_usage` call feeds both halves of the answer."""
+
+    async def test_shapes_balance_and_subscription_from_one_call(self):
+        from datetime import UTC, datetime
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+
+        from app.routers import auth as auth_router
+
+        sub = SimpleNamespace(
+            plan_code="sub_pro",
+            doc_allowance=100,
+            docs_used=30,
+            period_start=datetime(2026, 6, 24, tzinfo=UTC),
+            period_end=datetime(2026, 7, 23, tzinfo=UTC),
+            billing_period="monthly",
+            status="active",
+        )
+        usage = AsyncMock(return_value=(9, sub))
+        with patch("app.services.shared.credits.get_usage", usage):
+            out = await auth_router.get_usage(_session=SimpleNamespace(tenant_id="t-001"))
+
+        usage.assert_awaited_once_with("t-001")
+        assert out["usage"]["credit_balance"] == 9
+        assert out["usage"]["subscription"]["docs_remaining"] == 70
+        assert out["usage"]["subscription"]["plan_code"] == "sub_pro"
+
+    async def test_no_subscription_is_null_not_an_error(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+
+        from app.routers import auth as auth_router
+
+        with patch("app.services.shared.credits.get_usage", AsyncMock(return_value=(0, None))):
+            out = await auth_router.get_usage(_session=SimpleNamespace(tenant_id="t-001"))
+
+        assert out == {"usage": {"credit_balance": 0, "subscription": None}}
