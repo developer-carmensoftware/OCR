@@ -27,6 +27,7 @@ vi.mock('@/features/admin/api/tenants', () => ({
 }))
 
 const { default: ApiKeysPage } = await import('./ApiKeysPage')
+const { toast } = await import('sonner')
 
 const ROW = {
   id: 'k-1',
@@ -84,6 +85,23 @@ describe('ApiKeysPage — revoke', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'apiKeys.revokeDialog.submit' }))
     await waitFor(() => expect(revokeApiKey).toHaveBeenCalledWith('k-1', 'Rotated'))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(toast.success).toHaveBeenCalledWith('apiKeys.toast.revoked')
+  })
+
+  it("warns that a PMS key's revoke switches the PMS off, and says how many days it closed", async () => {
+    // Decision-log #56: the support revoke is the same off switch as Carmen's PMS setting.
+    revokeApiKey.mockResolvedValue({ id: 'k-1', revoked: true, closed_days: 2 })
+    render(<ApiKeysPage />)
+    await screen.findByText('comanche hook')
+    fireEvent.click(screen.getByRole('button', { name: /apiKeys.revokeAria/ }))
+    const dialog = screen.getByRole('dialog', { name: 'apiKeys.revokeDialog.title' })
+    expect(
+      within(dialog).getByText('apiKeys.revokeDialog.pmsOff {"pms":"comanche"}')
+    ).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'apiKeys.revokeDialog.submit' }))
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('apiKeys.toast.revokedClosed {"n":2}')
+    )
   })
 })
 

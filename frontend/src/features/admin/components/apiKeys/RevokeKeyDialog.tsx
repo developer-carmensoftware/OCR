@@ -11,7 +11,8 @@ interface Props {
   row: ApiKeyRow
   revoke: (id: string, reason?: string) => Promise<unknown>
   onClose: () => void
-  onRevoked: () => void
+  /** `closedDays`: the PMS's waiting days the revoke closed (decision-log #56). */
+  onRevoked: (closedDays: number) => void
   /** Where focus goes on close; the row's Revoke button is gone once this succeeds. */
   returnFocus?: () => HTMLElement | null
 }
@@ -30,8 +31,9 @@ export default function RevokeKeyDialog({ row, revoke, onClose, onRevoked, retur
     setBusy(true)
     setError(null)
     try {
-      await revoke(row.id, reason.trim() || undefined)
-      onRevoked()
+      const out = (await revoke(row.id, reason.trim() || undefined)) as
+        { closed_days?: number } | undefined
+      onRevoked(out?.closed_days ?? 0)
     } catch (err) {
       setError((err as Error).message)
       dialogRef.current?.focus()
@@ -62,6 +64,11 @@ export default function RevokeKeyDialog({ row, revoke, onClose, onRevoked, retur
       }
     >
       <p className="apikeys-lede">{t('apiKeys.revokeDialog.lede')}</p>
+      {row.interface_name && (
+        <p className="apikeys-lede">
+          {t('apiKeys.revokeDialog.pmsOff', { pms: row.interface_name })}
+        </p>
+      )}
 
       <dl className="apikeys-pairs apikeys-pairs--summary">
         <div>

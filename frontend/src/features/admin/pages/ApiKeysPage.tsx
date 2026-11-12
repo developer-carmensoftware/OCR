@@ -228,10 +228,14 @@ export default function ApiKeysPage() {
           revoke={revokeApiKey}
           onClose={() => setRevoking(null)}
           returnFocus={() => (revoked.current ? tableRef.current : null)}
-          onRevoked={() => {
+          onRevoked={closedDays => {
             revoked.current = true
             setRevoking(null)
-            toast.success(t('apiKeys.toast.revoked'))
+            toast.success(
+              closedDays
+                ? t('apiKeys.toast.revokedClosed', { n: closedDays })
+                : t('apiKeys.toast.revoked')
+            )
             refresh()
           }}
         />

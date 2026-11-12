@@ -39,6 +39,8 @@ export const en = {
 
   'apiKeys.revokeDialog.title': 'Revoke API key',
   'apiKeys.revokeDialog.lede': "Calls with this key are refused immediately. This can't be undone.",
+  'apiKeys.revokeDialog.pmsOff':
+    'It also switches {pms} off for this business unit: its days still waiting close (they show under Not posted), and its auto-post turns off.',
   'apiKeys.revokeDialog.key': 'Key',
   'apiKeys.revokeDialog.recent':
     "Still in use — last call: {ago}. Revoking stops this business unit's PMS events.",
@@ -50,6 +52,7 @@ export const en = {
   'apiKeys.revokeDialog.submitting': 'Revoking…',
 
   'apiKeys.toast.revoked': 'Key revoked',
+  'apiKeys.toast.revokedClosed': 'Key revoked. {n} waiting day(s) closed',
   'apiKeys.toast.loadFailed': 'API keys: {error}',
 } as const
 
@@ -94,6 +97,8 @@ export const th: Record<keyof typeof en, string> = {
 
   'apiKeys.revokeDialog.title': 'เพิกถอน API key',
   'apiKeys.revokeDialog.lede': 'การเรียกด้วย key นี้จะถูกปฏิเสธทันที และย้อนกลับไม่ได้',
+  'apiKeys.revokeDialog.pmsOff':
+    'และจะปิด {pms} ของ BU นี้ด้วย วันที่ยังรออยู่จะถูกปิด (ขึ้นใน Not posted) และ auto-post จะถูกปิด',
   'apiKeys.revokeDialog.key': 'Key',
   'apiKeys.revokeDialog.recent':
     'ยังมีการใช้งานอยู่ — เรียกล่าสุด: {ago} การเพิกถอนจะหยุด PMS event ของ business unit นี้',
@@ -105,5 +110,6 @@ export const th: Record<keyof typeof en, string> = {
   'apiKeys.revokeDialog.submitting': 'กำลังเพิกถอน…',
 
   'apiKeys.toast.revoked': 'เพิกถอน key แล้ว',
+  'apiKeys.toast.revokedClosed': 'เพิกถอน key แล้ว ปิดวันที่รออยู่ {n} วัน',
   'apiKeys.toast.loadFailed': 'API key: {error}',
 }

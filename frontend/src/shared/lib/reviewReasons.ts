@@ -58,6 +58,10 @@ export const REASON_KEY: Record<string, TKey> = {
   // (decision-log #52). Not `mapping_incomplete`: that one's fix is our GL mapping page,
   // and this one is fixed in Carmen's own mapping screen, which we have no link to.
   pms_mapping_incomplete: 'pms.rcMappingIncomplete',
+  // The BU switched this PMS off in Carmen's PMS setting (its key was revoked, decision-log
+  // #56), and this day, still open then, was closed. It is switched back on in Carmen, so
+  // there is no FIX button either.
+  pms_switched_off: 'pms.rcSwitchedOff',
 }
 
 /**
