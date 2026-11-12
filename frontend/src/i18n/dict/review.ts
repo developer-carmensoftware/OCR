@@ -163,8 +163,6 @@ export const en = {
   'review.srcManual': 'Manual',
   'review.srcPms': 'PMS',
   'review.filterBank': 'Bank',
-  // Shown only while a bank is picked: without it, a PMS day silently vanishing reads as a bug.
-  'review.bankNoPms': 'PMS days have no bank, so they are left out.',
   // The two ends of the lock (a PMS day has no bank): said on the item that cannot be used.
   'review.bankLockedByPms': 'PMS has no bank',
   'review.pmsLockedByBank': 'Remove the Bank filter first',
@@ -437,7 +435,6 @@ export const th: Record<keyof typeof en, string> = {
   'review.srcManual': 'สแกนเอง',
   'review.srcPms': 'PMS',
   'review.filterBank': 'ธนาคาร',
-  'review.bankNoPms': 'รายการ PMS ไม่มีธนาคาร จึงไม่แสดง',
   'review.bankLockedByPms': 'PMS ไม่มีธนาคาร',
   'review.pmsLockedByBank': 'ลบตัวกรองธนาคารก่อน',
   'review.filterDate': 'วันที่',

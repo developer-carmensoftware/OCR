@@ -421,9 +421,6 @@ export function FilterBar({ narrow, onChange, status, onStatus }: BarProps) {
               </>
             )}
           </div>
-          {/* Said where the choice is made, not after: a PMS day vanishing from the list when a
-              bank is picked reads as a bug. */}
-          {attrOf?.id === 'bank' && <p className="rq-menu-note">{t('review.bankNoPms')}</p>}
         </div>
       )}
     </div>
