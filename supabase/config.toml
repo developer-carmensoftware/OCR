@@ -73,7 +73,6 @@ schema_paths = [
   "./schemas/20_modules.sql",
   "./schemas/21_bank_cms.sql",
   "./schemas/30_config.sql",
-  "./schemas/40_quotas.sql",
   "./schemas/41_reference.sql",
   "./schemas/50_business.sql",
   "./schemas/51_billing.sql",
