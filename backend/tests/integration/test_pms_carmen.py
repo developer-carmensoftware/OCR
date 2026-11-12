@@ -60,6 +60,9 @@ def _call(method, path, caller=CARMEN, waiting=(), read_tenant=TENANT, forbidden
         "kick": patch("app.routers.pms_carmen.process.kick"),
         "get": patch("app.routers.pms_carmen.pms_review.get_settings", AsyncMock(return_value=OUT)),
         "save": patch("app.routers.pms_carmen.pms_review.save_settings", AsyncMock()),
+        "switch_off": patch(
+            "app.routers.pms_carmen.pms_review.switch_off", AsyncMock(return_value=2)
+        ),
         "audit": patch("app.routers.pms_carmen.log_action", AsyncMock()),
         "admin_audit": patch("app.routers.pms_carmen.log_admin_action", AsyncMock()),
     }
@@ -163,6 +166,8 @@ def test_generate_returns_the_key_once_and_stores_the_credential():
     assert issue.await_args.args[1:] == (TENANT.id, "comanche hook", "comanche")
     m["adopt_token"].assert_awaited_once()
     m["audit"].assert_awaited_once()
+    # Replacing a key is not switching the PMS off: its days and auto-post carry on (#56).
+    m["switch_off"].assert_not_awaited()
 
 
 def test_revoke_without_a_live_key_is_404():
@@ -181,6 +186,9 @@ def test_revoke_switches_this_pms_off():
     assert res.status_code == 204
     assert revoke.await_args.args[1:] == (TENANT.id, "comanche")
     assert m["resolve"].await_args.kwargs == {}  # revoking never registers a BU
+    # …and switches it off for good: its open days close, its auto-post goes off (#56).
+    assert m["switch_off"].await_args.args[1:] == (TENANT.id, "comanche")
+    assert m["switch_off"].await_args.kwargs == {"actor": CARMEN.actor}
 
 
 # ── #/pms is gone ──────────────────────────────────────────────────────────────────

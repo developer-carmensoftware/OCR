@@ -15,7 +15,7 @@ import secrets
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import Row, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -183,13 +183,17 @@ async def revoke(
     by: str,
     reason: str | None,
     tenant_id: UUID | str | None = None,
-) -> bool:
-    """Stamp a live key revoked. `tenant_id` confines it to one BU's keys. False = no live
-    key matched (unknown, already revoked, or another BU's), which the caller answers 404."""
+) -> Row | None:
+    """Stamp a live key revoked. `tenant_id` confines it to one BU's keys. Returns the key's
+    `(tenant_id, interface_name)`, for the caller to switch that PMS off (decision-log #56),
+    or None when no live key matched (unknown, already revoked, or another BU's), which the
+    caller answers 404."""
     stmt = update(APIKey).where(APIKey.id == key_id, APIKey.revoked_at.is_(None))
     if tenant_id is not None:
         stmt = stmt.where(APIKey.tenant_id == tenant_id)
     result = await db.execute(
-        stmt.values(revoked_at=datetime.now(UTC), revoked_by=by, revoke_reason=reason)
+        stmt.values(revoked_at=datetime.now(UTC), revoked_by=by, revoke_reason=reason).returning(
+            APIKey.tenant_id, APIKey.interface_name
+        )
     )
-    return bool(result.rowcount)
+    return result.first()

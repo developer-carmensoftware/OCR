@@ -177,7 +177,9 @@ async def revoke_key(
     db: AsyncSession = Depends(get_db),
     caller: Caller = Depends(_caller),
 ):
-    """Revoke this BU's key for this PMS: its hook is refused from now on. 404 when none."""
+    """Switch this PMS off for this BU: revoke its key, so its hook is refused and the
+    sweep opens no more of its days, and close what it has left running (`switch_off`:
+    its open days, its auto-post; decision-log #56). 404 when there is no live key."""
     tenant = await _resolve(db, caller, ref.uri, ref.bu)
     key = await api_keys.live_key(db, tenant.id, ref.pms)
     if key is None:
@@ -185,6 +187,15 @@ async def revoke_key(
     await api_keys.revoke_live(
         db, tenant.id, ref.pms, by=_who(caller), reason="Revoked from Carmen's PMS setting"
     )
+    closed = await pms_review.switch_off(db, tenant.id, ref.pms, actor=caller.actor[:100])
     await db.commit()
+    logger.info(
+        "[pms] %s switched off for %s/%s by %s: %d open day(s) closed, auto-post off",
+        ref.pms,
+        tenant.host,
+        tenant.bu_code,
+        caller.actor,
+        closed,
+    )
     await _audit(caller, tenant, AuditAction.API_KEY_REVOKE, str(key.id), request)
     return Response(status_code=204)

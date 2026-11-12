@@ -74,6 +74,10 @@ def _mock(value):
     )
 
 
+# The BU's live key for the day's PMS (decision-log #56: without one, nothing runs).
+LIVE_KEY = SimpleNamespace(key_prefix="cpk_abcdefgh")
+
+
 class _Run:
     """One `process_event` call with everything around the decision patched."""
 
@@ -91,8 +95,10 @@ class _Run:
         post=POSTED,
         claimed=None,
         after=None,
+        key=LIVE_KEY,
     ):
-        """`after`: the mapping table's second read, after Carmen's -500 (or its failure)."""
+        """`after`: the mapping table's second read, after Carmen's -500 (or its failure).
+        `key`: this BU's live key for the PMS; None = switched off (decision-log #56)."""
         self.claimed = claimed or _claimed()
         self.writes: list[dict] = []
         db = MagicMock(get=AsyncMock(return_value=settings))
@@ -107,6 +113,7 @@ class _Run:
 
         self.patches = {
             "claim": patch.object(process, "_claim", AsyncMock(return_value=self.claimed)),
+            "key": patch.object(process.api_keys, "live_key", AsyncMock(return_value=key)),
             "session": patch.object(process, "async_session", session),
             "target": patch.object(process, "_target", AsyncMock(return_value=target)),
             "write": patch.object(process, "_write", write),
@@ -136,6 +143,21 @@ class _Run:
     @property
     def last(self) -> dict:
         return self.writes[-1]
+
+
+@pytest.mark.asyncio
+async def test_a_day_of_a_switched_off_pms_closes_without_asking_carmen():
+    """Decision-log #56: a day whose PMS has no live key any more (revoked while the day
+    waited, or in the instant of the revoke) never posts. It closes as switched off, before
+    any Carmen call, AI or post, whatever auto-post says."""
+    run = _Run(settings=AUTO, key=None)
+    assert await run() == "rejected"
+    assert run.last["status"] == "rejected"
+    assert run.last["reason_code"] == "pms_switched_off"
+    assert run.last["review_payload"] is None
+    for name in ("interfaces", "databank", "preview", "mapping", "suggest", "post"):
+        run.m[name].assert_not_awaited()
+    assert run.m["key"].await_args.args[1:] == (run.claimed.tenant_id, "comanche")
 
 
 @pytest.mark.asyncio
@@ -554,6 +576,10 @@ async def test_ready_days_of_an_auto_post_pms_are_sent_back_others_stay():
 
     with patch.object(process, "async_session", session):
         assert await process._requeue_ready_days() == 1
+    # Only a PMS that is still switched on: auto-post on AND a live key (decision-log #56).
+    on_sql = str(db.execute.await_args_list[0].args[0].compile(dialect=postgresql.dialect()))
+    assert "JOIN api_keys ON" in on_sql and "api_keys.revoked_at IS NULL" in on_sql
+    assert "api_keys.interface_name = pms_settings.interface_name" in on_sql
     update_stmt = db.execute.await_args_list[2].args[0]
     sql = str(update_stmt.compile(dialect=postgresql.dialect()))
     assert "UPDATE pms_events" in sql
