@@ -52,6 +52,11 @@ LEASE = timedelta(minutes=10)
 # How long a reviewer's approve/reject claim (`posting_started_at`) holds a day; the same
 # five minutes as the email review's. A repeat hook leaves a day alone while one is live.
 REVIEW_CLAIM_TTL = timedelta(minutes=5)
+# A parked day's rows the AI left blank are asked again this often, this many times
+# (decision-log #57): OpenRouter down or out of credit at 06:00 must not leave a reviewer
+# picking every account by hand, and a row nothing can place must not be asked forever.
+AI_RETRY_EVERY = timedelta(hours=1)
+AI_RETRIES = 3
 # Reads that failed for a reason that may pass (Carmen down, no credential yet, the day not
 # in the Data Bank yet) are tried this often in all before the day shows as failed.
 MAX_ATTEMPTS = 3
@@ -306,7 +311,7 @@ async def _retry_or_fail(event_pk, attempts: int, reason: str, error: str) -> st
     return "retry"
 
 
-async def with_carmen_keys(payload: dict, token: str) -> dict:
+async def with_carmen_keys(payload: dict, token: str, *, carmen_blanks: bool = True) -> dict:
     """The day's review after Carmen's `-500`, with the keys Carmen named in it to map here.
 
     Carmen's engine writes every key a post found unmapped into the mapping table, with no
@@ -314,6 +319,10 @@ async def with_carmen_keys(payload: dict, token: str) -> dict:
     reviewer maps them in this app: all of them, this day's and any earlier day's, because
     Carmen needs them all. If the table cannot be read, the payload stays as it was and the
     day parks saying why.
+
+    `carmen_blanks=False` is the sweep asking the AI again for a parked day's blank rows
+    (`_resuggest_blank_days`): Carmen's table then gives its accounts, not its blank keys,
+    which belong to a day Carmen refused.
     """
     columns = payload.get("key_columns") or []
     try:
@@ -324,12 +333,13 @@ async def with_carmen_keys(payload: dict, token: str) -> dict:
         logger.warning("[pms] Could not read Carmen's mapping after its -500: %s", exc.detail)
         return payload
     rows = list(payload.get("rows") or [])
-    have = {r["key"] for r in rows}
-    rows += [b for b in cfg.blank_keys(current, columns) if b["key"] not in have]
+    if carmen_blanks:
+        have = {r["key"] for r in rows}
+        rows += [b for b in cfg.blank_keys(current, columns) if b["key"] not in have]
     table = cfg.table_of(current, columns)
     new = cfg.new_keys(rows, table)
     guessed = dict(payload.get("guessed") or {})
-    todo = [k for k in new if k not in guessed]
+    todo = [k for k in new if not mapping.usable(guessed.get(k))]
     if todo:
         try:
             accounts, departments = await mapping.masters(token)
@@ -502,6 +512,8 @@ async def _process(claimed) -> str:
             "preview": bool(rows),
             "databank_id": databank_id,
             "last_modified": databank.get("LastModified"),
+            # When the AI was last asked; the sweep asks again for blank rows (#57).
+            "ai_at": datetime.now(UTC).isoformat(),
         }
         if payload["flags"] or not (settings_row and settings_row.auto_post):
             return await _park(pk, payload)
@@ -530,6 +542,87 @@ async def _process(claimed) -> str:
         return "posted"
     finally:
         current_carmen_uri.reset(uri_ctx)
+
+
+def _unclaimed(now: datetime):
+    """A day no reviewer is approving or rejecting right now."""
+    return or_(
+        PmsEvent.posting_started_at.is_(None),
+        PmsEvent.posting_started_at < now - REVIEW_CLAIM_TTL,
+    )
+
+
+def _wants_ai(payload: dict, now: datetime) -> bool:
+    """Rows still blank, tries left, and an hour since the last ask. A day parked before
+    decision-log #57 has neither count nor time and is asked at once."""
+    if not payload.get("missing") or int(payload.get("ai_retries") or 0) >= AI_RETRIES:
+        return False
+    at = payload.get("ai_at")
+    return not at or datetime.fromisoformat(at) <= now - AI_RETRY_EVERY
+
+
+async def _resuggest(pk: uuid.UUID, tenant_id: uuid.UUID, payload: dict, now: datetime) -> bool:
+    """Ask the AI again for one parked day's blank rows, and count the try whatever happens."""
+    fresh = payload
+    tenant_ctx = current_tenant_id.set(str(tenant_id))
+    try:
+        async with async_session() as db:
+            token, uri = await _target(db, tenant_id)
+        if token and uri:
+            uri_ctx = current_carmen_uri.set(uri)
+            try:
+                fresh = await with_carmen_keys(payload, token, carmen_blanks=False)
+            finally:
+                current_carmen_uri.reset(uri_ctx)
+    except Exception:  # noqa: BLE001 — the try is spent; the day stays as it was
+        logger.exception("[pms] Asking the AI again for %s failed", pk)
+    finally:
+        current_tenant_id.reset(tenant_ctx)
+    fresh = {
+        **fresh,
+        "ai_retries": int(payload.get("ai_retries") or 0) + 1,
+        "ai_at": now.isoformat(),
+    }
+    async with async_session() as db:
+        result = await db.execute(
+            update(PmsEvent)
+            .where(PmsEvent.id == pk, PmsEvent.status == "pending_review", _unclaimed(now))
+            .values(review_payload=fresh)
+        )
+        await db.commit()
+    return result.rowcount == 1
+
+
+async def _resuggest_blank_days() -> int:
+    """Ask the AI again for the rows parked days still have no account for (decision-log #57).
+
+    Hourly, at most `AI_RETRIES` times a day: the first ask may have met OpenRouter down or
+    out of credit, or the model skipped lines. Only rows without a usable pick are asked
+    (`with_carmen_keys`), against Carmen's table as it is now. A person's picks are never in
+    the payload — they travel with Approve — so nothing a reviewer chose is replaced, and a
+    day being approved right now is left alone. An AI pick still waits for a person
+    (`mapping_guessed`), so this never posts anything. Never raises.
+    """
+    now = datetime.now(UTC)
+    try:
+        async with async_session() as db:
+            listed = await db.execute(
+                select(PmsEvent.id, PmsEvent.tenant_id, PmsEvent.review_payload).where(
+                    PmsEvent.status == "pending_review", _unclaimed(now)
+                )
+            )
+            # Matched here, not in SQL: the payload is encrypted at rest (decision-log #49).
+            due = [(pk, t, p) for pk, t, p in listed.all() if _wants_ai(p or {}, now)]
+    except Exception:  # noqa: BLE001
+        logger.exception("[pms] Could not list parked days to ask the AI again")
+        return 0
+    asked = 0
+    for pk, tenant_id, payload in due:
+        try:
+            asked += await _resuggest(pk, tenant_id, payload, now)
+        except Exception:  # noqa: BLE001 — one day must not stop the sweep
+            logger.exception("[pms] Could not record asking the AI again for %s", pk)
+    return asked
 
 
 async def _requeue_ready_days() -> int:
@@ -742,10 +835,11 @@ async def run_pms_processing(limit: int = 50) -> dict:
         return {"status": "busy"}
     async with _sweep_lock:
         started = datetime.now(UTC)
-        summary: dict = {"status": "ok", "opened": 0, "requeued": 0, "woken": 0}
+        summary: dict = {"status": "ok", "opened": 0, "resuggested": 0, "requeued": 0, "woken": 0}
         error = None
         try:
             summary["opened"] = await _open_days()
+            summary["resuggested"] = await _resuggest_blank_days()
             summary["requeued"] = await _requeue_ready_days()
             summary["woken"] = await _wake_for_new_credential()
             now = datetime.now(UTC)
@@ -764,7 +858,7 @@ async def run_pms_processing(limit: int = 50) -> dict:
         worked = sum(
             v
             for k, v in summary.items()
-            if k not in ("status", "opened", "requeued", "woken", "skipped")
+            if k not in ("status", "opened", "resuggested", "requeued", "woken", "skipped")
         )
         await _record_run(started, worked, error)
         return summary

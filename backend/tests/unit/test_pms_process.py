@@ -6,7 +6,7 @@ row. No side or total is computed anywhere here — those are the engine's.
 """
 
 from contextlib import asynccontextmanager
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -759,3 +759,132 @@ async def test_a_day_a_hook_stored_in_another_casing_is_not_opened_again():
     stored.assert_not_awaited()
     held = str(db.scalar.await_args.args[0].compile(dialect=postgresql.dialect()))
     assert "lower(pms_events.event_id)" in held
+
+
+# ── Decision-log #57: the rows a parked day still has blank are asked again, hourly ×3 ──
+
+
+@pytest.mark.asyncio
+async def test_carmens_keys_ask_again_for_a_row_with_only_a_department():
+    """A pick without an account is no pick: asked again, as a row with none."""
+    key = cfg.key_id(["100", "Room"])
+    payload = {
+        "setting_code": "Comanche.PMS",
+        "post_type": "REVENUE",
+        "key_columns": COLUMNS,
+        "rows": [{"key": key}],
+        "guessed": {key: {"dept": "103", "acc": None}},
+    }
+    guess = {key: {"dept": "GEN", "acc": "4010001", "confidence": "high", "why": "room"}}
+    blank = {"Code": "200", "Description": "Bar", "DeptCode": None, "AccCode": None}
+    with (
+        patch.object(
+            process.carmen, "get_pms_mapping", AsyncMock(return_value=([blank], TABLE_COLUMNS))
+        ),
+        patch.object(process.mapping, "masters", AsyncMock(return_value=([], []))),
+        patch.object(process.mapping, "suggest", AsyncMock(return_value=guess)) as suggest,
+    ):
+        out = await process.with_carmen_keys(payload, "tok", carmen_blanks=False)
+    assert suggest.await_args.args[0] == [key]
+    # A retry reads Carmen's table for its accounts, not for the -500's blank keys.
+    assert [r["key"] for r in out["rows"]] == [key]
+    assert out["guessed"][key]["acc"] == "4010001"
+    assert out["missing"] == [] and out["flags"] == ["mapping_guessed"]
+
+
+def _parked_db(rows):
+    """A session whose first execute lists parked days and later ones are the updates."""
+    listed = MagicMock(all=lambda: rows)
+    db = MagicMock(
+        execute=AsyncMock(side_effect=[listed, *[MagicMock(rowcount=1)] * 5]),
+        commit=AsyncMock(),
+    )
+
+    @asynccontextmanager
+    async def session():
+        yield db
+
+    return db, session
+
+
+@pytest.mark.asyncio
+async def test_parked_days_with_blank_rows_are_asked_again_hourly_at_most_three_times():
+    now = datetime.now(UTC)
+    bu = uuid4()
+    due, recent, spent, full, old = uuid4(), uuid4(), uuid4(), uuid4(), uuid4()
+    hour_ago = (now - timedelta(hours=1, minutes=1)).isoformat()
+    rows = [
+        (due, bu, {"missing": ["k"], "ai_at": hour_ago, "ai_retries": 1}),
+        (recent, bu, {"missing": ["k"], "ai_at": now.isoformat()}),
+        (spent, bu, {"missing": ["k"], "ai_at": hour_ago, "ai_retries": 3}),
+        (full, bu, {"missing": [], "ai_at": hour_ago}),
+        # Parked before this change: no count, no time — asked at once.
+        (old, bu, {"missing": ["k"]}),
+    ]
+    db, session = _parked_db(rows)
+    fresh = AsyncMock(side_effect=lambda p, tok, carmen_blanks: {**p, "missing": []})
+    with (
+        patch.object(process, "async_session", session),
+        patch.object(process, "_target", AsyncMock(return_value=("tok", "https://c"))),
+        patch.object(process, "with_carmen_keys", fresh),
+    ):
+        assert await process._resuggest_blank_days() == 2
+    assert fresh.await_count == 2
+    assert all(c.kwargs["carmen_blanks"] is False for c in fresh.await_args_list)
+    listed_sql = str(db.execute.await_args_list[0].args[0].compile(dialect=postgresql.dialect()))
+    assert "pms_events.status = " in listed_sql
+    assert "pms_events.posting_started_at IS NULL" in listed_sql
+    updates = [c.args[0] for c in db.execute.await_args_list[1:]]
+    written = [u.compile().params for u in updates]
+    assert [w["id_1"] for w in written] == [due, old]
+    assert [w["review_payload"]["ai_retries"] for w in written] == [2, 1]
+    assert all(w["review_payload"]["missing"] == [] for w in written)
+    # Written only while the day is still parked and nobody is approving it.
+    sql = str(updates[0].compile(dialect=postgresql.dialect()))
+    assert "pms_events.status = " in sql and "posting_started_at" in sql
+
+
+@pytest.mark.asyncio
+async def test_an_ask_that_fails_still_counts():
+    """OpenRouter down, Carmen unreadable or no credential: the try is spent, so a day
+    nothing can help is not asked every ten minutes."""
+    pk, bu = uuid4(), uuid4()
+    for target, fresh in (
+        (("tok", "https://c"), AsyncMock(side_effect=RuntimeError("boom"))),
+        ((None, None), AsyncMock()),
+    ):
+        db, session = _parked_db([(pk, bu, {"missing": ["k"]})])
+        with (
+            patch.object(process, "async_session", session),
+            patch.object(process, "_target", AsyncMock(return_value=target)),
+            patch.object(process, "with_carmen_keys", fresh),
+        ):
+            assert await process._resuggest_blank_days() == 1
+        written = db.execute.await_args_list[1].args[0].compile().params["review_payload"]
+        assert written["ai_retries"] == 1 and written["missing"] == ["k"]
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_asks_again_before_it_requeues():
+    _, session = _db_returning([])
+    order = []
+    with (
+        patch.object(process, "_open_days", AsyncMock(return_value=0)),
+        patch.object(
+            process,
+            "_resuggest_blank_days",
+            AsyncMock(side_effect=lambda: order.append("ai") or 3),
+        ),
+        patch.object(
+            process,
+            "_requeue_ready_days",
+            AsyncMock(side_effect=lambda: order.append("requeue") or 0),
+        ),
+        patch.object(process, "_wake_for_new_credential", AsyncMock(return_value=0)),
+        patch.object(process, "async_session", session),
+        patch.object(process, "_record_run", AsyncMock()) as record,
+    ):
+        summary = await process.run_pms_processing()
+    assert order == ["ai", "requeue"]
+    assert summary["resuggested"] == 3
+    assert record.await_args.args[1] == 0  # asking again is not a day worked
