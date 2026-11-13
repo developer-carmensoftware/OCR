@@ -11,10 +11,11 @@ guess. The pick travels in the day's
 
 import json
 import logging
+from collections import Counter
 
 from app.constants import Module
 from app.llm.client import call_text_llm
-from app.services.credit_card.gl_suggestion import _dept_allowed_map, _validate_codes
+from app.services.credit_card.gl_suggestion import _dept_allowed_map, _pair_ok, _validate_codes
 from app.services.shared import carmen
 from app.utils.gl_filter import parse_default_account
 
@@ -93,25 +94,64 @@ def _line(key: str, columns: list[str]) -> str:
     return " · ".join(f"{c}: {v}" for c, v in zip(columns, json.loads(key), strict=False) if v)
 
 
-async def suggest(
-    new: list[str],
+def _raw(answer: dict, short: str, long: str):
+    """One code of an answer, under either key shape the model uses (`acc` or `accountCode`)."""
+    return answer.get(short) if answer.get(short) is not None else answer.get(long)
+
+
+def _home_dept(acc: str, table: dict[str, dict], depts: set, allowed: dict) -> str | None:
+    """The department an account in the chart goes with when the AI paired it with one that
+    does not allow it, or with none (decision-log #57): the one this BU's own table uses most
+    with that account, else GEN. None when neither is allowed."""
+    used = Counter(
+        m["dept"]
+        for m in table.values()
+        if m.get("acc") == acc and m.get("dept") in depts and _pair_ok(m["dept"], acc, allowed)
+    )
+    if used:
+        return max(sorted(used), key=used.__getitem__)  # a tie goes to the lower code
+    return "GEN" if "GEN" in depts and _pair_ok("GEN", acc, allowed) else None
+
+
+def _checked(
+    data: dict, ids: list[str], table: dict[str, dict], accs: set, depts: set, allowed: dict
+) -> tuple[dict[str, dict], dict[str, tuple[str, str | None]]]:
+    """The AI's answer as picks Carmen's table can take, and why each other line has none:
+    `{id: (reason, the department it names)}`.
+
+    Only codes Carmen's chart has survive (`_validate_codes`). A pair the department does not
+    allow keeps its account and moves department (`_home_dept`) rather than losing it.
+    """
+    picks = _validate_codes(data, ids, accs, depts, allowed)
+    refused: dict[str, tuple[str, str | None]] = {}
+    for i in ids:
+        answer = data.get(i) or {}
+        acc, dept = _raw(answer, "acc", "accountCode"), _raw(answer, "dept", "deptCode")
+        if not usable(picks[i]) and acc in accs:
+            home = _home_dept(acc, table, depts, allowed)
+            if home:
+                picks[i] = {"dept": home, "acc": acc}
+        if usable(picks[i]):
+            continue
+        if not answer:
+            refused[i] = ("no answer", None)
+        elif acc not in accs:
+            refused[i] = (f"account {acc} is not in the chart", None)
+        elif dept not in depts:
+            refused[i] = (f"department {dept} is not in the list", None)
+        else:
+            refused[i] = (f"department {dept} does not allow account {acc}", dept)
+    return picks, refused
+
+
+def _prompt(
+    items: list[dict],
     table: dict[str, dict],
     accounts: list[dict],
     departments: list[dict],
     columns: list[str],
-) -> dict[str, dict]:
-    """key → {"dept", "acc", "confidence", "why"} for each new key, from one LLM call;
-    {} when it fails.
-
-    The AI sees each key under the BU's own column names, and the rows the BU has already
-    mapped, and nothing else of the day: no amounts (user decision 2026-11-10, decision-log
-    #54). Carmen's preview gives none, and the BU's own pattern is what decides a line's home.
-    Only codes Carmen's chart of accounts actually has survive (`_validate_codes`), so a
-    hallucinated account never reaches the review as if it were real.
-    """
-    if not new:
-        return {}
-    items = [{"id": f"L{i}", "line": _line(key, columns)} for i, key in enumerate(new, 1)]
+    notes: str = "",
+) -> str:
     examples = "\n".join(
         f"  {_line(k, columns)} -> {m['dept']}/{m['acc']} {m['name']}"
         for k, m in list(table.items())[:_EXAMPLES]
@@ -124,7 +164,7 @@ async def suggest(
         f"  {a['code']} [{a['type']}] {a['name']}"
         for a in sorted(postable, key=lambda a: a["code"])
     )
-    prompt = f"""You map a hotel's PMS night-audit lines to the hotel's Carmen general ledger.
+    return f"""You map a hotel's PMS night-audit lines to the hotel's Carmen general ledger.
 
 Pick, for every new line, the GL department and account it posts to. Debit/credit is decided by
 Carmen, not by you. Each line is one key of the hotel's PMS mapping: its values, each under the
@@ -140,35 +180,86 @@ Departments (code name):
 
 Accounts (code [type] name):
 {acc_lines}
-
+{notes}
 New lines:
 {json.dumps(items, ensure_ascii=False)}
 
 Answer ONLY a JSON object: {{"<line id>": {{"dept": "<dept code>", "acc": "<account code>", "confidence": "high|medium|low", "why": "<max 12 words>"}}, ...}} with one entry per line id. Use only codes listed above."""
 
+
+def _notes(refused: dict[str, tuple[str, str | None]], allowed: dict) -> str:
+    """What the second ask is told: why each earlier answer could not be used, and what the
+    departments it named allow."""
+    named = sorted({d for _, d in refused.values() if d})
+    text = "\nYour earlier answer for these lines could not be used:\n" + "\n".join(
+        f"  {i}: {why}" for i, (why, _) in refused.items()
+    )
+    if named:
+        text += "\nDepartments that allow only some accounts:\n" + "\n".join(
+            f"  {d}: {', '.join(sorted(allowed[d]))}" for d in named
+        )
+    return text + "\n"
+
+
+async def _ask(prompt: str) -> dict | None:
+    return await call_text_llm(prompt, module_id=Module.PMS_INTERFACE, max_tokens=_MAX_TOKENS)
+
+
+async def suggest(
+    new: list[str],
+    table: dict[str, dict],
+    accounts: list[dict],
+    departments: list[dict],
+    columns: list[str],
+) -> dict[str, dict]:
+    """key → {"dept", "acc", "confidence", "why"} for each new key; {} when the LLM fails.
+
+    The AI sees each key under the BU's own column names, and the rows the BU has already
+    mapped, and nothing else of the day: no amounts (user decision 2026-11-10, decision-log
+    #54). Carmen's preview gives none, and the BU's own pattern is what decides a line's home.
+    Only codes Carmen's chart of accounts actually has survive (`_checked`), so a
+    hallucinated account never reaches the review as if it were real.
+
+    The lines still without a pick after that are asked once more, alone, told why their
+    answer was refused (decision-log #57). What is still blank is the person's to pick, and
+    the sweep asks again later (`process._resuggest_blank_days`).
+    """
+    if not new:
+        return {}
+    items = [{"id": f"L{i}", "line": _line(key, columns)} for i, key in enumerate(new, 1)]
     data = None
     for _ in range(_TRIES):
-        data = await call_text_llm(prompt, module_id=Module.PMS_INTERFACE, max_tokens=_MAX_TOKENS)
+        data = await _ask(_prompt(items, table, accounts, departments, columns))
         if data:
             break
     if not data:
         logger.warning("[pms] No usable suggestion for %d new row(s)", len(new))
         return {}
     ids = [it["id"] for it in items]
-    valid = _validate_codes(
-        data,
-        ids,
-        {a["code"] for a in accounts},
-        {d["code"] for d in departments},
-        _dept_allowed_map(departments),
-    )
+    accs, depts = {a["code"] for a in accounts}, {d["code"] for d in departments}
+    allowed = _dept_allowed_map(departments)
+    answers = dict(data)
+    picks, refused = _checked(answers, ids, table, accs, depts, allowed)
+    if refused:
+        blank = [it for it in items if it["id"] in refused]
+        again = (
+            await _ask(
+                _prompt(blank, table, accounts, departments, columns, _notes(refused, allowed))
+            )
+            or {}
+        )
+        more, still = _checked(again, list(refused), table, accs, depts, allowed)
+        for i, pick in more.items():
+            if usable(pick):
+                picks[i], answers[i] = pick, again[i]
+        if still:
+            logger.info("[pms] %d of %d new row(s) left for a person", len(still), len(new))
     out = {}
     for key, item_id in zip(new, ids, strict=True):
-        raw = data.get(item_id) or {}
-        pick = valid.get(item_id) or {}
+        raw = answers.get(item_id) or {}
         out[key] = {
-            "dept": pick.get("dept"),
-            "acc": pick.get("acc"),
+            "dept": picks[item_id].get("dept"),
+            "acc": picks[item_id].get("acc"),
             "confidence": str(raw.get("confidence") or "low")[:10],
             "why": str(raw.get("why") or "")[:120],
         }
