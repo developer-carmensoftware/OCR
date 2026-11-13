@@ -3,11 +3,11 @@ title: PMS Interface Automation
 iso-wp: RS
 iso-topic: 07_PMS_Interface_Automation
 iso-ref: RS-07|PMS-[A-Z]+\d
-Document Version: Version 0.4 (Requirements Specification)
+Document Version: Version 0.5 (Requirements Specification)
 แผนงาน: PMS Interface automation (10/09 – 30/09/2026)
 Module ID: `pms_interface` (บันทึกการใช้ LLM เท่านั้น ไม่คิดเครดิต)
-รายละเอียดการออกแบบ: FRD-11 PMS Interface Automation v1.6 (Software Design) และ `docs/pms-interface/`
-Source of truth: repo developer-carmensoftware/OCR @ 6eba2efe (12/11/2026) + branch feat/pms-switch-off
+รายละเอียดการออกแบบ: FRD-11 PMS Interface Automation v1.7 (Software Design) และ `docs/pms-interface/`
+Source of truth: repo developer-carmensoftware/OCR @ 61a49308 (13/11/2026) + branch feat/pms-ai-every-row
 สถานะระบบ: แถวของวันมาจาก preview ของ engine ของ Carmen (decision-log #54) · การ post ของ Carmen เป็นตัวตรวจ mapping (#52, #53) · sweep เปิดวันของเมื่อวานให้ทุก PMS ตั้งแต่ 06:00 ICT จึงไม่ต้องรอ hook (#55) · hook จริงยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K)
 Date: 12 November 2026
 ---
@@ -20,6 +20,7 @@ Date: 12 November 2026
 | 0.2 | 10/11/2026 | Dev Team | ตาม FRD-11 v1.4 (decision-log #52–#54): แถวของวันมาจาก preview ของ engine, `-500` นำ key ที่ขาดเข้าการตรวจ, เปิดวันของ PMS แบบ PartnerApi, `day_not_ready`, เก็บเลข JV, AI ไม่เห็นยอดเงิน — PMS-F05/F06/F08/F13, I01, Q04 แก้ และเพิ่ม PMS-F14 | |
 | 0.3 | 12/11/2026 | Dev Team | ตาม FRD-11 v1.5 (decision-log #55): PMS-F14 แก้ — เปิดวันของเมื่อวานให้ทุก PMS ที่ลง REVENUE → GL ไม่ว่า `From` จะเป็นอะไร ตั้งแต่ 06:00 ICT (เดิมเฉพาะ PartnerApi หลัง 08:00) | |
 | 0.4 | 12/11/2026 | Dev Team | ตาม FRD-11 v1.6 (decision-log #56): เพิ่ม PMS-F15 — revoke key = ปิด PMS: ปิดวันที่ยังเปิดอยู่และ auto-post, ไม่มี key ที่ใช้ได้ไม่ post อัตโนมัติ | |
+| 0.5 | 13/11/2026 | Dev Team | ตาม FRD-11 v1.7 (decision-log #57): PMS-F06 แก้ — ซ่อมคู่แผนก/บัญชีที่แผนกไม่อนุญาต, ถามแถวที่ยังว่างซ้ำหนึ่งครั้ง, sweep ถามซ้ำชั่วโมงละครั้งไม่เกิน 3 ครั้ง | |
 
 <!-- pagebreak -->
 
@@ -57,7 +58,7 @@ Date: 12 November 2026
 | PMS-F03 | หน้า PMS setting ของ Carmen ต้องอ่าน/ตั้ง auto-post ออก key ใหม่ (key ที่ใช้งานได้หนึ่งอันต่อ BU × PMS โดยเพิกถอนอันเดิม) และเพิกถอน key ได้ | ทดสอบ | §2.1, §12 |
 | PMS-F04 | ทุกการเขียนจากหน้าจอของ Carmen ต้องเก็บ token ของผู้ใช้เป็น credential ของ BU ยกเว้น BU มี credential ที่ยังใช้ได้อยู่แล้ว แต่ถ้ามีวันที่ค้างที่ `carmen_forbidden` ต้องแทนที่เสมอ | ทดสอบ | §2.1, §5 |
 | PMS-F05 | ระบบต้องประมวลผลหนึ่งวันด้วยการหา section REVENUE → GL ของ PMS ในรายการ interface ของ Carmen, อ่าน mapping table (คอลัมน์ที่ไม่ใช่ DeptCode / AccCode / AccDesc คือ key) และขอ preview ของ engine ของ Carmen สำหรับแถว Data Bank เดียวกับที่จะ post แล้วหาแถวที่ mapping table ยังไม่รู้จัก — ใช้ได้กับทุก PMS โดยไม่มีโค้ดเฉพาะ PMS | ทดสอบ | §2.1, §8 |
-| PMS-F06 | AI ต้องแนะนำบัญชีเฉพาะแถวใหม่ ในคำขอเดียวต่อวัน โดยใช้แถวที่ map แล้วของ BU เป็นตัวอย่าง เห็นแต่ละ key ตามชื่อคอลัมน์ของ PMS นั้นโดยไม่มียอดเงิน และลองใหม่หนึ่งครั้งเมื่อคำตอบใช้ไม่ได้ | ทดสอบ | §1, §7, F-07 |
+| PMS-F06 | AI ต้องแนะนำบัญชีเฉพาะแถวใหม่ ในคำขอเดียวต่อวัน โดยใช้แถวที่ map แล้วของ BU เป็นตัวอย่าง เห็นแต่ละ key ตามชื่อคอลัมน์ของ PMS นั้นโดยไม่มียอดเงิน และลองใหม่หนึ่งครั้งเมื่อคำตอบใช้ไม่ได้ — คู่แผนก/บัญชีที่แผนกไม่อนุญาตต้องย้ายไปแผนกที่ BU ใช้กับบัญชีนั้น (หรือ GEN) แทนการทิ้งบัญชี แถวที่ยังว่างต้องถามซ้ำหนึ่งครั้งทันที และวันที่รอตรวจที่ยังมีแถวว่างต้องถามซ้ำชั่วโมงละครั้งไม่เกิน 3 ครั้ง โดยคำแนะนำของ AI ยังต้องรอคนก่อน post เสมอ | ทดสอบ | §1, §7, F-07 |
 | PMS-F07 | วันที่มีแถวใหม่ต้องพักให้คนตรวจเสมอ วันที่ไม่มีแถวใหม่ post เองเมื่อเปิด auto-post ของ PMS นั้น | ทดสอบ | §11.2 |
 | PMS-F08 | ระบบต้องลองใหม่อัตโนมัติสูงสุด 3 ครั้งสำหรับสาเหตุที่อาจหายเอง (ยังไม่มี credential, Carmen ล่ม, Data Bank ยังไม่มีวันนั้น) และปลุกวันที่รอเมื่อมี credential ใหม่ วันที่ Carmen ตอบ `-400` "No Data Found" ต้องลองทุกชั่วโมงโดยไม่นับครั้งจนครบ 24 ชั่วโมง (`day_not_ready`) | ทดสอบ | §2.1, §8.4 |
 | PMS-F09 | การอนุมัติต้องเปิดได้เมื่อแถวใหม่ทุกแถวมีแผนกและบัญชี และต้องอ่านตารางของ Carmen สดก่อนเขียน แล้วเขียนกลับทั้งตารางพร้อมแถวใหม่ (ไม่มีแถวเดิมหาย) ก่อนสั่ง engine post | ทดสอบ | §1, §11.2 |

@@ -1968,3 +1968,56 @@ days to every PMS, and moves it from 08:00 to 06:00 ICT.
 - **Carmen's PMS setting screen** needs a "stop using" action that calls `DELETE /keys`. Turning
   auto-post off is not that: the PMS keeps running and every day waits for a person.
   `PMS_INTEGRATION.md` §2 says so.
+
+## 57. The AI's pick a department forbids keeps its account; blank rows are asked again (2026-11-13)
+
+**Status: built** (branch `feat/pms-ai-every-row`).
+
+**Why.**
+- On QA carmencloud (2026-11-13), three parked days had **31 new rows with no pick**: Cloudbeds
+  28 of 78, HotelTime 2 of 35, Comanche 1 of 21.
+- **Every one was an answer the AI gave and we threw away.** It paired department 103 with a
+  balance-sheet account (A/R City Ledger, Output Tax) that 103's `DefaultAccount` list does not
+  allow, and `_validate_codes` dropped the account and kept the department.
+- When the AI call failed outright (OpenRouter refusing, out of credit, two unusable answers),
+  the day parked with no picks and nothing asked again: the reviewer picked every account by
+  hand.
+
+**Decision** (the user, 2026-11-13).
+- **A forbidden pair keeps its account and moves department** (`mapping._home_dept`): the
+  department this BU's own Carmen table uses most with that account, else GEN if GEN allows it,
+  else the account is dropped as before. The same applies when the AI named no department, or
+  one not in the list.
+- **Rows still blank are asked once more, at once**, alone, told why their answer was refused:
+  - "department 103 does not allow account 2150001", followed by what 103 allows;
+  - "account … is not in the chart";
+  - "no answer".
+
+  One extra call, only when blanks remain. Not after a whole-call failure, which the sweep
+  handles.
+- **The sweep asks again** (`process._resuggest_blank_days`, before the requeue):
+  - every parked day with blank rows, hourly, at most 3 times (`AI_RETRY_EVERY`, `AI_RETRIES`),
+    counted in the payload (`ai_retries`, `ai_at`);
+  - only the rows without a usable pick (`with_carmen_keys(carmen_blanks=False)`), against
+    Carmen's table as it is now;
+  - a try counts whatever happens (no credential, Carmen unreadable, LLM down), so a day nothing
+    can help is not asked every ten minutes;
+  - a day a reviewer is approving (an active claim) is left alone.
+- **PMS only.** `_validate_codes` is shared with the Credit Card wizard and does not change.
+- **No UI change.**
+
+**What did not change.**
+- An AI pick still waits for a person (`mapping_guessed`), so none of this posts anything, and
+  auto-post (#24) is unaffected.
+- A person's picks are never in the payload (they travel with Approve), so a retry never
+  replaces one.
+
+**Consequences.**
+- **A day parked before this change has no `ai_retries`:** the first sweep after deploy asks
+  again for its blank rows. That includes QA's test days.
+- **At most 12 calls for a day nothing can place:** 3 per ask (2 tries + the second ask), and
+  3 retries. Each call is the suggestion model, not charged to the BU.
+- **Not done: a default (suspense) account.** With OpenRouter down and nothing in the BU's
+  table to follow, a row stays blank for the person. An invented account would let Approve post
+  a wrong one.
+- **Suite 2 counts LLM calls (`llmWant`):** a test day with blank rows now makes a second call.

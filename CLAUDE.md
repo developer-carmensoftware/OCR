@@ -229,7 +229,9 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
       Carmen's -500 (sweep or Approve): its table's rows with no account (the keys it just
           wrote) join the day's, with the AI's picks, to map HERE (process.with_carmen_keys)
       the table's rows → the day's rows it can't place
-      mapping.py: the LLM only for those, shown the BU's own mapped rows as examples
+      mapping.py: the LLM only for those, shown the BU's own mapped rows as examples; a pick
+          whose dept forbids its account moves to the BU's own dept for it, else GEN; rows
+          still blank are asked once more, then the sweep asks again hourly ×3 (#57)
       any new row, or this PMS's auto_post off → pending_review; else post_day →
           POST /api/interface/interfacePostGL/REVENUE {Code, DateFrom/To, id:[DataBank Id]}
           (no counter: Carmen decides Dr/Cr + the counter line from its setting; answers

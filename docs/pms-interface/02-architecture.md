@@ -332,10 +332,22 @@ suggestion model under the text-provider allowlist. The prompt carries:
 
 It is told explicitly that **debit and credit are Carmen's, not its**.
 
-The answer is filtered through the credit-card suggester's `_validate_codes`: unknown codes,
-and pairs a department's `DefaultAccount` forbids, are dropped. An empty or failed answer
-gives `{}`, and the rows park as `mapping_missing` for the reviewer to pick. The LLM is never
-a reason a day stops.
+The answer is checked by `_checked` (decision-log #57):
+- **Unknown codes are dropped**, through the credit-card suggester's `_validate_codes`, which
+  is unchanged.
+- **A pair a department's `DefaultAccount` forbids keeps its account** and moves department
+  (`_home_dept`): the department the BU's own table uses most with that account, else GEN if
+  GEN allows it, else the account is dropped. The same applies when the AI named no department
+  or an unknown one.
+- **Lines still blank are asked once more**, alone, with why each answer was refused and what
+  the departments it named allow. One call, only when blanks remain.
+
+An empty or failed answer (after 2 tries) gives `{}`, and the rows park as `mapping_missing`
+for the reviewer to pick. **The sweep asks again** for every parked day's blank rows, hourly,
+at most 3 times (`process._resuggest_blank_days`; `ai_retries`/`ai_at` in the payload). It asks
+only for rows without a usable pick, against Carmen's table as it is now, and leaves alone a
+day being approved. The LLM is never a reason a day stops, and an AI pick always waits for a
+person.
 
 ## Frontend surface
 
