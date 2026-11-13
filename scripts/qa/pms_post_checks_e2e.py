@@ -16,6 +16,7 @@
     python scripts/qa/pms_post_checks_e2e.py reset                 # delete the two tenants' days (a clean run)
     python scripts/qa/pms_post_checks_e2e.py jvs DATE [DATE...]    # live engine JVs dated those days (web JWT)
     python scripts/qa/pms_post_checks_e2e.py interfaces            # Carmen's real interface list (JSON)
+    python scripts/qa/pms_post_checks_e2e.py held PMS DATE [DATE…]  # Carmen's Data Bank rows for those days
     python scripts/qa/pms_post_checks_e2e.py void SEQ [SEQ...]     # void JVs a run made by mistake (web JWT)
 
 HotelTime (dev Data Bank 2026-10-01..06) is the PMS #51's reader cannot key: rows in `Revenue`,
@@ -48,9 +49,7 @@ def _snapshot_file(setting: str) -> Path:
 
 
 async def _table(setting: str = SETTING) -> tuple[list[dict], list[str]]:
-    return await base._carmen(
-        base.carmen.get_pms_mapping, setting, POST_TYPE, base.TOKEN
-    )
+    return await base._carmen(base.carmen.get_pms_mapping, setting, POST_TYPE, base.TOKEN)
 
 
 def _body(rows: list[dict], columns: list[str]) -> list[dict]:
@@ -73,9 +72,7 @@ async def _table_info(setting: str, on: list[str] | None = None) -> dict:
         "rows": len(rows),
         "blank": sum(1 for r in rows if not _norm(r.get("AccCode")).strip()),
         "keys": sorted({_key_text(r, keys) for r in rows}),
-        "mapped": sorted(
-            {_key_text(r, keys) for r in rows if _norm(r.get("AccCode")).strip()}
-        ),
+        "mapped": sorted({_key_text(r, keys) for r in rows if _norm(r.get("AccCode")).strip()}),
     }
 
 
@@ -108,9 +105,7 @@ async def _fill_blank(setting: str, dept: str, acc: str) -> int:
 
 
 async def _day_keys(pms: str, date: str, list_name: str, cols: list[str]) -> dict:
-    found = await base._carmen(
-        base.carmen.get_databank_day, "PMS", pms, "Daily", date, base.TOKEN
-    )
+    found = await base._carmen(base.carmen.get_databank_day, "PMS", pms, "Daily", date, base.TOKEN)
     fd = found[0]["FileData"] if found else {}
     fd = json.loads(fd) if isinstance(fd, str) else fd
     items = fd.get(list_name) or []
@@ -168,12 +163,8 @@ async def _stage(date: str) -> int:
 
 async def _restore(setting: str = SETTING) -> bool:
     snap = json.loads(_snapshot_file(setting).read_text(encoding="utf-8"))
-    body = _body(
-        snap["rows"], snap["columns"]
-    )  # an empty snapshot puts back an empty table
-    await base._carmen(
-        base.carmen.put_pms_mapping, setting, POST_TYPE, body, base.TOKEN
-    )
+    body = _body(snap["rows"], snap["columns"])  # an empty snapshot puts back an empty table
+    await base._carmen(base.carmen.put_pms_mapping, setting, POST_TYPE, body, base.TOKEN)
     now, _ = await _table(setting)
     cols = [c for c in snap["columns"] if c != "AccDesc"]
 
@@ -209,9 +200,7 @@ async def _posts_since(iso: str, path: str = "interfacePostGL") -> int:
     since = datetime.fromisoformat(iso.replace("Z", "+00:00"))
     async with base.async_session() as db:
         return await db.scalar(
-            text(
-                "select count(*) from outbound_call_logs where url like :u and created_at > :t"
-            ),
+            text("select count(*) from outbound_call_logs where url like :u and created_at > :t"),
             {"u": f"%/{path}/%", "t": since},
         )
 
@@ -236,9 +225,7 @@ def main() -> int:
         print(json.dumps(asyncio.run(base._dump()), ensure_ascii=False, default=str))
         return 0
     # The ht-* names are the generic table commands for HotelTime.PMS.
-    setting = (
-        SETTING if cmd.startswith("ht-") else (sys.argv[2] if len(sys.argv) > 2 else "")
-    )
+    setting = SETTING if cmd.startswith("ht-") else (sys.argv[2] if len(sys.argv) > 2 else "")
     if cmd in ("table", "ht-table"):
         on = sys.argv[3].split(",") if cmd == "table" and len(sys.argv) > 3 else None
         print(json.dumps(asyncio.run(_table_info(setting, on)), ensure_ascii=False))
@@ -251,11 +238,7 @@ def main() -> int:
         print(json.dumps({"restored": good}))
         return 0 if good else 1
     if cmd == "fill-blank":
-        print(
-            json.dumps(
-                {"filled": asyncio.run(_fill_blank(setting, sys.argv[3], sys.argv[4]))}
-            )
-        )
+        print(json.dumps({"filled": asyncio.run(_fill_blank(setting, sys.argv[3], sys.argv[4]))}))
         return 0
     if cmd == "day-keys":
         pms, date, list_name, cols = (
@@ -264,11 +247,7 @@ def main() -> int:
             sys.argv[4],
             sys.argv[5].split(","),
         )
-        print(
-            json.dumps(
-                asyncio.run(_day_keys(pms, date, list_name, cols)), ensure_ascii=False
-            )
-        )
+        print(json.dumps(asyncio.run(_day_keys(pms, date, list_name, cols)), ensure_ascii=False))
         return 0
     if cmd == "jv":
         print(json.dumps(_jv(sys.argv[2]), ensure_ascii=False))
@@ -294,6 +273,17 @@ def main() -> int:
     if cmd == "jvs":
         days = tuple(sys.argv[2:])
         print(json.dumps([j["JvhSeq"] for j in base._engine_jvs(days)]))
+        return 0
+    if cmd == "held":  # held PMS DATE...: Carmen's Data Bank rows for those days
+        import httpx  # noqa: PLC0415
+        import pms_databank as bank  # noqa: PLC0415
+
+        with httpx.Client(timeout=120, headers={"Authorization": base.TOKEN}) as h:
+            held = {
+                d: [r.get("Id") for r in bank.held(h, base.URI, sys.argv[2], d)]
+                for d in sys.argv[3:]
+            }
+        print(json.dumps(held))
         return 0
     if cmd == "interfaces":
         print(

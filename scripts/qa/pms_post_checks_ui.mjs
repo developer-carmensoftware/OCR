@@ -84,6 +84,10 @@ function check(id, name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${id} ${name}${detail ? `  (${detail})` : ''}`)
   return Boolean(ok)
 }
+function na(id, name, why) {
+  results.push({ id, name, ok: true, na: true, detail: why })
+  console.log(`N/A  ${id} ${name}  (${why})`)
+}
 class Stop extends Error {}
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
@@ -300,6 +304,11 @@ async function run() {
   }
   const t0 = new Date().toISOString()
   const llm0 = Number(py('llm').out.trim().split('\n').pop())
+  // Carmen may already hold yesterday's day (a QA round, suite 3): then that PMS's sweep day
+  // is read at once and parks, and the cases about a day still waiting for data cannot run.
+  const heldY = Object.fromEntries(['HotelTime', 'Comanche', 'Cloudbeds'].map(p =>
+    [p.toLowerCase(), (pyJson('held', p, YESTERDAY)[YESTERDAY] || []).length > 0]))
+  console.log(`  Carmen holds ${YESTERDAY} for: ${Object.keys(heldY).filter(k => heldY[k]).join(', ') || 'none'}`)
 
   // ── O — the sweep opens yesterday's days (from 06:00 ICT, every PMS with a key) ────
   // HotelTime is listed as PartnerApi by our stub; Comanche and Cloudbeds stay CarmenApi.
@@ -315,7 +324,7 @@ async function run() {
   sw = await sweep()
   const opened = await until(rs => {
     const d = dayOf(rs, BU, YESTERDAY)
-    return d && d.reason_code ? d : null
+    return d && (d.reason_code || d.status !== 'received') ? d : null
   })
   check('O-06', 'the list back: the next sweep opens the day (a failed read was not cached)',
     sw.status === 200 && sw.json?.opened >= 1 && !!opened, `sweep=${sw.text.slice(0, 120)}`)
@@ -326,39 +335,51 @@ async function run() {
   const opens = ['hoteltime', 'comanche', 'cloudbeds'].map(p => daysOf(rows, BU, YESTERDAY, p).length)
   check('O-01', `the sweep opened ${BU}'s ${YESTERDAY} once for every PMS it has a key for: HotelTime (PartnerApi), and Comanche and Cloudbeds (CarmenApi, no hook needed, #55)`,
     opens.every(n => n === 1), `hoteltime/comanche/cloudbeds=${opens}`)
-  const hooked = ['comanche', 'cloudbeds'].map(p => dayOf(rows, BU, YESTERDAY, p))
-  check('O-08', "a CarmenApi day the sweep opened before Carmen has it waits as day_not_ready (hourly, no try spent), not day_not_found",
-    hooked.every(d => d?.status === 'received' && d?.reason_code === 'day_not_ready' && d?.attempts === 0),
-    hooked.map(d => `${d?.event_id}: ${d?.status}/${d?.reason_code} attempts=${d?.attempts}`).join(' | '))
-  check('O-02', "Carmen has no data for it: day_not_ready, still received, no try spent",
-    opened?.status === 'received' && opened?.reason_code === 'day_not_ready' && opened?.attempts === 0 &&
-      /No Data Found/.test(opened?.error_message || ''),
-    `${opened?.status}/${opened?.reason_code} attempts=${opened?.attempts} "${opened?.error_message}"`)
-  const eid = opened?.event_id
-  // Carmen is asked through its preview of the post (decision-log #54), so count previews.
-  let p0 = await previews(t0)
-  await sweep()
-  await sweep()
-  rows = pyJson('state')
-  let pNow = await previews(t0)
-  check('O-03', 'two more sweeps within the hour: no new day, Carmen not asked again',
-    daysOf(rows, BU, YESTERDAY).length === 1 && pNow === p0 && dayOf(rows, BU, YESTERDAY)?.reason_code === 'day_not_ready',
-    `previews ${p0}→${pNow}`)
-  py('backdate', eid, '61', '0')
-  p0 = pNow
-  await sweep()
-  await sleep(3000)
-  const again = dayOf(pyJson('state'), BU, YESTERDAY)
-  pNow = await previews(t0)
-  check('O-04', 'an hour on: Carmen is asked again, still day_not_ready, still no try spent',
-    again?.reason_code === 'day_not_ready' && again?.attempts === 0 && pNow === p0 + 1, `previews ${p0}→${pNow} attempts=${again?.attempts}`)
-  py('backdate', eid, '61', '25')
-  await sweep()
-  const gone = await until(rs => {
-    const d = dayOf(rs, BU, YESTERDAY)
-    return d?.status === 'failed' ? d : null
-  }, 30000)
-  check('O-05', 'a day on, still no data: failed as day_not_found', gone?.reason_code === 'day_not_found', `${gone?.status}/${gone?.reason_code}`)
+  const waitingPms = ['comanche', 'cloudbeds'].filter(p => !heldY[p])
+  const hooked = waitingPms.map(p => dayOf(rows, BU, YESTERDAY, p))
+  if (!waitingPms.length)
+    na('O-08', 'a CarmenApi day the sweep opened before Carmen has it waits as day_not_ready',
+      `Carmen already holds ${YESTERDAY} for Comanche and Cloudbeds; suite 3 W-02 covers the wait`)
+  else
+    check('O-08', "a CarmenApi day the sweep opened before Carmen has it waits as day_not_ready (hourly, no try spent), not day_not_found",
+      hooked.every(d => d?.status === 'received' && d?.reason_code === 'day_not_ready' && d?.attempts === 0),
+      hooked.map(d => `${d?.event_id}: ${d?.status}/${d?.reason_code} attempts=${d?.attempts}`).join(' | '))
+  const oWaits = !heldY.hoteltime // HotelTime's sweep day waits for data: O-02..O-05
+  if (!oWaits) {
+    const why = `Carmen already holds HotelTime's ${YESTERDAY}: the day parks at once; suite 3 W-02/F-01 cover the wait`
+    for (const [id, name] of [['O-02', 'no data yet: day_not_ready'], ['O-03', 'no new read within the hour'], ['O-04', 'asked again an hour on'], ['O-05', 'a day on: day_not_found']])
+      na(id, name, why)
+  } else {
+    check('O-02', "Carmen has no data for it: day_not_ready, still received, no try spent",
+      opened?.status === 'received' && opened?.reason_code === 'day_not_ready' && opened?.attempts === 0 &&
+        /No Data Found/.test(opened?.error_message || ''),
+      `${opened?.status}/${opened?.reason_code} attempts=${opened?.attempts} "${opened?.error_message}"`)
+    const eid = opened?.event_id
+    // Carmen is asked through its preview of the post (decision-log #54), so count previews.
+    let p0 = await previews(t0)
+    await sweep()
+    await sweep()
+    rows = pyJson('state')
+    let pNow = await previews(t0)
+    check('O-03', 'two more sweeps within the hour: no new day, Carmen not asked again',
+      daysOf(rows, BU, YESTERDAY).length === 1 && pNow === p0 && dayOf(rows, BU, YESTERDAY)?.reason_code === 'day_not_ready',
+      `previews ${p0}→${pNow}`)
+    py('backdate', eid, '61', '0')
+    p0 = pNow
+    await sweep()
+    await sleep(3000)
+    const again = dayOf(pyJson('state'), BU, YESTERDAY)
+    pNow = await previews(t0)
+    check('O-04', 'an hour on: Carmen is asked again, still day_not_ready, still no try spent',
+      again?.reason_code === 'day_not_ready' && again?.attempts === 0 && pNow === p0 + 1, `previews ${p0}→${pNow} attempts=${again?.attempts}`)
+    py('backdate', eid, '61', '25')
+    await sweep()
+    const gone = await until(rs => {
+      const d = dayOf(rs, BU, YESTERDAY)
+      return d?.status === 'failed' ? d : null
+    }, 30000)
+    check('O-05', 'a day on, still no data: failed as day_not_found', gone?.reason_code === 'day_not_found', `${gone?.status}/${gone?.reason_code}`)
+  }
 
   // ── X — switching a PMS off: revoking its key stops everything of it (decision-log #56) ──
   // pms-pc-b × HotelTime: a parked day (DAY_N) and yesterday's waiting one (O-07), auto-post on.
@@ -368,7 +389,7 @@ async function run() {
   rows = pyJson('state')
   const xWaiting = dayOf(rows, BU_B, YESTERDAY)
   check('X-01', `${BU_B} has a parked day and a waiting one, with auto-post on`,
-    r.status === 202 && !!xParked && xWaiting?.status === 'received' && xOn.json?.auto_post === true,
+    r.status === 202 && !!xParked && ['received', 'pending_review'].includes(xWaiting?.status) && xOn.json?.auto_post === true,
     `parked=${xParked?.status} waiting=${xWaiting?.status}/${xWaiting?.reason_code} auto_post=${xOn.json?.auto_post}`)
   const xOff = await carmenApi('DELETE', `/keys?${new URLSearchParams({ uri: URI, bu: BU_B, pms: 'hoteltime' })}`)
   check('X-02', "Carmen's PMS setting switches HotelTime off for the BU (DELETE /keys)", xOff.status === 204, `HTTP ${xOff.status}`)
@@ -584,11 +605,13 @@ async function run() {
     }
 
     // O-05, seen: the failed opened day under Not posted, with its reason.
-    await chip('Not posted')
-    const rowGone = (await queueRow(YESTERDAY).innerText().catch(() => '')).replace(/\s+/g, ' ')
-    check('O-05', 'the failed opened day shows under Not posted, "Data Bank does not have this day"',
-      /Data Bank does not have this day/.test(rowGone), rowGone.slice(0, 140))
-    await shot('O-05-not-posted')
+    if (oWaits) {
+      await chip('Not posted')
+      const rowGone = (await queueRow(YESTERDAY).innerText().catch(() => '')).replace(/\s+/g, ' ')
+      check('O-05', 'the failed opened day shows under Not posted, "Data Bank does not have this day"',
+        /Data Bank does not have this day/.test(rowGone), rowGone.slice(0, 140))
+      await shot('O-05-not-posted')
+    }
 
     // ── CB — Cloudbeds: reviewable too, through Carmen's engine to a JV ──────────────
     // Its day carries the key columns in two lists; `Statistic` is another section, so the
@@ -703,8 +726,12 @@ async function run() {
   check('E-02', 'no 5xx from the PMS routes', log && fives.length === 0, fives.slice(0, 3).join(' | ') || (log ? '' : 'no log'))
   const llm1 = llmNow()
   const llmWant = 4 + (cbRan ? 2 : 0) // X-01, N-01, N-08's re-read, A-01 (and CB-01, CB-07): the days with new rows
-  check('E-03', 'the AI was asked once per day with new rows, and for no other', llm1 === llm0 + llmWant,
-    `calls ${llm0}→${llm1}, expected +${llmWant}`)
+  // Each sweep day Carmen already held was read and parked: one more call each (BU's three,
+  // and BU_B's HotelTime), and #57 may ask a second time for rows still blank.
+  const extra = ['hoteltime', 'comanche', 'cloudbeds'].filter(p => heldY[p]).length + (heldY.hoteltime ? 1 : 0)
+  check('E-03', 'the AI was asked once per day with new rows, and for no other',
+    llm1 >= llm0 + llmWant + extra && llm1 <= llm0 + llmWant + 2 * extra,
+    `calls ${llm0}→${llm1}, expected +${llmWant}${extra ? ` +${extra}..${2 * extra} for the held sweep days` : ''}`)
   const made = pyJson('jvs', ...HT_DAYS, YESTERDAY)
   check('E-04', 'no JV on any HotelTime day or yesterday', made.length === 0, `jvs=${made}`)
   if (made.length) py('void', ...made.map(String))
