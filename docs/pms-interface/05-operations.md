@@ -207,7 +207,7 @@ and `2026-10-1[4-5].md`.
 | 2026-10-09 | Path A against dev Carmen | JV 1124 / Voucher 24090001, Dr = Cr 226,085.51 |
 | 2026-10-14 | **Path B pre-E2E** on `test.PMS`: 32 rows, AI picked all 32, Approve PUT + post | **JV 1142** (Normal, 23 lines, Dr = Cr 319,343.88), voided afterwards |
 | 2026-10-15 | Browser test of the path-B review, 1440 and 390, light and dark | passed. Approve not pressed (it would post to dev Carmen) |
-| 2026-11-13 | **Suite 3 on real re-dated days** (local stack, carmencloud's data): the sweep and the hook, `From`, the three review modals, Approve and auto-post on HotelTime, Cloudbeds and Comanche | **60/62.** The two fails are a real bug (F-03, W-03: a hook after the sweep stores a second day when its casing differs). **Comanche posted** (JV 1632, 1636: ask K looks fixed). 8 JVs (1630–1637), all voided; the three tables put back |
+| 2026-11-13 | **Suite 3 on real re-dated days** (local stack, carmencloud's data): the sweep and the hook, `From`, the three review modals, Approve and auto-post on HotelTime, Cloudbeds and Comanche | **60/62.** The two fails are a real bug (F-03, W-03: a hook after the sweep stores a second day when its casing differs). **Some Comanche days posted** (JV 1632, 1636), while suite 1's 2024-07-01 and 2025-10-20 are still refused the same day: ask K is not fixed for every day. 8 JVs (1630–1637), all voided; the three tables put back. **With #58: 62/62** (JV 1638–1641, voided) |
 
 The real end to end is **CA-120**: a real Carmen menu click and real hooks. It needs CA-115
 (Carmen) and CA-118 (release).
