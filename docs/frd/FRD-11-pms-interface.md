@@ -1,12 +1,12 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-11 — PMS Interface Automation
-output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.6.docx
+output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.7.docx
 iso-wp: SD
-Document Version: Version 1.6 (As-Built Developer & Test Spec)
+Document Version: Version 1.7 (As-Built Developer & Test Spec)
 Module ID: `pms_interface` (ใช้บันทึก LLM usage เท่านั้น ไม่คิดเครดิต)
 Status: Built — แถวของวันมาจาก preview ของ engine ของ Carmen (decision-log #54) · การ post ของ Carmen เป็นตัวตรวจ mapping (#52, #53) · sweep เปิดวันของเมื่อวานให้ทุก PMS ตั้งแต่ 06:00 ICT จึงไม่ต้องรอ hook (decision-log #55) · hook จริงของ Carmen ยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K)
-Source of truth: repo developer-carmensoftware/OCR @ 6eba2efe (12/11/2026) + branch feat/pms-switch-off
+Source of truth: repo developer-carmensoftware/OCR @ 61a49308 (13/11/2026) + branch feat/pms-ai-every-row
 Date: 12 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-10-07, interfacePostGL/REVENUE, interfacePreviewPostGL/REVENUE, GET /interfacePost/mapping/{code}/{postType}/GL, PUT /interfacePost/mapping/{code}/{postType}/GL, COMANCHE
@@ -24,6 +24,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 | 1.3 | 04/11/2026 | Dev Team | ตามโค้ด ณ da06eb2f (decision-log #51): ระบบอ่าน `interfaceThirdParties` แทน PMS setting และ INI แล้วหารหัส setting, คอลัมน์ key, รายการของวัน และรูปแบบไฟล์เอง วันไม่หยุดที่ `carmen_config_unreadable` ทุกวันแล้ว · การ post ไม่ส่งบัญชีพัก (engine ของ Carmen ใช้จาก setting ของมันเอง) · เหตุผล `pms_setting_missing` / `unsupported_pms_format` / `unreadable_day` ตามกติกาใหม่ · Comanche.PMS ยังถูก Carmen ปฏิเสธ (ask K) | |
 | 1.5 | 12/11/2026 | Dev Team | ตาม decision-log #55: sweep เปิดวันของเมื่อวานให้ทุก PMS ที่ BU มี key และ `interfaceThirdParties` บอกว่าลง REVENUE → GL ไม่ว่า `From` จะเป็นอะไร (เดิมเฉพาะ PartnerApi) และเปิดตั้งแต่ 06:00 ICT (เดิม 08:00) · hook จึงเป็นทางให้วันมาเร็วขึ้น ไม่ใช่ทางเดียว · วันที่ Carmen ยังไม่มีรอ `day_not_ready` ทุกชั่วโมง และเป็น `day_not_found` หลัง 24 ชั่วโมง (§2.1, §3, §8.6) | |
 | 1.6 | 12/11/2026 | Dev Team | ตาม decision-log #56: การ revoke key (จากหน้าจอ Carmen หรือ `#/admin/api-keys`) = ปิด PMS นั้นของ BU — ปิดวันที่ยังเปิดอยู่เป็น `rejected` / `pms_switched_off` (ยกเว้นวันที่มีคนกำลัง approve) และปิด auto-post · processing ปิดวันที่ไม่มี key ที่ใช้ได้ก่อนเรียก Carmen และ requeue เลือกเฉพาะ PMS ที่ยังมี key · การแทน key ไม่ใช่การปิด (§2.2, §5, §8.6, §9) | |
+| 1.7 | 13/11/2026 | Dev Team | ตาม decision-log #57: คู่แผนก/บัญชีที่แผนกไม่อนุญาตไม่ทิ้งบัญชีแล้ว (ย้ายไปแผนกที่ BU ใช้กับบัญชีนั้น หรือ GEN) · แถวที่ยังว่างถูกถามซ้ำหนึ่งครั้งพร้อมเหตุผล · sweep ถามซ้ำแถวว่างของวันที่รอตรวจชั่วโมงละครั้ง ไม่เกิน 3 ครั้ง (`ai_retries`, `ai_at`) · เฉพาะ PMS ไม่เปลี่ยน UI (§3, §6.2, §7, §8.6, EC-12, EC-13) | |
 | 1.4 | 10/11/2026 | Dev Team | ตาม decision-log #52–#54 และ ask D: การ post ของ Carmen เป็นตัวตรวจ mapping (`-500` → `pms_mapping_incomplete` พร้อม key ที่ Carmen เขียนไว้) ทุก PMS review ได้ แถวของวันมาจาก preview ของ engine (`interfacePreviewPostGL`) แทนการอ่าน FileData เอง (`unreadable_day` และ `unsupported_pms_format` ไม่ถูกเขียนแล้ว) เปิดวันของ PMS แบบ PartnerApi เอง `-400` No Data → `day_not_ready` เก็บเลข JV จาก `Id` ใน `jv_no` AI ไม่เห็นยอดเงินและลองใหม่หนึ่งครั้ง และ `scripts/qa/pms_probe.py` | |
 
 <!-- pagebreak -->
@@ -100,9 +101,9 @@ flowchart TB
 | F-02 | API keys | ออก (หนึ่ง key ที่ใช้งานได้ต่อ BU × PMS), ยืนยันด้วย sha256, เพิกถอน | `services/shared/api_keys.py` |
 | F-03 | Carmen Settings API | GET/PUT settings, POST/DELETE keys สำหรับหน้าจอของ Carmen | `routers/pms_carmen.py` |
 | F-04 | Shared credential | credential เดียวของ BU ที่ email automation ใช้ด้วย | `services/email_automation/credential.py` (`adopt_token`, `posting_target`) |
-| F-05 | Day processing | gate ladder, park หรือ post, ลองใหม่, ปลุก, เปิดวันของเมื่อวานให้ทุก PMS, นำ key ที่ Carmen ขาดเข้าการตรวจ | `services/pms/process.py` (`process_event`, `run_pms_processing`, `post_day`, `with_carmen_keys`) |
+| F-05 | Day processing | gate ladder, park หรือ post, ลองใหม่, ปลุก, เปิดวันของเมื่อวานให้ทุก PMS, นำ key ที่ Carmen ขาดเข้าการตรวจ, ถาม AI ซ้ำให้วันที่ยังมีแถวว่าง (#57) | `services/pms/process.py` (`process_event`, `run_pms_processing`, `post_day`, `with_carmen_keys`) |
 | F-06 | Carmen config & preview | section จาก `interfaceThirdParties`, key ของ mapping, แถวของวันจาก preview ของ engine, ตารางที่รวมแล้วสำหรับ PUT | `services/pms/carmen_config.py` (`find_section`, `key_columns`, `preview_rows`, `merged_rows`) + `carmen.preview_pms_gl` |
-| F-07 | AI suggestion | หนึ่งคำขอต่อวันที่มีแถวใหม่: key ตามชื่อคอลัมน์ของ PMS นั้น ไม่มียอด ใช้แถวที่ map แล้วเป็นตัวอย่าง ลองใหม่หนึ่งครั้งเมื่อคำตอบใช้ไม่ได้ | `services/pms/mapping.py` (`suggest`) |
+| F-07 | AI suggestion | หนึ่งคำขอต่อวันที่มีแถวใหม่: key ตามชื่อคอลัมน์ของ PMS นั้น ไม่มียอด ใช้แถวที่ map แล้วเป็นตัวอย่าง ลองใหม่หนึ่งครั้งเมื่อคำตอบใช้ไม่ได้ · คู่แผนก/บัญชีที่แผนกไม่อนุญาตย้ายแผนกแทนการทิ้งบัญชี และถามแถวที่ยังว่างซ้ำหนึ่งครั้ง (#57) | `services/pms/mapping.py` (`suggest`) |
 | F-08 | Review | ดู, approve, reject, recheck | `services/pms/review.py` + `/api/v1/pms/days/*` |
 | F-09 | Queue rows | วันของ PMS เป็นแถวในคิว | `services/credit_card/activity.py` (`_pms_row`) |
 | F-10 | Review dialog | dialog ตรวจของ PMS | `PmsReviewDocument.tsx`, `usePmsReview.ts` |
@@ -207,6 +208,7 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 | `guessed` | คำแนะนำของ AI สำหรับ key ใหม่: แผนก, บัญชี, ความมั่นใจ, เหตุผล |
 | `flags` | `mapping_missing` (แถวใหม่ที่ AI แนะนำไม่ได้), `mapping_guessed` (แถวใหม่ที่มีแค่คำแนะนำของ AI) — ว่าง = post เองได้ |
 | `missing` / `ai` | key ใหม่ที่ไม่มีคำแนะนำ / key ใหม่ที่มีคำแนะนำของ AI |
+| `ai_at` / `ai_retries` | เวลาที่ถาม AI ครั้งล่าสุด / จำนวนครั้งที่ sweep ถามซ้ำ (ไม่เกิน 3, decision-log #57) |
 | `databank_id` / `last_modified` | แถวของ Data Bank ที่ preview และ post ใช้ (แถวล่าสุดถ้ามีหลายแถว) — ระบบไม่อ่านเนื้อหาของแถว |
 
 ## 6.3 pms_settings — หนึ่งแถวต่อ BU × PMS
@@ -300,7 +302,7 @@ Migration: `20261007000000_pms_events.sql`, `20261009000000_pms_processing.sql` 
 | `{"Result": false, "ErrorList": […]}` | เช่น บัญชีไม่อยู่ในผัง หรือไม่มีค่า DrCr | พักพร้อม `carmen_rejected` และข้อความของ Carmen — นับว่า post เฉพาะ `Result: true` |
 | 401 / 403 | token ตาย / ไม่มีสิทธิ์ | `carmen_unauthorized` / `carmen_forbidden` |
 
-**LLM:** หนึ่ง `call_text_llm` ต่อวันที่มีแถวใหม่ ใช้ suggestion model ภายใต้ provider allowlist และ `data_collection: deny` prompt มีแถวใหม่ (ค่าของแต่ละคอลัมน์ key พร้อมชื่อคอลัมน์ของ PMS นั้น — ไม่มียอด, #54), แถวที่ map แล้วไม่เกิน 120 แถวเป็นตัวอย่าง, แผนก และบัญชี (กรองเป็นประเภท income และ balancesheet) และบอกชัดว่า Dr/Cr เป็นของ Carmen คำตอบผ่าน `_validate_codes` (ตัดรหัสที่ไม่มีและคู่ที่แผนกไม่อนุญาต) คำตอบที่ขาดปีกกาปิดตัวสุดท้ายอ่านได้ (`_loads_object`) คำตอบที่ใช้ไม่ได้ลองใหม่หนึ่งครั้ง ถ้ายังใช้ไม่ได้ แถวนั้นเป็น `mapping_missing` ให้คนเลือก — LLM ไม่เคยเป็นเหตุที่วันหยุด
+**LLM:** หนึ่ง `call_text_llm` ต่อวันที่มีแถวใหม่ ใช้ suggestion model ภายใต้ provider allowlist และ `data_collection: deny` prompt มีแถวใหม่ (ค่าของแต่ละคอลัมน์ key พร้อมชื่อคอลัมน์ของ PMS นั้น — ไม่มียอด, #54), แถวที่ map แล้วไม่เกิน 120 แถวเป็นตัวอย่าง, แผนก และบัญชี (กรองเป็นประเภท income และ balancesheet) และบอกชัดว่า Dr/Cr เป็นของ Carmen คำตอบผ่าน `_validate_codes` (ตัดรหัสที่ไม่มี) แต่คู่ที่แผนกไม่อนุญาตไม่ทิ้งบัญชี: ย้ายไปแผนกที่ BU ใช้กับบัญชีนั้นบ่อยสุดในตารางของ Carmen ถ้าไม่มีใช้ GEN (ถ้า GEN อนุญาต) ถ้าไม่ได้ทั้งคู่จึงทิ้ง และแถวที่ยังว่างถูกถามซ้ำหนึ่งครั้งทันที พร้อมเหตุผลที่คำตอบเดิมใช้ไม่ได้ (decision-log #57) คำตอบที่ขาดปีกกาปิดตัวสุดท้ายอ่านได้ (`_loads_object`) คำตอบที่ใช้ไม่ได้ลองใหม่หนึ่งครั้ง ถ้ายังใช้ไม่ได้ แถวนั้นเป็น `mapping_missing` ให้คนเลือก — LLM ไม่เคยเป็นเหตุที่วันหยุด
 
 # 8. Workflow & End-to-End Walkthrough
 
@@ -436,9 +438,10 @@ sequenceDiagram
 ## 8.6 Sweep ทุก 10 นาที (`pms-process`)
 
 0. **เปิดวันของเมื่อวาน** (`_open_days`, decision-log #55): ตั้งแต่ 06:00 ICT เปิดวันของเมื่อวานให้ BU × PMS ที่มี key ที่ใช้ได้ และ `interfaceThirdParties` บอกว่าลง REVENUE → GL ไม่ว่า `From` จะเป็นอะไร (อ่านรายการของแต่ละ BU วันละครั้ง) — Data Bank ยังไม่มีวันนั้นก็ไม่เป็นไร: preview ตอบ No Data แล้ววันรอ `day_not_ready` — วันที่ hook เก็บไว้แล้ว (แม้ตัวพิมพ์ต่าง) ไม่เปิดซ้ำ
-1. **Requeue:** วันที่รออยู่ของ BU × PMS ที่เปิด auto-post และยังมี key ที่ใช้ได้ (decision-log #56) ซึ่งไม่มี reason และไม่มี flag เหลือแล้ว (เพราะ approve วันอื่นไป หรือเพิ่งเปิด auto-post) กลับไป `received` และถูกอ่านใหม่ทั้งหมดก่อน post
-2. **ปลุกเมื่อมี credential ใหม่:** วันที่ `received`/`failed` ด้วย `no_credential`, `carmen_unauthorized`, `carmen_forbidden`, `carmen_config_unreadable` กลับมาใหม่ (attempts รีเซ็ต) เมื่อ `carmen_token_verified_at` ใหม่กว่า `processed_at` ของวันนั้น
-3. **ประมวลผล** วัน `received` ไม่เกิน 50 วัน เก่าก่อน — `job_runs` บันทึกเฉพาะรอบที่มีงานหรือล้มเหลว
+1. **ถาม AI ซ้ำ** (`_resuggest_blank_days`, decision-log #57): วัน `pending_review` ที่ยังมีแถวว่าง ถามเฉพาะแถวที่ยังไม่มีคำแนะนำที่ใช้ได้ ชั่วโมงละครั้ง ไม่เกิน 3 ครั้ง (นับทุกครั้งแม้ล้ม) กับตารางของ Carmen ล่าสุด — ข้ามวันที่มีคนกำลัง approve และคำแนะนำของ AI ยังต้องรอคนเสมอ จึงไม่ post อะไร
+2. **Requeue:** วันที่รออยู่ของ BU × PMS ที่เปิด auto-post และยังมี key ที่ใช้ได้ (decision-log #56) ซึ่งไม่มี reason และไม่มี flag เหลือแล้ว (เพราะ approve วันอื่นไป หรือเพิ่งเปิด auto-post) กลับไป `received` และถูกอ่านใหม่ทั้งหมดก่อน post
+3. **ปลุกเมื่อมี credential ใหม่:** วันที่ `received`/`failed` ด้วย `no_credential`, `carmen_unauthorized`, `carmen_forbidden`, `carmen_config_unreadable` กลับมาใหม่ (attempts รีเซ็ต) เมื่อ `carmen_token_verified_at` ใหม่กว่า `processed_at` ของวันนั้น
+4. **ประมวลผล** วัน `received` ไม่เกิน 50 วัน เก่าก่อน — `job_runs` บันทึกเฉพาะรอบที่มีงานหรือล้มเหลว
 
 ## 8.7 User Operational Workflow
 
@@ -483,6 +486,8 @@ sequenceDiagram
 | EC-09 | Data Bank มีหลายแถวของวันเดียวกัน | ใช้แถวที่ `LastModified` ล่าสุด และส่ง id เดียวกันให้ทั้ง preview และ post |
 | EC-10 | preview ของ Carmen ใช้ไม่ได้ (Carmen ล่มหรือบั๊ก เช่น 09/11/2026) | วันพักโดยไม่มีแถว และ engine ตรวจ mapping ตอน post |
 | EC-11 | AI ตอบ JSON ที่ขาดปีกกาปิดตัวสุดท้าย หรือตอบว่าง | อ่านได้ถ้าเติม `}` ตัวเดียวแล้วถูกต้อง / ถ้าใช้ไม่ได้ลองใหม่หนึ่งครั้ง แล้วจึงเป็น `mapping_missing` |
+| EC-12 | AI จับคู่แผนกกับบัญชีที่แผนกไม่อนุญาต (`DefaultAccount`) เช่น แผนก 103 + Output Tax | บัญชีย้ายไปแผนกที่ BU ใช้กับบัญชีนั้นบ่อยสุด หรือ GEN ถ้าไม่ได้ทั้งคู่ แถวถูกถามซ้ำพร้อมเหตุผล (decision-log #57) |
+| EC-13 | AI ล้มทั้งคำขอ (OpenRouter ปฏิเสธหรือเครดิตหมด) | วันพักเป็น `mapping_missing` แล้ว sweep ถามซ้ำแถวที่ว่างชั่วโมงละครั้ง ไม่เกิน 3 ครั้ง (decision-log #57) |
 
 ## 9.1 State Diagram — สถานะของ pms_events
 
@@ -548,6 +553,7 @@ stateDiagram-v2
 | เสร็จ | การ post ของ Carmen เป็นตัวตรวจ mapping: `-500` นำ key ที่ขาดเข้าการตรวจ (#52, #53) |
 | เสร็จ | เปิดวันของ PMS แบบ PartnerApi, `day_not_ready` ทุกชั่วโมง (#52) |
 | เสร็จ | AI แนะนำเฉพาะแถวใหม่ พร้อม `_validate_codes` ไม่ส่งยอด ลองใหม่หนึ่งครั้ง |
+| เสร็จ | คู่แผนก/บัญชีที่แผนกไม่อนุญาตย้ายแผนก, ถามแถวที่ยังว่างซ้ำหนึ่งครั้ง, sweep ถามซ้ำชั่วโมงละครั้งไม่เกิน 3 ครั้ง (#57) |
 | เสร็จ | เลข JV จาก `Id` เก็บใน `jv_no` (ask D) |
 | เสร็จ | `scripts/qa/pms_probe.py` ตรวจ PMS ก่อนเปิดใช้ |
 | เสร็จ | Park / post, ลองใหม่ 3 ครั้ง, ปลุกเมื่อมี credential ใหม่, sweep ทุก 10 นาที |

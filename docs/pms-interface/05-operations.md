@@ -165,8 +165,8 @@ pytest tests/unit/test_pms_carmen_config.py tests/unit/test_pms_process.py tests
 | File | Covers |
 |---|---|
 | `unit/test_pms_carmen_config.py` | `find_section`, `key_columns`, `preview_rows` (Carmen's preview; blank and null alike; a non-table answer is no rows), `new_keys`, `merged_rows` (the whole table goes back) |
-| `unit/test_pms_mapping.py` | What the AI is shown: each key under its column names, the BU's examples, no amounts (decision-log #54) |
-| `unit/test_pms_process.py` | The gate ladder: each reason code, park vs post, `post_day`'s reading of Carmen's answers, requeue, wake |
+| `unit/test_pms_mapping.py` | What the AI is shown: each key under its column names, the BU's examples, no amounts (decision-log #54). A forbidden pair moving to the BU's department or GEN, and the second ask for blank rows with why (#57) |
+| `unit/test_pms_process.py` | The gate ladder: each reason code, park vs post, `post_day`'s reading of Carmen's answers, requeue, wake, the sweep asking the AI again for blank rows (hourly, 3 tries, counted on failure; #57) |
 | `unit/test_pms_review.py` | Approve: a fresh read, Carmen's mapping winning over a stale pick, chart checks, PUT then post, claim release; reject; `recheck` |
 | `unit/test_api_keys.py` | Hashing, issue (revokes the key of the same BU and PMS, stores only the hash, a concurrent generate is a `409`), authenticate (stamps `last_used` only on success), admin revoke |
 | `integration/test_pms_webhook.py` | The hook: auth forms, another PMS's key → `403`, sender variants (camelCase, BOM, `pms`, any content type), the 16 KB boundary, `422`s, repeat → `200` + reset |
@@ -204,6 +204,7 @@ The real end to end is **CA-120**: a real Carmen menu click and real hooks. It n
 | `event_id` keeps `InterfaceName`'s casing | `Comanche` and `COMANCHE` are two rows for one day; the engine refuses the second post (`-200`) | Accepted (decision-log #44): Carmen sends one casing. Lower-casing it would split the days already stored |
 | A day being processed at the very moment its key is revoked | A worker past the live-key check before the revoke can still post that one day; `switch_off` leaves a day a reviewer is approving (an active claim) to finish | Accepted: seconds wide, and a post through Carmen's engine answers "already posted" to a second one (decision-log #56) |
 | The sweep opens only yesterday | A day the sweep missed entirely (the server down all day) is not opened later; it waits for its hook | Open the last N days if it ever matters (decision-log #55) |
+| A row the AI cannot place stays blank | After the first ask, the second ask and 3 hourly retries, a row with nothing in the BU's table to follow waits for the reviewer | Intended: no default (suspense) account, which would let Approve post a wrong one (decision-log #57) |
 | A `PartnerApi` day at 06:00 | Carmen reads such a PMS live, so a hotel whose night audit closes after 06:00 could give an incomplete day, and auto-post would post it | None posts REVENUE yet. Look again when one does: a later hour for `PartnerApi`, or per BU (decision-log #55) |
 | A day Carmen never gets fails daily | On QA's test BUs (no recent days in the dev Data Bank), one failed row per PMS per day under Not posted | Revoke the test keys not in use. On a live BU it is a real signal |
 | `carmen.py`'s comment says neither config read has an `/api/interface` twin | Stale since 2026-10-15: the mapping GET has one | Update the comment on the next code change there |

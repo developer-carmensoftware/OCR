@@ -2,9 +2,9 @@
 title: Requirements → Design → Code → Test (AI JV Automation timeline)
 iso-wp: TR
 iso-topic: Traceability_AI_JV_Automation
-Document Version: Version 0.4 (Traceability Record)
+Document Version: Version 0.5 (Traceability Record)
 ขอบเขต: ข้อกำหนดทุกข้อใน RS-01 ถึง RS-08
-Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026) · แถว PMS ตามโค้ด ณ 6eba2efe + branch feat/pms-switch-off (12/11/2026)
+Source of truth: repo developer-carmensoftware/OCR @ 2be6d7c9 (02/11/2026) · แถว PMS ตามโค้ด ณ 61a49308 + branch feat/pms-ai-every-row (13/11/2026)
 Date: 12 November 2026
 ---
 
@@ -16,6 +16,7 @@ Date: 12 November 2026
 | 0.2 | 10/11/2026 | Dev Team | แถว PMS ตาม RS-07 v0.2 และ FRD-11 v1.4 (decision-log #52–#54): PMS-F05, F06, F08, F13, I01, Q04 แก้ และเพิ่ม PMS-F14 | |
 | 0.3 | 12/11/2026 | Dev Team | แถว PMS-F14 ตาม RS-07 v0.3 และ FRD-11 v1.5 (decision-log #55): โค้ดเพิ่ม `services/pms/carmen_config.py` และเทสต์ `test_pms_carmen_config.py` | |
 | 0.4 | 12/11/2026 | Dev Team | แถว PMS-F15 ใหม่ ตาม RS-07 v0.4 และ FRD-11 v1.6 (decision-log #56) | |
+| 0.5 | 13/11/2026 | Dev Team | แถว PMS-F06 ตาม RS-07 v0.5 และ FRD-11 v1.7 (decision-log #57) | |
 
 <!-- pagebreak -->
 
@@ -246,7 +247,7 @@ Date: 12 November 2026
 | PMS-F03 | FRD-11 §12 | `routers/pms_carmen.py` | `test_pms_carmen.py` | TC-PMS-07 |
 | PMS-F04 | FRD-11 §5 | `routers/pms_carmen.py`, `services/email_automation/credential.py` | `test_pms_carmen.py`, `test_pms_process.py` | TC-PMS-14 |
 | PMS-F05 | FRD-11 §8 | `services/pms/process.py`, `services/pms/carmen_config.py`, `services/shared/carmen.py` | `test_pms_process.py`, `test_pms_carmen_config.py` | TC-PMS-10, 11, 15, 18 |
-| PMS-F06 | FRD-11 §3 | `services/pms/mapping.py`, `llm/client.py` | `test_pms_mapping.py`, `test_llm_client.py`, `test_pms_process.py` | TC-PMS-12, 13, 20 |
+| PMS-F06 | FRD-11 §3, §8.6 | `services/pms/mapping.py`, `services/pms/process.py`, `llm/client.py` | `test_pms_mapping.py`, `test_llm_client.py`, `test_pms_process.py` | TC-PMS-12, 13, 20 |
 | PMS-F07 | FRD-11 §11.2 | `services/pms/process.py` | `test_pms_process.py` | TC-PMS-10–12 |
 | PMS-F08 | FRD-11 §2.1 | `services/pms/process.py` | `test_pms_process.py`, `test_pms_process_run.py` | TC-PMS-14, 19 |
 | PMS-F09 | FRD-11 §11.2 | `services/pms/review.py` | `test_pms_review.py`, `test_pms_review_api.py`, `PmsReviewDocument.test.tsx` | TC-PMS-21–24 |
