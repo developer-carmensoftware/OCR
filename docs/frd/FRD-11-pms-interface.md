@@ -1,12 +1,12 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-11 — PMS Interface Automation
-output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.7.docx
+output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.8.docx
 iso-wp: SD
-Document Version: Version 1.7 (As-Built Developer & Test Spec)
+Document Version: Version 1.8 (As-Built Developer & Test Spec)
 Module ID: `pms_interface` (ใช้บันทึก LLM usage เท่านั้น ไม่คิดเครดิต)
 Status: Built — แถวของวันมาจาก preview ของ engine ของ Carmen (decision-log #54) · การ post ของ Carmen เป็นตัวตรวจ mapping (#52, #53) · sweep เปิดวันของเมื่อวานให้ทุก PMS ตั้งแต่ 06:00 ICT จึงไม่ต้องรอ hook (decision-log #55) · hook จริงของ Carmen ยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K)
-Source of truth: repo developer-carmensoftware/OCR @ 61a49308 (13/11/2026) + branch feat/pms-ai-every-row
+Source of truth: repo developer-carmensoftware/OCR @ 36510ca2 (13/11/2026) + branch fix/pms-hook-casing
 Date: 12 November 2026
 Template: Carmen Cloud ERP FRD Template v1.1
 check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-10-07, interfacePostGL/REVENUE, interfacePreviewPostGL/REVENUE, GET /interfacePost/mapping/{code}/{postType}/GL, PUT /interfacePost/mapping/{code}/{postType}/GL, COMANCHE
@@ -25,6 +25,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 | 1.5 | 12/11/2026 | Dev Team | ตาม decision-log #55: sweep เปิดวันของเมื่อวานให้ทุก PMS ที่ BU มี key และ `interfaceThirdParties` บอกว่าลง REVENUE → GL ไม่ว่า `From` จะเป็นอะไร (เดิมเฉพาะ PartnerApi) และเปิดตั้งแต่ 06:00 ICT (เดิม 08:00) · hook จึงเป็นทางให้วันมาเร็วขึ้น ไม่ใช่ทางเดียว · วันที่ Carmen ยังไม่มีรอ `day_not_ready` ทุกชั่วโมง และเป็น `day_not_found` หลัง 24 ชั่วโมง (§2.1, §3, §8.6) | |
 | 1.6 | 12/11/2026 | Dev Team | ตาม decision-log #56: การ revoke key (จากหน้าจอ Carmen หรือ `#/admin/api-keys`) = ปิด PMS นั้นของ BU — ปิดวันที่ยังเปิดอยู่เป็น `rejected` / `pms_switched_off` (ยกเว้นวันที่มีคนกำลัง approve) และปิด auto-post · processing ปิดวันที่ไม่มี key ที่ใช้ได้ก่อนเรียก Carmen และ requeue เลือกเฉพาะ PMS ที่ยังมี key · การแทน key ไม่ใช่การปิด (§2.2, §5, §8.6, §9) | |
 | 1.7 | 13/11/2026 | Dev Team | ตาม decision-log #57: คู่แผนก/บัญชีที่แผนกไม่อนุญาตไม่ทิ้งบัญชีแล้ว (ย้ายไปแผนกที่ BU ใช้กับบัญชีนั้น หรือ GEN) · แถวที่ยังว่างถูกถามซ้ำหนึ่งครั้งพร้อมเหตุผล · sweep ถามซ้ำแถวว่างของวันที่รอตรวจชั่วโมงละครั้ง ไม่เกิน 3 ครั้ง (`ai_retries`, `ai_at`) · เฉพาะ PMS ไม่เปลี่ยน UI (§3, §6.2, §7, §8.6, EC-12, EC-13) | |
+| 1.8 | 13/11/2026 | Dev Team | ตาม decision-log #58: วันหนึ่งเป็นแถวเดียวไม่ว่าชื่อ PMS จะพิมพ์เล็กใหญ่อย่างไร — `store_day` ไม่ insert เมื่อมีวันนั้นแล้วในตัวพิมพ์ใดก็ตาม และ hook ซ้ำหาแถวด้วย event_id แบบไม่สนตัวพิมพ์ (EC-08, TC-PMS-29, §11.2) | |
 | 1.4 | 10/11/2026 | Dev Team | ตาม decision-log #52–#54 และ ask D: การ post ของ Carmen เป็นตัวตรวจ mapping (`-500` → `pms_mapping_incomplete` พร้อม key ที่ Carmen เขียนไว้) ทุก PMS review ได้ แถวของวันมาจาก preview ของ engine (`interfacePreviewPostGL`) แทนการอ่าน FileData เอง (`unreadable_day` และ `unsupported_pms_format` ไม่ถูกเขียนแล้ว) เปิดวันของ PMS แบบ PartnerApi เอง `-400` No Data → `day_not_ready` เก็บเลข JV จาก `Id` ใน `jv_no` AI ไม่เห็นยอดเงินและลองใหม่หนึ่งครั้ง และ `scripts/qa/pms_probe.py` | |
 
 <!-- pagebreak -->
@@ -482,7 +483,7 @@ sequenceDiagram
 | EC-05 | ระหว่างตรวจ มีคน map รหัสเดียวกันในหน้าจอของ Carmen | ใช้บัญชีของ Carmen ไม่ใช้ค่าที่ผู้ตรวจส่ง |
 | EC-06 | บัญชีที่เลือกไม่มีในผัง หรือแผนกไม่อนุญาต | 400 ระบุแถว ไม่เขียนอะไร |
 | EC-07 | อ่านตารางของ Carmen ไม่ได้ตอน approve | 503 ไม่เขียนอะไร |
-| EC-08 | `Comanche` กับ `COMANCHE` เป็นสองวัน | ยอมรับ (Carmen ส่งตัวพิมพ์เดียว) engine ปฏิเสธการ post ครั้งที่สอง (`-200`) |
+| EC-08 | ชื่อ PMS ตัวพิมพ์ต่างกัน: sweep เก็บ `Hoteltime` ตามรายการของ Carmen แล้ว hook ส่ง `HotelTime` (หรือ `Comanche` กับ `COMANCHE`) | เป็นวันเดียวกัน (decision-log #58): hook ได้ 200 `duplicate: true` และอ่านวันที่เก็บไว้ใหม่ ไม่มีแถวที่สอง |
 | EC-09 | Data Bank มีหลายแถวของวันเดียวกัน | ใช้แถวที่ `LastModified` ล่าสุด และส่ง id เดียวกันให้ทั้ง preview และ post |
 | EC-10 | preview ของ Carmen ใช้ไม่ได้ (Carmen ล่มหรือบั๊ก เช่น 09/11/2026) | วันพักโดยไม่มีแถว และ engine ตรวจ mapping ตอน post |
 | EC-11 | AI ตอบ JSON ที่ขาดปีกกาปิดตัวสุดท้าย หรือตอบว่าง | อ่านได้ถ้าเติม `}` ตัวเดียวแล้วถูกต้อง / ถ้าใช้ไม่ได้ลองใหม่หนึ่งครั้ง แล้วจึงเป็น `mapping_missing` |
@@ -566,7 +567,7 @@ stateDiagram-v2
 
 ## 11.2 Acceptance Criteria
 
-- hook ของวันใหม่ได้ 202 ภายในเวลาสั้น และวันเดิมได้ 200 `duplicate: true` โดยไม่สร้างแถวใหม่
+- hook ของวันใหม่ได้ 202 ภายในเวลาสั้น และวันเดิมได้ 200 `duplicate: true` โดยไม่สร้างแถวใหม่ ไม่ว่าชื่อ PMS จะพิมพ์เล็กใหญ่อย่างไร (decision-log #58)
 - วันที่มีแถวใหม่ไปอยู่ที่คิวเสมอ ไม่ว่าจะเปิด auto-post หรือไม่ และแถวในคิวบอกรหัสที่ AI แนะนำ
 - กด Approve ไม่ได้จนกว่าแถวใหม่ทุกแถวจะมีแผนกและบัญชี ถ้า AI เลือกให้ครบแล้วกดได้ทันที
 - หลัง Approve ตารางของ Carmen มีแถวเดิมทั้งหมดบวกแถวใหม่ (ไม่มีแถวหาย) และ engine post วันนั้น
@@ -664,3 +665,4 @@ POST /api/v1/pms/days/8c2e…/approve
 | TC-PMS-26 | Reject | กด Reject พร้อมเหตุผล | `rejected` | hook ซ้ำทำให้อ่านใหม่ได้ |
 | TC-PMS-27 | Carmen post วันนั้นไปก่อน | post ใน Carmen แล้ว Approve | 200 `already_posted: true` | แถว "Carmen had already posted it" |
 | TC-PMS-28 | Approve ได้เลข JV | Approve วันที่ map ครบ | 200 `jv_no` = seq จาก `Id` | คิวแสดง JV NO. และเปิด JV ได้ |
+| TC-PMS-29 | sweep เปิดวันไว้แล้ว (`Hoteltime`) | ส่ง hook วันเดียวกันเป็น `HotelTime` | 200 `duplicate: true` | ไม่มีแถวที่สอง (decision-log #58) |

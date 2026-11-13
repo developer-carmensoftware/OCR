@@ -204,7 +204,8 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
   body {InterfaceType:"PMS", InterfaceName, DocType, DocDate} ≤ 16 KB   (Carmen's own hook)
       InterfaceName (lower-cased) must be the key's interface_name, else 403 (decision #44)
       → pms_events, one row per BU × Data Bank day: event_id = "PMS/Comanche/Daily/2026-10-07"
-      202 new day · 200 {duplicate:true} same day again (moves updated_at) · 401 · 403 · 413 · 422
+      202 new day · 200 {duplicate:true} same day again, in any casing of the PMS name (#58;
+          moves updated_at) · 401 · 403 · 413 · 422
   the hook carries no data: storing the day starts processing (services/pms/, process.kick;
       pg_cron sweeps /api/v1/pms/process/run every 10 min for what a restart left;
       it also OPENS yesterday's day from 06:00 ICT for each BU × PMS with a live key whose

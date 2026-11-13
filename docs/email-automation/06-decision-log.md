@@ -2021,3 +2021,33 @@ days to every PMS, and moves it from 08:00 to 06:00 ICT.
   table to follow, a row stays blank for the person. An invented account would let Approve post
   a wrong one.
 - **Suite 2 counts LLM calls (`llmWant`):** a test day with blank rows now makes a second call.
+
+## 58. A day is one row whatever its PMS name's casing (2026-11-13)
+
+**Status: built** (branch `fix/pms-hook-casing`).
+
+**Why.**
+- #44 accepted that `event_id` keeps the hook's casing (`Comanche` / `COMANCHE` would be two
+  days), on the ground that Carmen sends one casing.
+- **Since #55 two writers spell it:** the 06:00 sweep stores the day as Carmen's
+  `interfaceThirdParties` spells the PMS (`Hoteltime`), and a hook as Carmen's hook does (or our
+  own test hook: `HotelTime`).
+- The sweep already ignored case when it looked for a hooked day. **The hook did not:**
+  `store_day`'s insert conflicts only on the exact `event_id`.
+- Suite 3 (2026-11-13, F-03/W-03) saw a hook after the sweep store a second day. The queue
+  listed 12/11/2026 twice. The engine would answer the second post "already posted", so no
+  second JV, but two reviews of one day.
+
+**Decision** (the user, 2026-11-13).
+- **`process.store_day` skips the insert when the BU already holds the day in any casing**
+  (`INSERT … SELECT … WHERE NOT EXISTS (… lower(event_id) = lower(:event_id))`, plus the old
+  conflict guard). It is the one function both the hook and the sweep store through.
+- **The hook's repeat path finds that row the same way** (`lower(event_id)`), so a repeat hook
+  in another casing is a `200 duplicate` that re-reads the stored day.
+- **No migration.** The stored `event_id` keeps the casing it was first written in, and nothing
+  renames days already stored.
+
+**Consequences.**
+- One BU × PMS × date is one queue row, from either way in.
+- Two rows a BU already holds in different casings (from before this) stay two: the hook updates
+  both rows' `updated_at` and re-reads the first one it finds. Seen only on test BUs.

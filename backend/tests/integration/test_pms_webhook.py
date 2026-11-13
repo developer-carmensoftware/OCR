@@ -183,6 +183,23 @@ def test_same_day_again_is_200_on_the_same_row():
     assert "updated_at" in str(update_stmt.compile(dialect=postgresql.dialect()))
 
 
+def test_a_day_held_in_another_casing_is_the_same_day():
+    """Decision-log #58: the 06:00 sweep stores the day as Carmen's list spells the PMS
+    (`Hoteltime`), and a hook may spell it `HotelTime`. Suite 3 (2026-11-13) saw that hook
+    store a second day. The insert is skipped when the day exists in any casing, and the
+    repeat path finds that row the same way."""
+    first_id = uuid4()
+    db = _db(None, first_id, first_id)
+    res, _ = _post(db, _key("hoteltime"), body=json.dumps({**EVENT, "InterfaceName": "HotelTime"}))
+    assert res.status_code == 200
+    assert res.json() == {"id": str(first_id), "duplicate": True}
+    insert = str(db.scalar.await_args_list[0].args[0].compile(dialect=postgresql.dialect()))
+    assert "NOT (EXISTS (SELECT" in insert
+    assert "lower(pms_events.event_id) = lower(" in insert
+    touch = str(db.scalar.await_args_list[1].args[0].compile(dialect=postgresql.dialect()))
+    assert "lower(pms_events.event_id) = " in touch
+
+
 # ── Processing starts (CA-119) ──────────────────────────────────────────────────────
 
 

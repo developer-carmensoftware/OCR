@@ -29,7 +29,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, bindparam, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from app.context import current_carmen_uri, current_tenant_id
@@ -256,12 +256,27 @@ async def _claim(event_pk: uuid.UUID) -> Any:
 async def store_day(db, tenant_id: uuid.UUID, event_id: str, type_: str, payload: dict):
     """One row per BU × day: the new row's id, or None when the day is already stored.
 
-    The hook stores the days Carmen announces, and the sweep the days of a PartnerApi PMS,
-    which nobody announces (decision-log #52). The caller commits.
+    The hook stores the days Carmen announces, and the sweep yesterday's day for every PMS
+    (decision-log #52, #55). The caller commits.
+
+    "Already stored" ignores the PMS name's casing (decision-log #58): the sweep writes it as
+    Carmen's interface list spells it (`Hoteltime`), a hook as Carmen's hook does
+    (`HotelTime`), and the unique key alone is case-sensitive.
     """
+    tid = bindparam("tenant_id", tenant_id, type_=PmsEvent.tenant_id.type)
+    eid = bindparam("event_id", event_id, type_=PmsEvent.event_id.type)
+    held = select(PmsEvent.id).where(
+        PmsEvent.tenant_id == tid, func.lower(PmsEvent.event_id) == func.lower(eid)
+    )
+    row = select(
+        tid,
+        eid,
+        bindparam("type", type_, type_=PmsEvent.type.type),
+        bindparam("payload", payload, type_=PmsEvent.payload.type),
+    ).where(~exists(held))
     return await db.scalar(
         insert(PmsEvent)
-        .values(tenant_id=tenant_id, event_id=event_id, type=type_, payload=payload)
+        .from_select(["tenant_id", "event_id", "type", "payload"], row)
         .on_conflict_do_nothing(index_elements=["tenant_id", "event_id"])
         .returning(PmsEvent.id)
     )

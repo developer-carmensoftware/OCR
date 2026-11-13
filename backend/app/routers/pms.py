@@ -111,9 +111,14 @@ async def receive_event(
     process_it = not duplicate
     if duplicate:
         # The same Data Bank day again: one row, and a record of when we last heard of it.
+        # In whatever casing it was stored: the sweep may have written Carmen's list's
+        # spelling of the PMS (decision-log #58).
         new_id = await db.scalar(
             update(PmsEvent)
-            .where(PmsEvent.tenant_id == key.tenant_id, PmsEvent.event_id == event.key)
+            .where(
+                PmsEvent.tenant_id == key.tenant_id,
+                func.lower(PmsEvent.event_id) == event.key.lower(),
+            )
             .values(updated_at=func.now())
             .returning(PmsEvent.id)
         )

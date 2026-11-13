@@ -3,11 +3,11 @@ title: PMS Interface Automation
 iso-wp: RS
 iso-topic: 07_PMS_Interface_Automation
 iso-ref: RS-07|PMS-[A-Z]+\d
-Document Version: Version 0.5 (Requirements Specification)
+Document Version: Version 0.6 (Requirements Specification)
 แผนงาน: PMS Interface automation (10/09 – 30/09/2026)
 Module ID: `pms_interface` (บันทึกการใช้ LLM เท่านั้น ไม่คิดเครดิต)
-รายละเอียดการออกแบบ: FRD-11 PMS Interface Automation v1.7 (Software Design) และ `docs/pms-interface/`
-Source of truth: repo developer-carmensoftware/OCR @ 61a49308 (13/11/2026) + branch feat/pms-ai-every-row
+รายละเอียดการออกแบบ: FRD-11 PMS Interface Automation v1.8 (Software Design) และ `docs/pms-interface/`
+Source of truth: repo developer-carmensoftware/OCR @ 36510ca2 (13/11/2026) + branch fix/pms-hook-casing
 สถานะระบบ: แถวของวันมาจาก preview ของ engine ของ Carmen (decision-log #54) · การ post ของ Carmen เป็นตัวตรวจ mapping (#52, #53) · sweep เปิดวันของเมื่อวานให้ทุก PMS ตั้งแต่ 06:00 ICT จึงไม่ต้องรอ hook (#55) · hook จริงยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K)
 Date: 12 November 2026
 ---
@@ -21,6 +21,7 @@ Date: 12 November 2026
 | 0.3 | 12/11/2026 | Dev Team | ตาม FRD-11 v1.5 (decision-log #55): PMS-F14 แก้ — เปิดวันของเมื่อวานให้ทุก PMS ที่ลง REVENUE → GL ไม่ว่า `From` จะเป็นอะไร ตั้งแต่ 06:00 ICT (เดิมเฉพาะ PartnerApi หลัง 08:00) | |
 | 0.4 | 12/11/2026 | Dev Team | ตาม FRD-11 v1.6 (decision-log #56): เพิ่ม PMS-F15 — revoke key = ปิด PMS: ปิดวันที่ยังเปิดอยู่และ auto-post, ไม่มี key ที่ใช้ได้ไม่ post อัตโนมัติ | |
 | 0.5 | 13/11/2026 | Dev Team | ตาม FRD-11 v1.7 (decision-log #57): PMS-F06 แก้ — ซ่อมคู่แผนก/บัญชีที่แผนกไม่อนุญาต, ถามแถวที่ยังว่างซ้ำหนึ่งครั้ง, sweep ถามซ้ำชั่วโมงละครั้งไม่เกิน 3 ครั้ง | |
+| 0.6 | 13/11/2026 | Dev Team | ตาม FRD-11 v1.8 (decision-log #58): PMS-F01 แก้ — วันเดิมไม่ว่าชื่อ PMS จะพิมพ์เล็กใหญ่อย่างไร | |
 
 <!-- pagebreak -->
 
@@ -53,7 +54,7 @@ Date: 12 November 2026
 <!-- widths!: 15,55,12,18 -->
 | รหัส | ข้อกำหนด | ทวนสอบโดย | อ้างอิง FRD-11 |
 |---|---|---|---|
-| PMS-F01 | ระบบต้องรับ hook `{InterfaceType, InterfaceName, DocType, DocDate}` ที่ `POST /api/v1/pms/events` ยืนยันด้วย API key ของ BU × PMS และตอบทันทีโดยไม่รอการประมวลผล: วันใหม่ 202 วันเดิม 200 `duplicate: true` | ทดสอบ | §2.1, §5 |
+| PMS-F01 | ระบบต้องรับ hook `{InterfaceType, InterfaceName, DocType, DocDate}` ที่ `POST /api/v1/pms/events` ยืนยันด้วย API key ของ BU × PMS และตอบทันทีโดยไม่รอการประมวลผล: วันใหม่ 202 วันเดิม 200 `duplicate: true` — วันเดิมหมายถึง BU × PMS × วันเดียวกัน ไม่ว่าชื่อ PMS จะพิมพ์เล็กใหญ่อย่างไร รวมถึงวันที่ระบบเปิดเอง | ทดสอบ | §2.1, §5 |
 | PMS-F02 | ระบบต้องปฏิเสธ key ที่ผิดหรือถูกเพิกถอน (401) key ของ PMS อื่น (403) body เกิน 16 KB (413) และ body ผิดรูปแบบ (422) | ทดสอบ | §5 |
 | PMS-F03 | หน้า PMS setting ของ Carmen ต้องอ่าน/ตั้ง auto-post ออก key ใหม่ (key ที่ใช้งานได้หนึ่งอันต่อ BU × PMS โดยเพิกถอนอันเดิม) และเพิกถอน key ได้ | ทดสอบ | §2.1, §12 |
 | PMS-F04 | ทุกการเขียนจากหน้าจอของ Carmen ต้องเก็บ token ของผู้ใช้เป็น credential ของ BU ยกเว้น BU มี credential ที่ยังใช้ได้อยู่แล้ว แต่ถ้ามีวันที่ค้างที่ `carmen_forbidden` ต้องแทนที่เสมอ | ทดสอบ | §2.1, §5 |
