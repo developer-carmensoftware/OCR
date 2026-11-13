@@ -154,6 +154,27 @@ select reason_code, status, count(*) from pms_events
 - **With `CARMEN_ADMIN_TOKEN` (a web JWT) as well,** it checks that Revenue's balance account is
   in the BU's chart (ask N).
 
+**Test days on Carmen dev: re-date real ones** (`scripts/qa/pms_databank.py`, 2026-11-13).
+Dev Carmen holds only old days, and processing asks for yesterday's (decision-log #55). Carmen's
+answer was to re-date its days ourselves. Our code never reads `FileData`, Carmen's preview does,
+so a day has to be in Carmen's Data Bank.
+- `export --out <dir> Comanche HotelTime Cloudbeds` saves every Data Bank day, one file each, plus
+  `manifest.json` (lines and codes per day). It only reads.
+  - **Keep the files outside the repo:** they are a hotel's revenue figures.
+  - carmencloud's set is in `Documents\bruno\Test-Pms-Data`: Comanche 75 days (mostly 2024-06-30 →
+    2024-09-10), HotelTime 6, Cloudbeds 4.
+- `seed <PMS> <file> <date>` posts a day under a new date and prints its Id.
+  - Every date in it moves by the same number of days, so each PMS keeps its own `Information`.
+  - **Load it as yesterday** and the 06:00 sweep picks it up (hourly while the day is
+    `day_not_ready`).
+  - `--dry-run` prints the dates only.
+- `hook <PMS> <date>… --bu <bu> --api <backend>` is for other dates. It generates a new key, which
+  replaces the live one (not a switch-off), and sends our hook.
+- `delete <PMS> <Id>…` cleans up afterwards.
+- The token is the BU's menu token in `CARMEN_AUTHORIZATION`. Carmen fires its own hook about 10 s
+  after each Add.
+- **Comanche days cannot be approved** until ask K is fixed. Approve → JV is tested on HotelTime.
+
 ## Testing
 
 ```bash
