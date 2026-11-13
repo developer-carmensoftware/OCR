@@ -610,9 +610,9 @@ async function run() {
     out = await outcome(dialog, R.co, 'comanche')
     v = out.posted?.jv_no ? readAndVoid(out.posted.jv_no) : null
     const kFixed = !!out.posted
-    check('P-04', `Comanche ${R.co}: Approve → Carmen refuses (ask K) and says why, the day stays parked, no JV — or, K fixed, a JV voided`,
+    check('P-04', `Comanche ${R.co}: Approve → Carmen refuses (ask K) and says why, the day stays parked, no JV — or posts it, a JV voided`,
       (!out.posted && out.refusal.length > 0 && dayOf(pyJson('state'), R.co, 'comanche')?.status === 'pending_review') || (out.posted && v?.voided),
-      out.posted ? `K FIXED: jv=${out.posted.jv_no} voided=${v?.voided}` : out.refusal.slice(0, 160))
+      out.posted ? `posted (K does not stop this day): jv=${out.posted.jv_no} voided=${v?.voided}` : out.refusal.slice(0, 160))
     if (!out.posted) await closeDialog()
 
     // ── A — auto-post ───────────────────────────────────────────────────────────────────
@@ -624,7 +624,7 @@ async function run() {
     check('A-02', 'auto-post on, a day with new rows: the sweep leaves it for a person, nothing posted',
       coYd?.status === 'pending_review' && openOf(coYd?.payload) > 0 && (await postsSince(since)) === 0, `${coYd?.status} new=${openOf(coYd?.payload)}`)
     if (kFixed) {
-      na('A-03', 'Comanche mapped, auto-post on → carmen_rejected', 'Carmen posted Comanche in P-04 (ask K fixed): that day is posted, and a repeat hook leaves a posted day alone')
+      na('A-03', 'Comanche mapped, auto-post on → carmen_rejected', 'Carmen posted this Comanche day in P-04 (K does not stop it): it is posted, and a repeat hook leaves a posted day alone')
     } else {
       const sinceA3 = new Date().toISOString()
       r = await hook('comanche', R.co) // Approve wrote R.co's keys into Comanche's table

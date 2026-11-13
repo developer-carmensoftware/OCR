@@ -49,11 +49,13 @@ const JOB = envVar('INTERNAL_JOB_TOKEN')
 const URI = 'https://dev.carmen4.com'
 const BU = 'pms-e2e'
 const BU_B = 'pms-e2e-b'
-// Carmen's Comanche.PMS refuses A and B ("Line No. 30,31 has no DrCr value", its own config:
-// the same data posts on test.PMS), so they carry the refusal paths. D is the day Carmen
+// Carmen's Comanche.PMS refuses A and B ("Line No. 30,31 has no DrCr value", ask K), still on
+// 2026-11-13, though it posted other Comanche days that day (suite 3, JV 1632/1636/1640). B-08
+// and C-02..C-04 take either answer: Carmen's refusal in its own words, or a posted day whose
+// JV teardown voids. D is the day Carmen
 // posted itself (JV 36): "already posted". The success path is P-03, on test.PMS.
-const DAY_A = '2024-07-01' // approved in the browser; Carmen refuses
-const DAY_B = '2025-10-20' // auto-posted; Carmen refuses
+const DAY_A = '2024-07-01' // approved in the browser; Carmen refuses (K) or posts
+const DAY_B = '2025-10-20' // auto-posted; Carmen refuses (K) or posts
 const DAY_D = '2024-09-01' // the second tenant's; Carmen answers "Already Posted"
 
 const results = []
@@ -470,20 +472,32 @@ async function run() {
     const kept = await handTr.locator(`input[aria-label="Account for ${label(hand)}"]`).inputValue()
     check('B-07', 'closing with picks asks first; Keep reviewing keeps them', asked && kept === hand.snapshot.acc, `asked=${asked} kept=${kept}`)
 
-    // B-08: Carmen refuses A. The reviewer sees Carmen's own words in the dialog; the day
-    // stays in the queue, and Approve can be pressed again once Carmen's setting is fixed.
+    // B-08: Carmen answers A. Refused (ask K): its own words in the dialog, the day parked,
+    // Approve can be pressed again. Posted (K fixed, 2026-11-13): the day is posted with its JV.
     await approve.click()
     const alert = dialog.getByRole('alert').filter({ hasText: /DrCr|Carmen/ })
-    const refusal = await alert.first().waitFor({ timeout: 60000 }).then(() => alert.first().innerText()).catch(() => '')
+    let refusal = ''
+    let postedA = null
+    for (let i = 0; i < 30 && !refusal && !postedA; i++) {
+      await page.waitForTimeout(2000)
+      const d = keyOf(pyJson('state'), BU, DAY_A)
+      if (d?.status === 'posted') postedA = d
+      else if (await alert.first().isVisible().catch(() => false)) refusal = await alert.first().innerText()
+    }
+    const kFixed = !!postedA
     const stillParked = keyOf(pyJson('state'), BU, DAY_A)
-    check('B-08', 'Approve → Carmen refuses; its words show in the dialog, the day stays parked, Approve can be pressed again',
-      /DrCr value/.test(refusal) && stillParked?.status === 'pending_review' && (await approve.isEnabled()),
-      `alert="${refusal.replace(/\s+/g, ' ').slice(0, 160)}" status=${stillParked?.status}`)
-    await shot('B-08-refused')
-    await dialog.getByRole('button', { name: 'Close' }).click()
-    const leave = page.getByRole('dialog').filter({ hasText: 'Leave without posting?' })
-    if (await leave.waitFor({ timeout: 5000 }).then(() => true).catch(() => false))
-      await leave.getByRole('button', { name: 'Discard changes' }).click()
+    check('B-08', 'Approve → Carmen refuses in its own words (the day stays parked, Approve again possible) or posts it with a JV (ask K fixed)',
+      kFixed
+        ? !!postedA.jv_no
+        : /DrCr value/.test(refusal) && stillParked?.status === 'pending_review' && (await approve.isEnabled()),
+      kFixed ? `posted, JV ${postedA.jv_no} (K fixed)` : `alert="${refusal.replace(/\s+/g, ' ').slice(0, 160)}" status=${stillParked?.status}`)
+    await shot(kFixed ? 'B-08-posted' : 'B-08-refused')
+    if (!kFixed) {
+      await dialog.getByRole('button', { name: 'Close' }).click()
+      const leave = page.getByRole('dialog').filter({ hasText: 'Leave without posting?' })
+      if (await leave.waitFor({ timeout: 5000 }).then(() => true).catch(() => false))
+        await leave.getByRole('button', { name: 'Discard changes' }).click()
+    }
 
     const map = pyJson('mapping')
     // The key as carmen_config.key_id writes it: the key columns' values as a JSON array.
@@ -496,7 +510,8 @@ async function run() {
       map.rows.length === st.staged.length + 3 && sameRest && picksIn, `rows=${map.rows.length} rest=${sameRest} picks=${picksIn}`)
 
     const jvsOf = date => pyJson('jvs').filter(j => String((j.Data || j).JvhDate).slice(0, 10) === date)
-    check('B-10', `a refused day makes no JV (${DAY_A})`, jvsOf(DAY_A).length === 0)
+    check('B-10', kFixed ? `the posted day has exactly its one JV (${DAY_A}; teardown voids it)` : `a refused day makes no JV (${DAY_A})`,
+      jvsOf(DAY_A).length === (kFixed ? 1 : 0), `live=${jvsOf(DAY_A).map(j => (j.Data || j).JvhSeq).join(',')}`)
 
     // ── C — the other day ───────────────────────────────────────────────────────
     // Re-check after an approve runs only once a day posts; a repeat hook re-reads B and
@@ -515,24 +530,32 @@ async function run() {
     const sw2 = await sweep()
     const refusedB = await until(rows => {
       const d = keyOf(rows, BU, DAY_B)
-      return d?.reason_code === 'carmen_rejected' ? d : null
+      return d?.reason_code === 'carmen_rejected' || d?.status === 'posted' ? d : null
     }, 60000)
     await chip('Review')
     const refusedText = (await queueRow(DAY_B).innerText().catch(() => '')).replace(/\s+/g, ' ')
-    check('C-02', `auto-post on → the sweep sends ${DAY_B} to Carmen; its refusal parks the day with Carmen's words`,
-      r.status === 200 && sw2.status === 200 && refusedB?.status === 'pending_review' && /DrCr/.test(refusedB?.error_message || ''),
-      `status=${refusedB?.status} reason=${refusedB?.reason_code} error="${refusedB?.error_message}" row="${refusedText.slice(0, 120)}"`)
-    await shot('C-02-refused')
-    check('C-03', `a refused day makes no JV (${DAY_B})`, jvsOf(DAY_B).length === 0)
+    check('C-02', `auto-post on → the sweep sends ${DAY_B} to Carmen: refused, the day parks with Carmen's words; or posted (ask K fixed)`,
+      r.status === 200 && sw2.status === 200 &&
+        (kFixed
+          ? refusedB?.status === 'posted' && !!refusedB?.jv_no
+          : refusedB?.status === 'pending_review' && /DrCr/.test(refusedB?.error_message || '')),
+      `status=${refusedB?.status} reason=${refusedB?.reason_code} jv=${refusedB?.jv_no} error="${refusedB?.error_message}" row="${refusedText.slice(0, 120)}"`)
+    await shot(kFixed ? 'C-02-posted' : 'C-02-refused')
+    check('C-03', kFixed ? `the auto-posted day has exactly its one JV (${DAY_B}; teardown voids it)` : `a refused day makes no JV (${DAY_B})`,
+      jvsOf(DAY_B).length === (kFixed ? 1 : 0))
 
     r = await hook(keys[`${BU}/comanche`], 'Comanche', DAY_A)
     const refusedA = await until(rows => {
       const d = keyOf(rows, BU, DAY_A)
-      return d?.reason_code === 'carmen_rejected' ? d : null
+      return d?.reason_code === 'carmen_rejected' || d?.status === 'posted' ? d : null
     }, 60000)
-    check('C-04', `a repeat hook for the refused ${DAY_A}, auto-post on: sent again, refused again, still no JV`,
-      r.status === 200 && refusedA?.status === 'pending_review' && /DrCr/.test(refusedA?.error_message || '') &&
-        jvsOf(DAY_A).length === 0,
+    check('C-04', kFixed
+      ? `a repeat hook for the posted ${DAY_A}: it stays posted, with still just its one JV`
+      : `a repeat hook for the refused ${DAY_A}, auto-post on: sent again, refused again, still no JV`,
+      r.status === 200 &&
+        (kFixed
+          ? refusedA?.status === 'posted' && jvsOf(DAY_A).length === 1
+          : refusedA?.status === 'pending_review' && /DrCr/.test(refusedA?.error_message || '') && jvsOf(DAY_A).length === 0),
       `status=${refusedA?.status} reason=${refusedA?.reason_code}`)
 
     // ── D — reject, resend, already posted (a second tenant label, same Carmen BU) ─
@@ -583,8 +606,8 @@ async function run() {
       stillD?.status === 'posted' && jvsOf(DAY_D).length === 0, `status=${stillD?.status}`)
 
     // ── F-01 — the JV number: a posted day with the seq post_day named in P-03 ─────
-    // Comanche refuses (ask K), so no day reaches `posted` with a JV through the flow yet;
-    // the row is stored the way `_process` stores one, and the queue must make it a link.
+    // A posted row stored the way `_process` stores one (with P-03's JV seq): the queue must
+    // make its JV number a link, whatever ask K's state.
     const seeded = py('seed-posted').out.trim().split('\n').pop()
     await signIn(BU)
     await chip('Posted')
@@ -615,7 +638,9 @@ async function main() {
   const fives = log.split('\n').filter(l => /"(GET|POST|PUT|DELETE) \/api\/v1\/(pms|carmen\/pms)[^"]*" 5\d\d/.test(l))
   check('E-02', 'no 5xx from the PMS routes', log && fives.length === 0, fives.slice(0, 3).join(' | ') || (log ? '' : 'no log'))
   const llm = Number(py('llm').out.trim() || 0) - llmBefore
-  check('E-03', 'the AI was asked only for days with new rows (A-01, A-02, A-03)', llm >= 1 && llm <= 3, `calls=${llm}`)
+  // Up to two calls per day since #57 (a second ask for rows still blank), and a sweep may ask
+  // again for a parked day's blank rows.
+  check('E-03', 'the AI was asked only for days with new rows (A-01, A-02, A-03)', llm >= 1 && llm <= 6, `calls=${llm}`)
 
   // ── T — teardown, always ──────────────────────────────────────────────────────
   const td = py('teardown')
