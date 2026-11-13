@@ -154,6 +154,27 @@ select reason_code, status, count(*) from pms_events
 - **With `CARMEN_ADMIN_TOKEN` (a web JWT) as well,** it checks that Revenue's balance account is
   in the BU's chart (ask N).
 
+**Test days on Carmen dev: re-date real ones** (`scripts/qa/pms_databank.py`, 2026-11-13).
+Dev Carmen holds only old days, and processing asks for yesterday's (decision-log #55). Carmen's
+answer was to re-date its days ourselves. Our code never reads `FileData`, Carmen's preview does,
+so a day has to be in Carmen's Data Bank.
+- `export --out <dir> Comanche HotelTime Cloudbeds` saves every Data Bank day, one file each, plus
+  `manifest.json` (lines and codes per day). It only reads.
+  - **Keep the files outside the repo:** they are a hotel's revenue figures.
+  - carmencloud's set is in `Documents\bruno\Test-Pms-Data`: Comanche 75 days (mostly 2024-06-30 →
+    2024-09-10), HotelTime 6, Cloudbeds 4.
+- `seed <PMS> <file> <date>` posts a day under a new date and prints its Id.
+  - Every date in it moves by the same number of days, so each PMS keeps its own `Information`.
+  - **Load it as yesterday** and the 06:00 sweep picks it up (hourly while the day is
+    `day_not_ready`).
+  - `--dry-run` prints the dates only.
+- `hook <PMS> <date>… --bu <bu> --api <backend>` is for other dates. It generates a new key, which
+  replaces the live one (not a switch-off), and sends our hook.
+- `delete <PMS> <Id>…` cleans up afterwards.
+- The token is the BU's menu token in `CARMEN_AUTHORIZATION`. Carmen fires its own hook about 10 s
+  after each Add.
+- **Comanche days cannot be approved** until ask K is fixed. Approve → JV is tested on HotelTime.
+
 ## Testing
 
 ```bash
@@ -174,6 +195,7 @@ pytest tests/unit/test_pms_carmen_config.py tests/unit/test_pms_process.py tests
 | `integration/test_pms_review_api.py` | `/days/{id}`, approve and reject over HTTP |
 | `integration/test_pms_process_run.py` | `/process/run` auth |
 | `frontend/src/features/admin/pages/ApiKeysPage.test.tsx` | `#/admin/api-keys`: the PMS column, no create, revoke with a reason |
+| `scripts/qa/pms_seeded_days_ui.mjs` + `pms_seeded_days_e2e.py` (Playwright, suite 3) | Real days re-dated into Carmen dev's Data Bank (`pms_databank.py`): yesterday through the sweep with no hook (data ready; data late, `day_not_ready` → parked), `From` (a PMS listed as PartnerApi goes by date alone until Carmen holds its day, then by the row's id: the stub logs each engine body), the hook with fresh dates (repeat, a day re-sent), the AI (every pick valid; a blanked row asked again, #57), **each PMS's review modal** (Comanche, HotelTime, Cloudbeds: columns, no amounts, one row per key, AI tags, the department filter, Approve blocked, leave prompt, Undo, dark/Thai/390), Approve → table written + JV (voided), auto-post. Local stack, after 06:00 ICT, a fresh web JWT |
 
 **End-to-end runs so far.** Details are in the Jira comments and in `changelog/2026-10-0[7-9].md`
 and `2026-10-1[4-5].md`.
@@ -185,6 +207,7 @@ and `2026-10-1[4-5].md`.
 | 2026-10-09 | Path A against dev Carmen | JV 1124 / Voucher 24090001, Dr = Cr 226,085.51 |
 | 2026-10-14 | **Path B pre-E2E** on `test.PMS`: 32 rows, AI picked all 32, Approve PUT + post | **JV 1142** (Normal, 23 lines, Dr = Cr 319,343.88), voided afterwards |
 | 2026-10-15 | Browser test of the path-B review, 1440 and 390, light and dark | passed. Approve not pressed (it would post to dev Carmen) |
+| 2026-11-13 | **Suite 3 on real re-dated days** (local stack, carmencloud's data): the sweep and the hook, `From`, the three review modals, Approve and auto-post on HotelTime, Cloudbeds and Comanche | **60/62.** The two fails are a real bug (F-03, W-03: a hook after the sweep stores a second day when its casing differs). **Comanche posted** (JV 1632, 1636: ask K looks fixed). 8 JVs (1630–1637), all voided; the three tables put back |
 
 The real end to end is **CA-120**: a real Carmen menu click and real hooks. It needs CA-115
 (Carmen) and CA-118 (release).
@@ -201,10 +224,11 @@ The real end to end is **CA-120**: a real Carmen menu click and real hooks. It n
 | The 403 Data Bank refusal retries 3× a day via the wake rule | Noise in the row's attempts while the permission is missing | Accept; it stops once the permission is granted |
 | Only REVENUE | A PMS's `STATISTIC` or `MARKETSEGMENT` sections are not posted | A section of its own when a BU needs one (user decision 2026-10-14: one day, one JV) |
 | A post's own refusals show only on Approve | Asks K (DrCr) and N (balance account) come after the post, not in the review | Carmen adding Amount, Dr/Cr and those errors to its preview (decision-log #54). Before a PMS goes live, run `scripts/qa/pms_probe.py`, which checks the balance account with a web JWT |
-| `event_id` keeps `InterfaceName`'s casing | `Comanche` and `COMANCHE` are two rows for one day; the engine refuses the second post (`-200`) | Accepted (decision-log #44): Carmen sends one casing. Lower-casing it would split the days already stored |
+| `event_id` keeps `InterfaceName`'s casing | `Comanche` and `COMANCHE` are two rows for one day; the engine refuses the second post (`-200`). **Since #55 it happens for real:** the sweep stores Carmen's list's spelling (`Hoteltime`), and a hook spelled `HotelTime` after it stores a second day, so the queue shows the day twice (suite 3 F-03/W-03, 2026-11-13) | The hook's duplicate check is exact while the sweep's ignores case (`routers/pms.py`): look the day up by `lower(event_id)` first. Decision-log #44's "Carmen sends one casing" no longer covers it |
 | A day being processed at the very moment its key is revoked | A worker past the live-key check before the revoke can still post that one day; `switch_off` leaves a day a reviewer is approving (an active claim) to finish | Accepted: seconds wide, and a post through Carmen's engine answers "already posted" to a second one (decision-log #56) |
 | The sweep opens only yesterday | A day the sweep missed entirely (the server down all day) is not opened later; it waits for its hook | Open the last N days if it ever matters (decision-log #55) |
 | A row the AI cannot place stays blank | After the first ask, the second ask and 3 hourly retries, a row with nothing in the BU's table to follow waits for the reviewer | Intended: no default (suspense) account, which would let Approve post a wrong one (decision-log #57) |
 | A `PartnerApi` day at 06:00 | Carmen reads such a PMS live, so a hotel whose night audit closes after 06:00 could give an incomplete day, and auto-post would post it | None posts REVENUE yet. Look again when one does: a later hour for `PartnerApi`, or per BU (decision-log #55) |
 | A day Carmen never gets fails daily | On QA's test BUs (no recent days in the dev Data Bank), one failed row per PMS per day under Not posted | Revoke the test keys not in use. On a live BU it is a real signal |
+| Carmen dev cannot delete a Comanche or Cloudbeds Data Bank row | `DELETE /api/interface/PMS/{name}/Daily/{id}` answers 500 "The input is not a valid Base-64 string" (HotelTime rows delete). Rows a test seeded stay (Id 192, 195 on carmencloud) | Ask Carmen (ask Q). A seed onto the same date replaces the row, so the suites re-use it |
 | `carmen.py`'s comment says neither config read has an `/api/interface` twin | Stale since 2026-10-15: the mapping GET has one | Update the comment on the next code change there |
