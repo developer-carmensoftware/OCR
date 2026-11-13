@@ -17,7 +17,8 @@ works only once it is in Carmen's Data Bank.
   the same number of days, so each PMS keeps its own shape (HotelTime's `Information.DocDate`
   is the morning after, Comanche spells `QueryDate`, the others `QueyDate`). It also takes a
   file holding only `FileData`, as Carmen sends them. Loading yesterday's date is enough: the
-  06:00 sweep opens that day and re-checks it hourly. `--dry-run` prints the dates only.
+  06:00 sweep opens that day and re-checks it hourly. `--dry-run` prints the dates only;
+  `--again` adds a second row for a day Carmen already holds (a night audit run twice).
 - `hook` generates a new key for the PMS through Carmen's Settings API (it replaces the live
   one; not a switch-off, decision-log #56) and sends our hook for each date, for days other
   than yesterday.
@@ -155,14 +156,31 @@ def seed(args, h: httpx.Client) -> None:
             )
         )
         return
-    have = h.get(f"{_bank(args.uri, args.pms)}/Date/{args.date}")
-    if have.status_code == 200 and have.content.strip() and have.json():
-        sys.exit(f"{args.pms} {args.date}: the Data Bank already holds this day; delete it first")
-    r = h.post(_bank(args.uri, args.pms), json=body)
+    try:
+        new_id = seed_day(h, args.uri, args.pms, body, again=args.again)
+    except ValueError as exc:
+        sys.exit(str(exc))
+    print(f"{args.pms} {args.date}: Id={new_id}")
+
+
+def held(h: httpx.Client, uri: str, pms: str, day: str) -> list[dict]:
+    """The Data Bank rows Carmen holds for one day of a PMS."""
+    r = h.get(f"{_bank(uri, pms)}/Date/{day}")
+    r.raise_for_status()
+    rows = (r.json() if r.content.strip() else []) or []
+    return rows if isinstance(rows, list) else [rows]
+
+
+def seed_day(h: httpx.Client, uri: str, pms: str, body: dict, *, again: bool = False) -> int:
+    """Post one day's body into the Data Bank; the new row's Id. A day already held is refused
+    unless `again`: a second row for the date, as a night audit run twice leaves (EC-09)."""
+    if not again and held(h, uri, pms, body["DocDate"]):
+        raise ValueError(f"{pms} {body['DocDate']}: the Data Bank already holds this day")
+    r = h.post(_bank(uri, pms), json=body)
     b = r.json() if r.content.strip() else {}
-    print(
-        f"{args.pms} {args.date}: HTTP {r.status_code} Code={b.get('Code')} Id={b.get('InternalMessage')} {b.get('UserMessage') or ''}"
-    )
+    if r.status_code != 200 or b.get("Code") != 0:
+        raise ValueError(f"{pms} {body['DocDate']}: HTTP {r.status_code} {b or r.text[:200]}")
+    return int(b["InternalMessage"])
 
 
 def hook(args, h: httpx.Client) -> None:
@@ -205,6 +223,7 @@ def main() -> None:
     s.add_argument("file")
     s.add_argument("date")
     s.add_argument("--dry-run", action="store_true")
+    s.add_argument("--again", action="store_true", help="a second row for a day already held")
     k = sub.add_parser("hook")
     k.add_argument("pms")
     k.add_argument("dates", nargs="+")

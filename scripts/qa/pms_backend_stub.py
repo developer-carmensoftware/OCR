@@ -11,7 +11,10 @@ Runs `app.main:app` on 127.0.0.1:8011 against LOCAL Supabase (127.0.0.1:54322), 
 
 Dev Carmen lists no PMS as PartnerApi, so `pms_post_checks_ui.mjs` lists HotelTime as one to
 exercise the sweep that opens such days (decision-log #52). Every other Carmen call is real.
-Never use this outside a local test run: it replaces a function of the running app.
+Every body sent to Carmen's engine (preview and post) is also appended to
+`.playwright-mcp/pms-pc/engine_calls.jsonl`, so a suite can see whether a day went with its
+Data Bank `id` or by date alone (`pms_seeded_days_ui.mjs` F).
+Never use this outside a local test run: it replaces functions of the running app.
 """
 
 import json
@@ -41,6 +44,25 @@ async def _switchable(token):
 
 
 carmen.get_interfaces = _switchable
+
+# Every body sent to Carmen's engine (its preview and its post), one JSON line each, so a suite
+# can see whether a day went with its Data Bank `id` or by date alone (pms_seeded_days_ui.mjs F).
+# The calls themselves still go to Carmen.
+ENGINE_LOG = SWITCH.with_name("engine_calls.jsonl")
+
+
+def _logged(fn, name):
+    async def call(post_type, body, carmen_token):
+        ENGINE_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with ENGINE_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"call": name, "post_type": post_type, "body": body}) + "\n")
+        return await fn(post_type, body, carmen_token)
+
+    return call
+
+
+carmen.preview_pms_gl = _logged(carmen.preview_pms_gl, "preview")
+carmen.post_pms_gl = _logged(carmen.post_pms_gl, "post")
 
 import uvicorn  # noqa: E402
 
