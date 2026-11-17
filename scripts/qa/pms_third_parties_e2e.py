@@ -9,6 +9,7 @@ full-system E2E (`pms_third_parties_ui.mjs` drives the hooks and the browser, an
     python scripts/qa/pms_third_parties_e2e.py jvs              # this run's engine JVs for the two days (JSON)
     python scripts/qa/pms_third_parties_e2e.py llm              # pms_interface LLM calls of the E2E tenants
     python scripts/qa/pms_third_parties_e2e.py engine-probe     # P-03 the success path on test.PMS (posts + voids a JV)
+    python scripts/qa/pms_third_parties_e2e.py post-outside     # D-04: post 2024-09-01 in Carmen first (its JV seq)
     python scripts/qa/pms_third_parties_e2e.py seed-posted      # F-01: a posted Comanche day with P-03's JV seq
     python scripts/qa/pms_third_parties_e2e.py teardown         # T-01 restore the table, T-02 void this run's JVs
 
@@ -16,10 +17,12 @@ full-system E2E (`pms_third_parties_ui.mjs` drives the hooks and the browser, an
 third-party integrations — it lists Comanche, and an inactive CarmenAI, but not the active
 `test.PMS` — so only a Comanche day goes through our processing. Three Comanche days, all
 mapped by the Comanche and test.PMS tables between them:
-- 2024-07-01 (A, approved in the browser) and 2025-10-20 (B, auto-posted). No live JV covers
+- 2024-07-01 (A, approved in the browser) and 2025-10-22 (B, auto-posted). No live JV covers
   them, and **Carmen refuses both** ("Line No. 30,31 has no DrCr value", Comanche.PMS's own
   config — the same data posts on test.PMS), so they are the refusal paths;
-- 2024-09-01, which Carmen posted itself (JV 36): the "already posted" path.
+- 2024-09-01, the "already posted" path: `post-outside` posts it in Carmen just before D-04, as a
+  person posting there would. (Carmen's own JV 36 for it was voided on 2026-11-17 by this suite's
+  Approve, when every post said forceUpdate=true; decision-log #62.)
 The success path is P-03: our `post_pms_gl`, no counter, on test.PMS's 2025-10-21.
 
 **Setup stages Carmen's real Comanche table:** the snapshot, plus test.PMS's accounts for every
@@ -45,9 +48,7 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / "backend" / ".env")
-os.environ["DATABASE_URL"] = (
-    "postgresql+asyncpg://postgres:postgres@127.0.0.1:54322/postgres"
-)
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:postgres@127.0.0.1:54322/postgres"
 sys.path.insert(0, str(ROOT / "backend"))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -68,7 +69,15 @@ FILL_FROM = "test.PMS"
 # A is approved in the browser and B auto-posted: Carmen refuses both ("Line No. 30,31 has
 # no DrCr value", a Comanche.PMS config matter). POSTED is the day Carmen already holds as
 # JV 36, so a post of it answers "Already Posted".
-DAYS = ("2024-07-01", "2025-10-20")
+# B is our own copy of Carmen's original 2025-10-20, which Carmen replaced on 2026-11-16 with
+# rows of another format (no Code/Description). The first run seeds it from the saved file;
+# later runs find it held and leave it.
+DAYS = ("2024-07-01", "2025-10-22")
+SOURCE_B = (
+    Path(os.environ.get("PMS_TEST_DATA") or Path.home() / "Documents/bruno/Test-Pms-Data")
+    / "Comanche"
+    / "2025-10-20.json"
+)
 POSTED = "2024-09-01"
 ALL_DAYS = (*DAYS, POSTED)
 # P-03: the success path, on the sandbox whose day posts (Carmen fills the counter itself).
@@ -93,9 +102,7 @@ def _save(state: dict) -> None:
 
 
 def _jwt_client() -> httpx.Client:
-    return httpx.Client(
-        headers={"Authorization": JWT}, timeout=httpx.Timeout(60, connect=20)
-    )
+    return httpx.Client(headers={"Authorization": JWT}, timeout=httpx.Timeout(60, connect=20))
 
 
 def _engine_jvs(days: tuple[str, ...] = ALL_DAYS) -> list[dict]:
@@ -154,10 +161,10 @@ def preflight() -> int:
         live = _engine_jvs()
         on_ab = [j["JvhSeq"] for j in live if str(j["JvhDate"])[:10] in DAYS]
         on_posted = [j["JvhSeq"] for j in live if str(j["JvhDate"])[:10] == POSTED]
-        good = not on_ab and bool(on_posted)
+        good = not on_ab
         print(
-            f"{'PASS' if good else 'FAIL'} P-02 web JWT reads glJv; no live JV on {DAYS}, "
-            f"Carmen's own on {POSTED}  ({on_ab} / {on_posted})"
+            f"{'PASS' if good else 'FAIL'} P-02 web JWT reads glJv; no live JV on {DAYS}; "
+            f"on {POSTED} D-04 posts one first if Carmen holds none  ({on_ab} / {on_posted})"
         )
         ok &= good
     except httpx.HTTPError as exc:
@@ -166,9 +173,24 @@ def preflight() -> int:
     return 0 if ok else 1
 
 
+def _ensure_day_b() -> None:
+    """Load B into Carmen's Data Bank from the saved original, unless Carmen holds it already."""
+    sys.path.insert(0, str(ROOT / "scripts" / "qa"))
+    import pms_databank as bank
+
+    with httpx.Client(headers={"Authorization": TOKEN}, timeout=httpx.Timeout(60, connect=20)) as h:
+        if bank.held(h, URI, NAME, DAYS[1]):
+            return
+        body = bank.shifted(json.loads(SOURCE_B.read_text(encoding="utf-8")), DAYS[1])
+        print(
+            f"seeded {NAME} {DAYS[1]} from {SOURCE_B.name}: Id {bank.seed_day(h, URI, NAME, body)}"
+        )
+
+
 async def _days_raw() -> dict[str, dict]:
     """Comanche's raw days: the staging below picks rows by `TransactionType`, which Carmen's
     preview does not carry. The app itself no longer reads FileData (decision-log #54)."""
+    _ensure_day_b()
     out = {}
     for day in ALL_DAYS:
         found = await carmen.get_databank_day("PMS", NAME, "Daily", day, TOKEN)
@@ -184,9 +206,7 @@ async def _days_raw() -> dict[str, dict]:
 async def _setup() -> None:
     state = _state()
     if state.get("snapshot"):
-        raise SystemExit(
-            "[abort] a snapshot exists: run `teardown` first, or delete state.json"
-        )
+        raise SystemExit("[abort] a snapshot exists: run `teardown` first, or delete state.json")
     # A rerun starts clean: an earlier run's days would answer the hooks as duplicates.
     # Local Supabase only (DATABASE_URL is forced above), so nothing else is touched.
     async with async_session() as db:
@@ -210,9 +230,7 @@ async def _setup() -> None:
     day_keys = {d: [_key(i, keys) for i in v["items"]] for d, v in days.items()}
     needed = list(dict.fromkeys(k for ks in day_keys.values() for k in ks))
     if missing := [k for k in needed if k not in union]:
-        raise SystemExit(
-            f"[abort] no account anywhere for {[cfg.label(k) for k in missing]}"
-        )
+        raise SystemExit(f"[abort] no account anywhere for {[cfg.label(k) for k in missing]}")
     both = set(day_keys[DAYS[0]]) & set(day_keys[DAYS[1]])
 
     def first(pred) -> dict:
@@ -281,9 +299,7 @@ async def _setup() -> None:
 
 async def _tenant_ids(db) -> dict:
     rows = (
-        await db.execute(
-            select(Tenant.id, Tenant.bu_code).where(Tenant.bu_code.in_(TENANTS))
-        )
+        await db.execute(select(Tenant.id, Tenant.bu_code).where(Tenant.bu_code.in_(TENANTS)))
     ).all()
     return {str(t): bu for t, bu in rows}
 
@@ -292,11 +308,7 @@ async def _dump() -> list[dict]:
     async with async_session() as db:
         tenants = await _tenant_ids(db)
         events = (
-            (
-                await db.execute(
-                    select(PmsEvent).where(PmsEvent.tenant_id.in_(list(tenants)))
-                )
-            )
+            (await db.execute(select(PmsEvent).where(PmsEvent.tenant_id.in_(list(tenants)))))
             .scalars()
             .all()
         )
@@ -319,9 +331,7 @@ async def _dump() -> list[dict]:
 async def _last_attempt(event_pk: str) -> None:
     async with async_session() as db:
         await db.execute(
-            update(PmsEvent)
-            .where(PmsEvent.id == event_pk)
-            .values(attempts=2, processed_at=None)
+            update(PmsEvent).where(PmsEvent.id == event_pk).values(attempts=2, processed_at=None)
         )
         await db.commit()
 
@@ -349,9 +359,7 @@ async def _restore() -> bool:
     await carmen.put_pms_mapping(SETTING, POST_TYPE, _body(snap, keys), TOKEN)
     after, _ = await carmen.get_pms_mapping(SETTING, POST_TYPE, TOKEN)
     await carmen.close_client()
-    ok = sorted(map(json.dumps, _body(after, keys))) == sorted(
-        map(json.dumps, _body(snap, keys))
-    )
+    ok = sorted(map(json.dumps, _body(after, keys))) == sorted(map(json.dumps, _body(snap, keys)))
     print(
         f"{'PASS' if ok else 'FAIL'} T-01 {SETTING}'s table restored row for row  ({len(after)} rows)"
     )
@@ -379,10 +387,22 @@ def _void() -> bool:
                 f"({r.status_code} {r.text[:100]})"
             )
     left = [j["JvhSeq"] for j in _engine_jvs() if j["JvhSeq"] not in baseline]
-    print(
-        f"{'PASS' if not left else 'FAIL'} T-02 no JV of this run left live  ({left})"
-    )
+    print(f"{'PASS' if not left else 'FAIL'} T-02 no JV of this run left live  ({left})")
     return ok and not left
+
+
+async def _post_outside() -> str:
+    """D-04's precondition: POSTED already posted in Carmen, as a person posting there leaves it.
+    `post_day` says forceUpdate=false (decision-log #62), so a day Carmen still holds answers
+    -200 and nothing changes. The JV seq this run posted, or "" when Carmen held one already;
+    teardown voids it with the run's other JVs."""
+    current_carmen_uri.set(URI)
+    found = await carmen.get_databank_day("PMS", NAME, "Daily", POSTED, TOKEN)
+    did = max(found, key=lambda d: str(d.get("LastModified") or ""))["Id"] if found else None
+    section = {"setting_code": SETTING, "post_type": POST_TYPE}
+    outcome, jv_no = await process.post_day(section, POSTED, did, TOKEN)
+    await carmen.close_client()
+    return str(jv_no or "") if outcome == "posted" else ""
 
 
 async def _engine_probe() -> bool:
@@ -484,9 +504,7 @@ def main() -> int:
         asyncio.run(_last_attempt(sys.argv[2]))
         return 0
     if cmd == "mapping":
-        rows, columns = asyncio.run(
-            _carmen(carmen.get_pms_mapping, SETTING, POST_TYPE, TOKEN)
-        )
+        rows, columns = asyncio.run(_carmen(carmen.get_pms_mapping, SETTING, POST_TYPE, TOKEN))
         print(json.dumps({"rows": rows, "columns": columns}, ensure_ascii=False))
         return 0
     if cmd == "jvs":
@@ -501,6 +519,9 @@ def main() -> int:
         return 0
     if cmd == "engine-probe":
         return 0 if asyncio.run(_engine_probe()) else 1
+    if cmd == "post-outside":
+        print(asyncio.run(_post_outside()))
+        return 0
     if cmd == "seed-posted":
         print(asyncio.run(_seed_posted()) or "")
         return 0

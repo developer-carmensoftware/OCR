@@ -55,7 +55,7 @@ const BU_B = 'pms-e2e-b'
 // JV teardown voids. D is the day Carmen
 // posted itself (JV 36): "already posted". The success path is P-03, on test.PMS.
 const DAY_A = '2024-07-01' // approved in the browser; Carmen refuses (K) or posts
-const DAY_B = '2025-10-20' // auto-posted; Carmen refuses (K) or posts
+const DAY_B = '2025-10-22' // auto-posted; Carmen refuses (K) or posts. Our copy of Carmen's 2025-10-20 (setup seeds it)
 const DAY_D = '2024-09-01' // the second tenant's; Carmen answers "Already Posted"
 
 const results = []
@@ -584,6 +584,11 @@ async function run() {
     const back = await until(parked(BU_B, DAY_D))
     check('D-03', 'a repeat hook brings a rejected day back to review', r.status === 200 && back, `status=${back?.status}`)
 
+    // D-04's precondition: the day already posted in Carmen, as a person posting there leaves it
+    // (Carmen's own JV 36 was voided on 2026-11-17 by this very check, before decision-log #62).
+    const outside = py('post-outside').out.trim().split('\n').pop()
+    const outsideJvs = outside ? [outside] : []
+    const onlyOutside = () => jvsOf(DAY_D).map(j => String((j.Data || j).JvhSeq)).join() === outsideJvs.join()
     dlg = await openDay(DAY_D)
     await page.keyboard.press('Control+Enter')
     const already = await toast(/already posted|Posted to Carmen|Carmen didn't post/i)
@@ -595,15 +600,15 @@ async function run() {
     const dRow = (await queueRow(DAY_D).innerText().catch(() => '')).replace(/\s+/g, ' ')
     check('D-04', `Ctrl+Enter → Carmen had already posted ${DAY_D}; no new JV`,
       /Carmen had already posted this day/.test(String(already)) && doneD?.reason_code === 'already_posted' &&
-        /Carmen had already posted it/.test(dRow) && jvsOf(DAY_D).length === 0,
-      `toast=${JSON.stringify(already)} reason=${doneD?.reason_code}`)
+        /Carmen had already posted it/.test(dRow) && onlyOutside(),
+      `toast=${JSON.stringify(already)} reason=${doneD?.reason_code} carmen's JV=${outsideJvs.join() || 'its own'} live=${jvsOf(DAY_D).map(j => (j.Data || j).JvhSeq).join(',')}`)
     await shot('D-04-already-posted')
 
     r = await hook(keys[`${BU_B}/comanche`], 'Comanche', DAY_D)
     await sleep(6000)
     const stillD = keyOf(pyJson('state'), BU_B, DAY_D)
     check('D-05', 'a repeat hook for a posted day changes nothing', r.status === 200 && r.json?.duplicate &&
-      stillD?.status === 'posted' && jvsOf(DAY_D).length === 0, `status=${stillD?.status}`)
+      stillD?.status === 'posted' && onlyOutside(), `status=${stillD?.status}`)
 
     // ── F-01 — the JV number: a posted day with the seq post_day named in P-03 ─────
     // A posted row stored the way `_process` stores one (with P-03's JV seq): the queue must

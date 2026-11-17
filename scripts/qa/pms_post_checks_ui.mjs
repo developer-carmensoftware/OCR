@@ -302,6 +302,11 @@ async function run() {
     const r = await carmenApi('PUT', '/settings', { uri: URI, bu, pms: 'hoteltime', auto_post: on })
     check('S-02', `auto-post ${on ? 'on' : 'off'} for ${bu} × hoteltime`, r.status === 200 && r.json?.auto_post === on, `HTTP ${r.status}`)
   }
+  // HotelTime's table, kept now for T-01 to put back row for row: N-04 and A-02 write into it.
+  // Taken every run (a fresh worktree has no snapshot, and teardown then left the table
+  // changed, 2026-11-17).
+  const htSnap = pyJson('ht-snapshot').rows
+  check('S-03', "HotelTime's table kept, to put back row for row", htSnap >= 0, `${htSnap} rows`)
   const t0 = new Date().toISOString()
   const llm0 = Number(py('llm').out.trim().split('\n').pop())
   // Carmen may already hold yesterday's day (a QA round, suite 3): then that PMS's sweep day
@@ -409,6 +414,9 @@ async function run() {
     `hook HTTP ${r.status} · ${BU_B} days ${xCount}→${rows.filter(x => x.bu === BU_B).length}`)
 
   // ── N — HotelTime, reviewable now: its own table, its new rows, the AI (#53) ─────────
+  // As Carmen lists it (CarmenApi), so the day carries its Data Bank row (171): the PartnerApi
+  // listing was O's, and a PartnerApi day reads no Data Bank row (decision-log #61).
+  setSwitch({ mode: 'real' })
   r = await carmenApi('PUT', '/settings', { uri: URI, bu: BU, pms: 'hoteltime', auto_post: false })
   const ht0 = pyJson('ht-table')
   const htBlank0 = ht0.blank // Carmen's rows waiting for an account
