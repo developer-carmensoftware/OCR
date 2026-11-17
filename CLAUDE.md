@@ -234,7 +234,8 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
           whose dept forbids its account moves to the BU's own dept for it, else GEN; rows
           still blank are asked once more, then the sweep asks again hourly ×3 (#57)
       any new row, or this PMS's auto_post off → pending_review; else post_day →
-          POST /api/interface/interfacePostGL/REVENUE {Code, DateFrom/To, id:[DataBank Id]}
+          POST /api/interface/interfacePostGL/REVENUE?forceUpdate=true {Code, DateFrom/To, id:[DataBank Id]}
+          (forceUpdate always: an interface Carmen set to AiPost Review holds a post without it, #60)
           (no counter: Carmen decides Dr/Cr + the counter line from its setting; answers
           `Id: [JvhSeq]` → pms_events.jv_no, the queue's Open JV; -200 = already posted).
           A repeat hook re-reads an unposted day.
@@ -255,6 +256,8 @@ Carmen's PMS setting screen (one per BU × PMS) → /api/v1/carmen/pms   (decisi
   GET/PUT /settings {uri, bu, pms, auto_post}   pms = the hook's InterfaceName, lower-cased
   POST /keys {uri, bu, pms} → api_key once; revokes the old one (1 live key per BU × PMS,
       uq_api_keys_live_interface)   ·   DELETE /keys?uri&bu&pms = the off switch
+      Carmen stores the key as Configuration.AiKey and its hook sends it (#60): never issue a key
+      for a BU Carmen has wired from a script — it revokes Carmen's copy and every hook 401s
   every Carmen write: credential.adopt_token(the caller's token) + wake_waiting → the BU's ONE
       credential, unless the held one still works (#45: only a 401/403 counts as dead; a day
       stuck at carmen_forbidden takes the new token); a write's _resolve(create=True): a BU never seen gets its tenant +
