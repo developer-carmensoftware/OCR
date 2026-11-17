@@ -213,6 +213,26 @@ and `2026-10-1[4-5].md`.
 The real end to end is **CA-120**: a real Carmen menu click and real hooks. It needs CA-115
 (Carmen) and CA-118 (release).
 
+### A QA round on carmencloud (since 2026-11-17)
+
+A tester's Approve writes the new rows' accounts into Carmen's mapping table and posts a JV, so
+the same codes come back "Ready to post" on the next day. Between rounds, put Carmen back:
+
+```bash
+python scripts/qa/pms_qa_round.py baseline [--force]   # before a round: the 4 tables + the highest JV seq
+python scripts/qa/pms_qa_round.py status               # tables vs the baseline; PMS JVs live since
+python scripts/qa/pms_qa_round.py reset --dry-run      # then without --dry-run: void them, put the tables back
+```
+
+- It voids only JVs numbered above the baseline whose source is a PMS one: `CMRV` Comanche,
+  `HTRV` HotelTime, `CLBS` Cloudbeds, `GLRV` Guestline.
+- Tokens: `CARMEN_AUTHORIZATION` (the menu token) and `CARMEN_ADMIN_TOKEN` (a web JWT, about 24 h).
+- Don't stock days ahead of a round. An Approve rechecks every waiting day of that PMS, so a stocked
+  day turns "Ready to post", and Cloudbeds (Auto) then posts it by itself.
+- The tester adds days themselves with the Bruno collection `Documentsruno\Carmen-PMS-QA`
+  (outside the repo). It runs Carmen's own Data Bank Add, so Carmen's real hook follows. Dates:
+  07–25/10/2026, not 08/10 or 11/10, where Comanche holds rows.
+
 ## Known gaps
 
 | Gap | Effect | Upgrade path |
