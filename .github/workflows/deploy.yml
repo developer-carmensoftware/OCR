@@ -58,8 +58,9 @@ jobs:
 
       # 1. Migrate first. `db push` only applies migrations not yet recorded in the
       #    target DB's supabase_migrations table — safe under expand/contract.
+      #    `--yes`: CLI 3.x asks before applying and exits 1 when stdout is not a terminal.
       - name: Push DB migrations
-        run: supabase db push --db-url "$SUPABASE_DB_URL"
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
 
