@@ -101,7 +101,10 @@ try {
   const rows = await dialog.locator('table tbody tr').count()
   const pickers = await dialog.locator('input[aria-label^="Account for "]').count()
   const ai = await dialog.locator('.pms-tag-ai').count()
-  check(rows > 0 && pickers > 0 && ai <= pickers, `${rows} rows, ${pickers} new with pickers, ${ai} tagged AI`)
+  // A day whose every row Carmen maps ("Ready to post") has no picker: it only needs Approve.
+  const ready = /Ready to post/.test(rowText)
+  check(rows > 0 && (ready ? pickers === 0 : pickers > 0) && ai <= pickers,
+    `${rows} rows, ${pickers} new with pickers, ${ai} tagged AI${ready ? ' (Ready to post)' : ''}`)
   const approve = dialog.getByRole('button', { name: /approve and post/i })
   const blocked = text.includes('Pick an account for every new row.')
   check((await approve.isEnabled()) === !blocked, `Approve is ${blocked ? 'blocked, and says why' : 'open'}`)
@@ -115,11 +118,12 @@ try {
     check(closed, 'Approve and post: Carmen posted the day', closed ? '' : ((await err.first().textContent()) || '').trim().slice(0, 200))
     await queue('All')
     const done = ((await rowOf().first().textContent().catch(() => '')) || '').replace(/\s+/g, ' ')
-    const jv = done.match(/(\d{3,})\s*Open JV/)?.[1]
-    check(/Success/.test(done) && !!jv, 'the queue row reads Success with its JV number', done.slice(0, 160))
+    // The JV number from the link: in the row's text it runs into the time ("16:351704").
     const link = rowOf().first().getByRole('link', { name: /Open JV/ })
     const href = (await link.count()) ? await link.getAttribute('href') : ''
-    check(!!href && href.includes(jv || '?'), 'Open JV links to that JV in Carmen', href || 'no link')
+    const jv = href?.match(/\/glJv\/(\d+)\/show/)?.[1]
+    check(/Success/.test(done) && !!jv && done.includes(jv), 'the queue row reads Success with its JV number', done.slice(0, 160))
+    check(!!jv, 'Open JV links to that JV in Carmen', href || 'no link')
     console.log(`JV ${jv || '?'}  ← void it`)
     await shot(page, 'posted')
   } else if (action === '--reject') {
