@@ -1,9 +1,9 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-11 — PMS Interface Automation
-output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.11.docx
+output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.12.docx
 iso-wp: SD
-Document Version: Version 1.11 (As-Built Developer & Test Spec)
+Document Version: Version 1.12 (As-Built Developer & Test Spec)
 Module ID: `pms_interface` (ใช้บันทึก LLM usage เท่านั้น ไม่คิดเครดิต)
 Status: Built — แถวของวันมาจาก preview ของ engine ของ Carmen (decision-log #54) · การ post ของ Carmen เป็นตัวตรวจ mapping (#52, #53) · sweep เปิดวันของเมื่อวานให้ทุก PMS ตั้งแต่ 06:00 ICT จึงไม่ต้องรอ hook (decision-log #55) · hook จริงของ Carmen ยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K)
 Source of truth: repo developer-carmensoftware/OCR @ dcceaf52 (13/11/2026) + branch fix/pms-closed-while-processing
@@ -29,6 +29,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 | 1.9 | 13/11/2026 | Dev Team | ตาม decision-log #59: วันที่ถูกปิด (switch-off) ระหว่างประมวลผลยังคงปิด — การเขียนผลของ worker ลงได้เฉพาะวันที่ยัง `received` · เช็ค key อีกครั้งก่อน post · การ post ที่ Carmen ทำแล้วบันทึกตามจริงเสมอ (EC-14) · ตาม decision-log #60 (17/11/2026): ทุกการ post ส่ง `forceUpdate=true` เพราะ interface ที่ Carmen ตั้ง AiPost เป็น Review จะไม่ post ถ้าไม่ส่ง (§7) | |
 | 1.10 | 17/11/2026 | Dev Team | ตาม decision-log #56 (แก้ 17/11/2026): `DELETE /api/v1/carmen/pms/keys` ตอบ 204 ทุกครั้งที่ PMS ปิดอยู่หลังเรียก รวมถึง PMS ที่ไม่เคยมี key, ปิดไปแล้ว และ BU ที่ไม่เคยเห็น (เดิม 404 / 400) เพราะหน้าจอ Carmen จะเรียกทุกครั้งที่ Save เป็น Manual (§12.1) | |
 | 1.11 | 17/11/2026 | Dev Team | ตาม decision-log #61: วันของ PMS แบบ PartnerApi (เช่น GuestlinePMS) ไม่อ่าน Data Bank — engine ของ Carmen ดึงวันจาก PMS เอง และหลัง preview การอ่าน Data Bank ของวันนั้นตอบ 500 · preview และ post ใช้วันที่อย่างเดียว · `pms_probe.py` ทำเหมือนกัน (§2.1) | |
+| 1.12 | 17/11/2026 | Dev Team | ตาม decision-log #62: การ post ส่ง `forceUpdate=false` ก่อน และ `true` เฉพาะเมื่อ Carmen ตอบ review mode (§7) · เพิ่ม test case TC-PMS-30–35 (§13.4) สำหรับสิ่งที่ส่งวันที่ 17/11: PMS แบบ PartnerApi, interface ที่ตั้ง AiPost เป็น Review, วันที่ Carmen post ไปแล้ว, Save เป็น Manual, วันที่ถูกปิดระหว่างประมวลผล และ AiPost กับ auto-post | |
 | 1.4 | 10/11/2026 | Dev Team | ตาม decision-log #52–#54 และ ask D: การ post ของ Carmen เป็นตัวตรวจ mapping (`-500` → `pms_mapping_incomplete` พร้อม key ที่ Carmen เขียนไว้) ทุก PMS review ได้ แถวของวันมาจาก preview ของ engine (`interfacePreviewPostGL`) แทนการอ่าน FileData เอง (`unreadable_day` และ `unsupported_pms_format` ไม่ถูกเขียนแล้ว) เปิดวันของ PMS แบบ PartnerApi เอง `-400` No Data → `day_not_ready` เก็บเลข JV จาก `Id` ใน `jv_no` AI ไม่เห็นยอดเงินและลองใหม่หนึ่งครั้ง และ `scripts/qa/pms_probe.py` | |
 
 <!-- pagebreak -->
@@ -292,7 +293,7 @@ Migration: `20261007000000_pms_events.sql`, `20261009000000_pms_processing.sql` 
 | `POST /interfacePreviewPostGL/{postType}` | preview ของการ post (body เดียวกับ post): แถวของวันตามที่ engine key และบัญชีของแต่ละ key — ไม่ post และไม่เขียนตาราง | ใช้ได้ตั้งแต่ 10/11/2026 (ask P, #54) |
 | `GET /interfacePost/mapping/{code}/{postType}/GL` | อ่าน mapping table และชื่อคอลัมน์ (คอลัมน์ที่ไม่ใช่ DeptCode / AccCode / AccDesc คือ key) | ใช้ได้ — คำตอบที่ไม่ใช่ตาราง (เช่น 303 Configuration is missing) ถือว่าอ่านไม่ได้ |
 | `PUT /interfacePost/mapping/{code}/{postType}/GL` | เขียน mapping table — **แทนที่ทั้งตาราง** | ใช้ได้ |
-| `POST /interfacePostGL/{postType}?forceUpdate=true` | ให้ engine post วันนั้น `{Code, DateFrom, DateTo, id}` — ไม่ส่งบัญชีพัก engine ใช้จาก setting ของ Carmen เอง · `forceUpdate=true` เสมอ: interface ที่ AiPost = Review ตอบ `Code -1` "is in review mode" และไม่ post ถ้าไม่ส่ง (decision-log #60) | ใช้ได้ — คืน `Id` (seq ของ JV) ซึ่งเก็บใน `jv_no` |
+| `POST /interfacePostGL/{postType}?forceUpdate=false` | ให้ engine post วันนั้น `{Code, DateFrom, DateTo, id}` — ไม่ส่งบัญชีพัก engine ใช้จาก setting ของ Carmen เอง · ส่ง `false` ก่อน และส่งซ้ำด้วย `true` เฉพาะเมื่อ Carmen ตอบ `Code -1` "is in review mode" เพราะ `true` แปลว่า post ซ้ำ (void JV เดิมแล้ว post ใหม่) ส่วน `false` ยังได้ `-200 Already Posted` (decision-log #62 แก้ #60) | ใช้ได้ — คืน `Id` (seq ของ JV) ซึ่งเก็บใน `jv_no` |
 | ผังบัญชีและแผนก | ให้ AI ใช้ และตรวจตอน approve | ใช้ได้ |
 
 **คำตอบของ engine:**
@@ -670,3 +671,14 @@ POST /api/v1/pms/days/8c2e…/approve
 | TC-PMS-27 | Carmen post วันนั้นไปก่อน | post ใน Carmen แล้ว Approve | 200 `already_posted: true` | แถว "Carmen had already posted it" |
 | TC-PMS-28 | Approve ได้เลข JV | Approve วันที่ map ครบ | 200 `jv_no` = seq จาก `Id` | คิวแสดง JV NO. และเปิด JV ได้ |
 | TC-PMS-29 | sweep เปิดวันไว้แล้ว (`Hoteltime`) | ส่ง hook วันเดียวกันเป็น `HotelTime` | 200 `duplicate: true` | ไม่มีแถวที่สอง (decision-log #58) |
+
+## 13.4 Category 4: หน้า PMS setting ของ Carmen และ PartnerApi (17/11/2026)
+
+| Test Case ID | Scenario & Pre-conditions | Test Steps | Expected Result | Pass Criteria |
+|---|---|---|---|---|
+| TC-PMS-30 | PMS แบบ PartnerApi (เช่น GuestlinePMS) มี key และอยู่ใน `interfaceThirdParties` | รอ sweep หลัง 06:00 (ไม่มี hook) | วันของเมื่อวานถูกเปิดเอง ไม่อ่าน Data Bank, preview ด้วยวันที่ และ `pending_review` พร้อมแถวและ AI | Approve ได้เลข JV (decision-log #61) |
+| TC-PMS-31 | interface ที่ Carmen ตั้ง AiPost เป็น Review | Approve วันหนึ่ง | engine post จริง (ส่ง `false` ก่อน แล้ว `true` หลัง Carmen ตอบ review mode) | ได้เลข JV ไม่ใช่ "is in review mode" (decision-log #60, #62) |
+| TC-PMS-35 | Carmen post วันนั้นไปแล้ว บน interface ที่ไม่ใช่ Review | Approve | 200 `already_posted: true` | JV เดิมของ Carmen ยังอยู่ ไม่ถูก void (decision-log #62) |
+| TC-PMS-32 | Save หน้า PMS setting เป็น Manual | Carmen เรียก `DELETE /keys` | 204, วันที่รอของ PMS นั้นปิดเป็น `rejected` / `pms_switched_off` และ auto-post ปิด; PMS ที่ไม่เคยมี key ก็ได้ 204 | sweep ไม่เปิดวันใหม่ และ hook ได้ 401 (decision-log #56) |
+| TC-PMS-33 | ปิด PMS ขณะวันหนึ่งกำลังประมวลผล | revoke ระหว่าง preview หรือ AI | วันนั้นยังปิดอยู่ ไม่กลับไปรอตรวจ | ไม่มีการ post (decision-log #59) |
+| TC-PMS-34 | Save หน้า PMS setting เป็น Auto หรือ Review | Carmen เรียก `POST /keys` แล้ว `PUT /settings` | auto-post ของเราเป็นเปิดเมื่อ AiPost เป็น Auto และปิดเมื่อเป็น Review | วันที่ map ครบ post เองเฉพาะ Auto |
