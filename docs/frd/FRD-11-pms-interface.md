@@ -1,9 +1,9 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-11 — PMS Interface Automation
-output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.9.docx
+output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.10.docx
 iso-wp: SD
-Document Version: Version 1.9 (As-Built Developer & Test Spec)
+Document Version: Version 1.10 (As-Built Developer & Test Spec)
 Module ID: `pms_interface` (ใช้บันทึก LLM usage เท่านั้น ไม่คิดเครดิต)
 Status: Built — แถวของวันมาจาก preview ของ engine ของ Carmen (decision-log #54) · การ post ของ Carmen เป็นตัวตรวจ mapping (#52, #53) · sweep เปิดวันของเมื่อวานให้ทุก PMS ตั้งแต่ 06:00 ICT จึงไม่ต้องรอ hook (decision-log #55) · hook จริงของ Carmen ยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K)
 Source of truth: repo developer-carmensoftware/OCR @ dcceaf52 (13/11/2026) + branch fix/pms-closed-while-processing
@@ -27,6 +27,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 | 1.7 | 13/11/2026 | Dev Team | ตาม decision-log #57: คู่แผนก/บัญชีที่แผนกไม่อนุญาตไม่ทิ้งบัญชีแล้ว (ย้ายไปแผนกที่ BU ใช้กับบัญชีนั้น หรือ GEN) · แถวที่ยังว่างถูกถามซ้ำหนึ่งครั้งพร้อมเหตุผล · sweep ถามซ้ำแถวว่างของวันที่รอตรวจชั่วโมงละครั้ง ไม่เกิน 3 ครั้ง (`ai_retries`, `ai_at`) · เฉพาะ PMS ไม่เปลี่ยน UI (§3, §6.2, §7, §8.6, EC-12, EC-13) | |
 | 1.8 | 13/11/2026 | Dev Team | ตาม decision-log #58: วันหนึ่งเป็นแถวเดียวไม่ว่าชื่อ PMS จะพิมพ์เล็กใหญ่อย่างไร — `store_day` ไม่ insert เมื่อมีวันนั้นแล้วในตัวพิมพ์ใดก็ตาม และ hook ซ้ำหาแถวด้วย event_id แบบไม่สนตัวพิมพ์ (EC-08, TC-PMS-29, §11.2) | |
 | 1.9 | 13/11/2026 | Dev Team | ตาม decision-log #59: วันที่ถูกปิด (switch-off) ระหว่างประมวลผลยังคงปิด — การเขียนผลของ worker ลงได้เฉพาะวันที่ยัง `received` · เช็ค key อีกครั้งก่อน post · การ post ที่ Carmen ทำแล้วบันทึกตามจริงเสมอ (EC-14) · ตาม decision-log #60 (17/11/2026): ทุกการ post ส่ง `forceUpdate=true` เพราะ interface ที่ Carmen ตั้ง AiPost เป็น Review จะไม่ post ถ้าไม่ส่ง (§7) | |
+| 1.10 | 17/11/2026 | Dev Team | ตาม decision-log #56 (แก้ 17/11/2026): `DELETE /api/v1/carmen/pms/keys` ตอบ 204 ทุกครั้งที่ PMS ปิดอยู่หลังเรียก รวมถึง PMS ที่ไม่เคยมี key, ปิดไปแล้ว และ BU ที่ไม่เคยเห็น (เดิม 404 / 400) เพราะหน้าจอ Carmen จะเรียกทุกครั้งที่ Save เป็น Manual (§12.1) | |
 | 1.4 | 10/11/2026 | Dev Team | ตาม decision-log #52–#54 และ ask D: การ post ของ Carmen เป็นตัวตรวจ mapping (`-500` → `pms_mapping_incomplete` พร้อม key ที่ Carmen เขียนไว้) ทุก PMS review ได้ แถวของวันมาจาก preview ของ engine (`interfacePreviewPostGL`) แทนการอ่าน FileData เอง (`unreadable_day` และ `unsupported_pms_format` ไม่ถูกเขียนแล้ว) เปิดวันของ PMS แบบ PartnerApi เอง `-400` No Data → `day_not_ready` เก็บเลข JV จาก `Id` ใน `jv_no` AI ไม่เห็นยอดเงินและลองใหม่หนึ่งครั้ง และ `scripts/qa/pms_probe.py` | |
 
 <!-- pagebreak -->
@@ -592,7 +593,7 @@ stateDiagram-v2
 | GET | `/api/v1/carmen/pms/settings?uri&bu&pms` | Carmen token หรือ admin JWT | อ่านค่าตั้ง — BU ที่ไม่เคยเห็นได้ค่าเริ่มต้น ไม่สร้างอะไร |
 | PUT | `/api/v1/carmen/pms/settings` | Carmen token หรือ admin JWT | `{uri, bu, pms, auto_post}` |
 | POST | `/api/v1/carmen/pms/keys` | Carmen token หรือ admin JWT | `{uri, bu, pms}` → 201 พร้อม `api_key` (ครั้งเดียว) |
-| DELETE | `/api/v1/carmen/pms/keys?uri&bu&pms` | Carmen token หรือ admin JWT | เพิกถอน → 204 / 404 ถ้าไม่มี key |
+| DELETE | `/api/v1/carmen/pms/keys?uri&bu&pms` | Carmen token หรือ admin JWT | ปิด PMS → 204 เสมอเมื่อ PMS ปิดอยู่หลังเรียก รวมถึงไม่มี key ให้เพิกถอน และ BU ที่ไม่เคยเห็น (ตรวจ token แต่ไม่สร้างอะไร) |
 
 ## 12.2 ตัวอย่าง — hook
 

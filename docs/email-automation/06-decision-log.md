@@ -1968,6 +1968,11 @@ days to every PMS, and moves it from 08:00 to 06:00 ICT.
 - **Carmen's PMS setting screen** needs a "stop using" action that calls `DELETE /keys`. Turning
   auto-post off is not that: the PMS keeps running and every day waits for a person.
   `PMS_INTEGRATION.md` §2 says so.
+- **Amended 2026-11-17:** that action is `AiPost` Manual, and its Save calls `DELETE /keys` every
+  time. So `DELETE /keys` answers `204` whenever the PMS is off afterwards: also with no key to
+  revoke (never generated, already off) and for a BU we never saw (token proven, nothing
+  created). It used to answer `404` and `400` there, which Carmen would have had to read as
+  success. Carmen had not built the call yet, so nothing depended on the old codes.
 
 ## 57. The AI's pick a department forbids keeps its account; blank rows are asked again (2026-11-13)
 
@@ -2120,4 +2125,3 @@ Other findings:
   hook since got 401 `revoked key`, because our own QA scripts regenerated carmencloud's keys on
   2026-11-12. The fix is Carmen pressing Generate key once per PMS, and no script of ours ever
   issuing a key for a BU Carmen has wired.
-

@@ -3,7 +3,8 @@ generates the hook key, per BU and PMS.
 
 What is pinned: `pms` arrives lower-cased and reaches every write; a Carmen write stores the
 proven token as the BU's credential and wakes the days waiting for one, an operator's does
-not; a new key comes back once; revoking without a key is a 404; the #/pms routes are gone.
+not; a new key comes back once; revoking is 204 even with nothing to revoke; the #/pms
+routes are gone.
 `_caller` and `_resolve` (proof, and creating a BU it has never seen) are pinned in
 test_email_automation_router.py.
 """
@@ -170,10 +171,27 @@ def test_generate_returns_the_key_once_and_stores_the_credential():
     m["switch_off"].assert_not_awaited()
 
 
-def test_revoke_without_a_live_key_is_404():
-    with patch("app.routers.pms_carmen.api_keys.live_key", AsyncMock(return_value=None)):
-        res, _ = _call("DELETE", "/keys", params=REF)
-    assert res.status_code == 404
+def test_revoke_without_a_live_key_is_204_and_changes_nothing():
+    # A PMS that never had a key, or is already off: Carmen's Manual Save calls this every time.
+    with (
+        patch("app.routers.pms_carmen.api_keys.live_key", AsyncMock(return_value=None)),
+        patch("app.routers.pms_carmen.api_keys.revoke_live", AsyncMock()) as revoke,
+    ):
+        res, m = _call("DELETE", "/keys", params=REF)
+    assert res.status_code == 204
+    revoke.assert_not_awaited()
+    m["switch_off"].assert_not_awaited()
+    m["audit"].assert_not_awaited()
+
+
+def test_revoke_for_a_bu_never_seen_is_204_and_creates_nothing():
+    with patch("app.routers.pms_carmen.api_keys.live_key", AsyncMock()) as live:
+        res, m = _call("DELETE", "/keys", params=REF, read_tenant=None)
+    assert res.status_code == 204
+    m["read"].assert_awaited_once()  # the token is proven; a read never registers a BU
+    m["resolve"].assert_not_awaited()
+    live.assert_not_awaited()
+    m["switch_off"].assert_not_awaited()
 
 
 def test_revoke_switches_this_pms_off():
@@ -185,7 +203,7 @@ def test_revoke_switches_this_pms_off():
         res, m = _call("DELETE", "/keys", params=REF)
     assert res.status_code == 204
     assert revoke.await_args.args[1:] == (TENANT.id, "comanche")
-    assert m["resolve"].await_args.kwargs == {}  # revoking never registers a BU
+    m["resolve"].assert_not_awaited()  # revoking never registers a BU
     # …and switches it off for good: its open days close, its auto-post goes off (#56).
     assert m["switch_off"].await_args.args[1:] == (TENANT.id, "comanche")
     assert m["switch_off"].await_args.kwargs == {"actor": CARMEN.actor}

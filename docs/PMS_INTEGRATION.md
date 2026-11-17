@@ -208,7 +208,7 @@ permission model allows; we check no roles of our own.
 | `GET` | `/settings` | `?uri=&bu=&pms=` | `200` the settings below |
 | `PUT` | `/settings` | `{"uri", "bu", "pms", "auto_post": true}` | `200` the settings below |
 | `POST` | `/keys` | `{"uri", "bu", "pms"}` | `201` the settings below, plus `"api_key": "cpk_…"` **once** |
-| `DELETE` | `/keys` | `?uri=&bu=&pms=` | `204` (the PMS is switched off: see §2), or `404` when this PMS has no live key |
+| `DELETE` | `/keys` | `?uri=&bu=&pms=` | `204`: the PMS is off (switched off now, see §2; or it had no key to revoke) |
 
 - `uri` is your Carmen origin (`https://hotel.carmen4.com`), as sent to `/auth/exchange`.
 - `pms` is exactly the `InterfaceName` your hook sends (1–40 characters, no `/`). We compare
@@ -226,6 +226,12 @@ permission model allows; we check no roles of our own.
   Your screen already does the first two. **Manual must call `DELETE /keys`**: without it a
   key stays live and we keep processing the PMS. Going back to Auto or Review is a Save that
   calls `POST /keys` again.
+
+  **Call it on every Manual Save, without checking first.** It answers `204` whenever the PMS
+  is off afterwards: also for a PMS that never had a key, one already off, and a BU that never
+  used our app (nothing is created for it). Treat `204` as done. Only `401` (your token was
+  refused) or `502` (we could not reach your Carmen) mean it is not off yet: show the error
+  and let the user Save again.
 - **Your hook sends the key your last `POST /keys` returned** (`AiKey`). A newer `POST /keys`,
   from any caller, revokes it, and the hook then gets `401 revoked key`. Press Generate key once
   more to store the live one.
