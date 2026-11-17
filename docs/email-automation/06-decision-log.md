@@ -2052,6 +2052,34 @@ days to every PMS, and moves it from 08:00 to 06:00 ICT.
 - Two rows a BU already holds in different casings (from before this) stay two: the hook updates
   both rows' `updated_at` and re-reads the first one it finds. Seen only on test BUs.
 
+## 59. A day closed while it is processed stays closed (2026-11-13)
+
+**Status: built** (branch `fix/pms-closed-while-processing`). Tightens #56.
+
+**Why.**
+- #56 accepted that a worker past the live-key check could still act on a day being switched
+  off, and called the window "seconds wide".
+- With real data a day takes about 20 s (Carmen's preview, then the AI).
+- Suite 2 (X-03, 2026-11-13) caught it: `switch_off` closed a day the sweep was reading, and the
+  worker's park wrote it back to `pending_review`.
+- The cause: `_write` updated by id alone, whatever the day had become meanwhile.
+
+**Decision** (the user, 2026-11-13).
+- **A worker's write lands only while the day is still `received`** (`_write`, `open_only`):
+  park, retry, wait for data, give up, close as switched off.
+  - If `switch_off` (or anything else) closed the day meanwhile, that close stands and the
+    worker's result is dropped and logged.
+  - The day's outcome reads `closed`.
+- **A post Carmen has made is always recorded** (`open_only=False`). The row must say there is a
+  JV; "switched off" would invite posting the day again by hand.
+- **The key is read again right before `post_day`** (`_switched_off`, the same close as at the
+  start). A revoke while the day was read no longer ends in a JV.
+
+**Consequences.**
+- What is left of #56's window is Carmen's post call itself, about a second.
+- A day closed while it was read shows under Not posted as switched off, and nothing reopens it
+  but a hook after the PMS is switched back on (as #56).
+
 ## 60. Every post says forceUpdate=true; Carmen's AiPost and AiKey (2026-11-17)
 
 **Status: built** (branch `fix/pms-force-update`).
@@ -2092,3 +2120,4 @@ Other findings:
   hook since got 401 `revoked key`, because our own QA scripts regenerated carmencloud's keys on
   2026-11-12. The fix is Carmen pressing Generate key once per PMS, and no script of ours ever
   issuing a key for a BU Carmen has wired.
+
