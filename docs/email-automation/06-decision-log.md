@@ -2156,3 +2156,36 @@ read the Data Bank first, which was harmless until Carmen began leaving that row
 - A broken Data Bank row of Carmen's (ask T) no longer reaches us. Carmen's GET still answers
   500 for such a day, which is Carmen's to fix.
 - Approve already posts with the stored `databank_id`, which is null for these days.
+
+## 62. A post says forceUpdate=false first; true only after Carmen's review-mode answer (2026-11-17)
+
+**Status: built** (branch `test/pms-full-verify`). Amends #60.
+
+**Why.** Suite 1 on main approved the second tenant's Comanche 2024-09-01, a day Carmen had
+posted itself (JV 36). It expected Carmen's `-200 Already Posted`; Carmen posted it again as
+JV 1683 and **voided JV 36**. Probed on test.PMS 2025-10-21 (every JV voided after):
+
+| Call | Carmen's answer |
+|---|---|
+| `forceUpdate=true` | posted, JV 1684 |
+| `true` again | posted, JV 1685; **JV 1684 voided** |
+| `false`, or no flag | `303 Code -200 "Already Posted."` |
+
+So `true` is Carmen's "post it again", not only "confirm the review". #60 sent it on every
+post, which lost Carmen's duplicate guard: Approve (or auto-post) of a day someone had already
+posted in Carmen voided their JV and posted ours.
+
+**Decision** (the user, 2026-11-17).
+- **`post_pms_gl` sends `false` first.** An already-posted day answers `-200`, which `post_day`
+  already reads as `already_posted`.
+- **Only Carmen's review-mode answer** (`Code -1` whose message says "review mode": nothing
+  posted, nothing checked) is sent again with `true`. Another `-1` is not forced.
+- **Accepted for now:** on an interface Carmen holds in review mode, a day Carmen already posted
+  is posted again, since review mode runs no check and `true` re-posts. Carmen to separate the
+  two meanings (ask U).
+
+**Consequences.**
+- One extra call per post on a review-mode interface.
+- **JV 36 on carmencloud dev stays void.** Reported to Carmen; Carmen decides (the user).
+- TC-PMS-35 (FRD-11 §13.4): an already-posted day on a non-review interface answers
+  `already_posted`, and Carmen's JV stays.
