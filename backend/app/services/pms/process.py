@@ -475,22 +475,26 @@ async def _process(claimed) -> str:
                 f"Carmen's {section.setting_code} mapping table names no key columns.",
             )
 
-        # A day our sweep opened may have no Data Bank row: none ever, for a PMS Carmen fetches
-        # at post time, or not yet, for one whose day the hotel has not sent. Carmen's preview
-        # then answers No Data and the day waits hourly. A hooked day is in the Data Bank.
+        # A day our sweep opened may have no Data Bank row yet, for one whose day the hotel has
+        # not sent: Carmen's preview then answers No Data and the day waits hourly. A hooked day
+        # is in the Data Bank. A PartnerApi PMS is never read from it: Carmen's engine fetches
+        # the day itself, and its preview leaves a row Carmen's own read cannot parse (500 on
+        # GuestlinePMS, 2026-11-17), so the day goes by date alone (decision-log #61).
         opened = hook.get("Source") == OPENED_BY_SWEEP
-        try:
-            found = await carmen.get_databank_day(itype, name, doc_type, doc_date, token)
-        except carmen.CarmenAPIError as exc:
-            reason = _refusal(exc, "databank_unreachable")
-            return await _retry_or_fail(pk, attempts, reason, carmen_words(exc))
-        if not found and not opened:
-            return await _retry_or_fail(
-                pk,
-                attempts,
-                "day_not_found",
-                f"Carmen's Data Bank has no {name} {doc_type} for {doc_date} yet.",
-            )
+        found: list = []
+        if not section.partner:
+            try:
+                found = await carmen.get_databank_day(itype, name, doc_type, doc_date, token)
+            except carmen.CarmenAPIError as exc:
+                reason = _refusal(exc, "databank_unreachable")
+                return await _retry_or_fail(pk, attempts, reason, carmen_words(exc))
+            if not found and not opened:
+                return await _retry_or_fail(
+                    pk,
+                    attempts,
+                    "day_not_found",
+                    f"Carmen's Data Bank has no {name} {doc_type} for {doc_date} yet.",
+                )
         # Carmen may hold more than one row for a day (a night audit run again); `LastModified`
         # names the current one. Only its id is used: the engine reads the row itself.
         databank = max(found or [{}], key=lambda d: str(d.get("LastModified") or ""))

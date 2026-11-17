@@ -1,9 +1,9 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-11 — PMS Interface Automation
-output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.10.docx
+output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.11.docx
 iso-wp: SD
-Document Version: Version 1.10 (As-Built Developer & Test Spec)
+Document Version: Version 1.11 (As-Built Developer & Test Spec)
 Module ID: `pms_interface` (ใช้บันทึก LLM usage เท่านั้น ไม่คิดเครดิต)
 Status: Built — แถวของวันมาจาก preview ของ engine ของ Carmen (decision-log #54) · การ post ของ Carmen เป็นตัวตรวจ mapping (#52, #53) · sweep เปิดวันของเมื่อวานให้ทุก PMS ตั้งแต่ 06:00 ICT จึงไม่ต้องรอ hook (decision-log #55) · hook จริงของ Carmen ยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K)
 Source of truth: repo developer-carmensoftware/OCR @ dcceaf52 (13/11/2026) + branch fix/pms-closed-while-processing
@@ -28,6 +28,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 | 1.8 | 13/11/2026 | Dev Team | ตาม decision-log #58: วันหนึ่งเป็นแถวเดียวไม่ว่าชื่อ PMS จะพิมพ์เล็กใหญ่อย่างไร — `store_day` ไม่ insert เมื่อมีวันนั้นแล้วในตัวพิมพ์ใดก็ตาม และ hook ซ้ำหาแถวด้วย event_id แบบไม่สนตัวพิมพ์ (EC-08, TC-PMS-29, §11.2) | |
 | 1.9 | 13/11/2026 | Dev Team | ตาม decision-log #59: วันที่ถูกปิด (switch-off) ระหว่างประมวลผลยังคงปิด — การเขียนผลของ worker ลงได้เฉพาะวันที่ยัง `received` · เช็ค key อีกครั้งก่อน post · การ post ที่ Carmen ทำแล้วบันทึกตามจริงเสมอ (EC-14) · ตาม decision-log #60 (17/11/2026): ทุกการ post ส่ง `forceUpdate=true` เพราะ interface ที่ Carmen ตั้ง AiPost เป็น Review จะไม่ post ถ้าไม่ส่ง (§7) | |
 | 1.10 | 17/11/2026 | Dev Team | ตาม decision-log #56 (แก้ 17/11/2026): `DELETE /api/v1/carmen/pms/keys` ตอบ 204 ทุกครั้งที่ PMS ปิดอยู่หลังเรียก รวมถึง PMS ที่ไม่เคยมี key, ปิดไปแล้ว และ BU ที่ไม่เคยเห็น (เดิม 404 / 400) เพราะหน้าจอ Carmen จะเรียกทุกครั้งที่ Save เป็น Manual (§12.1) | |
+| 1.11 | 17/11/2026 | Dev Team | ตาม decision-log #61: วันของ PMS แบบ PartnerApi (เช่น GuestlinePMS) ไม่อ่าน Data Bank — engine ของ Carmen ดึงวันจาก PMS เอง และหลัง preview การอ่าน Data Bank ของวันนั้นตอบ 500 · preview และ post ใช้วันที่อย่างเดียว · `pms_probe.py` ทำเหมือนกัน (§2.1) | |
 | 1.4 | 10/11/2026 | Dev Team | ตาม decision-log #52–#54 และ ask D: การ post ของ Carmen เป็นตัวตรวจ mapping (`-500` → `pms_mapping_incomplete` พร้อม key ที่ Carmen เขียนไว้) ทุก PMS review ได้ แถวของวันมาจาก preview ของ engine (`interfacePreviewPostGL`) แทนการอ่าน FileData เอง (`unreadable_day` และ `unsupported_pms_format` ไม่ถูกเขียนแล้ว) เปิดวันของ PMS แบบ PartnerApi เอง `-400` No Data → `day_not_ready` เก็บเลข JV จาก `Id` ใน `jv_no` AI ไม่เห็นยอดเงินและลองใหม่หนึ่งครั้ง และ `scripts/qa/pms_probe.py` | |
 
 <!-- pagebreak -->
@@ -68,7 +69,7 @@ flowchart TB
 
 - **รับ hook ของ Carmen** `{InterfaceType, InterfaceName, DocType, DocDate}` ที่ `POST /api/v1/pms/events` ยืนยันตัวตนด้วย API key ของ BU × PMS นั้น เก็บเป็นหนึ่งแถวต่อ BU × วัน ตอบทันทีโดยไม่รอการประมวลผล
 - **Settings API สำหรับหน้า PMS setting ของ Carmen** (decision-log #44): อ่าน/ตั้ง auto-post, ออก key ใหม่ และเพิกถอน key ต่อ BU × PMS ทุกการเขียนจาก Carmen เก็บ token ของผู้ใช้เป็น credential ของ BU (ยกเว้นเมื่อ BU มี credential ที่ยังใช้ได้อยู่แล้ว ตาม #45 — **แต่ถ้ามีวันของ BU ที่ค้างที่ `carmen_forbidden` token ใหม่แทนที่เสมอ** เพราะ credential เดิมพิสูจน์แล้วว่าไม่มีสิทธิ์พอสำหรับงาน PMS และการแก้ของสาเหตุนี้คือให้ผู้ใช้ที่มีสิทธิ์กดบันทึกหน้า PMS setting)
-- **ประมวลผลหนึ่งวัน:** หา section REVENUE ของ PMS ใน `interfaceThirdParties`, อ่าน mapping table (คอลัมน์ key), หา id ของแถว Data Bank ล่าสุด, ขอ preview ของ engine (แถวของวัน), หาแถวใหม่, ให้ AI แนะนำบัญชี แล้วพักรอคน หรือให้ engine post
+- **ประมวลผลหนึ่งวัน:** หา section REVENUE ของ PMS ใน `interfaceThirdParties`, อ่าน mapping table (คอลัมน์ key), หา id ของแถว Data Bank ล่าสุด (ยกเว้น PMS แบบ PartnerApi ที่ไม่อ่าน Data Bank และใช้วันที่อย่างเดียว ตาม decision-log #61), ขอ preview ของ engine (แถวของวัน), หาแถวใหม่, ให้ AI แนะนำบัญชี แล้วพักรอคน หรือให้ engine post
 - **เมื่อ engine ตอบ `-500`** (decision-log #52, #53): แถวที่ Carmen เขียนลงตารางโดยยังไม่มีบัญชีเข้ามาในการตรวจพร้อมคำแนะนำของ AI แล้ววันพักเป็น `pms_mapping_incomplete`
 - **เปิดวันของเมื่อวานเองให้ทุก PMS** (decision-log #52, #55): ตั้งแต่ 06:00 ICT sweep เปิดวันของเมื่อวานให้ BU × PMS ที่มี key ที่ใช้ได้ และ `interfaceThirdParties` บอกว่าลง REVENUE → GL ไม่ว่า `From` จะเป็นอะไร — PMS ที่ Carmen ดึงเอง (`PartnerApi`) ไม่มี hook เลย ส่วน PMS อื่น hook แค่ทำให้วันมาเร็วขึ้น
 - **ลองใหม่อัตโนมัติ** สำหรับสาเหตุที่อาจหายเอง (ยังไม่มี credential, Carmen ล่ม, Data Bank ยังไม่มีวันนั้น) สูงสุด 3 ครั้ง และปลุกวันที่รอเมื่อมี credential ใหม่ — วันที่ Carmen ตอบ `-400` "No Data Found" ลองทุกชั่วโมงโดยไม่นับครั้ง จนครบ 24 ชั่วโมง

@@ -219,7 +219,8 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
       Carmen's mapping table (interfacePost/mapping/{code}/REVENUE/GL): its Columns less
           DeptCode/AccCode/AccDesc = the key (Comanche Code + Description)
       the day's Data Bank row: GET /api/interface/PMS/{name}/{docType}/Date/{docDate} → the
-          newest Id only (FileData is never read)
+          newest Id only (FileData is never read); never for a PartnerApi PMS: its day goes
+          by date alone, and after a preview Carmen's own read of it answers 500 (#61)
       the day's rows = CARMEN'S PREVIEW (decision #54): POST /api/interface/interfacePreviewPostGL/
           REVENUE, the post's own body with that Id → a DataTable, one row per line keyed as
           the engine reads it by the INI, any PMS, + each key's account (null = none). No

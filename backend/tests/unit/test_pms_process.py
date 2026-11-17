@@ -474,6 +474,22 @@ async def test_a_day_the_sweep_opened_posts_by_date_alone_when_the_data_bank_has
 
 
 @pytest.mark.asyncio
+async def test_a_partnerapi_day_is_never_read_from_the_data_bank():
+    """Decision-log #61: Carmen fetches a PartnerApi day itself, and after its preview Carmen's
+    own Data Bank read answers 500 (GuestlinePMS, 2026-11-17). The day goes by date alone."""
+    partner = [{**i, "From": "PartnerApi"} for i in INTERFACES]
+    broken = CarmenAPIError(500, "Unexpected character encountered while parsing value: <.")
+    opened = _claimed()
+    opened.payload = {**HOOK, "Source": process.OPENED_BY_SWEEP}
+    run = _Run(interfaces=partner, databank=broken, claimed=opened)
+    assert await run() == "pending_review"
+    run.m["databank"].assert_not_awaited()
+    by_date = {"Code": "Comanche.PMS", "DateFrom": "2025-10-20", "DateTo": "2025-10-20"}
+    assert run.m["preview"].await_args.args[1] == by_date
+    assert run.last["review_payload"]["databank_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_a_missing_permission_says_which_in_carmens_words():
     denied = CarmenAPIError(
         403,
