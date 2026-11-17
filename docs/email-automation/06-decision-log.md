@@ -2051,3 +2051,44 @@ days to every PMS, and moves it from 08:00 to 06:00 ICT.
 - One BU × PMS × date is one queue row, from either way in.
 - Two rows a BU already holds in different casings (from before this) stay two: the hook updates
   both rows' `updated_at` and re-reads the first one it finds. Seen only on test BUs.
+
+## 60. Every post says forceUpdate=true; Carmen's AiPost and AiKey (2026-11-17)
+
+**Status: built** (branch `fix/pms-force-update`).
+
+**Why.** Carmen (2026-11-17) gave each GL interface two settings, stored in its config:
+- **`Configuration.AiPost`:** Manual, Review or Auto.
+- **`Configuration.AiKey`:** the key our `POST /keys` returned.
+
+`interfacePostGL` gained a `forceUpdate` query flag and an `infData` answer. We probed on Carmen
+dev (carmencloud, a web JWT to read the setting and void). Every JV we made was voided at once;
+the tables were put back.
+
+| AiPost | Post with no `forceUpdate`, or `false` | Post with `forceUpdate=true` |
+|---|---|---|
+| **Review** (Comanche, HotelTime) | `Code -1` "Posting to GL '<code>' is in review mode.", `infData` = one row per key (Code, Description, DeptCode, AccCode, AccDesc), **no JV and no engine check**: the day Carmen refuses (ask K, 2024-07-01) came back with `infData` and an empty `ErrorList` | the real engine: posted (JV 1659, then 1660 after a void), refused (K's "no DrCr" `ErrorList`), or `-500` |
+| **Auto** (Cloudbeds) | **posted** (JV 1661): `false` does not hold a post here | posted (JV 1662) |
+| **Manual** (GuestlinePMS) | not testable yet: no data, and not in `interfaceThirdParties` | — |
+
+Other findings:
+- A preview with `forceUpdate=true` posts nothing.
+- A day whose JV was voided posts again.
+- **Our post said nothing.** So every Approve and auto-post on a Review interface parked
+  `carmen_rejected` "is in review mode", and posted nothing.
+
+**Decision** (the user, 2026-11-17).
+- **`post_pms_gl` always sends `forceUpdate=true`.** It is safe in every mode, every caller means
+  to post, and the review is ours.
+- **Not done: a dry-run before Approve with `forceUpdate=false`.** Review mode runs no engine
+  check, and on Auto `false` posts.
+- **Not done: `infData`.** It is the preview we already read (#54).
+
+**Consequences.**
+- **`AiPost` and our `auto_post` (`pms_settings`) overlap and disagree today.** Cloudbeds is Auto
+  in Carmen and off with us; Comanche is Review in Carmen and was on with us. Ours still decides
+  whether a day posts unattended. The menu token cannot read `AiPost` (ask O), so aligning them
+  is a question for Carmen.
+- **`AiKey`: since 2026-11-16 Carmen's hook sends that key** (ask H done on Carmen's side). Every
+  hook since got 401 `revoked key`, because our own QA scripts regenerated carmencloud's keys on
+  2026-11-12. The fix is Carmen pressing Generate key once per PMS, and no script of ours ever
+  issuing a key for a BU Carmen has wired.

@@ -156,8 +156,10 @@ All under `{carmen_uri}/Carmen.API/api/interface`, with the BU's menu token.
 | `POST /interfacePostGL/{postType}` | `carmen.post_pms_gl` | see below | works with the menu token |
 | account codes, departments | `carmen.get_account_codes`, `get_departments` | the BU's chart, for the AI and the approve checks | works |
 
-**`interfacePostGL/REVENUE`.** Body:
-`{"Code": "Comanche.PMS", "DateFrom": d, "DateTo": d, "id": [databankId]}`. No `DeptCode`/`AccCode`:
+**`interfacePostGL/REVENUE?forceUpdate=true`.** Body:
+`{"Code": "Comanche.PMS", "DateFrom": d, "DateTo": d, "id": [databankId]}`. `forceUpdate=true` always
+(decision-log #60): without it an interface Carmen set to `AiPost` Review answers `200 {"Result": false,
+"Code": -1, "UserMessage": "Posting to GL '…' is in review mode.", "infData": [...]}` and posts nothing. No `DeptCode`/`AccCode`:
 the counter account is Carmen's setting, and the engine reads it from there (decision-log #51).
 
 | Carmen answers | Means | We record |
