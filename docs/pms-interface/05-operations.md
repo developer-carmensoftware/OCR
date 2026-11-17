@@ -229,7 +229,7 @@ python scripts/qa/pms_qa_round.py reset --dry-run      # then without --dry-run:
 - Tokens: `CARMEN_AUTHORIZATION` (the menu token) and `CARMEN_ADMIN_TOKEN` (a web JWT, about 24 h).
 - Don't stock days ahead of a round. An Approve rechecks every waiting day of that PMS, so a stocked
   day turns "Ready to post", and Cloudbeds (Auto) then posts it by itself.
-- The tester adds days themselves with the Bruno collection `Documentsruno\Carmen-PMS-QA`
+- The tester adds days themselves with the Bruno collection `Documents\bruno\Carmen-PMS-QA`
   (outside the repo). It runs Carmen's own Data Bank Add, so Carmen's real hook follows. Dates:
   07–25/10/2026, not 08/10 or 11/10, where Comanche holds rows.
 
