@@ -18,7 +18,7 @@ read of it answers the defaults and creates nothing. PMS itself charges nothing.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import SessionInfo
@@ -179,11 +179,15 @@ async def revoke_key(
 ):
     """Switch this PMS off for this BU: revoke its key, so its hook is refused and the
     sweep opens no more of its days, and close what it has left running (`switch_off`:
-    its open days, its auto-post; decision-log #56). 404 when there is no live key."""
-    tenant = await _resolve(db, caller, ref.uri, ref.bu)
-    key = await api_keys.live_key(db, tenant.id, ref.pms)
+    its open days, its auto-post; decision-log #56).
+
+    204 whenever the PMS is off afterwards, so Carmen's Manual Save calls it every time: a PMS
+    that never had a key, one already off, and a BU we never saw (token still proven, no BU
+    created) change nothing and answer 204 too."""
+    tenant = await _resolve_for_read(db, caller, ref.uri, ref.bu)
+    key = await api_keys.live_key(db, tenant.id, ref.pms) if tenant else None
     if key is None:
-        raise HTTPException(status_code=404, detail="No active key for this PMS")
+        return Response(status_code=204)
     await api_keys.revoke_live(
         db, tenant.id, ref.pms, by=_who(caller), reason="Revoked from Carmen's PMS setting"
     )
