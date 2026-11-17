@@ -422,10 +422,15 @@ async def post_pms_gl(post_type: str, body: dict, carmen_token: str) -> Any:
     Carmen's refusals arrive as 303 with a JSON body (`Code -500 "Mapping is incomplete."`,
     `Code -200 "Already Posted."`), so they come back as a value for the caller to read;
     only ≥ 400 raises.
+
+    Always `forceUpdate=true` (decision-log #60): an interface Carmen has put in review mode
+    otherwise answers `Code -1 "… is in review mode."` and posts nothing. Every caller of
+    this means to post (Approve, auto-post); the review is ours.
     """
     try:
         resp = await get_http_client().post(
             f"{_base_url()}/interfacePostGL/{_quoted(post_type)}",
+            params={"forceUpdate": "true"},
             json=body,
             headers=_headers(carmen_token),
         )
