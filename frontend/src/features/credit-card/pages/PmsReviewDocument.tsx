@@ -141,7 +141,7 @@ export default function PmsReviewDocument({ id, onClose, onDone }: Props) {
           type="warning"
           confirmVariant="danger"
           title={t('pms.rejectTitle')}
-          message={t('pms.rejectMsg')}
+          message={t('pms.rejectMsg', { pms: day?.interface ?? 'the PMS' })}
           inputLabel={t('review.rejectReason')}
           inputValue={r.reason}
           onInputChange={r.setReason}

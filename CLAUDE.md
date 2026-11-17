@@ -235,8 +235,9 @@ Carmen → POST /api/v1/pms/events   Authorization: Bearer cpk_…   (bare key a
           whose dept forbids its account moves to the BU's own dept for it, else GEN; rows
           still blank are asked once more, then the sweep asks again hourly ×3 (#57)
       any new row, or this PMS's auto_post off → pending_review; else post_day →
-          POST /api/interface/interfacePostGL/REVENUE?forceUpdate=true {Code, DateFrom/To, id:[DataBank Id]}
-          (forceUpdate always: an interface Carmen set to AiPost Review holds a post without it, #60)
+          POST /api/interface/interfacePostGL/REVENUE?forceUpdate=false {Code, DateFrom/To, id:[DataBank Id]}
+          (true only after Carmen answers -1 "review mode": true means "post again", voiding the
+          JV Carmen already holds, so false keeps its -200 Already Posted, #62 amending #60)
           (no counter: Carmen decides Dr/Cr + the counter line from its setting; answers
           `Id: [JvhSeq]` → pms_events.jv_no, the queue's Open JV; -200 = already posted).
           A repeat hook re-reads an unposted day.

@@ -151,6 +151,10 @@ describe('a parked PMS day', () => {
       expect.arrayContaining(['HT_Code', 'HT_Description', 'Department'])
     )
     expect(screen.getByText('4100001')).toBeInTheDocument()
+    // Rejecting names this day's PMS, not Comanche for every PMS.
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    expect(await screen.findByText(/If HotelTime sends the day again/)).toBeInTheDocument()
+    expect(screen.queryByText(/Comanche/)).not.toBeInTheDocument()
   })
 
   it('is one table laid out as Carmen maps, and nothing about the sides', async () => {

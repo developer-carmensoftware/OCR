@@ -436,14 +436,15 @@ async function run() {
   snapped = true
   check('S-03', "Carmen's three mapping tables kept, to put back row for row", snaps.every(n => n >= 0), snaps.join('/'))
   // HotelTime is yesterday's late PMS (no data at the first sweep): a row a run of ours kept is
-  // cleared first (HotelTime rows delete); anyone else's stops the run. Comanche and Cloudbeds
+  // cleared first (HotelTime rows delete). A row Carmen loaded itself stays, and the late path
+  // is then N/A (W-02) while F-01 checks a PartnerApi day with a row held. Comanche and Cloudbeds
   // use the day Carmen holds, or get one. Reserved dates may hold our rows: a seed replaces them.
   let heldY = Object.fromEntries(Object.keys(PMS).map(pms => [pms, pyJson('held', PMS[pms].name, YESTERDAY)[YESTERDAY]]))
   if (heldY.hoteltime.length) py('unseed-day', 'HotelTime', YESTERDAY)
   heldY = { ...heldY, hoteltime: pyJson('held', 'HotelTime', YESTERDAY)[YESTERDAY] }
-  check('S-04', `yesterday (${YESTERDAY}): HotelTime has no Data Bank row (the late day); Comanche and Cloudbeds hold one or get one`,
-    heldY.hoteltime.length === 0, `Comanche ${JSON.stringify(heldY.comanche)} Cloudbeds ${JSON.stringify(heldY.cloudbeds)}`)
-  if (heldY.hoteltime.length) throw new Stop("HotelTime's yesterday holds a row this suite did not seed")
+  const htHeld = heldY.hoteltime.length ? Math.max(...heldY.hoteltime) : null
+  check('S-04', `yesterday (${YESTERDAY}): HotelTime has no Data Bank row (the late day) or one Carmen loaded itself; Comanche and Cloudbeds hold one or get one`,
+    true, `HotelTime ${JSON.stringify(heldY.hoteltime)} Comanche ${JSON.stringify(heldY.comanche)} Cloudbeds ${JSON.stringify(heldY.cloudbeds)}`)
   py('reset')
   py('engine-reset')
   setSwitch({ mode: 'real' })
@@ -466,35 +467,50 @@ async function run() {
     const co = dayOf(rs, YESTERDAY, 'comanche')
     const ht = dayOf(rs, YESTERDAY, 'hoteltime')
     const cb = dayOf(rs, YESTERDAY, 'cloudbeds')
-    return co?.status === 'pending_review' && cb?.status === 'pending_review' && ht?.reason_code === 'day_not_ready' ? { co, ht, cb } : null
+    const htOk = htHeld ? ht?.status === 'pending_review' : ht?.reason_code === 'day_not_ready'
+    return co?.status === 'pending_review' && cb?.status === 'pending_review' && htOk ? { co, ht, cb } : null
   })
   check('W-01', `no hook: the sweep opens yesterday; Comanche's and Cloudbeds' data was there, so each parks with its row (${coY}, ${cbY})`,
     r.status === 200 && s1?.co?.payload?.databank_id === coY && s1?.cb?.payload?.databank_id === cbY,
     `Comanche ${s1?.co?.status} databank=${s1?.co?.payload?.databank_id} ai=${s1?.co?.payload?.ai?.length} · Cloudbeds databank=${s1?.cb?.payload?.databank_id} ai=${s1?.cb?.payload?.ai?.length}`)
-  check('W-02', 'HotelTime has no data yet: day_not_ready, still received, no try spent',
-    s1?.ht?.status === 'received' && s1?.ht?.attempts === 0, `${s1?.ht?.status}/${s1?.ht?.reason_code} attempts=${s1?.ht?.attempts}`)
   const htCalls = () => engineCalls().filter(c => /^hoteltime\.pms$/i.test(c.body.Code) && c.body.DateFrom === YESTERDAY)
   const f1 = htCalls()
-  check('F-01', 'HotelTime listed as PartnerApi, no Data Bank row: the preview goes by date alone (no id), Carmen has nothing, day_not_ready',
-    s1?.ht?.status === 'received' && f1.length > 0 && f1.every(c => !('id' in c.body)),
-    `${s1?.ht?.status}/${s1?.ht?.reason_code} calls=${f1.length} bodies=${JSON.stringify(f1.map(c => c.body))}`)
-
-  const htY = seed('hoteltime', SRC.yHt, YESTERDAY, '--keep')
-  py('engine-reset')
-  py('backdate', s1.ht.event_id, '61', '0')
-  r = await sweep()
-  const s2 = await parked(YESTERDAY, 'hoteltime')
-  check('W-02', `the data arrives (row ${htY}); an hour on, the sweep reads it and the day parks; no try was spent waiting`,
-    s2?.payload?.databank_id === htY && (s2?.attempts ?? 9) <= 1, `databank=${s2?.payload?.databank_id} attempts=${s2?.attempts}`)
-  const f2 = htCalls()
-  check('F-02', `Carmen now holds HotelTime's day: the preview carries its row id (${htY}) and the day parks, PartnerApi or not`,
-    f2.some(c => JSON.stringify(c.body.id) === JSON.stringify([htY])), `bodies=${JSON.stringify(f2.map(c => c.body))}`)
+  let htY, s2
+  if (htHeld) {
+    // Carmen holds HotelTime's yesterday already: no late day to wait for. Listed as PartnerApi,
+    // the day still never reads that row (decision-log #61).
+    na('W-02', 'HotelTime has no data yet', `Carmen holds HotelTime's ${YESTERDAY} already (row ${htHeld})`)
+    check('F-01', `HotelTime listed as PartnerApi while Carmen holds its row (${htHeld}): the preview goes by date alone (no id), the day parks with no Data Bank row (#61)`,
+      s1?.ht?.status === 'pending_review' && s1?.ht?.payload?.databank_id == null && f1.length > 0 && f1.every(c => !('id' in c.body)),
+      `${s1?.ht?.status} databank=${s1?.ht?.payload?.databank_id} calls=${f1.length} bodies=${JSON.stringify(f1.map(c => c.body))}`)
+    htY = htHeld
+    s2 = s1.ht
+    na('W-02', 'the late data arrives', 'no late day (above)')
+    na('F-02', 'a PartnerApi day goes by date alone once Carmen holds it', 'checked by F-01 above')
+  } else {
+    check('W-02', 'HotelTime has no data yet: day_not_ready, still received, no try spent',
+      s1?.ht?.status === 'received' && s1?.ht?.attempts === 0, `${s1?.ht?.status}/${s1?.ht?.reason_code} attempts=${s1?.ht?.attempts}`)
+    check('F-01', 'HotelTime listed as PartnerApi, no Data Bank row: the preview goes by date alone (no id), Carmen has nothing, day_not_ready',
+      s1?.ht?.status === 'received' && f1.length > 0 && f1.every(c => !('id' in c.body)),
+      `${s1?.ht?.status}/${s1?.ht?.reason_code} calls=${f1.length} bodies=${JSON.stringify(f1.map(c => c.body))}`)
+    htY = seed('hoteltime', SRC.yHt, YESTERDAY, '--keep')
+    py('engine-reset')
+    py('backdate', s1.ht.event_id, '61', '0')
+    r = await sweep()
+    s2 = await parked(YESTERDAY, 'hoteltime')
+    // Still listed as PartnerApi: the day goes by date alone, never by the row (decision-log #61).
+    check('W-02', `the data arrives (row ${htY}); an hour on, the sweep reads it and the day parks, by date alone; no try was spent waiting`,
+      s2?.payload?.databank_id == null && (s2?.attempts ?? 9) <= 1, `databank=${s2?.payload?.databank_id} attempts=${s2?.attempts}`)
+    const f2 = htCalls()
+    check('F-02', `Carmen now holds HotelTime's day (row ${htY}); listed as PartnerApi, the preview still goes by date alone (no id) (#61)`,
+      f2.length > 0 && f2.every(c => !('id' in c.body)), `bodies=${JSON.stringify(f2.map(c => c.body))}`)
+  }
   setSwitch({ mode: 'real' })
   r = await hook('hoteltime', YESTERDAY)
   await sleep(3000)
   const s3 = await parked(YESTERDAY, 'hoteltime', d => d.payload?.databank_id === htY)
   const sameRows = s3 && [...keysOf(s3.payload)].sort().join() === [...keysOf(s2?.payload)].sort().join()
-  check('F-03', 'listed as CarmenApi again, a hook re-reads the same day: the same rows and new keys, so From changes nothing of ours',
+  check('F-03', `listed as CarmenApi again, a hook re-reads the same day by its row (${htY}): the same rows and new keys, so From changes nothing else`,
     r.status === 200 && r.json?.duplicate === true && sameRows && openOf(s3?.payload) === openOf(s2?.payload),
     `HTTP ${r.status} duplicate=${r.json?.duplicate} rows same=${sameRows} new ${openOf(s2?.payload)}→${openOf(s3?.payload)}`)
   check('W-03', 'a hook after the sweep opened the day stores no second day', countOf(pyJson('state'), YESTERDAY, 'hoteltime') === 1)

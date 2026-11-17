@@ -423,14 +423,34 @@ async def post_pms_gl(post_type: str, body: dict, carmen_token: str) -> Any:
     `Code -200 "Already Posted."`), so they come back as a value for the caller to read;
     only ≥ 400 raises.
 
-    Always `forceUpdate=true` (decision-log #60): an interface Carmen has put in review mode
-    otherwise answers `Code -1 "… is in review mode."` and posts nothing. Every caller of
-    this means to post (Approve, auto-post); the review is ours.
+    `forceUpdate` (decision-log #62, amending #60): Carmen reads `true` as "post it again",
+    voiding the JV it already holds for the day and posting a new one, so the first call says
+    `false` and Carmen's own guard still answers `Code -200 "Already Posted."`. Only an interface
+    Carmen holds in review mode answers that call `Code -1 "… is in review mode."` (no JV, no
+    check); the post is then sent again with `true`, since every caller means to post.
+    ponytail: on a review-mode interface a day Carmen already posted is posted again; Carmen
+    to separate "confirm the review" from "post again" (ask U).
     """
+    answer = await _post_gl(post_type, body, carmen_token, force=False)
+    if _in_review_mode(answer):
+        answer = await _post_gl(post_type, body, carmen_token, force=True)
+    return answer
+
+
+def _in_review_mode(answer: Any) -> bool:
+    """Carmen's `Code -1 "Posting to GL '…' is in review mode."`: nothing posted, nothing checked."""
+    return (
+        isinstance(answer, dict)
+        and str(answer.get("Code")) == "-1"
+        and "review mode" in str(answer.get("UserMessage") or "").lower()
+    )
+
+
+async def _post_gl(post_type: str, body: dict, carmen_token: str, *, force: bool) -> Any:
     try:
         resp = await get_http_client().post(
             f"{_base_url()}/interfacePostGL/{_quoted(post_type)}",
-            params={"forceUpdate": "true"},
+            params={"forceUpdate": "true" if force else "false"},
             json=body,
             headers=_headers(carmen_token),
         )

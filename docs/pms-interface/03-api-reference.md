@@ -156,10 +156,12 @@ All under `{carmen_uri}/Carmen.API/api/interface`, with the BU's menu token.
 | `POST /interfacePostGL/{postType}` | `carmen.post_pms_gl` | see below | works with the menu token |
 | account codes, departments | `carmen.get_account_codes`, `get_departments` | the BU's chart, for the AI and the approve checks | works |
 
-**`interfacePostGL/REVENUE?forceUpdate=true`.** Body:
-`{"Code": "Comanche.PMS", "DateFrom": d, "DateTo": d, "id": [databankId]}`. `forceUpdate=true` always
-(decision-log #60): without it an interface Carmen set to `AiPost` Review answers `200 {"Result": false,
-"Code": -1, "UserMessage": "Posting to GL '…' is in review mode.", "infData": [...]}` and posts nothing. No `DeptCode`/`AccCode`:
+**`interfacePostGL/REVENUE?forceUpdate=false`.** Body:
+`{"Code": "Comanche.PMS", "DateFrom": d, "DateTo": d, "id": [databankId]}`. `false` first, then `true`
+only after Carmen's review-mode answer (decision-log #62, amending #60): an interface Carmen set to
+`AiPost` Review answers `false` with `200 {"Result": false, "Code": -1, "UserMessage": "Posting to GL
+'…' is in review mode.", "infData": [...]}` and posts nothing. `true` is Carmen's "post again": on a day
+it already posted it voids that JV and posts a new one, where `false` answers `-200 Already Posted.` No `DeptCode`/`AccCode`:
 the counter account is Carmen's setting, and the engine reads it from there (decision-log #51).
 
 | Carmen answers | Means | We record |

@@ -2,7 +2,7 @@
 
     python scripts/qa/pms_post_checks_e2e.py state                 # pms-pc / pms-pc-b days, payload decrypted (JSON)
     python scripts/qa/pms_post_checks_e2e.py table SETTING [COLS]  # a PMS's mapping table: columns, rows, blank, keys (JSON)
-    python scripts/qa/pms_post_checks_e2e.py snapshot SETTING      # keep that table as it is now (once, before a run)
+    python scripts/qa/pms_post_checks_e2e.py snapshot SETTING      # keep that table as it is now (setup, every run)
     python scripts/qa/pms_post_checks_e2e.py restore SETTING       # put the snapshot back, row for row (empty → PUT [])
     python scripts/qa/pms_post_checks_e2e.py fill-blank SETTING DEPT ACC   # every row without an account gets one
     python scripts/qa/pms_post_checks_e2e.py day-keys PMS DATE LIST COL,COL  # a Data Bank day's distinct keys
@@ -195,12 +195,16 @@ async def _backdate(event_id: str, minutes: int, hours: int) -> int:
 
 async def _posts_since(iso: str, path: str = "interfacePostGL") -> int:
     """Calls to Carmen's `path` since `iso`: its posts, or (`interfacePreviewPostGL`) the
-    previews that read a day since decision-log #54."""
+    previews that read a day since decision-log #54. A post is its `forceUpdate=false` call; the
+    `true` one after Carmen's review-mode answer is the same post again (decision-log #62)."""
     # Outbound rows are buffered and written every 10 s (`outbound_log`): read after that.
     since = datetime.fromisoformat(iso.replace("Z", "+00:00"))
     async with base.async_session() as db:
         return await db.scalar(
-            text("select count(*) from outbound_call_logs where url like :u and created_at > :t"),
+            text(
+                "select count(*) from outbound_call_logs where url like :u and created_at > :t"
+                " and url not like '%forceUpdate=true%'"
+            ),
             {"u": f"%/{path}/%", "t": since},
         )
 

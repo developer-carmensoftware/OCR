@@ -17,6 +17,7 @@ import logging
 import uuid
 from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -198,11 +199,19 @@ async def validate_token(token: str, carmen_uri: str) -> None:
     from app.services.shared.carmen import get_http_client
 
     headers = {"Authorization": token, "User-Agent": "OCR-SSO-Validator"}
-    resp = await get_http_client().get(
-        f"{_carmen_base(carmen_uri)}/department",
-        headers=headers,
-        timeout=_VALIDATE_TIMEOUT,
-    )
+    try:
+        resp = await get_http_client().get(
+            f"{_carmen_base(carmen_uri)}/department",
+            headers=headers,
+            timeout=_VALIDATE_TIMEOUT,
+        )
+    except httpx.RequestError as exc:
+        # A Carmen that does not answer in time is "cannot reach", like one that answers badly;
+        # it escaped as our own unhandled 500 (Carmen dev past _VALIDATE_TIMEOUT, 2026-11-17).
+        logger.warning("Carmen validation probe failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=502, detail="Cannot reach Carmen to validate token"
+        ) from exc
     if resp.status_code == 401:
         raise HTTPException(
             status_code=401, detail="Carmen token rejected — please re-login to Carmen"
