@@ -77,6 +77,15 @@ def test_the_hooks_interface_posting_revenue_to_gl_is_found():
 
 
 @pytest.mark.parametrize(
+    ("source", "partner"),
+    [("PartnerApi", True), ("partnerapi", True), ("CarmenApi", False), (None, False)],
+)
+def test_the_section_knows_whether_carmen_fetches_the_day_itself(source, partner):
+    row = {**INTERFACES[0], "From": source}
+    assert cfg.find_section([row], "PMS", "Comanche").partner is partner
+
+
+@pytest.mark.parametrize(
     "interfaces",
     [
         [],

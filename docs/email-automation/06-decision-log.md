@@ -2125,3 +2125,34 @@ Other findings:
   hook since got 401 `revoked key`, because our own QA scripts regenerated carmencloud's keys on
   2026-11-12. The fix is Carmen pressing Generate key once per PMS, and no script of ours ever
   issuing a key for a BU Carmen has wired.
+
+## 61. A PartnerApi day is never read from the Data Bank (2026-11-17)
+
+**Status: built** (branch `fix/pms-partner-no-databank`).
+
+**Why.** Carmen listed GuestlinePMS (`From: PartnerApi`) on carmencloud and pressed Generate key
+(2026-11-17, 13:23 ICT). The sweep opened its 16/11 at 13:30, and the day stopped at once:
+`databank_unreachable`, Carmen's own words *"Unexpected character encountered while parsing
+value: <"*.
+- `GET /api/interface/PMS/GuestlinePMS/Daily/Date/2026-11-16` answered **500**. The same read
+  had answered an empty 200 at 13:27, and 14, 15 and 17/11 still do.
+- Between the two, our probe had asked Carmen's engine to **preview** 16/11. For a PartnerApi
+  PMS the engine fetches the day from the PMS itself (Guestline answers XML, hence the `<`) and
+  keeps what it fetched where its own Data Bank read cannot parse it.
+- A preview by date alone, with no Data Bank id, still answered the day's 32 rows.
+
+So a PartnerApi day failed on its Data Bank read at every attempt after its first preview, and
+became `failed` after three. #53 had already said such a PMS posts by date alone; the code still
+read the Data Bank first, which was harmless until Carmen began leaving that row.
+
+**Decision.**
+- **`Section.partner`** (from `From`, in `find_section`). **`_process` skips the Data Bank read
+  for it:** no `databank_unreachable`, no `day_not_found`, `databank_id` stays null, and the
+  preview and the post send the date alone (`_engine_body`).
+- `pms_probe.py` does the same, and says so with a PASS line.
+- CarmenApi PMSs are unchanged: their Data Bank row is what the hook announced.
+
+**Consequences.**
+- A broken Data Bank row of Carmen's (ask T) no longer reaches us. Carmen's GET still answers
+  500 for such a day, which is Carmen's to fix.
+- Approve already posts with the stored `databank_id`, which is null for these days.

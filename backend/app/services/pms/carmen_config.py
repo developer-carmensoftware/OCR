@@ -40,6 +40,9 @@ class Section:
     interface: str
     post_type: str
     file_type: str
+    # `From: PartnerApi`: Carmen's engine fetches the day from the PMS itself, so the day has
+    # no Data Bank row of ours to read (decision-log #61).
+    partner: bool = False
 
 
 def find_section(interfaces: list, interface_type: str, interface: str) -> Section | None:
@@ -59,6 +62,7 @@ def find_section(interfaces: list, interface_type: str, interface: str) -> Secti
                 interface=name,
                 post_type=POST_TYPE,
                 file_type=str(i.get("PostType") or ""),
+                partner=str(i.get("From") or "").casefold() == "partnerapi",
             )
     return None
 

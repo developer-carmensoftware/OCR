@@ -81,16 +81,14 @@ async def _probe(name: str, day: str, uri: str, doc_type: str, token: str) -> No
         if str(i.get("InterfaceName", "")).casefold() == name.casefold()
         and str(i.get("DocType", "")).upper() == cfg.POST_TYPE
     )
-    partner = str(row.get("From") or "").casefold() == "partnerapi"
+    partner = section.partner
     say(
         "PASS",
         f"setting {section.setting_code}: From={row.get('From')} PostType={section.file_type}"
         + (" (no hook: our sweep opens its days)" if partner else ""),
     )
 
-    current, columns = await carmen.get_pms_mapping(
-        section.setting_code, section.post_type, token
-    )
+    current, columns = await carmen.get_pms_mapping(section.setting_code, section.post_type, token)
     keys = cfg.key_columns(columns)
     if not keys:
         say("FAIL", f"the mapping table names no key columns ({columns})")
@@ -102,7 +100,9 @@ async def _probe(name: str, day: str, uri: str, doc_type: str, token: str) -> No
         f"{len(cfg.blank_keys(current, keys))} without an account",
     )
 
-    found = await carmen.get_databank_day("PMS", name, doc_type, day, token)
+    # A PartnerApi day is never read from the Data Bank: Carmen fetches it itself, and after
+    # a preview its own read of that day answers 500 (decision-log #61).
+    found = [] if partner else await carmen.get_databank_day("PMS", name, doc_type, day, token)
     newest = max(found or [{}], key=lambda d: str(d.get("LastModified") or ""))
     if found:
         say(
@@ -110,10 +110,7 @@ async def _probe(name: str, day: str, uri: str, doc_type: str, token: str) -> No
             f"Data Bank {doc_type} {day}: {len(found)} row(s), the post reads Id {newest.get('Id')}",
         )
     elif partner:
-        say(
-            "WARN",
-            f"Data Bank has no {doc_type} {day}: Carmen fetches a PartnerApi day itself",
-        )
+        say("PASS", f"PartnerApi: {day} is read by date alone (no Data Bank read)")
     else:
         say(
             "WARN",
@@ -159,19 +156,14 @@ async def _probe(name: str, day: str, uri: str, doc_type: str, token: str) -> No
         )
         return
     settings = r.json()
-    settings = (
-        settings.get("Data", settings) if isinstance(settings, dict) else settings
-    )
+    settings = settings.get("Data", settings) if isinstance(settings, dict) else settings
     setting = next((s for s in settings if s.get("Code") == section.setting_code), None)
     conf = (setting or {}).get("Configuration") or {}
     conf = json.loads(conf) if isinstance(conf, str) else conf
     revenue = (conf or {}).get("Revenue") or {}
     acc = revenue.get("AccCode")
     summary = str(revenue.get("PostType") or "").casefold() == "summary"
-    chart = {
-        a.get("AccCode")
-        for a in (await carmen.get_account_codes(token)).get("Data") or []
-    }
+    chart = {a.get("AccCode") for a in (await carmen.get_account_codes(token)).get("Data") or []}
     balance = f"{revenue.get('DeptCode')}/{acc} {revenue.get('AccDesc') or ''}".strip()
     if summary and acc not in chart:
         say(
