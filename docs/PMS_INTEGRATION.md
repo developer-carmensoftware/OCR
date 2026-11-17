@@ -215,6 +215,20 @@ permission model allows; we check no roles of our own.
   it without case.
 - **Auto-post** defaults to off: every day waits for a person in AI JV Automation. On, a day
   whose rows your mapping already covers posts by itself; a day with a new row still waits.
+- **One Save of your screen, by its `AiPost`** (seen on dev 2026-11-17, agreed with the user):
+
+  | `AiPost` | Your Save calls | Meaning for us |
+  |---|---|---|
+  | **Auto** | `POST /keys` (store the `api_key` as `AiKey`), then `PUT /settings` `auto_post: true` | AI maps; a day with nothing new posts by itself |
+  | **Review** | `POST /keys`, then `PUT /settings` `auto_post: false` | AI maps; every day waits for a person |
+  | **Manual** | **`DELETE /keys`** | AI off: we open and process nothing of this PMS (its waiting days close, §2) |
+
+  Your screen already does the first two. **Manual must call `DELETE /keys`**: without it a
+  key stays live and we keep processing the PMS. Going back to Auto or Review is a Save that
+  calls `POST /keys` again.
+- **Your hook sends the key your last `POST /keys` returned** (`AiKey`). A newer `POST /keys`,
+  from any caller, revokes it, and the hook then gets `401 revoked key`. Press Generate key once
+  more to store the live one.
 - **Please tell your users, on this screen,** that the AI reads the day's figures (rows by code
   and amount, no guest data) to suggest accounts. A BU that uses only PMS never opens our app,
   so it never sees our AI consent notice.
