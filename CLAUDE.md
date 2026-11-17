@@ -276,7 +276,8 @@ saving the PMS setting in Carmen. `#/admin/api-keys` stays as a support tool: li
 revoke, **no issuing**. Revoking is how a PMS is switched off (no `modules` row yet), from either
 place, and it stops the PMS for good (decision #56): `pms_review.switch_off` closes its open days
 (`rejected`/`pms_switched_off`, under Not posted) and turns its auto-post off, and processing
-closes any day it meets without a live key. Replacing a key (`api_keys.issue`) is not a switch-off.
+closes any day it meets without a live key, reads the key again just before a post, and never writes a
+worker's result over a day closed meanwhile (#59). Replacing a key (`api_keys.issue`) is not a switch-off.
 **The sweep opens yesterday's day for every PMS with a live key, from 06:00 ICT** (decision #55),
 so the loop does not wait on Carmen's hook: the hook only brings a day sooner, and a day Carmen
 never gets fails after 24 hours under Not posted. PMSs that Carmen's own post API fetches

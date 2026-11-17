@@ -282,16 +282,31 @@ async def store_day(db, tenant_id: uuid.UUID, event_id: str, type_: str, payload
     )
 
 
-async def _write(event_pk: uuid.UUID, **values) -> None:
+async def _write(event_pk: uuid.UUID, *, open_only: bool = True, **values) -> bool:
+    """A worker's result for the day it claimed; whether it landed.
+
+    `open_only`: only while the day is still `received` (decision-log #59). `switch_off` may
+    close it while the worker reads Carmen and the AI (~20 s with a real day): that close
+    stands, and the worker's park or retry is dropped. A post Carmen has made is written
+    whatever happened meanwhile (`open_only=False`): the row must say there is a JV, or
+    someone posts the day again by hand.
+    """
+    stmt = update(PmsEvent).where(PmsEvent.id == event_pk)
+    if open_only:
+        stmt = stmt.where(PmsEvent.status == "received")
     async with async_session() as db:
-        await db.execute(update(PmsEvent).where(PmsEvent.id == event_pk).values(**values))
+        result = await db.execute(stmt.values(**values))
         await db.commit()
+    if result.rowcount != 1:
+        logger.info("[pms] %s was closed while it was processed; its result is dropped", event_pk)
+        return False
+    return True
 
 
 async def _park(
     event_pk, payload: dict, reason: str | None = None, error: str | None = None
 ) -> str:
-    await _write(
+    landed = await _write(
         event_pk,
         status="pending_review",
         review_payload=payload,
@@ -299,31 +314,48 @@ async def _park(
         error_message=error,
         processed_at=datetime.now(UTC),
     )
-    return "pending_review"
+    return "pending_review" if landed else "closed"
+
+
+async def _switched_off(event_pk) -> str:
+    """Close a day whose PMS has no live key: revoked while it waited, or while it was being
+    read (decision-log #56, #59). It never posts, whatever auto-post says."""
+    landed = await _write(
+        event_pk,
+        status="rejected",
+        reason_code="pms_switched_off",
+        error_message="Switched off in Carmen's PMS setting.",
+        review_payload=None,
+    )
+    return "rejected" if landed else "closed"
 
 
 async def _not_ready(claimed, error: str) -> str:
     """Carmen has no data for the date yet (a PartnerApi PMS before the hotel's day is in).
     Asked again hourly without spending an attempt; given up on a day after it was stored."""
     if datetime.now(UTC) - claimed.created_at >= NOT_READY_FOR:
-        await _write(claimed.id, status="failed", reason_code="day_not_found", error_message=error)
-        return "failed"
-    await _write(
+        landed = await _write(
+            claimed.id, status="failed", reason_code="day_not_found", error_message=error
+        )
+        return "failed" if landed else "closed"
+    landed = await _write(
         claimed.id,
         reason_code="day_not_ready",
         error_message=error,
         attempts=max(claimed.attempts - 1, 0),
     )
-    return "retry"
+    return "retry" if landed else "closed"
 
 
 async def _retry_or_fail(event_pk, attempts: int, reason: str, error: str) -> str:
     """Leave the day for the next sweep, or give up on it once the attempts are spent."""
     if attempts >= MAX_ATTEMPTS:
-        await _write(event_pk, status="failed", reason_code=reason, error_message=error[:500])
-        return "failed"
-    await _write(event_pk, reason_code=reason, error_message=error[:500])
-    return "retry"
+        landed = await _write(
+            event_pk, status="failed", reason_code=reason, error_message=error[:500]
+        )
+        return "failed" if landed else "closed"
+    landed = await _write(event_pk, reason_code=reason, error_message=error[:500])
+    return "retry" if landed else "closed"
 
 
 async def with_carmen_keys(payload: dict, token: str, *, carmen_blanks: bool = True) -> dict:
@@ -402,17 +434,9 @@ async def _process(claimed) -> str:
         settings_row = await db.get(PmsSettings, (tenant_id, name.lower()))
         key = await api_keys.live_key(db, tenant_id, name.lower())
     if key is None:
-        # The BU switched this PMS off (its key was revoked) while the day waited, or in the
-        # instant of the revoke: it never posts, whatever auto-post says (decision-log #56).
-        # Closed as `switch_off` closes the PMS's other days, before any Carmen call or AI.
-        await _write(
-            pk,
-            status="rejected",
-            reason_code="pms_switched_off",
-            error_message="Switched off in Carmen's PMS setting.",
-            review_payload=None,
-        )
-        return "rejected"
+        # The BU switched this PMS off (its key was revoked) while the day waited: closed as
+        # `switch_off` closes the PMS's other days, before any Carmen call or AI (#56).
+        return await _switched_off(pk)
     if not token or not uri:
         return await _retry_or_fail(
             pk,
@@ -533,6 +557,12 @@ async def _process(claimed) -> str:
         if payload["flags"] or not (settings_row and settings_row.auto_post):
             return await _park(pk, payload)
 
+        # The key again, just before the post: a revoke while the day was read (preview, AI)
+        # must not end in a JV (decision-log #59). What is left is the post call itself.
+        async with async_session() as db:
+            still_on = await api_keys.live_key(db, tenant_id, name.lower())
+        if still_on is None:
+            return await _switched_off(pk)
         try:
             outcome, jv_no = await post_day(payload, doc_date, payload["databank_id"], token)
         except MappingIncomplete as exc:
@@ -546,6 +576,7 @@ async def _process(claimed) -> str:
             return await _park(pk, payload, _refusal(exc, "carmen_rejected"), carmen_words(exc))
         await _write(
             pk,
+            open_only=False,  # Carmen has posted: the row says so, closed meanwhile or not
             status="posted",
             jv_no=jv_no,
             review_payload=None,

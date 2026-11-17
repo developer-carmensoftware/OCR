@@ -616,6 +616,9 @@ async function run() {
     if (!out.posted) await closeDialog()
 
     // ── A — auto-post ───────────────────────────────────────────────────────────────────
+    // The outbound log is flushed every 10 s and stamped at the flush, so P-04's post can land
+    // after a window opened now: let it land first (A-02 counted it on 2026-11-17).
+    await sleep(11000)
     since = new Date().toISOString()
     await autoPost('comanche', true)
     r = await sweep()

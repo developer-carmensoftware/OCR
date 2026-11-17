@@ -96,11 +96,15 @@ class _Run:
         claimed=None,
         after=None,
         key=LIVE_KEY,
+        write_ok=True,
     ):
         """`after`: the mapping table's second read, after Carmen's -500 (or its failure).
-        `key`: this BU's live key for the PMS; None = switched off (decision-log #56)."""
+        `key`: this BU's live key for the PMS; None = switched off (decision-log #56); a list =
+        one answer per read (the start, then the one just before the post, #59).
+        `write_ok`: False = the day was closed meanwhile, so a guarded write lands nowhere."""
         self.claimed = claimed or _claimed()
         self.writes: list[dict] = []
+        self.guarded: list[bool] = []  # per write: only while the day is still received?
         db = MagicMock(get=AsyncMock(return_value=settings))
         self.db = db
 
@@ -108,12 +112,20 @@ class _Run:
         async def session():
             yield db
 
-        async def write(pk, **values):
+        async def write(pk, open_only=True, **values):
             self.writes.append(values)
+            self.guarded.append(open_only)
+            return write_ok or not open_only
 
         self.patches = {
             "claim": patch.object(process, "_claim", AsyncMock(return_value=self.claimed)),
-            "key": patch.object(process.api_keys, "live_key", AsyncMock(return_value=key)),
+            "key": patch.object(
+                process.api_keys,
+                "live_key",
+                AsyncMock(side_effect=key)
+                if isinstance(key, list)
+                else AsyncMock(return_value=key),
+            ),
             "session": patch.object(process, "async_session", session),
             "target": patch.object(process, "_target", AsyncMock(return_value=target)),
             "write": patch.object(process, "_write", write),
@@ -888,3 +900,62 @@ async def test_the_sweep_asks_again_before_it_requeues():
     assert order == ["ai", "requeue"]
     assert summary["resuggested"] == 3
     assert record.await_args.args[1] == 0  # asking again is not a day worked
+
+
+# ── Decision-log #59: a day closed while it is processed stays closed ──────────────────
+
+
+def _session_with(rowcount):
+    db = MagicMock(execute=AsyncMock(return_value=MagicMock(rowcount=rowcount)), commit=AsyncMock())
+
+    @asynccontextmanager
+    async def session():
+        yield db
+
+    return db, session
+
+
+@pytest.mark.asyncio
+async def test_a_write_lands_only_on_a_day_still_received():
+    """Suite 2 X-03 (2026-11-13): `switch_off` closed a day while a worker read it (preview +
+    AI, ~20 s), and the worker's park wrote it back to pending_review. A worker's write now
+    needs the day still `received`, and says whether it landed."""
+    db, session = _session_with(0)
+    with patch.object(process, "async_session", session):
+        assert await process._write(uuid4(), status="pending_review") is False
+    sql = str(db.execute.await_args.args[0].compile(dialect=postgresql.dialect()))
+    assert "pms_events.status = " in sql
+
+    db, session = _session_with(1)
+    with patch.object(process, "async_session", session):
+        assert await process._write(uuid4(), status="posted", open_only=False) is True
+    sql = str(db.execute.await_args.args[0].compile(dialect=postgresql.dialect()))
+    assert "pms_events.status" not in sql.split("WHERE", 1)[1]
+
+
+@pytest.mark.asyncio
+async def test_a_day_closed_while_it_was_read_is_not_written_back():
+    key = cfg.key_id(["100", "Room"])
+    guess = {key: {"dept": "103", "acc": "4010001", "confidence": "high", "why": "room"}}
+    run = _Run(table=[], suggest=guess, write_ok=False)
+    assert await run() == "closed"
+    assert run.guarded[-1] is True  # the park asked to land only on a received day
+
+
+@pytest.mark.asyncio
+async def test_a_pms_switched_off_before_the_post_does_not_post():
+    """The key is read again just before the post: revoked meanwhile, the day closes as
+    switched off and Carmen is not asked to post."""
+    run = _Run(settings=AUTO, key=[LIVE_KEY, None])
+    assert await run() == "rejected"
+    run.m["post"].assert_not_awaited()
+    assert run.last["status"] == "rejected" and run.last["reason_code"] == "pms_switched_off"
+    assert run.m["key"].await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_a_post_carmen_made_is_recorded_even_if_the_day_was_closed_meanwhile():
+    """Once Carmen has posted, the row must say so: "switched off" would invite a second JV."""
+    run = _Run(settings=AUTO, write_ok=False)
+    assert await run() == "posted"
+    assert run.last["status"] == "posted" and run.guarded[-1] is False
