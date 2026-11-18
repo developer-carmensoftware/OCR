@@ -121,6 +121,13 @@ def _scalars(rows):
     return r
 
 
+def _configs(**billing):
+    """Result for _fetch_billing_configs — it calls .all() on the execute result."""
+    r = MagicMock()
+    r.all.return_value = [(f"billing.{k}", f'"{v}"') for k, v in billing.items()]
+    return r
+
+
 # ── GET /credits/packs ────────────────────────────────────────────────────────
 
 
@@ -217,7 +224,7 @@ def test_create_order_returns_qr_and_proforma():
     pack = _pack("starter", 500, 990.0)
     mock_db = make_mock_db()
     # 1st execute = one-open-order pre-check (none), 2nd = pack lookup.
-    mock_db.execute.side_effect = [_scalar(None), _scalar(pack)]
+    mock_db.execute.side_effect = [_scalar(None), _scalar(pack), _configs(vat_rate="7")]
 
     # The router builds a CreditOrder and relies on flush to populate the
     # uuid default; mirror that here so CreditOrderResponse.id validates.
@@ -264,7 +271,7 @@ def test_create_order_annual_subscription_uses_discounted_price():
     mock_db = make_mock_db()
     # pre-check (no open order), then the pack lookup. The third entry is spare:
     # the purchase guard that used to read it was deleted 2026-09-14.
-    mock_db.execute.side_effect = [_scalar(None), _scalar(pack), _scalar(None)]
+    mock_db.execute.side_effect = [_scalar(None), _scalar(pack), _configs(vat_rate="7")]
 
     added = {}
     mock_db.add.side_effect = lambda obj: added.setdefault("order", obj)
@@ -313,6 +320,7 @@ def _plan_change_db(new_pack, current_sub, current_pack):
     mock_db.execute.side_effect = [
         _scalar(None),  # no open order
         _scalar(new_pack),  # the pack being bought
+        _configs(vat_rate="7"),  # get_vat_rate
         _scalar(current_sub),
         _scalar(current_pack),
     ]
@@ -399,6 +407,41 @@ def test_create_order_allows_annual_subscriber_to_move_to_monthly():
 
     assert resp.status_code == 200
     assert resp.json()["order"]["billing_period"] == "monthly"
+
+
+def test_create_order_prices_at_the_configured_vat_rate_not_a_hardcoded_seven():
+    """amount_thb must follow billing.vat_rate, the rate the proforma is issued at."""
+    pack = _pack("starter", 500, 990.0)
+    mock_db = make_mock_db()
+    mock_db.execute.side_effect = [_scalar(None), _scalar(pack), _configs(vat_rate="10")]
+    added = {}
+    mock_db.add.side_effect = lambda obj: added.setdefault("order", obj)
+
+    async def _flush():
+        order = added.get("order")
+        if order is not None and getattr(order, "id", None) is None:
+            order.id = uuid.uuid4()
+
+    mock_db.flush.side_effect = _flush
+
+    with (
+        patch("app.routers.credits.bds.issue_document", new=AsyncMock(return_value=_billing_doc())),
+        patch("app.routers.credits.bds.get_promptpay_id", new=AsyncMock(return_value="0812345678")),
+        make_test_client(mock_db) as client,
+    ):
+        resp = client.post(
+            f"{BASE}/orders",
+            json={
+                "pack_code": "starter",
+                "buyer": {"name": "Test Co", "tax_id": "", "address": "", "branch": ""},
+            },
+            headers=AUTH,
+        )
+
+    assert resp.status_code == 200
+    # 990 + 10% VAT; 1059.30 would mean the hardcoded 7% is back.
+    assert resp.json()["order"]["amount_thb"] == 1089.0
+    assert resp.json()["qr"]["amount_thb"] == 1089.0
 
 
 def test_create_order_rejects_unknown_billing_period():

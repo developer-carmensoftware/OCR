@@ -142,7 +142,9 @@ async def create_order(
     is_annual = body.billing_period == "annual" and pack.kind == "subscription"
     billing_period = "annual" if is_annual else "monthly"
     net = annual_price(str(pack.price_thb)) if is_annual else Decimal(str(pack.price_thb))
-    _sub, _vat, gross = vat_on_top(net)
+    # Same rate the proforma is issued at, so amount_thb (what the buyer transfers)
+    # and billing_documents.total (what post_ar sends to Carmen) stay equal.
+    _sub, _vat, gross = vat_on_top(net, await bds.get_vat_rate(db))
     order = CreditOrder(
         tenant_id=session.tenant_id,
         pack_code=pack.code,

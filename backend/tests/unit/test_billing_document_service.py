@@ -19,6 +19,7 @@ from app.services.billing.documents import (
     get_last_buyer_info,
     get_promptpay_id,
     get_seller_snapshot,
+    get_vat_rate,
     issue_document,
 )
 
@@ -151,6 +152,48 @@ async def test_issue_document_proforma_vat_math():
 
 
 @pytest.mark.asyncio
+async def test_issue_document_uses_the_configured_vat_rate():
+    """The other half of the single-source invariant: routers/credits.py prices the
+    order with get_vat_rate(), and the proforma must be issued at that same rate.
+    Both read billing.vat_rate, so amount_thb and total cannot drift apart.
+    """
+    db = _make_db()
+    with (
+        patch(
+            "app.services.billing.documents._fetch_billing_configs",
+            new=AsyncMock(return_value={"billing.vat_rate": "10"}),
+        ),
+        patch(
+            "app.services.billing.documents._next_document_number",
+            new=AsyncMock(return_value="PF-202606-0002"),
+        ),
+    ):
+        doc = await issue_document(
+            db,
+            tenant_id="t-1",
+            order_id="o-1",
+            doc_type=BillingDocumentType.PROFORMA,
+            pack_code="starter",
+            pack_description="500 credits",
+            credits=500,
+            amount_thb=Decimal("990"),
+            buyer=BuyerInfo(name="Buyer Co"),
+        )
+
+    # 1059.30 here would mean vat_on_top's 7% default won over the config.
+    assert doc.vat_amount == Decimal("99.00")
+    assert doc.total == Decimal("1089.00")
+
+
+@pytest.mark.asyncio
+async def test_get_vat_rate_returns_fraction_and_defaults_to_seven():
+    db = _make_db(all_rows=[("billing.vat_rate", '"10"')])
+    assert await get_vat_rate(db) == Decimal("0.10")
+    # Unset config → the 7% the catalog copy promises, not a crash.
+    assert await get_vat_rate(_make_db(all_rows=[])) == Decimal("0.07")
+
+
+@pytest.mark.asyncio
 async def test_issue_document_buyer_snapshot_saved():
     db = _make_db()
     with (
@@ -219,19 +262,59 @@ async def test_issue_document_empty_buyer_fields_are_none():
 # ── get_last_buyer_info ───────────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_get_last_buyer_info_returns_most_recent():
+def _buyer_row(**overrides):
     row = MagicMock()
     row.buyer_name = "Acme Co."
     row.buyer_tax_id = "1111111111111"
     row.buyer_address = "Bangkok"
     row.buyer_branch = "Main"
-    db = _make_db(first_row=row)
+    row.buyer_email = "ap@acme.co.th"
+    row.buyer_contact_name = "Somchai"
+    row.buyer_tel = "021234567"
+    for k, v in overrides.items():
+        setattr(row, k, v)
+    return row
+
+
+@pytest.mark.asyncio
+async def test_get_last_buyer_info_returns_most_recent():
+    db = _make_db(first_row=_buyer_row())
     info = await get_last_buyer_info(db, "t-1")
     assert info["name"] == "Acme Co."
     assert info["tax_id"] == "1111111111111"
     assert info["address"] == "Bangkok"
     assert info["branch"] == "Main"
+
+
+@pytest.mark.asyncio
+async def test_get_last_buyer_info_carries_every_field_issue_document_writes():
+    """Regression: buyer_email was missing from the SELECT, so a repeat buyer whose
+    Carmen lookup came back empty got a prefill (and a proforma) with no email —
+    while the Carmen branch of the same endpoint returned one. Any field
+    issue_document persists has to survive the round trip, or it silently dies here.
+    """
+    db = _make_db(first_row=_buyer_row())
+    info = await get_last_buyer_info(db, "t-1")
+    assert info == BuyerInfo(
+        name="Acme Co.",
+        tax_id="1111111111111",
+        address="Bangkok",
+        branch="Main",
+        email="ap@acme.co.th",
+        contact_name="Somchai",
+        tel="021234567",
+    )
+    # BuyerInfo is total=False, so a dropped key is not a type error — only this
+    # whole-dict compare catches the next one.
+    assert set(info) == set(BuyerInfo.__annotations__)
+
+
+@pytest.mark.asyncio
+async def test_get_last_buyer_info_nulls_become_empty_strings():
+    db = _make_db(first_row=_buyer_row(buyer_email=None, buyer_tel=None))
+    info = await get_last_buyer_info(db, "t-1")
+    assert info["email"] == ""
+    assert info["tel"] == ""
 
 
 @pytest.mark.asyncio
