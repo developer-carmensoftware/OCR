@@ -428,8 +428,9 @@ async def post_pms_gl(post_type: str, body: dict, carmen_token: str) -> Any:
     `false` and Carmen's own guard still answers `Code -200 "Already Posted."`. Only an interface
     Carmen holds in review mode answers that call `Code -1 "… is in review mode."` (no JV, no
     check); the post is then sent again with `true`, since every caller means to post.
-    ponytail: on a review-mode interface a day Carmen already posted is posted again; Carmen
-    to separate "confirm the review" from "post again" (ask U).
+    ponytail: on a review-mode interface a day Carmen already posted is posted again (Carmen
+    voids its own JV for the day). Accepted and parked by the user on 2026-11-18, not taken to
+    Carmen: the fix is Carmen separating "confirm the review" from "post again" (ask U).
     """
     answer = await _post_gl(post_type, body, carmen_token, force=False)
     if _in_review_mode(answer):

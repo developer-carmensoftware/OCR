@@ -2183,6 +2183,8 @@ posted in Carmen voided their JV and posted ours.
 - **Accepted for now:** on an interface Carmen holds in review mode, a day Carmen already posted
   is posted again, since review mode runs no check and `true` re-posts. Carmen to separate the
   two meanings (ask U).
+- **Parked (the user, 2026-11-18):** ask U is not taken to Carmen for now. The risk stays
+  accepted and is written where it bites: `post_pms_gl`'s docstring and FRD-11 §11.1.
 
 **Consequences.**
 - One extra call per post on a review-mode interface.
