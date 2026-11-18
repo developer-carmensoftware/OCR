@@ -93,7 +93,9 @@ async def readiness():
         return {"status": "ok"}
     except Exception as exc:
         logger.warning("Readiness check failed: %s", exc)
-        return JSONResponse(status_code=503, content={"status": "unavailable", "detail": str(exc)})
+        return JSONResponse(
+            status_code=503, content={"status": "unavailable", "detail": "database unreachable"}
+        )
 
 
 # ── Root ──

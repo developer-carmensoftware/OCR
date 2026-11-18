@@ -570,9 +570,9 @@ async def get_company_profile(carmen_token: str, db_cfg: dict[str, str] | None =
 
     try:
         url = f"{_base_url()}/{path.lstrip('/')}"
-        logger.info("get_company_profile: GET %s", url)
         resp = await get_http_client().get(url, headers=_headers(carmen_token))
-        logger.info("get_company_profile: status=%s body=%s", resp.status_code, resp.text[:500])
+        # status only: the body is the buyer's tax ID, email, contact and phone (PII).
+        logger.info("get_company_profile: status=%s", resp.status_code)
         if resp.status_code != 200:
             return {}
         data = resp.json()
