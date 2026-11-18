@@ -75,6 +75,14 @@ The cron is a backstop. The hook starts processing at once (`process.kick`). The
 catches only what a restart, an outage or a missing credential left behind, so on a healthy
 day it does nothing and writes no `job_runs` row.
 
+Two more jobs touch PMS:
+
+- **`pms-events-scrub`** (`20261118000000_pms_events_retention.sql`, daily 03:55 UTC) blanks a
+  day's `reviewed_by`, `reviewed_by_name` and `error_message` 90 days after its row last
+  changed. A `pending_review` day is never touched, and no row is deleted (decision-log #63).
+- **`email-token-health`** (daily 02:15 UTC) re-proves the credential of every BU with a live
+  PMS key too, email on or not. A day stopped by a refusal wakes once it passes.
+
 ## Releasing path B (PR #292)
 
 **Order matters.** Migration `20261015000000` drops `pms_code_mappings` and
@@ -238,8 +246,6 @@ python scripts/qa/pms_qa_round.py reset --dry-run      # then without --dry-run:
 | Gap | Effect | Upgrade path |
 |---|---|---|
 | **The setting itself is unread** (decision-log #51) | A PMS whose Data Bank fields are not named like its mapping columns fails `unreadable_day` | Carmen adds `JsonKeys` and `Mapping_MapCode` to the `interfaceThirdParties` row; read them in `carmen_config.find_section` |
-| Token health skips PMS-only BUs | A dead token is found only when a day fails | Extend `sweep_token_health` to BUs with a live PMS key |
-| No retention purge for `pms_events` | Rows accumulate, about 1 per BU per day, with no payload once done | Decide a period; a cron like email's retention |
 | No voucher number (`JvhNo`) | The JV NO. column shows the seq (as email does), not the number an accountant reads | Ask Carmen to add `JvhNo` to the answer beside `Id`; store it in a new column then |
 | Approve: a Carmen error while reading the chart (`mapping.masters`) is not wrapped | `500` instead of `503`. The claim is still released, and nothing is written (it comes before the PUT) | Wrap it like the mapping read |
 | The 403 Data Bank refusal retries 3× a day via the wake rule | Noise in the row's attempts while the permission is missing | Accept; it stops once the permission is granted |

@@ -242,7 +242,8 @@ does three things in order:
    `carmen_config_unreadable`). These go back with their attempts reset, but only once the BU's
    `carmen_token_verified_at` is newer than the day's `processed_at`. Any writer of the shared
    credential therefore wakes them: Carmen's PMS setting screen, the email settings, or the
-   daily email token-health check. (A PMS settings write also wakes them at once,
+   daily token-health check, which covers every BU with a live PMS key. (A PMS settings
+   write also wakes them at once,
    `process.wake_waiting`, without the time test.)
 3. **Process up to 50 `received` days**, oldest first, each through `process_event`, whose
    claim keeps the sweep and a `kick` from working one day twice.
@@ -365,6 +366,4 @@ There is no PMS settings screen of ours. Carmen's PMS setting screen is the only
 - **Reading the PMS setting itself.** The menu token still cannot (`interfacePost/Setting`
   has no `/api/interface` twin); decision-log #51 derives what it held instead. A PMS whose
   Data Bank fields are not named like its mapping columns needs it after all.
-- **Token health for PMS-only BUs.** `sweep_token_health` walks only `enabled` email BUs.
-- **A retention purge** for `pms_events`.
 - **Files other than JSON**, and sections other than REVENUE (Comanche's STATISTIC is listed, not posted).

@@ -40,7 +40,8 @@ address).
 **All four jobs are scheduled.** `20260817000000_email_ingest_cron.sql` schedules
 `email-ingest` every 10 minutes and `email-confirm` every minute;
 `20260828000000_email_token_health_cron.sql` schedules `email-token-health` daily at 02:15
-UTC (09:15 ICT — before the working day, after the overnight commission mail);
+UTC (09:15 ICT — before the working day, after the overnight commission mail; it re-proves
+every BU with email on or a live PMS key, since the credential is the BU's one);
 `20261030000100_email_mailbox_purge_cron.sql` schedules `email-mailbox-purge` daily at 04:00
 UTC, which calls `POST /api/v1/carmen/email-ingest/purge` (job token; `?dry_run=true` counts
 and moves nothing — run that by hand first in a new environment). The SQL below
