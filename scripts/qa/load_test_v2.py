@@ -87,7 +87,7 @@ def _asyncpg_dsn(database_url: str) -> tuple[str, dict]:
         if k.lower() == "ssl" and v in ("require", "true", "1"):
             needs_ssl = True
     # Supabase pooler hostnames always need TLS.
-    if "pooler.supabase.com" in (parts.hostname or "") or "supabase" in (parts.hostname or ""):
+    if (parts.hostname or "").endswith(".supabase.com"):
         needs_ssl = True
 
     dsn = f"{parts.scheme}://{parts.netloc}{parts.path}"  # drop query
@@ -304,15 +304,14 @@ async def mode_health(env: dict) -> None:
                     },
                 )
                 dt = (time.perf_counter() - t0) * 1000
-                tail = key[-6:]
-                if r.status_code == 200:
-                    print(f"  key{i} (...{tail}) -> 200 OK   {dt:6.0f}ms")
+                            if r.status_code == 200:
+                    print(f"  key{i} -> 200 OK   {dt:6.0f}ms")
                 else:
                     all_ok = False
-                    print(f"  key{i} (...{tail}) -> {r.status_code} FAIL  {r.text[:120]}")
+                    print(f"  key{i} -> {r.status_code} FAIL  {r.text[:120]}")
             except Exception as exc:
                 all_ok = False
-                print(f"  key{i} (...{key[-6:]}) -> ERROR {type(exc).__name__}: {exc}")
+                print(f"  key{i} -> ERROR {type(exc).__name__}: {exc}")
     print("-" * 90)
     print("health: ALL KEYS OK" if all_ok else "health: SOME KEYS FAILED — fix before comparison")
     sys.exit(0 if all_ok else 4)
