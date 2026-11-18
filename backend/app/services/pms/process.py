@@ -480,6 +480,9 @@ async def _process(claimed) -> str:
         # is in the Data Bank. A PartnerApi PMS is never read from it: Carmen's engine fetches
         # the day itself, and its preview leaves a row Carmen's own read cannot parse (500 on
         # GuestlinePMS, 2026-11-17), so the day goes by date alone (decision-log #61).
+        # ponytail: that broken row stays a risk on Carmen's side only (its Data Bank screen for
+        # the day, ask T; search/DELETE of JSON rows, ask Q). Parked by the user on 2026-11-18:
+        # our processing reads neither, so nothing here waits on Carmen's fix.
         opened = hook.get("Source") == OPENED_BY_SWEEP
         found: list = []
         if not section.partner:
