@@ -1,9 +1,9 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-11 — PMS Interface Automation
-output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.12.docx
+output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.13.docx
 iso-wp: SD
-Document Version: Version 1.12 (As-Built Developer & Test Spec)
+Document Version: Version 1.13 (As-Built Developer & Test Spec)
 Module ID: `pms_interface` (ใช้บันทึก LLM usage เท่านั้น ไม่คิดเครดิต)
 Status: Built — แถวของวันมาจาก preview ของ engine ของ Carmen (decision-log #54) · การ post ของ Carmen เป็นตัวตรวจ mapping (#52, #53) · sweep เปิดวันของเมื่อวานให้ทุก PMS ตั้งแต่ 06:00 ICT จึงไม่ต้องรอ hook (decision-log #55) · hook จริงของ Carmen ยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K)
 Source of truth: repo developer-carmensoftware/OCR @ dcceaf52 (13/11/2026) + branch fix/pms-closed-while-processing
@@ -30,6 +30,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 | 1.10 | 17/11/2026 | Dev Team | ตาม decision-log #56 (แก้ 17/11/2026): `DELETE /api/v1/carmen/pms/keys` ตอบ 204 ทุกครั้งที่ PMS ปิดอยู่หลังเรียก รวมถึง PMS ที่ไม่เคยมี key, ปิดไปแล้ว และ BU ที่ไม่เคยเห็น (เดิม 404 / 400) เพราะหน้าจอ Carmen จะเรียกทุกครั้งที่ Save เป็น Manual (§12.1) | |
 | 1.11 | 17/11/2026 | Dev Team | ตาม decision-log #61: วันของ PMS แบบ PartnerApi (เช่น GuestlinePMS) ไม่อ่าน Data Bank — engine ของ Carmen ดึงวันจาก PMS เอง และหลัง preview การอ่าน Data Bank ของวันนั้นตอบ 500 · preview และ post ใช้วันที่อย่างเดียว · `pms_probe.py` ทำเหมือนกัน (§2.1) | |
 | 1.12 | 17/11/2026 | Dev Team | ตาม decision-log #62: การ post ส่ง `forceUpdate=false` ก่อน และ `true` เฉพาะเมื่อ Carmen ตอบ review mode (§7) · เพิ่ม test case TC-PMS-30–35 (§13.4) สำหรับสิ่งที่ส่งวันที่ 17/11: PMS แบบ PartnerApi, interface ที่ตั้ง AiPost เป็น Review, วันที่ Carmen post ไปแล้ว, Save เป็น Manual, วันที่ถูกปิดระหว่างประมวลผล และ AiPost กับ auto-post | |
+| 1.13 | 17/11/2026 | Dev Team | Approve ตอบ 503 (ไม่เขียนและไม่ post อะไร) เมื่ออ่านผังบัญชีหรือแผนกของ Carmen ไม่ได้ เดิมเป็น 500 (§12.4) | |
 | 1.4 | 10/11/2026 | Dev Team | ตาม decision-log #52–#54 และ ask D: การ post ของ Carmen เป็นตัวตรวจ mapping (`-500` → `pms_mapping_incomplete` พร้อม key ที่ Carmen เขียนไว้) ทุก PMS review ได้ แถวของวันมาจาก preview ของ engine (`interfacePreviewPostGL`) แทนการอ่าน FileData เอง (`unreadable_day` และ `unsupported_pms_format` ไม่ถูกเขียนแล้ว) เปิดวันของ PMS แบบ PartnerApi เอง `-400` No Data → `day_not_ready` เก็บเลข JV จาก `Id` ใน `jv_no` AI ไม่เห็นยอดเงินและลองใหม่หนึ่งครั้ง และ `scripts/qa/pms_probe.py` | |
 
 <!-- pagebreak -->
@@ -626,7 +627,7 @@ POST /api/v1/pms/days/8c2e…/approve
 | 400 | ไม่มี credential, แถวใหม่ไม่มีแผนก+บัญชี, บัญชีไม่อยู่ในผัง/แผนกไม่อนุญาต, engine ปฏิเสธ (`-500` นำแถวที่ Carmen ขาดเข้ามาในวันนั้น) | ยังรออยู่ |
 | 404 | ไม่ใช่ของ BU หรือไม่มีแล้ว | — |
 | 409 | มีคนถือ claim อยู่ หรือจัดการไปแล้ว | — |
-| 503 | อ่านตารางไม่ได้ (ไม่เขียนอะไร), Carmen ไม่บันทึกบัญชี หรือติดต่อ engine ไม่ได้ | ยังรออยู่ |
+| 503 | อ่านตารางหรือผังบัญชี/แผนกของ Carmen ไม่ได้ (ไม่เขียนอะไร), Carmen ไม่บันทึกบัญชี หรือติดต่อ engine ไม่ได้ | ยังรออยู่ |
 
 # 13. Test Cases & QA Matrix
 

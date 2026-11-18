@@ -219,7 +219,13 @@ async def approve(
             chosen[key] = {"dept": p["dept"], "acc": p["acc"]}
 
         if chosen:
-            accounts, departments = await mapping.masters(token)
+            try:
+                accounts, departments = await mapping.masters(token)
+            except carmen.CarmenAPIError as exc:
+                raise CarmenServiceError(
+                    "Couldn't read Carmen's accounts or departments, so nothing was written or "
+                    f"posted: {carmen_words(exc)}"
+                ) from exc
             _check_picks(chosen, accounts, departments)
             try:
                 await carmen.put_pms_mapping(

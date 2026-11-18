@@ -242,6 +242,21 @@ async def test_a_failed_write_never_posts():
 
 
 @pytest.mark.asyncio
+async def test_carmens_chart_unreadable_is_a_503_and_nothing_is_written():
+    run = _Approve()
+    run.patches["masters"] = patch.object(
+        review.mapping,
+        "masters",
+        AsyncMock(side_effect=CarmenAPIError(502, "HTTP 502: bad gateway")),
+    )
+    with pytest.raises(CarmenServiceError, match="accounts or departments"):
+        await run(PICKS)
+    run.m["put"].assert_not_awaited()
+    run.m["post"].assert_not_awaited()
+    run.m["release"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_carmen_saying_no_is_a_400_and_carmen_unreachable_a_503():
     run = _Approve(post=PostRefused("Period is closed"))
     with patch.object(review, "_note", AsyncMock()) as note:
