@@ -32,7 +32,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 | 1.12 | 17/11/2026 | Dev Team | ตาม decision-log #62: การ post ส่ง `forceUpdate=false` ก่อน และ `true` เฉพาะเมื่อ Carmen ตอบ review mode (§7) · เพิ่ม test case TC-PMS-30–35 (§13.4) สำหรับสิ่งที่ส่งวันที่ 17/11: PMS แบบ PartnerApi, interface ที่ตั้ง AiPost เป็น Review, วันที่ Carmen post ไปแล้ว, Save เป็น Manual, วันที่ถูกปิดระหว่างประมวลผล และ AiPost กับ auto-post | |
 | 1.13 | 17/11/2026 | Dev Team | Approve ตอบ 503 (ไม่เขียนและไม่ post อะไร) เมื่ออ่านผังบัญชีหรือแผนกของ Carmen ไม่ได้ เดิมเป็น 500 (§12.4) | |
 | 1.14 | 18/11/2026 | Dev Team | ตาม decision-log #63: ล้างชื่อผู้ตรวจและข้อความ error ของวันที่ไม่ได้รอตรวจ 90 วันหลังแถวถูกแก้ล่าสุด โดยไม่ลบแถว; แถวที่ล้างชื่อแล้วขึ้น "Reviewed and posted"; การตรวจ token รายวันครอบ BU ที่ใช้เฉพาะ PMS; ask H ปิดแล้ว (§4.2, §6.1, §6.5, §10.3, §11.1) | |
-| 1.15 | 18/11/2026 | Dev Team | ข้อจำกัดที่ยอมรับไว้ก่อน (§11.1): interface ที่ Carmen ตั้ง Review การ Approve วันที่ Carmen post ไปแล้ว ทำให้ Carmen void JV เดิมแล้ว post ใหม่ ไม่ขอ Carmen แก้ในตอนนี้ (ask U) | |
+| 1.15 | 18/11/2026 | Dev Team | ข้อจำกัดที่ยอมรับไว้ก่อน (§11.1): interface ที่ Carmen ตั้ง Review การ Approve วันที่ Carmen post ไปแล้ว ทำให้ Carmen void JV เดิมแล้ว post ใหม่ ไม่ขอ Carmen แก้ในตอนนี้ (ask U) · Data Bank ของ Carmen อ่าน FileData สองรูปแบบไม่ได้ (ask T/Q) เป็น risk ฝั่ง Carmen ไม่กระทบระบบเรา | |
 | 1.4 | 10/11/2026 | Dev Team | ตาม decision-log #52–#54 และ ask D: การ post ของ Carmen เป็นตัวตรวจ mapping (`-500` → `pms_mapping_incomplete` พร้อม key ที่ Carmen เขียนไว้) ทุก PMS review ได้ แถวของวันมาจาก preview ของ engine (`interfacePreviewPostGL`) แทนการอ่าน FileData เอง (`unreadable_day` และ `unsupported_pms_format` ไม่ถูกเขียนแล้ว) เปิดวันของ PMS แบบ PartnerApi เอง `-400` No Data → `day_not_ready` เก็บเลข JV จาก `Id` ใน `jv_no` AI ไม่เห็นยอดเงินและลองใหม่หนึ่งครั้ง และ `scripts/qa/pms_probe.py` | |
 
 <!-- pagebreak -->
@@ -573,6 +573,7 @@ stateDiagram-v2
 | รอ Carmen | Comanche.PMS ปฏิเสธทุกวันด้วย "Line No. 30,31 has no DrCr value." ขณะที่ข้อมูลเดียวกัน post ได้บน setting อื่น (ask K) |
 | ขอเพิ่ม | preview คืนยอด, Dr/Cr และ error ของการ post เพื่อเตือนก่อน Approve; ให้ menu token อ่าน Balance Account ได้ (ask O) |
 | ยอมรับไว้ก่อน | interface ที่ Carmen ตั้ง AiPost เป็น Review: ถ้าวันนั้น Carmen post ไปแล้ว (เช่นมีคนกด Post ในหน้าจอ Carmen เอง) การ Approve ในระบบเราทำให้ Carmen void JV เดิมแล้ว post ใบใหม่ ตามบัญชีของเรา เพราะ review mode ยืนยันได้ด้วย `forceUpdate=true` เท่านั้น และ `true` ไม่มีตัวกันซ้ำ ตัดสินใจ 18/11/2026 ว่ายังไม่ขอ Carmen แก้ (ask U) · interface ที่ไม่ใช่ Review ไม่เป็น (ได้ `already_posted`) |
+| ยอมรับไว้ก่อน | Data Bank ของ Carmen เก็บ FileData สองรูปแบบ: หลัง preview วันของ GuestlinePMS หน้า Data Bank ของวันนั้นใน Carmen เปิดไม่ขึ้น (ask T) และแถวของ Comanche / Cloudbeds ค้นหาหรือลบไม่ได้ (ask Q) · เป็น risk ฝั่ง Carmen ไม่กระทบการประมวลผลของระบบเรา (ไม่อ่าน FileData และไม่อ่าน Data Bank ของ PMS แบบ PartnerApi) ตัดสินใจ 18/11/2026 ว่ายังไม่ขอ Carmen แก้ |
 | เสร็จ | Retention ของ `pms_events`: ชื่อผู้ตรวจและข้อความ error หายหลัง 90 วัน แถวคงอยู่ (decision-log #63) |
 | เสร็จ | การตรวจ token รายวันครอบ BU ที่ใช้เฉพาะ PMS |
 

@@ -2155,6 +2155,10 @@ read the Data Bank first, which was harmless until Carmen began leaving that row
 **Consequences.**
 - A broken Data Bank row of Carmen's (ask T) no longer reaches us. Carmen's GET still answers
   500 for such a day, which is Carmen's to fix.
+- **Parked (the user, 2026-11-18):** asks T and Q are a risk on Carmen's side with no effect on
+  our processing, which reads neither the Data Bank of a PartnerApi day nor any `FileData`. Not
+  pursued for now. What remains: Carmen's Data Bank screen of a GuestlinePMS day breaks after
+  our preview (in production too), and Comanche/Cloudbeds rows cannot be searched or deleted.
 - Approve already posts with the stored `databank_id`, which is null for these days.
 
 ## 62. A post says forceUpdate=false first; true only after Carmen's review-mode answer (2026-11-17)
