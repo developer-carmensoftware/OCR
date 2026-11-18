@@ -131,6 +131,4 @@ nobody.
 - Setting sections other than REVENUE.
 - Editing a mapping after it was approved. Carmen's own mapping screen does that.
 - A JV number on the posted row. Carmen's engine does not return one (CA-116).
-- A retention purge for old `pms_events` rows: the period is undecided.
-- A daily token-health check for a BU that uses PMS but not email automation.
 - Billing or an entitlement gate.

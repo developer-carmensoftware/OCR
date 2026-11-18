@@ -2189,3 +2189,32 @@ posted in Carmen voided their JV and posted ours.
 - **JV 36 on carmencloud dev stays void.** Reported to Carmen; Carmen decides (the user).
 - TC-PMS-35 (FRD-11 §13.4): an already-posted day on a non-review interface answers
   `already_posted`, and Carmen's JV stays.
+
+## 63. pms_events: reviewer and error text scrubbed at 90 days, rows kept (2026-11-18)
+
+**Status: built** (branch `fix/pms-retention-token-health`).
+
+**Why.** `pms_events` had no retention. A day kept who reviewed it (`reviewed_by`,
+`reviewed_by_name`) and its `error_message` for ever, and on a rejected day that is the reason
+the reviewer typed. It was an open item of CA-119 since the first cut ("the period is
+undecided").
+
+**Decision** (2026-11-18, the user approved the plan).
+- `fn_scrub_old_pms_events()`, run daily by `pms-events-scrub` at 03:55 UTC, blanks those three
+  columns 90 days after the row last changed (`coalesce(updated_at, created_at)`).
+- 90 days is the email ledger's window (`20260923000000_email_documents_retention.sql`): the two
+  sit side by side in one queue.
+- A `pending_review` day is never touched.
+- **No row is deleted**, unlike the email ledger. One row per BU × PMS × day is small; it is the
+  record that the day posted (`status`, `jv_no` and `reason_code` stay); and its `event_id` keeps
+  a late repeat hook a duplicate.
+- `review_payload` needs nothing: every terminal transition clears it already. The hook payload
+  names no person.
+
+**Consequences.**
+- A posted or rejected day older than 90 days shows no reviewer, as an email row already does.
+  The queue said "Posted automatically" for such a row, email or PMS, which was false: it now
+  reads `reviewed_at` (kept, and written only by a person) and says "Reviewed and posted".
+- Same branch: the daily token check (`email-token-health`) also re-proves the credential of
+  every BU with a live PMS key, email on or not. A PMS-only BU's days stopped by a passing
+  refusal now wake without a settings save (`_wake_for_new_credential`).

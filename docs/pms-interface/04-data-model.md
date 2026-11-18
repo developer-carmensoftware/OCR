@@ -35,6 +35,10 @@ columns are the same shape as `email_documents`.
 a no-op. `ix_pms_events_tenant_status (tenant_id, status)` serves the queue. `ix_pms_events_created_at`
 is in the migration only.
 
+**Retention** (decision-log #63): `fn_scrub_old_pms_events()`, daily at 03:55 UTC, blanks
+`reviewed_by`, `reviewed_by_name` and `error_message` 90 days after the row last changed. A
+`pending_review` day is never touched, and no row is deleted.
+
 RLS is enabled and forced, with no policies, the same backstop as every table. The app role
 bypasses it.
 
@@ -113,8 +117,9 @@ BU's `email_ingest_settings` row:
 | `carmen_token_verified_at` | Last proven. **The wake rule:** a `WAKE_REASONS` day whose `processed_at` is older goes back to `received` |
 
 A BU that uses PMS and has never opened email settings still gets a row (`set_token`
-creates it) with `enabled = false`. So the daily token-health sweep, which reads only
-`enabled` rows, never checks a PMS-only BU's token.
+creates it) with `enabled = false`. The daily token-health sweep reads `enabled` rows and
+the rows of every BU with a live PMS key, so a PMS-only BU's token is checked too (since
+2026-11-18).
 
 ## `reason_code` taxonomy
 
@@ -150,6 +155,7 @@ unchanged. **There is no balance flag:** the sides are Carmen's.
 | `20261009000000_pms_processing.sql` | The ledger columns on `pms_events`. Creates `pms_code_mappings` (path A) and `pms_settings` with `jv_prefix` and `auto_post`. Inserts the `modules` row `pms_interface` (sort 4). Schedules the **`pms-process`** cron (`*/10 * * * *` → `/api/v1/pms/process/run`) |
 | `20261015000000_pms_carmen_engine.sql` | Path B: **drops `pms_code_mappings`** and `pms_settings.jv_prefix`. Sends every `pending_review`/`failed` day back to `received`, with its payload, reason, attempts and claim cleared. **Deploy the code first, then `db push`**: the old code reads both |
 | `20261016000000_pms_settings_per_interface.sql` | Decision-log #44: `api_keys.interface_name`, **revokes every live key**, and adds `uq_api_keys_live_interface`. Empties `pms_settings` and re-keys it `(tenant_id, interface_name)`. Ships with `20261015000000`, in the same order |
+| `20261118000000_pms_events_retention.sql` | Decision-log #63: `fn_scrub_old_pms_events()` and the daily **`pms-events-scrub`** cron (`55 3 * * *`) |
 
 `20261009000000` and `20261015000000` both modify `pms_events` with `if not exists` / `if
 exists`, so re-running is safe. The table's comment from the first migration ("inbox only")

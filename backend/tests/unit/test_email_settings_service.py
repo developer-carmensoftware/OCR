@@ -664,6 +664,23 @@ async def test_the_daily_check_clears_verified_at_only_on_a_refusal(
 
 
 @pytest.mark.asyncio
+async def test_the_daily_check_covers_a_bu_that_only_posts_pms():
+    """A BU with a live PMS key and email off still holds the one credential (decision-log #42),
+    and only this check re-proves it after a passing refusal, which is what wakes its stuck days
+    (`process._wake_for_new_credential`)."""
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = []
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+
+    await credential.sweep_token_health(db)
+
+    where = str(db.execute.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+    assert "email_ingest_settings.enabled IS true OR" in where
+    assert "api_keys.revoked_at IS NULL" in where and "api_keys.interface_name IS NOT NULL" in where
+
+
+@pytest.mark.asyncio
 async def test_adopt_replaces_a_held_credential_carmen_refuses(monkeypatch):
     store = AsyncMock()
     monkeypatch.setattr(credential, "_probe_held", AsyncMock(return_value=False))
