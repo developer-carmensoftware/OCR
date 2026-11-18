@@ -1,9 +1,9 @@
 ---
 eyebrow: Carmen Cloud ERP
 title: FRD-11 — PMS Interface Automation
-output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.13.docx
+output: Carmen_Cloud_ERP_FRD-11_PMS_Interface_v1.14.docx
 iso-wp: SD
-Document Version: Version 1.13 (As-Built Developer & Test Spec)
+Document Version: Version 1.14 (As-Built Developer & Test Spec)
 Module ID: `pms_interface` (ใช้บันทึก LLM usage เท่านั้น ไม่คิดเครดิต)
 Status: Built — แถวของวันมาจาก preview ของ engine ของ Carmen (decision-log #54) · การ post ของ Carmen เป็นตัวตรวจ mapping (#52, #53) · sweep เปิดวันของเมื่อวานให้ทุก PMS ตั้งแต่ 06:00 ICT จึงไม่ต้องรอ hook (decision-log #55) · hook จริงของ Carmen ยังได้ 401 จนกว่าหน้า PMS setting ของ Carmen จะออก key ให้ BU (ask H) · Carmen ยังปฏิเสธการ post ของ Comanche.PMS (ask K)
 Source of truth: repo developer-carmensoftware/OCR @ dcceaf52 (13/11/2026) + branch fix/pms-closed-while-processing
@@ -31,6 +31,7 @@ check-ignore: PMS/<InterfaceName>/<DocType>/<DocDate>, PMS/Comanche/Daily/2026-1
 | 1.11 | 17/11/2026 | Dev Team | ตาม decision-log #61: วันของ PMS แบบ PartnerApi (เช่น GuestlinePMS) ไม่อ่าน Data Bank — engine ของ Carmen ดึงวันจาก PMS เอง และหลัง preview การอ่าน Data Bank ของวันนั้นตอบ 500 · preview และ post ใช้วันที่อย่างเดียว · `pms_probe.py` ทำเหมือนกัน (§2.1) | |
 | 1.12 | 17/11/2026 | Dev Team | ตาม decision-log #62: การ post ส่ง `forceUpdate=false` ก่อน และ `true` เฉพาะเมื่อ Carmen ตอบ review mode (§7) · เพิ่ม test case TC-PMS-30–35 (§13.4) สำหรับสิ่งที่ส่งวันที่ 17/11: PMS แบบ PartnerApi, interface ที่ตั้ง AiPost เป็น Review, วันที่ Carmen post ไปแล้ว, Save เป็น Manual, วันที่ถูกปิดระหว่างประมวลผล และ AiPost กับ auto-post | |
 | 1.13 | 17/11/2026 | Dev Team | Approve ตอบ 503 (ไม่เขียนและไม่ post อะไร) เมื่ออ่านผังบัญชีหรือแผนกของ Carmen ไม่ได้ เดิมเป็น 500 (§12.4) | |
+| 1.14 | 18/11/2026 | Dev Team | ตาม decision-log #63: ล้างชื่อผู้ตรวจและข้อความ error ของวันที่ไม่ได้รอตรวจ 90 วันหลังแถวถูกแก้ล่าสุด โดยไม่ลบแถว; แถวที่ล้างชื่อแล้วขึ้น "Reviewed and posted"; การตรวจ token รายวันครอบ BU ที่ใช้เฉพาะ PMS; ask H ปิดแล้ว (§4.2, §6.1, §6.5, §10.3, §11.1) | |
 | 1.4 | 10/11/2026 | Dev Team | ตาม decision-log #52–#54 และ ask D: การ post ของ Carmen เป็นตัวตรวจ mapping (`-500` → `pms_mapping_incomplete` พร้อม key ที่ Carmen เขียนไว้) ทุก PMS review ได้ แถวของวันมาจาก preview ของ engine (`interfacePreviewPostGL`) แทนการอ่าน FileData เอง (`unreadable_day` และ `unsupported_pms_format` ไม่ถูกเขียนแล้ว) เปิดวันของ PMS แบบ PartnerApi เอง `-400` No Data → `day_not_ready` เก็บเลข JV จาก `Id` ใน `jv_no` AI ไม่เห็นยอดเงินและลองใหม่หนึ่งครั้ง และ `scripts/qa/pms_probe.py` | |
 
 <!-- pagebreak -->
@@ -139,7 +140,7 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 | Document | `PMS <วันที่>` เหนือ `<InterfaceName> · <DocType>` |
 | Message (รอตรวจ) | "AI suggested mapping: 103, 729" (รหัสของแถวใหม่ที่ AI แนะนำ) หรือ "Mapping missing: …" (แถวใหม่ที่ AI แนะนำไม่ได้) |
 | Message (หยุดเพราะด่าน) | ข้อความของ reason code (ดู §9) — ไม่มีปุ่มแก้สาเหตุ เพราะทุกสาเหตุแก้บนหน้าจอของ Carmen |
-| Message (post แล้ว) | "Reviewed and posted by {name}" หรือ "Carmen had already posted it" เมื่อ Carmen post วันนั้นเองไปก่อน |
+| Message (post แล้ว) | "Reviewed and posted by {name}"; "Reviewed and posted" เมื่อชื่อผู้ตรวจถูกล้างแล้ว (§10.3); "Posted automatically" เมื่อ auto-post โดยไม่มีคนตรวจ; หรือ "Carmen had already posted it" เมื่อ Carmen post วันนั้นเองไปก่อน |
 | JV NO. | seq ของ JV จาก `Id` ในคำตอบของ engine (ask D) และลิงก์เปิด JV ใน Carmen |
 | Chip | `pending_review` → Review, `posted` → Posted, `rejected`/`failed` → Not posted, `received` ไม่แสดง (กำลังอ่านอยู่ไม่กี่วินาที) |
 
@@ -200,7 +201,7 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 | `attempts` | int | จำนวนครั้งที่ประมวลผล — ครบ 3 แล้วเป็น `failed` |
 | `processed_at` | timestamptz | lease ของการประมวลผล (10 นาที) และเวลาที่ลองล่าสุด |
 | `posting_started_at` | timestamptz | claim ของการ approve/reject (5 นาที) |
-| `reviewed_by` / `reviewed_by_name` / `reviewed_at` | | ผู้ approve หรือ reject |
+| `reviewed_by` / `reviewed_by_name` / `reviewed_at` | | ผู้ approve หรือ reject — `reviewed_by` / `reviewed_by_name` ถูกล้างหลัง 90 วัน `reviewed_at` คงอยู่ (§10.3) |
 
 ## 6.2 review_payload
 
@@ -239,7 +240,7 @@ Day key = `PMS/<InterfaceName>/<DocType>/<DocDate>` (เก็บใน `pms_eve
 
 ## 6.5 Credential ที่ใช้ร่วมกับ Email Automation
 
-PMS ใช้แถว `email_ingest_settings` ของ BU: `carmen_token_enc` (เข้ารหัส Fernet), `carmen_uri` และ `carmen_token_verified_at` (ใช้ในกฎปลุกวันที่รอ) BU ที่ใช้เฉพาะ PMS ก็มีแถวนี้ (สร้างโดย `set_token`) แต่ `enabled = false`
+PMS ใช้แถว `email_ingest_settings` ของ BU: `carmen_token_enc` (เข้ารหัส Fernet), `carmen_uri` และ `carmen_token_verified_at` (ใช้ในกฎปลุกวันที่รอ) BU ที่ใช้เฉพาะ PMS ก็มีแถวนี้ (สร้างโดย `set_token`) แต่ `enabled = false` การตรวจ token รายวัน (`email-token-health`) ตรวจทุก BU ที่เปิด email หรือมี PMS key ที่ใช้งานอยู่ จึงครอบ BU กลุ่มนี้ด้วย
 
 ## 6.6 Entity Relationship Diagram
 
@@ -539,6 +540,7 @@ stateDiagram-v2
 
 - `review_payload` ถูกล้างทุกครั้งที่จบสถานะ ตัวเลขของวันยังอยู่ที่ Data Bank ของ Carmen
 - ระหว่างรอตรวจ `review_payload` ถูกเข้ารหัสในฐานข้อมูลด้วยกุญแจเดียวกับ session (`app/utils/crypto.py`) แถวเก่าที่ยังไม่เข้ารหัสแปลงได้ด้วย `POST /api/v1/admin/encryption/backfill` และหมุนกุญแจได้ตาม `docs/KEY_ROTATION.md`
+- `fn_scrub_old_pms_events()` (cron `pms-events-scrub` ทุกวัน 03:55 UTC) ล้าง `reviewed_by`, `reviewed_by_name` และ `error_message` (รวมเหตุผลที่ผู้ reject พิมพ์) เมื่อแถวไม่ถูกแก้มา 90 วัน ไม่แตะวันที่ `pending_review` และไม่ลบแถว: `status`, `jv_no`, `reason_code` และ `reviewed_at` คงอยู่ (decision-log #63)
 - `pms_events`, `pms_settings` และ `api_keys` เปิด row level security และ role `anon` / `authenticated` ของ Supabase ไม่มีสิทธิ์ใด ๆ
 - ระบบไม่อ่านข้อมูลดิบของวัน (FileData) แล้วตั้งแต่ #54 แถวมาจาก preview ของ engine (key และบัญชีเท่านั้น) LLM ได้เพียง key ของแถวใหม่และตัวอย่างจากตาราง ไม่มียอดเงิน และทุกคำขอส่ง `data_collection: deny`
 
@@ -566,10 +568,11 @@ stateDiagram-v2
 | เสร็จ | Park / post, ลองใหม่ 3 ครั้ง, ปลุกเมื่อมี credential ใหม่, sweep ทุก 10 นาที |
 | เสร็จ | Approve: อ่านตารางสด, ตรวจกับผัง, PUT ทั้งตาราง, post, recheck |
 | เสร็จ | แถวในคิวและ dialog ตรวจ |
-| รอ Carmen | หน้า PMS setting ของ Carmen ออก key ให้ BU (ask H) — ตอนนี้ hook ได้ 401 |
+| เสร็จ | หน้า PMS setting ของ Carmen ออก key ให้ BU และ hook ของ Carmen ส่ง key นั้น (ask H ปิด 17/11/2026) |
 | รอ Carmen | Comanche.PMS ปฏิเสธทุกวันด้วย "Line No. 30,31 has no DrCr value." ขณะที่ข้อมูลเดียวกัน post ได้บน setting อื่น (ask K) |
 | ขอเพิ่ม | preview คืนยอด, Dr/Cr และ error ของการ post เพื่อเตือนก่อน Approve; ให้ menu token อ่าน Balance Account ได้ (ask O) |
-| ยังไม่ทำ | retention ของ `pms_events`, token health ของ BU ที่ใช้เฉพาะ PMS |
+| เสร็จ | Retention ของ `pms_events`: ชื่อผู้ตรวจและข้อความ error หายหลัง 90 วัน แถวคงอยู่ (decision-log #63) |
+| เสร็จ | การตรวจ token รายวันครอบ BU ที่ใช้เฉพาะ PMS |
 
 ## 11.2 Acceptance Criteria
 
