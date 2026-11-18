@@ -17,12 +17,13 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import decrypt_carmen_token, encrypt_carmen_token
 from app.config import settings as app_settings
 from app.exceptions import FieldValidationError
+from app.models.admin import APIKey
 from app.models.email_automation import EmailIngestSettings
 from app.models.identity import Tenant
 from app.services.email_automation.ingest_settings import get_settings
@@ -271,9 +272,26 @@ async def sweep_token_health(db: AsyncSession) -> dict:
     counts as `unknown`: `verified_at = NULL` means "Carmen said no", which is what
     `adopt_token` reads to let a fresh token replace this one (decision-log #45), and a
     passing outage at the check's hour must not say that about a working token.
+
+    Every BU that posts through this credential: email switched on, or a live PMS key (the
+    credential is the BU's one, decision-log #42). A PMS-only BU needs the re-proof most: it
+    is what moves `verified_at` past a day stopped by a passing refusal, and so what
+    `pms.process._wake_for_new_credential` sends that day back on.
     """
+    live_pms = select(APIKey.tenant_id).where(
+        APIKey.revoked_at.is_(None), APIKey.interface_name.is_not(None)
+    )
     rows = (
-        (await db.execute(select(EmailIngestSettings).where(EmailIngestSettings.enabled.is_(True))))
+        (
+            await db.execute(
+                select(EmailIngestSettings).where(
+                    or_(
+                        EmailIngestSettings.enabled.is_(True),
+                        EmailIngestSettings.tenant_id.in_(live_pms),
+                    )
+                )
+            )
+        )
         .scalars()
         .all()
     )
