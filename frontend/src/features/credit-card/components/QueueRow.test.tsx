@@ -216,3 +216,16 @@ describe('QueueRow — a PMS day Carmen had already posted', () => {
     expect(screen.queryByText(/posted by/)).not.toBeInTheDocument()
   })
 })
+
+describe('QueueRow — a posted row whose reviewer was scrubbed', () => {
+  it('still says a person reviewed it: reviewed_at outlives the 90-day scrub of the name', () => {
+    mount(owed({ source: 'pms', input_tax_owed: false, reviewed_at: '2026-07-01T02:00:00Z' }))
+    expect(screen.getByText('Reviewed and posted')).toBeInTheDocument()
+    expect(screen.queryByText('Posted automatically')).not.toBeInTheDocument()
+  })
+
+  it('one no person ever reviewed is still posted automatically', () => {
+    mount(owed({ source: 'email', input_tax_owed: false }))
+    expect(screen.getByText('Posted automatically')).toBeInTheDocument()
+  })
+})

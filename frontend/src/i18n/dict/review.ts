@@ -218,6 +218,7 @@ export const en = {
   // the same reason — each names the work the person actually did, not just the posting.
   'review.postedBy': 'Reviewed and posted by {name}',
   'review.postedAutomatically': 'Posted automatically',
+  'review.postedAfterReview': 'Reviewed and posted',
   // Named wherever the session that ran the scan can still be resolved. "by hand" answers
   // how, which the reader can already see from the Source icon; the name answers who, which
   // is the part they were reading the row for.
@@ -470,6 +471,7 @@ export const th: Record<keyof typeof en, string> = {
   'review.arPostTypeSummary': 'Summary',
   'review.postedBy': 'ตรวจสอบและโพสต์โดย {name}',
   'review.postedAutomatically': 'โพสต์อัตโนมัติ',
+  'review.postedAfterReview': 'ตรวจสอบและโพสต์แล้ว',
   'review.postedManuallyBy': 'สแกนและลงบัญชีโดย {name}',
   'review.postedManually': 'สแกนและโพสต์เอง',
   'review.scannedNotPostedBy': 'สแกนโดย {name} — ยังไม่ได้ลงบัญชี',

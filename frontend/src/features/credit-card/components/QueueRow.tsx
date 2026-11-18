@@ -442,7 +442,11 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
               : t('review.postedManually')
             : row.reviewed_by_name
               ? t('review.postedBy', { name: row.reviewed_by_name })
-              : t('review.postedAutomatically')}
+              : // A person decided, but retention blanked the name after 90 days (email and
+                // PMS alike, decision-log #63). `reviewed_at` stays, and only a person writes it.
+                row.reviewed_at
+                ? t('review.postedAfterReview')
+                : t('review.postedAutomatically')}
         {/* The JV posted but its VAT record did not — the document is done either way,
             so this is a note, not a failure. The server's reason when it has one (an email
             filing that was refused says why); otherwise the plain fact, in the reader's
