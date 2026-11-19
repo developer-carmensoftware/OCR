@@ -41,7 +41,7 @@ Every meaningful change is logged in [`changelog/`](changelog/), **one file per 
 - Group by area (Backend / Frontend / DB / Infra) when useful; one terse bullet per change, link the commit hash once it exists.
 - Put **uncommitted / in-progress** work in its own section so it's clear what hasn't shipped.
 - See [changelog/README.md](changelog/README.md) for the full convention.
-- **User-visible changes also need a release note** in [`frontend/src/shared/content/releaseNotes.ts`](frontend/src/shared/content/releaseNotes.ts) (2-4 bullets, EN + TH, keyed by date) — that file is what users read in the notification bell. Internal work gets a changelog entry only.
+- **User-visible changes feed the monthly release note** in [`frontend/src/shared/content/releaseNotes.ts`](frontend/src/shared/content/releaseNotes.ts) — what users read in the bell's Changelog dialog. One entry per month (a month with nothing user-visible gets none), sections New Features / Enhancements, every bullet `Name (Module): description`, EN + TH. A PR between monthly cuts parks its user-visible bullets in that day's changelog for the cut; internal work gets a changelog entry only.
 - **CI enforces this**: the `changelog-check` job fails any PR that touches no `changelog/` file (escape hatch: `skip-changelog` label). Add/update today's entry **in the same commit/branch as the change, before opening the PR** — don't wait for CI to fail first.
 
 ---
@@ -69,8 +69,9 @@ Refactors, CI, and dependency bumps bump **nothing** — same rule `releaseNotes
 with no version bump hits the existing tag and simply skips the release; that is the intended path,
 not a failure.
 
-Releasing = edit `VERSION` **and** add the matching `version:` to the newest `releaseNotes.ts`
-entry, in the same commit. `releaseNotes.test.ts` fails if they disagree. Dates keep their own
+Releasing = edit `VERSION` **and** add that month's `releaseNotes.ts` entry with the matching
+`version:`, in the same commit — at most one release a month (`releaseNotes.test.ts` enforces one
+entry per calendar month). `releaseNotes.test.ts` fails if they disagree. Dates keep their own
 jobs: `changelog/YYYY-MM-DD.md` filenames and the release-note identity/seen-key — a date is never
 a version.
 

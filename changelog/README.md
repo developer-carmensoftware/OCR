@@ -18,16 +18,19 @@ Human-readable log of what changed, **one file per day** (`YYYY-MM-DD.md`), newe
 ## User-facing release notes
 
 This file is an **engineering** log — file paths, function names, English only. It is not what
-users read. When a change is visible to a user, also add an entry to
-[`frontend/src/content/releaseNotes.ts`](../frontend/src/content/releaseNotes.ts), which renders in
-the in-app notification bell.
+users read. User-visible changes are collected into a **monthly** entry in
+[`frontend/src/shared/content/releaseNotes.ts`](../frontend/src/shared/content/releaseNotes.ts), shown
+in the Changelog dialog the notification bell opens.
 
 - **Not every deploy gets one.** Refactors, CI fixes and dependency bumps get a changelog line here
   and nothing there. That restraint is what keeps the cost near zero.
-- **2-4 bullets, one line each**, describing what the user can now do or will now see.
+- **One entry per month, at most.** A PR between monthly cuts lists its user-visible bullets in its
+  changelog file ("pending for the <month> release note"); the cut turns them into the entry. A
+  month with nothing user-visible gets no entry.
+- **New Features / Enhancements, each bullet `Name (Module): description`**, Module as the screen
+  names it (AI JV Automation, AP Invoice Processing, Plans & Credits). Fixes go under Enhancements.
 - **Both EN and TH.** TypeScript will not compile with one missing.
-- **The date is the identity** and matches this folder's file for that day. One entry per date —
-  ship twice in a day and you edit that day's entry.
+- **The release date is the identity** (the notification bell's seen-key).
 - **The version is a separate job from the date.** An entry's `version:` must equal the repo-root
   [`VERSION`](../VERSION) file in the same commit — `releaseNotes.test.ts` fails the PR if they
   disagree, and `deploy.yml` cuts the GitHub Release tag as `v$(cat VERSION)`. A date is never a
