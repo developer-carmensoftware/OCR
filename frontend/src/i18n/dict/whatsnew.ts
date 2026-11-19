@@ -1,25 +1,26 @@
 export const en = {
-  // What's New — release history page (#/whats-new), entered from the bell.
+  // Changelog dialog, opened from the bell's release row (ReleaseNotesDialog).
   // The release copy itself is data in shared/content/releaseNotes.ts, not keys.
-  'whatsnew.title': "What's new",
-  'whatsnew.subtitle': 'Updates to Carmen AI Automation, newest first.',
+  'whatsnew.title': 'Changelog',
+  'whatsnew.bellRow': "What's new in {version}",
+  'whatsnew.releaseDate': 'Release date {date}',
   'whatsnew.new': 'New',
   'whatsnew.empty': 'No updates to show yet.',
-  // Not plain "New" — that is the unread tag, and two different "New"s on the
-  // same entry read as one thing.
-  'whatsnew.cat.features': 'New features',
-  'whatsnew.cat.fixes': 'Fixed',
-  'whatsnew.cat.qol': 'Improved',
-  'whatsnew.before': 'Before',
+  'whatsnew.close': 'Close',
+  // A baseline release (0.1.0) sums up the product: "New" would claim old features arrived that day.
+  'whatsnew.cat.keyFeatures': 'Key Features',
+  'whatsnew.cat.features': 'New Features',
+  'whatsnew.cat.enhancements': 'Enhancements',
 } as const
 
 export const th: Record<keyof typeof en, string> = {
-  'whatsnew.title': 'มีอะไรใหม่',
-  'whatsnew.subtitle': 'การอัปเดตของ Carmen AI Automation เรียงจากล่าสุด',
+  'whatsnew.title': 'บันทึกการอัปเดต',
+  'whatsnew.bellRow': 'มีอะไรใหม่ในเวอร์ชัน {version}',
+  'whatsnew.releaseDate': 'วันที่เผยแพร่ {date}',
   'whatsnew.new': 'ใหม่',
   'whatsnew.empty': 'ยังไม่มีการอัปเดตที่จะแสดง',
+  'whatsnew.close': 'ปิด',
+  'whatsnew.cat.keyFeatures': 'ฟีเจอร์หลัก',
   'whatsnew.cat.features': 'ฟีเจอร์ใหม่',
-  'whatsnew.cat.fixes': 'แก้ไขข้อผิดพลาด',
-  'whatsnew.cat.qol': 'ปรับปรุงการใช้งาน',
-  'whatsnew.before': 'ก่อนหน้านี้',
+  'whatsnew.cat.enhancements': 'การปรับปรุง',
 }

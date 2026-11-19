@@ -330,28 +330,3 @@
   border-radius: var(--radius-sm);
   overflow-wrap: anywhere;
 }
-
-/* ── Release notes — the one row that leads somewhere ── */
-
-/* Points right, not down: this row navigates to #/whats-new rather than
-   disclosing content in place. */
-.notif-bell__go {
-  flex-shrink: 0;
-  align-self: center;
-  color: var(--text-4);
-  transition: transform 150ms var(--ease-out-premium);
-}
-
-.notif-bell__item:hover .notif-bell__go {
-  transform: translateX(2px);
-  color: var(--text-3);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .notif-bell__go {
-    transition: none;
-  }
-  .notif-bell__item:hover .notif-bell__go {
-    transform: none;
-  }
-}

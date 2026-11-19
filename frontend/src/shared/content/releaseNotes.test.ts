@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { RELEASE_NOTES, LATEST_RELEASE } from './releaseNotes'
+import { RELEASE_NOTES, LATEST_RELEASE, type ReleaseNoteCopy } from './releaseNotes'
+
+const bulletsOf = (c: ReleaseNoteCopy) => [
+  ...(c.keyFeatures ?? []),
+  ...(c.features ?? []),
+  ...(c.enhancements ?? []),
+]
+const allText = (r: (typeof RELEASE_NOTES)[number]) => [...bulletsOf(r.en), ...bulletsOf(r.th)]
+/** The `Name (Module): ` lead-in every bullet opens with. */
+const LABEL = /^[^():]+ \([^()]+\): (?=\S)/
 
 // The bell's unread tracking is a lexicographic date compare against one stored
 // string, so a malformed, duplicated, or out-of-order date breaks it SILENTLY
@@ -13,9 +22,12 @@ describe('release notes', () => {
     }
   })
 
-  it('dates are unique — the date is the identity', () => {
-    const dates = RELEASE_NOTES.map(r => r.date)
-    expect(new Set(dates).size).toBe(dates.length)
+  // Monthly cadence: a second release in a month waits for the next month's entry. The
+  // date stays the identity (and unique by implication), so the seen-mark logic never
+  // has to know.
+  it('has at most one entry per calendar month', () => {
+    const months = RELEASE_NOTES.map(r => r.date.slice(0, 7))
+    expect(new Set(months).size).toBe(months.length)
   })
 
   it('is sorted newest first', () => {
@@ -26,27 +38,17 @@ describe('release notes', () => {
   it('has non-empty EN and TH copy for every entry', () => {
     for (const r of RELEASE_NOTES) {
       for (const copy of [r.en, r.th]) {
-        expect(copy.title.trim()).not.toBe('')
-        const bullets = [
-          ...(copy.features ?? []),
-          ...(copy.qol ?? []),
-          ...(copy.fixes ?? []).map(f => f.text),
-        ]
+        const bullets = bulletsOf(copy)
         expect(bullets.length).toBeGreaterThan(0)
         expect(bullets.every(b => b.trim() !== '')).toBe(true)
       }
     }
   })
 
-  // The type makes `before` required, so an omission cannot compile. This catches
-  // the version that does compile: an empty string to shut the compiler up.
-  it('every fix says what it was like before', () => {
+  // Carmen's changelog shape: the reader scans the names, then reads the line they want.
+  it('every bullet reads "Name (Module): description"', () => {
     for (const r of RELEASE_NOTES) {
-      for (const copy of [r.en, r.th]) {
-        for (const fix of copy.fixes ?? []) {
-          expect(fix.before.trim()).not.toBe('')
-        }
-      }
+      for (const b of allText(r)) expect(b).toMatch(LABEL)
     }
   })
 
@@ -54,9 +56,9 @@ describe('release notes', () => {
   // list than the English one. TS only enforces that both languages exist.
   it('EN and TH have the same number of bullets in each category', () => {
     for (const r of RELEASE_NOTES) {
+      expect(r.th.keyFeatures?.length ?? 0).toBe(r.en.keyFeatures?.length ?? 0)
       expect(r.th.features?.length ?? 0).toBe(r.en.features?.length ?? 0)
-      expect(r.th.fixes?.length ?? 0).toBe(r.en.fixes?.length ?? 0)
-      expect(r.th.qol?.length ?? 0).toBe(r.en.qol?.length ?? 0)
+      expect(r.th.enhancements?.length ?? 0).toBe(r.en.enhancements?.length ?? 0)
     }
   })
 
@@ -79,17 +81,6 @@ describe('release notes', () => {
   // The note is read by a Thai accounting clerk and an English reader, so a number
   // or a product name that exists in only one language is a wrong fact, not a
   // style issue. These are cheap, mechanical checks; they do not replace reading it.
-  const bulletsOf = (c: { features?: string[]; qol?: string[]; fixes?: { text: string }[] }) => [
-    ...(c.features ?? []),
-    ...(c.qol ?? []),
-    ...(c.fixes ?? []).map(f => f.text),
-  ]
-  const allText = (r: (typeof RELEASE_NOTES)[number]) => [
-    r.en.title,
-    r.th.title,
-    ...bulletsOf(r.en),
-    ...bulletsOf(r.th),
-  ]
 
   it('no copy has stray spaces, empty strings or unbalanced brackets and quotes', () => {
     for (const r of RELEASE_NOTES) {
@@ -128,6 +119,9 @@ describe('release notes', () => {
       'VAT',
       'AP',
       'Lite',
+      'Starter',
+      'Growth',
+      'Professional',
       'AI JV Automation',
       'Post without review',
     ]
@@ -149,13 +143,12 @@ describe('release notes', () => {
   })
 
   // One idea per bullet. The caps are loose on purpose; they stop a bullet from quietly
-  // growing into a paragraph, not from being a full sentence.
-  it('titles and bullets stay readable in length', () => {
+  // growing into a paragraph, not from being a full sentence. Measured after the label.
+  it('bullets stay readable in length', () => {
+    const desc = (b: string) => b.replace(LABEL, '')
     for (const r of RELEASE_NOTES) {
-      expect(r.en.title.length).toBeLessThanOrEqual(70)
-      expect(r.th.title.length).toBeLessThanOrEqual(90)
-      for (const b of bulletsOf(r.en)) expect(b.split(/\s+/).length).toBeLessThanOrEqual(55)
-      for (const b of bulletsOf(r.th)) expect(b.length).toBeLessThanOrEqual(260)
+      for (const b of bulletsOf(r.en)) expect(desc(b).split(/\s+/).length).toBeLessThanOrEqual(55)
+      for (const b of bulletsOf(r.th)) expect(desc(b).length).toBeLessThanOrEqual(260)
     }
   })
 
@@ -169,11 +162,12 @@ describe('release notes', () => {
   })
 
   // Thai keeps English only where the screen does (JV, AP, PMS, KBANK, CSV, VAT,
-  // settlement, gateway, the quoted switch label). Everything else has a Thai word.
+  // settlement, gateway, module names, the quoted switch label). Everything else has a
+  // Thai word.
   it('Thai does not fall back to translatable English words', () => {
     for (const r of RELEASE_NOTES) {
-      for (const t of [r.th.title, ...bulletsOf(r.th)]) {
-        const stripped = t.replace('AP Invoice Processing', '').replace('Post without review', '')
+      for (const t of bulletsOf(r.th)) {
+        const stripped = t.replace(/AP Invoice Processing|Post without review/g, '')
         expect(stripped).not.toMatch(
           /\b(journal|voucher|invoice|statement|input tax|credit|plan)\b/i
         )

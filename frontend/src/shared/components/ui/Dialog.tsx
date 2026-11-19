@@ -1,5 +1,6 @@
 import { useId, useRef, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
+import { X } from 'lucide-react'
 import { useDialogFocus } from '@/shared/hooks/useDialogFocus'
 import { useScrollLock } from '@/shared/hooks/useScrollLock'
 
@@ -16,8 +17,10 @@ interface DialogProps {
   initialFocus?: () => HTMLElement | null
   /** Focus target on close instead of the opener (see useDialogFocus). */
   returnFocus?: () => HTMLElement | null
-  /** Accessible name for the backdrop button. */
+  /** Accessible name for the backdrop button (and the X, when `closable`). */
   closeLabel?: string
+  /** An X in the header that calls `onDismiss` — for a read-only dialog with no footer. */
+  closable?: boolean
   /** The dialog box, e.g. to refocus it after a refused save disabled the focused button. */
   ref?: RefObject<HTMLDivElement | null>
   className?: string
@@ -39,6 +42,7 @@ export default function Dialog({
   initialFocus,
   returnFocus,
   closeLabel = 'Close',
+  closable = false,
   ref,
   className,
 }: DialogProps) {
@@ -70,6 +74,16 @@ export default function Dialog({
           <h2 id={titleId} className="ui-dialog__title">
             {title}
           </h2>
+          {closable && onDismiss && (
+            <button
+              type="button"
+              className="ui-dialog__close"
+              aria-label={closeLabel}
+              onClick={onDismiss}
+            >
+              <X size={18} strokeWidth={2} aria-hidden="true" />
+            </button>
+          )}
         </header>
         <div className="ui-dialog__body">
           {error && (

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { LanguageProvider } from '@/i18n/LanguageContext'
 import type { BellItem } from '@/shared/api/notifications'
 
@@ -21,10 +21,7 @@ const releaseRow: BellItem = {
   id: 'release:2026-07-20',
   order_id: null,
   type: 'release_note',
-  payload: {
-    en: { title: 'Maintenance notices', items: ['Updates appear here.'] },
-    th: { title: 'แจ้งเตือนการปิดปรับปรุง', items: ['การอัปเดตจะแสดงที่นี่'] },
-  },
+  payload: { version: '0.1.0' },
   read_at: null,
   created_at: '2026-07-20T00:00:00+07:00',
 }
@@ -84,31 +81,34 @@ beforeEach(() => {
 })
 
 describe('NotificationBell — release notes', () => {
-  it('shows the release title as a row', () => {
+  it('names the newest version as a row', () => {
     openPanel()
-    expect(screen.getByText('Maintenance notices')).toBeInTheDocument()
+    expect(screen.getByText("What's new in 0.1.0")).toBeInTheDocument()
   })
 
-  it('opens the What’s New page and closes the panel', () => {
+  it('opens the Changelog dialog in place and closes the panel', () => {
     openPanel()
-    fireEvent.click(screen.getByText('Maintenance notices'))
-    expect(window.location.hash).toBe('#/whats-new')
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText("What's new in 0.1.0"))
+    expect(window.location.hash).toBe('#/apinvoice')
+    expect(screen.getByRole('dialog', { name: 'Changelog' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /notification/i })).not.toBeInTheDocument()
   })
 
-  it('stashes where it came from for the page back button', () => {
+  it('closes the dialog from its X', () => {
     openPanel()
-    fireEvent.click(screen.getByText('Maintenance notices'))
-    expect(sessionStorage.getItem('whatsnew:returnTo')).toBe('#/apinvoice')
+    fireEvent.click(screen.getByText("What's new in 0.1.0"))
+    const dialog = screen.getByRole('dialog', { name: 'Changelog' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog', { name: 'Changelog' })).not.toBeInTheDocument()
   })
 
-  it('does not mark read on click — the page clears the mark on mount', () => {
+  it('does not mark read on click — the dialog clears the mark on mount', () => {
     openPanel()
-    fireEvent.click(screen.getByText('Maintenance notices'))
+    fireEvent.click(screen.getByText("What's new in 0.1.0"))
     expect(markRead).not.toHaveBeenCalled()
   })
 
-  it('renders the row title in Thai when the language is th', () => {
+  it('renders the row in Thai when the language is th', () => {
     localStorage.setItem('lang', 'th')
     render(
       <LanguageProvider>
@@ -116,8 +116,8 @@ describe('NotificationBell — release notes', () => {
       </LanguageProvider>
     )
     fireEvent.click(screen.getByRole('button', { name: /การแจ้งเตือน/ }))
-    expect(screen.getByText('แจ้งเตือนการปิดปรับปรุง')).toBeInTheDocument()
-    expect(screen.queryByText('Maintenance notices')).not.toBeInTheDocument()
+    expect(screen.getByText('มีอะไรใหม่ในเวอร์ชัน 0.1.0')).toBeInTheDocument()
+    expect(screen.queryByText("What's new in 0.1.0")).not.toBeInTheDocument()
   })
 
   it('leaves order notifications navigating to their order', () => {

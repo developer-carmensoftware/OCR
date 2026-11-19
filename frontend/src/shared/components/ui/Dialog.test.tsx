@@ -53,6 +53,24 @@ describe('Dialog', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
+  it('has no X unless closable, and the X dismisses', () => {
+    const onDismiss = vi.fn()
+    const { rerender } = render(
+      <Dialog title="Changelog" onDismiss={onDismiss}>
+        <p>body</p>
+      </Dialog>
+    )
+    const box = () => screen.getByRole('dialog')
+    expect(box().querySelector('.ui-dialog__close')).toBeNull()
+    rerender(
+      <Dialog title="Changelog" onDismiss={onDismiss} closable>
+        <p>body</p>
+      </Dialog>
+    )
+    fireEvent.click(box().querySelector('.ui-dialog__close')!)
+    expect(onDismiss).toHaveBeenCalledOnce()
+  })
+
   it('keeps Tab inside the box', () => {
     render(<Harness onDismiss={vi.fn()} />)
     fireEvent.click(screen.getByText('Open'))
