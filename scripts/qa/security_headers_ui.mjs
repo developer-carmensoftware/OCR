@@ -17,7 +17,8 @@
 //
 // Screens: Home, the queue, a review dialog (if BU carmen has a pending document), the manual
 // scan with a PDF preview (blob: iframe), AP invoice with a PDF preview, mapping, email
-// settings, pricing → checkout form (no order created), order history, what's new, and the
+// settings, pricing → checkout form (no order created), order history, the Changelog dialog the
+// bell opens, and the
 // admin dashboard's read-only pages (a read-only admin token minted from backend/.env).
 //
 // Env: PLAYWRIGHT_CORE, CHROME_EXE [as review_payload_ui.mjs], APP_URL [http://localhost:3011],
@@ -169,7 +170,16 @@ async function main() {
     await page.waitForTimeout(2000)
   })
   await visit('order-history', '#/pricing/orders')
-  await visit('whats-new', '#/whats-new')
+  // The release notes moved from their own page (deleted) into a dialog the bell opens.
+  let changelogShown = false
+  // From the queue: AP invoice would greet this visit with the draft its upload above left.
+  await visit('changelog', '#/CreditCardOCR', async () => {
+    await page.locator('.notif-bell__trigger').first().click()
+    await page.locator('.notif-bell__item').first().click()
+    changelogShown = await page.locator('.relnotes-entry').first()
+      .waitFor({ timeout: 15000 }).then(() => true, () => false)
+  })
+  check('H-2', 'the Changelog dialog was on screen when swept', changelogShown)
 
   // The admin auth context reads its token once, when the app loads — so a full reload, not
   // a hash change, after putting it there.
