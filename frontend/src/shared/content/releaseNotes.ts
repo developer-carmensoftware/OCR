@@ -52,7 +52,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
         'KBANK Settlement Reports (AI JV Automation): KBANK settlement reports are read, checked against the CSV file that comes with them, and posted as one settlement JV that clears your card receivables.',
         'Input Tax Filing (AI JV Automation): Input tax is filed together with each JV, and you can file it late, with corrections, from the same queue.',
         'PMS Daily Revenue (AI JV Automation): Daily revenue from your PMS (property management system) arrives in the same queue. Map any new rows to accounts, approve the day, and Carmen posts it. It works with the PMSs connected to Carmen.',
-        'Monthly Plans and Top-ups (Plans & Credits): Start free with your first 30 documents. Then choose a monthly plan (Lite is 100 documents a month for 290 baht) or top up credits (100 credits for 450 baht, never expiring) in Plans & Credits. AP invoices are charged 1 credit per page read.',
+        'Monthly Plans and Top-ups (Plans & Credits): Start free with your first 30 documents. Then choose a monthly plan, Lite, Starter, Growth or Professional (from 290 baht for 100 documents a month), or top up credits that never expire (from 450 baht for 100 credits). AP invoices are charged 1 credit per page read.',
       ],
     },
     th: {
@@ -63,7 +63,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
         'รายงาน settlement ของ KBANK (AI JV Automation): รายงาน settlement ของ KBANK ถูกอ่าน ตรวจเทียบกับไฟล์ CSV ที่มาด้วยกัน แล้วโพสต์เป็น JV เดียวที่ตัดบัญชีลูกหนี้บัตรเครดิต',
         'การยื่นภาษีซื้อ (AI JV Automation): ภาษีซื้อถูกยื่นพร้อมกับ JV แต่ละใบ และยื่นย้อนหลังพร้อมแก้ไขได้จากคิวเดียวกัน',
         'รายได้รายวันจาก PMS (AI JV Automation): รายได้รายวันจาก PMS แสดงในคิวเดียวกัน ให้จับคู่บัญชีกับแถวใหม่ อนุมัติทั้งวัน แล้ว Carmen จะโพสต์ให้ ใช้ได้กับ PMS ที่เชื่อมต่อกับ Carmen',
-        'แพ็กเกจรายเดือนและการเติมเครดิต (Plans & Credits): เริ่มใช้ฟรี 30 เอกสารแรก แล้วเลือกแพ็กเกจรายเดือน (Lite 100 เอกสารต่อเดือน 290 บาท) หรือเติมเครดิต (100 เครดิต 450 บาท ไม่มีวันหมดอายุ) ได้ที่หน้าแพ็กเกจและเครดิต ใบแจ้งหนี้ AP คิด 1 เครดิตต่อหน้าที่อ่าน',
+        'แพ็กเกจรายเดือนและการเติมเครดิต (Plans & Credits): เริ่มใช้ฟรี 30 เอกสารแรก แล้วเลือกแพ็กเกจรายเดือน Lite, Starter, Growth หรือ Professional (เริ่มต้น 290 บาท ได้ 100 เอกสารต่อเดือน) หรือเติมเครดิตที่ไม่มีวันหมดอายุ (เริ่มต้น 450 บาท ได้ 100 เครดิต) ใบแจ้งหนี้ AP คิด 1 เครดิตต่อหน้าที่อ่าน',
       ],
     },
   },

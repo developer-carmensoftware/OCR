@@ -114,6 +114,9 @@ describe('release notes', () => {
       'VAT',
       'AP',
       'Lite',
+      'Starter',
+      'Growth',
+      'Professional',
       'AI JV Automation',
       'Post without review',
     ]
