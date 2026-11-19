@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { RELEASE_NOTES, LATEST_RELEASE, type ReleaseNoteCopy } from './releaseNotes'
 
-const bulletsOf = (c: ReleaseNoteCopy) => [...(c.features ?? []), ...(c.enhancements ?? [])]
+const bulletsOf = (c: ReleaseNoteCopy) => [
+  ...(c.keyFeatures ?? []),
+  ...(c.features ?? []),
+  ...(c.enhancements ?? []),
+]
 const allText = (r: (typeof RELEASE_NOTES)[number]) => [...bulletsOf(r.en), ...bulletsOf(r.th)]
 /** The `Name (Module): ` lead-in every bullet opens with. */
 const LABEL = /^[^():]+ \([^()]+\): (?=\S)/
@@ -52,6 +56,7 @@ describe('release notes', () => {
   // list than the English one. TS only enforces that both languages exist.
   it('EN and TH have the same number of bullets in each category', () => {
     for (const r of RELEASE_NOTES) {
+      expect(r.th.keyFeatures?.length ?? 0).toBe(r.en.keyFeatures?.length ?? 0)
       expect(r.th.features?.length ?? 0).toBe(r.en.features?.length ?? 0)
       expect(r.th.enhancements?.length ?? 0).toBe(r.en.enhancements?.length ?? 0)
     }

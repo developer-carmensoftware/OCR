@@ -16,7 +16,9 @@
  *   1. Only if a USER can see the difference. Refactors, CI, and dependency
  *      bumps get a changelog line and nothing here.
  *   2. `features` = something they could not do at all before; `enhancements` = everything
- *      else they will notice, fixes included. Empty sections are omitted.
+ *      else they will notice, fixes included. Empty sections are omitted. `keyFeatures` is
+ *      for a baseline release that sums up what the product does (0.1.0): "new" would claim
+ *      that capabilities users already had arrived that day.
  *   3. Every bullet reads `Name (Module): description`, Module as the screen names it
  *      (AI JV Automation, AP Invoice Processing, Plans & Credits).
  *   4. Both languages. TS will not compile with one missing.
@@ -25,6 +27,8 @@
  */
 
 export interface ReleaseNoteCopy {
+  /** What the product does, for a baseline release (rendered first, as "Key Features"). */
+  keyFeatures?: string[]
   /** Something they could not do at all before. */
   features?: string[]
   /** Worked before, now better or fixed. */
@@ -45,7 +49,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-05',
     version: '0.1.0',
     en: {
-      features: [
+      keyFeatures: [
         'Card Statements and Fee Invoices (AI JV Automation): AI reads credit card statements and gateway fee invoices from eight issuers and payment gateways: Bangkok Bank, Kasikornbank, SCB, Krungsri, KTC, GHL, PayPal and SiamPay. It suggests the GL accounts and posts the journal voucher (JV) to Carmen.',
         'Vendor Invoices (AP Invoice Processing): AP Invoice Processing reads vendor invoices, checks the VAT type, discounts and line amounts against the document totals, suggests the GL accounts, and posts the invoice to Carmen.',
         'Email Queue (AI JV Automation): Forward bank emails to the address shown in your AI JV Automation settings and the documents wait in the queue, already read. Check one, fix the account mapping, and press Approve and post. Switch on "Post without review" to let documents with nothing to check post on their own.',
@@ -56,7 +60,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       ],
     },
     th: {
-      features: [
+      keyFeatures: [
         'ใบแจ้งยอดบัตรและค่าธรรมเนียม (AI JV Automation): AI อ่านใบแจ้งยอดบัตรเครดิตและใบแจ้งค่าธรรมเนียมจากผู้ออกบัตรและ payment gateway 8 ราย ได้แก่ ธนาคารกรุงเทพ กสิกรไทย ไทยพาณิชย์ กรุงศรี KTC GHL PayPal และ SiamPay แนะนำรหัสบัญชี และโพสต์ใบสำคัญรายวัน (JV) เข้า Carmen',
         'ใบแจ้งหนี้ผู้ขาย (AP Invoice Processing): AP Invoice Processing อ่านใบแจ้งหนี้ผู้ขาย ตรวจประเภท VAT ส่วนลด และยอดรายบรรทัดเทียบกับยอดรวมในเอกสาร แนะนำรหัสบัญชี แล้วโพสต์ใบแจ้งหนี้เข้า Carmen',
         'คิวอีเมล (AI JV Automation): ส่งต่ออีเมลจากธนาคารไปยังที่อยู่อีเมลที่แสดงในการตั้งค่า AI JV Automation เอกสารจะถูกอ่านแล้วรออยู่ในคิว ให้ตรวจ แก้การจับคู่บัญชี แล้วกด "อนุมัติและโพสต์" ถ้าเปิดสวิตช์ "Post without review" เอกสารที่ไม่มีอะไรต้องตรวจจะโพสต์เอง',

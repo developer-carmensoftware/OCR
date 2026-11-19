@@ -20,7 +20,7 @@
 // D-1 the panel closes and a dialog named "Changelog" opens; the URL does not change
 // D-2 one entry per release in releaseNotes.ts, newest first; the first pill is VERSION
 // D-3 each entry's date line is "Release date DD/MM/YYYY"
-// D-4 only "New Features" then "Enhancements", none empty, bullet counts as in the file
+// D-4 sections in order Key Features, New Features, Enhancements, none empty, counts as in the file
 // D-5 every bullet reads "Name (Module): description"
 // D-6 the New tag: every entry for a fresh reader, only the newest after an older one was seen
 // D-7 the page behind is scroll-locked while open and unlocked after
@@ -83,8 +83,8 @@ const NEWEST = RELEASE_NOTES[0]
 const dmy = iso => iso.split('-').reverse().join('/')
 const LABEL = /^[^():]+ \([^()]+\): \S/
 const SECTIONS = {
-  en: [['features', 'New Features'], ['enhancements', 'Enhancements']],
-  th: [['features', 'ฟีเจอร์ใหม่'], ['enhancements', 'การปรับปรุง']],
+  en: [['keyFeatures', 'Key Features'], ['features', 'New Features'], ['enhancements', 'Enhancements']],
+  th: [['keyFeatures', 'ฟีเจอร์หลัก'], ['features', 'ฟีเจอร์ใหม่'], ['enhancements', 'การปรับปรุง']],
 }
 /** What releaseNotes.ts says one entry should render: [[label, bulletCount], …]. */
 const expectedSections = (r, lang) =>

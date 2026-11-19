@@ -15,9 +15,9 @@ vi.mock('@/shared/content/releaseNotes', () => ({
     {
       date: '2026-06-10',
       version: '1.0.0',
-      // Only one category — the other section must not render at all.
-      en: { enhancements: ['Fix B (AP): b1'] },
-      th: { enhancements: ['แก้ ข (AP): ข1'] },
+      // A baseline entry: Key Features, no New Features — that section must not render.
+      en: { keyFeatures: ['Core B (AP): k1'], enhancements: ['Fix B (AP): b1'] },
+      th: { keyFeatures: ['หลัก ข (AP): ข0'], enhancements: ['แก้ ข (AP): ข1'] },
     },
   ],
   LATEST_RELEASE: '2026-07-20',
@@ -54,10 +54,11 @@ describe('ReleaseNotesDialog', () => {
     expect(screen.getByText('Release date 10/06/2026')).toBeInTheDocument()
   })
 
-  it('groups bullets under New Features and Enhancements, omitting empty ones', () => {
+  it('groups bullets by section, Key Features first, omitting empty ones', () => {
     render(<ReleaseNotesDialog onClose={onClose} />)
     const labels = screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent)
-    expect(labels).toEqual(['New Features', 'Enhancements', 'Enhancements'])
+    expect(labels).toEqual(['New Features', 'Enhancements', 'Key Features', 'Enhancements'])
+    expect(screen.getByText('Core B (AP): k1')).toBeInTheDocument()
   })
 
   it('clears the seen mark on mount — opening it is reading them', () => {
@@ -97,6 +98,7 @@ describe('ReleaseNotesDialog', () => {
     expect(screen.getByRole('dialog', { name: 'บันทึกการอัปเดต' })).toBeInTheDocument()
     expect(screen.getByText('ฟีเจอร์ ก (AI JV Automation): ก1')).toBeInTheDocument()
     expect(screen.getByText('วันที่เผยแพร่ 20/07/2026')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'ฟีเจอร์หลัก' })).toBeInTheDocument()
     expect(screen.queryByText('Feature A (AI JV Automation): a1')).not.toBeInTheDocument()
   })
 })

@@ -7,6 +7,7 @@ import { formatDate } from '@/shared/lib/date'
 import '@/styles/components/release-notes.css'
 
 const SECTIONS = [
+  ['keyFeatures', 'whatsnew.cat.keyFeatures'],
   ['features', 'whatsnew.cat.features'],
   ['enhancements', 'whatsnew.cat.enhancements'],
 ] as const
