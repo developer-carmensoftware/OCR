@@ -19,8 +19,8 @@ const RELEASE_ID_PREFIX = 'release:'
 /**
  * The newest release note as a single bell row, or nothing if the list is empty.
  *
- * ponytail: one row, not a backlog. The row is a doorway to #/whats-new, which
- * lists every release — three doorways to the same page would just be clutter.
+ * ponytail: one row, not a backlog. The row opens the Changelog dialog, which lists
+ * every release — three doorways to the same list would just be clutter.
  */
 function releaseRow(seen: string): BellItem[] {
   const latest = RELEASE_NOTES[0]
@@ -30,7 +30,8 @@ function releaseRow(seen: string): BellItem[] {
       id: `${RELEASE_ID_PREFIX}${latest.date}`,
       order_id: null,
       type: 'release_note',
-      payload: { en: latest.en, th: latest.th },
+      // The row only names the version; the dialog it opens reads RELEASE_NOTES itself.
+      payload: { version: latest.version },
       read_at: latest.date > seen ? null : latest.date,
       // +07:00, not Z: the dates are hand-written in ICT, and tagging them UTC
       // would report a release shipped this morning as 7 hours old.
@@ -79,7 +80,7 @@ export function useNotifications(limit: number) {
     }
   }, [isAuthenticated, refresh])
 
-  // The What's New page clears the mark on mount; this is how the badge behind it
+  // The Changelog dialog clears the mark on mount; this is how the badge behind it
   // finds out without a poll.
   useEffect(() => {
     const sync = () => setSeen(readReleaseSeen())

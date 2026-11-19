@@ -1,0 +1,99 @@
+/* ═══════════════════════════════════════════
+   CHANGELOG — ReleaseNotesDialog, inside the shared .ui-dialog shell.
+   Laid out like Carmen's own changelog: a filled version pill, the release date, then
+   New Features / Enhancements. Entries are separated by a hairline, not boxed into cards:
+   the content is a chronology, and card chrome would make releases look like offers.
+   ═══════════════════════════════════════════ */
+
+.relnotes-empty {
+  margin: 0;
+  color: var(--text-3);
+}
+
+.relnotes-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.relnotes-entry {
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.relnotes-entry:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.relnotes-entry:last-child {
+  padding-bottom: 0;
+}
+
+.relnotes-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Body font, not mono: at pill size the mono's slashed zeros read as code. Tabular figures
+   keep the digits aligned down the list. */
+.relnotes-version {
+  padding: 0.3rem 0.8rem;
+  border-radius: var(--radius-pill);
+  /* --primary-fill exists in dark only: there --primary is toned down for text and white on it
+     lands at 3.2:1 (base.css, .btn-primary). Light falls back to --primary. */
+  background: var(--primary-fill, var(--primary));
+  color: var(--primary-foreground, #fff);
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.relnotes-date {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.relnotes-tag {
+  padding: 0.14rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.relnotes-cat + .relnotes-cat {
+  margin-top: 1rem;
+}
+
+.relnotes-cat-label {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.relnotes-items {
+  margin: 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+  color: var(--text-2);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.relnotes-items li + li {
+  margin-top: 0.35rem;
+}
+
+.relnotes-items li::marker {
+  color: var(--text-4, var(--text-3));
+}

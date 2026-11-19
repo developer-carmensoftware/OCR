@@ -5,8 +5,8 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 // test is about the merge/seen logic, not about what shipped on any given day.
 vi.mock('@/shared/content/releaseNotes', () => ({
   RELEASE_NOTES: [
-    { date: '2026-07-20', en: { title: 'New', items: ['a'] }, th: { title: 'ใหม่', items: ['ก'] } },
-    { date: '2026-07-10', en: { title: 'Old', items: ['b'] }, th: { title: 'เก่า', items: ['ข'] } },
+    { date: '2026-07-20', version: '1.1.0', en: { features: ['a'] }, th: { features: ['ก'] } },
+    { date: '2026-06-10', version: '1.0.0', en: { features: ['b'] }, th: { features: ['ข'] } },
   ],
   LATEST_RELEASE: '2026-07-20',
 }))
@@ -56,8 +56,9 @@ beforeEach(() => {
 describe('useNotifications — release notes', () => {
   it('surfaces only the newest release, pinned above server notifications', async () => {
     const { result } = await setup()
-    // One doorway to #/whats-new, not one row per release — the page lists the rest.
+    // One doorway to the Changelog dialog, not one row per release — the dialog lists the rest.
     expect(result.current.items.map(i => i.id)).toEqual(['release:2026-07-20', 'uuid-1'])
+    expect(result.current.items[0].payload).toEqual({ version: '1.1.0' })
   })
 
   it('counts the unseen release on top of the server unread count', async () => {
@@ -85,18 +86,18 @@ describe('useNotifications — release notes', () => {
   })
 
   it('a stale seen mark older than the newest release still reads as unseen', async () => {
-    localStorage.setItem('releaseNotesSeen', '2026-07-10')
+    localStorage.setItem('releaseNotesSeen', '2026-06-10')
     const { result } = await setup()
     const newest = result.current.items.find(i => i.id === 'release:2026-07-20')
     expect(newest?.read_at).toBeNull()
     expect(result.current.unreadCount).toBe(2) // 1 server + the newer release
   })
 
-  it('picks up the mark cleared by the What’s New page', async () => {
+  it('picks up the mark cleared by the Changelog dialog', async () => {
     const { result } = await setup()
     expect(result.current.unreadCount).toBe(2)
     await act(async () => {
-      markReleaseSeen('2026-07-20') // what WhatsNew does on mount
+      markReleaseSeen('2026-07-20') // what ReleaseNotesDialog does on mount
     })
     expect(result.current.unreadCount).toBe(1)
   })

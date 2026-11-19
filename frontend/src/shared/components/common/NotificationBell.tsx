@@ -6,7 +6,6 @@ import {
   BellOff,
   CheckCheck,
   CheckCircle2,
-  ChevronRight,
   Clock,
   ClockAlert,
   FileCheck2,
@@ -17,13 +16,12 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useT } from '@/i18n/LanguageContext'
-import type { Lang, TKey } from '@/i18n/dict'
+import type { TKey } from '@/i18n/dict'
 import '@/styles/components/notification-bell.css'
 import { useNotifications } from '@/shared/hooks/notifications'
-import { WHATS_NEW_RETURN_KEY } from '@/shared/lib/releaseNotesSeen'
 import type { BellItem } from '@/shared/api/notifications'
-import type { ReleaseNoteCopy } from '@/shared/content/releaseNotes'
 import NotificationDetailModal from './NotificationDetailModal'
+import ReleaseNotesDialog from './ReleaseNotesDialog'
 import Pager from './Pager'
 import { timeAgo } from '@/shared/lib/orderHelpers'
 
@@ -53,12 +51,6 @@ const TYPE_META: Record<string, { icon: LucideIcon; tone: string }> = {
 }
 
 type TFn = (key: TKey, vars?: Record<string, string | number>) => string
-
-// Release copy is DATA, not i18n keys — it lives in the content file so a dev
-// ships the note in the same PR as the change without touching i18n/dict/.
-function releaseCopy(n: BellItem, lang: Lang): ReleaseNoteCopy {
-  return (n.payload as Record<Lang, ReleaseNoteCopy>)[lang]
-}
 
 // How an email-automation row names its document. The filename is what the
 // customer recognises; a document that failed before extraction has no bank_code
@@ -95,6 +87,8 @@ const REASON_SHORT: Record<string, TKey> = {
 function notifText(n: BellItem, t: TFn): string {
   const p = n.payload as Record<string, unknown>
   switch (n.type) {
+    case 'release_note':
+      return t('whatsnew.bellRow', { version: String(p.version ?? '') })
     case 'approved':
       return t('notif.approved', { credits: String(p.credits ?? '?') })
     case 'rejected':
@@ -132,11 +126,12 @@ function notifText(n: BellItem, t: TFn): string {
 }
 
 export default function NotificationBell() {
-  const { t, lang } = useT()
+  const { t } = useT()
   const limit = PAGE_SIZE
   const { items, unreadCount, offset, total, setOffset, markRead } = useNotifications(limit)
   const [open, setOpen] = useState(false)
   const [detail, setDetail] = useState<BellItem | null>(null)
+  const [showReleases, setShowReleases] = useState(false)
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
   const btnRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -180,11 +175,10 @@ export default function NotificationBell() {
 
   const handleItem = (n: BellItem) => {
     setOpen(false)
-    // Release notes open the full history page, which clears the seen mark on
-    // mount — so no markRead here. Stash where we came from for its back button.
+    // Release notes open the Changelog dialog, which clears the seen mark on mount —
+    // so no markRead here.
     if (n.type === 'release_note') {
-      sessionStorage.setItem(WHATS_NEW_RETURN_KEY, window.location.hash || '#/')
-      window.location.hash = '#/whats-new'
+      setShowReleases(true)
       return
     }
     // Email-automation rows open in place. They carry no order_id, so the order
@@ -267,7 +261,6 @@ export default function NotificationBell() {
                 {items.map(n => {
                   const meta = TYPE_META[n.type] ?? { icon: Bell, tone: 'info' }
                   const Icon = meta.icon
-                  const release = n.type === 'release_note' ? releaseCopy(n, lang) : null
                   return (
                     <li key={n.id}>
                       <button
@@ -279,19 +272,9 @@ export default function NotificationBell() {
                           <Icon size={16} strokeWidth={2} />
                         </span>
                         <span className="notif-bell__body">
-                          <span className="notif-bell__text">
-                            {release ? release.title : notifText(n, t)}
-                          </span>
+                          <span className="notif-bell__text">{notifText(n, t)}</span>
                           <time className="notif-bell__time">{timeAgo(n.created_at, t)}</time>
                         </span>
-                        {release && (
-                          <ChevronRight
-                            className="notif-bell__go"
-                            size={14}
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
-                        )}
                         {!n.read_at && <span className="notif-bell__dot" aria-hidden="true" />}
                       </button>
                     </li>
@@ -307,6 +290,12 @@ export default function NotificationBell() {
         )}
 
       <NotificationDetailModal item={detail} onClose={() => setDetail(null)} />
+      {showReleases && (
+        <ReleaseNotesDialog
+          onClose={() => setShowReleases(false)}
+          returnFocus={() => btnRef.current}
+        />
+      )}
     </div>
   )
 }

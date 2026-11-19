@@ -45,7 +45,6 @@ const Mapping = lazy(() => import('@/features/credit-card/pages/Mapping'))
 const APInvoice = lazy(() => import('@/features/ap-invoice/pages/APInvoice'))
 const Pricing = lazy(() => import('@/features/billing/pages/Pricing'))
 const OrderHistory = lazy(() => import('@/features/billing/pages/OrderHistory'))
-const WhatsNew = lazy(() => import('@/features/home/pages/WhatsNew'))
 const EmailSettings = lazy(() => import('@/features/email-settings/pages/EmailSettings'))
 
 // Admin pages
@@ -137,8 +136,6 @@ function Router() {
     else Page = <ReviewQueue />
   } else if (route.startsWith('apinvoice')) {
     Page = <APInvoice />
-  } else if (route === 'whats-new') {
-    Page = <WhatsNew />
   } else if (route === 'email-settings') {
     // Moved under the module it configures 2026-10-01. Redirect, keeping the query, so a
     // Carmen menu link built against the old path still signs in (`?token=` rides along).
