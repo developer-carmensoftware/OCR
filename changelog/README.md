@@ -27,7 +27,8 @@ in the Changelog dialog the notification bell opens.
 - **One entry per month, at most.** A PR between monthly cuts lists its user-visible bullets in its
   changelog file ("pending for the <month> release note"); the cut turns them into the entry. A
   month with nothing user-visible gets no entry.
-- **New Features / Enhancements, each bullet `Name (Module): description`**, Module as the screen
+- **New Features / Enhancements, each bullet `Name (Module): description`** (a baseline release that
+  sums up the product, like 0.1.0, uses Key Features instead of New Features), Module as the screen
   names it (AI JV Automation, AP Invoice Processing, Plans & Credits). Fixes go under Enhancements.
 - **Both EN and TH.** TypeScript will not compile with one missing.
 - **The release date is the identity** (the notification bell's seen-key).

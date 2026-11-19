@@ -123,7 +123,8 @@ if it fixes a misread, and MINOR if it newly supports a document layout.
 1. Edit [`VERSION`](../VERSION), e.g. `0.1.0` → `0.2.0`.
 2. Add that month's entry, with the matching `version: '0.2.0'`, to
    [`frontend/src/shared/content/releaseNotes.ts`](../frontend/src/shared/content/releaseNotes.ts):
-   New Features / Enhancements, each bullet `Name (Module): description`, EN + TH.
+   New Features / Enhancements (Key Features for a baseline release like 0.1.0), each bullet
+   `Name (Module): description`, EN + TH.
    `releaseNotes.test.ts` fails if the version and VERSION disagree, or a month has two entries.
 3. Add today's [`changelog/YYYY-MM-DD.md`](../changelog/) entry (CI's `changelog-check` requires it, and the release uses it as its notes).
 4. Merge to `main`.
