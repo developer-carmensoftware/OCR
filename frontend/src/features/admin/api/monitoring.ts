@@ -22,6 +22,23 @@ export async function fetchJobs(params: QueryParams = {}) {
   return res.json()
 }
 
+export async function fetchJobsOverview(window: '24h' | '7d' | '30d' = '24h') {
+  const res = await adminFetch(`${API.admin.jobs}/overview?window=${window}`)
+  if (!res.ok) throw new Error('Failed to fetch jobs overview')
+  return res.json()
+}
+
+export async function runJobNow(jobName: string) {
+  const res = await adminFetch(`${API.admin.jobs}/${encodeURIComponent(jobName)}/run`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'Failed to trigger job')
+  }
+  return res.json()
+}
+
 export async function fetchSessions(params: QueryParams = {}) {
   const res = await adminFetch(`${API.admin.sessions}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch sessions')
