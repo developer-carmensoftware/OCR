@@ -647,11 +647,18 @@ body:has(.admin-login-page) {
   background: var(--primary-light);
 }
 
+/* Table default layout fit */
+.admin-card .admin-table {
+  table-layout: auto;
+  width: 100%;
+}
+
 .admin-td {
   padding: 0.65rem 1rem;
   border-bottom: 1px solid var(--border);
   color: var(--text-2);
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
   font-feature-settings: 'tnum';
 }
 
@@ -1969,6 +1976,153 @@ body:has(.admin-login-page) {
   margin: 0;
   color: var(--text-2);
   overflow-wrap: anywhere;
+}
+
+/* ─── JOBS PAGE COMPONENTS ─────────────────────────────────────────────── */
+
+.jobs-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.jobs-category-pill {
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+}
+
+.jobs-category-pill:hover {
+  background: var(--gray-100);
+  color: var(--text);
+  border-color: var(--border-hi);
+}
+
+.jobs-category-pill.active {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary-dark);
+  box-shadow: var(--shadow-xs);
+}
+
+.jobs-window-group {
+  display: inline-flex;
+  background: var(--gray-100);
+  padding: 3px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  gap: 2px;
+}
+
+.jobs-window-pill {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.76rem;
+  font-weight: 500;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+}
+
+.jobs-window-pill:hover {
+  color: var(--text);
+}
+
+.jobs-window-pill.active {
+  background: var(--card-bg);
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+}
+
+[data-theme='dark'] .jobs-category-pill {
+  background: var(--card-bg);
+  color: var(--text-2);
+}
+
+[data-theme='dark'] .jobs-category-pill.active {
+  background: var(--primary-fill, var(--primary));
+  color: #ffffff;
+}
+
+[data-theme='dark'] .jobs-window-group {
+  background: var(--muted);
+}
+
+[data-theme='dark'] .jobs-window-pill.active {
+  background: var(--card-bg);
+  color: var(--primary);
+}
+
+.jobs-cron-tag {
+  display: inline-block;
+  background: var(--gray-100);
+  color: var(--text-2);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 0.78rem;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.jobs-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.65rem;
+  background: var(--primary-light);
+  color: var(--primary);
+  border: 1px solid var(--primary-mid);
+  border-radius: var(--radius-md);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.jobs-filter-badge-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  color: inherit;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.jobs-filter-badge-clear:hover {
+  opacity: 1;
+}
+
+/* Error detail box in JobsPage CustomModal */
+.jobs-error-box {
+  position: relative;
+  background: var(--muted);
+  color: var(--rose-text);
+  border: 1px solid var(--border);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  max-height: 280px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+[data-theme='dark'] .jobs-error-box {
+  background: oklch(0.18 0.01 var(--neutral-h));
+  border-color: var(--rose-mid);
+  color: oklch(0.85 0.1 24.11);
 }
 
 /* Says so when the fetch was capped, rather than letting the queue end silently. */
