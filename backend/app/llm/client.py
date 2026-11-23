@@ -491,6 +491,17 @@ async def call_vision_llm(
         )
 
     if response.usage:
+        # OpenRouter returns response.usage.cost (or in model_extra / dict)
+        cost_val = getattr(response.usage, "cost", None)
+        if (
+            cost_val is None
+            and hasattr(response.usage, "model_extra")
+            and response.usage.model_extra
+        ):
+            cost_val = response.usage.model_extra.get("cost")
+        elif cost_val is None and isinstance(response.usage, dict):
+            cost_val = response.usage.get("cost")
+
         await log_llm_usage(
             model=model,
             prompt_tokens=response.usage.prompt_tokens,
@@ -501,6 +512,7 @@ async def call_vision_llm(
             duration_ms=(time.perf_counter() - start) * 1000,
             count_quota=count_quota,
             call_type="extract",
+            cost_usd=cost_val,
         )
 
     content = (
@@ -596,6 +608,16 @@ async def call_text_llm(
         )
 
     if response.usage:
+        cost_val = getattr(response.usage, "cost", None)
+        if (
+            cost_val is None
+            and hasattr(response.usage, "model_extra")
+            and response.usage.model_extra
+        ):
+            cost_val = response.usage.model_extra.get("cost")
+        elif cost_val is None and isinstance(response.usage, dict):
+            cost_val = response.usage.get("cost")
+
         await log_llm_usage(
             model=target_model,
             prompt_tokens=response.usage.prompt_tokens,
@@ -609,6 +631,7 @@ async def call_text_llm(
             # non-suggestion text call ever lands here, give it its own call_type
             # rather than letting it inherit this one.
             call_type="suggest",
+            cost_usd=cost_val,
         )
 
     content = (

@@ -63,6 +63,39 @@ class TestLogLlmUsage:
         assert isinstance(added, LLMUsageLog)
         assert added.model == "test-model"
 
+    async def test_log_llm_usage_direct_cost_usd(self):
+        """When cost_usd is supplied directly, it bypasses get_pricing and saves verbatim."""
+        from app.services.shared import llm_usage_logger
+
+        set_context("t-001", "bu-001")
+
+        mock_db = AsyncMock()
+        mock_db.add = MagicMock()
+        mock_db.commit = AsyncMock()
+
+        ctx = AsyncMock()
+        ctx.__aenter__.return_value = mock_db
+        ctx.__aexit__.return_value = None
+
+        mock_get_pricing = AsyncMock()
+
+        with (
+            patch.object(llm_usage_logger, "async_session", return_value=ctx),
+            patch("app.services.shared.llm_usage_logger.get_pricing", mock_get_pricing),
+        ):
+            await llm_usage_logger.log_llm_usage(
+                model="test-model",
+                prompt_tokens=100,
+                completion_tokens=50,
+                total_tokens=150,
+                cost_usd=0.000425,
+            )
+
+        mock_db.add.assert_called_once()
+        mock_get_pricing.assert_not_called()
+        added = mock_db.add.call_args[0][0]
+        assert added.cost_usd == Decimal("0.000425")
+
     async def test_B4_6_count_quota_true_is_a_noop(self):
         """count_quota=True is a no-op — a document is charged by consume_document()
         at the router, before the model is ever called."""
