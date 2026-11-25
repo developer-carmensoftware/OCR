@@ -441,7 +441,7 @@ async def call_vision_llm(
     Charging a document is the caller's responsibility (routers call consume_document()).
     """
     from app.context import current_request_id
-    from app.services.shared.llm_usage_logger import log_llm_usage
+    from app.services.shared.llm_usage_logger import schedule_llm_usage
     from app.services.shared.outbound_log import log_outbound
 
     start = time.perf_counter()
@@ -506,7 +506,7 @@ async def call_vision_llm(
         )
 
     if response.usage:
-        await log_llm_usage(
+        schedule_llm_usage(
             model=model,
             prompt_tokens=response.usage.prompt_tokens,
             completion_tokens=response.usage.completion_tokens,
@@ -556,7 +556,7 @@ async def call_text_llm(
     Returns None on any failure (never raises to callers).
     """
     from app.context import current_request_id
-    from app.services.shared.llm_usage_logger import log_llm_usage
+    from app.services.shared.llm_usage_logger import schedule_llm_usage
     from app.services.shared.outbound_log import log_outbound
 
     target_model = model or settings.openrouter_suggestion_model
@@ -612,7 +612,7 @@ async def call_text_llm(
         )
 
     if response.usage:
-        await log_llm_usage(
+        schedule_llm_usage(
             model=target_model,
             prompt_tokens=response.usage.prompt_tokens,
             completion_tokens=response.usage.completion_tokens,
