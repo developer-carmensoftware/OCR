@@ -14,6 +14,7 @@ either of those — see codebase-refactor-recursive-scroll.md's stated direction
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import uuid
@@ -948,8 +949,9 @@ async def _suggest_missing_mappings(
     if not carmen_token:
         return {}
     try:
-        accounts_raw = await get_account_codes(carmen_token)
-        depts_raw = await get_departments(carmen_token)
+        accounts_raw, depts_raw = await asyncio.gather(
+            get_account_codes(carmen_token), get_departments(carmen_token)
+        )
     except CarmenAPIError as exc:
         # 401/403 is not "the master is unavailable", it is "this BU's stored posting
         # credential is dead" — and every document of theirs will fail the same way until

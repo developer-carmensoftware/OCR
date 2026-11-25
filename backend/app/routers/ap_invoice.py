@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -179,8 +180,9 @@ async def suggest(
         return {"suggestions": {}}
 
     try:
-        accounts_raw = await get_account_codes(session.carmen_token)
-        depts_raw = await get_departments(session.carmen_token)
+        accounts_raw, depts_raw = await asyncio.gather(
+            get_account_codes(session.carmen_token), get_departments(session.carmen_token)
+        )
     except CarmenAPIError as exc:
         raise HTTPException(status_code=exc.status_code, detail=f"Carmen API error: {exc.detail}")
 
