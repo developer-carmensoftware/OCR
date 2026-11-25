@@ -9,6 +9,7 @@ guess. The pick travels in the day's
 `review_payload` until a person approves it; Approve writes it into Carmen's table.
 """
 
+import asyncio
 import json
 import logging
 from collections import Counter
@@ -38,8 +39,9 @@ _TRIES = 2
 
 async def masters(carmen_token: str) -> tuple[list[dict], list[dict]]:
     """This BU's Carmen accounts and departments, in the shape the GL suggesters take."""
-    accounts_raw = await carmen.get_account_codes(carmen_token)
-    depts_raw = await carmen.get_departments(carmen_token)
+    accounts_raw, depts_raw = await asyncio.gather(
+        carmen.get_account_codes(carmen_token), carmen.get_departments(carmen_token)
+    )
     accounts = [
         {
             "code": a["AccCode"],

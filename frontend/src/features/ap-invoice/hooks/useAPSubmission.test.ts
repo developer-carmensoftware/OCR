@@ -305,6 +305,65 @@ describe('useAPSubmission', () => {
     })
   })
 
+  // ── F2b: autoSuggest (entering Step 4) ───────────────────────────────────────
+
+  describe('F2b: autoSuggest', () => {
+    it('suggests unmapped rows without the description modal', async () => {
+      apiFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ suggestions: {} }),
+      } as unknown as Response)
+      const props = makeProps({
+        lineItems: UNMAPPED_ITEMS,
+        headerData: { ...MOCK_HEADER, invhDesc: '' },
+      })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.autoSuggest()
+      })
+      expect(props.setModal).not.toHaveBeenCalled()
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/api/v1/ap-invoice/suggest',
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+
+    it('stays silent when every row already has codes', async () => {
+      const props = makeProps({ lineItems: MAPPED_ITEMS })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.autoSuggest()
+      })
+      expect(apiFetch).not.toHaveBeenCalled()
+      expect(showToast).not.toHaveBeenCalled()
+    })
+
+    it('checks a kept dept against the depts loadGLData fetched in the same tick', async () => {
+      fetchAccountCodes.mockResolvedValue([])
+      fetchDepartments.mockResolvedValue([
+        { DeptCode: 'ACC', Description: 'Accounting', DefaultAccount: '[{"AccCode":"5100"}]' },
+      ] as unknown as CarmenCodeItem[])
+      apiFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ suggestions: { 0: { deptCode: 'FIN', accountCode: '6100' } } }),
+      } as unknown as Response)
+      let items: APLineItem[] = [{ ...MAPPED_ITEMS[0], deptCode: 'ACC', accountCode: '' }]
+      const props = makeProps({
+        lineItems: items,
+        setLineItems: vi.fn((updater: React.SetStateAction<APLineItem[]>) => {
+          items = typeof updater === 'function' ? updater(items) : updater
+        }),
+      })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        void result.current.loadGLData()
+        await result.current.autoSuggest()
+      })
+      expect(items[0].deptCode).toBe('ACC') // the user's dept is kept
+      expect(items[0].accountCode).toBe('') // 6100 is not allowed under ACC
+    })
+  })
+
   // ── F3: suggestion accept/reject ─────────────────────────────────────────────
 
   describe('F3: suggestion accept / reject', () => {
