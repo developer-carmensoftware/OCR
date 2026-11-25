@@ -12,6 +12,7 @@ from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.enums import JobStatus
 from app.models.observability import AnomalyAlert, JobRun, PerformanceLog
+from app.services.shared.audit import AuditAction, log_admin_action
 from app.services.shared.tenant_lookup import tenant_name_map
 from app.utils.pagination import paginate
 
@@ -451,9 +452,22 @@ async def jobs_overview(
 async def trigger_job_run(
     job_name: str,
     db: AsyncSession = Depends(get_db),
-    _admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
+    admin: AdminPrincipal = Depends(require_permission("configs", "write")),
 ):
-    """Manually trigger a background job execution."""
+    """Manually trigger a background job execution.
+
+    These jobs spend credits, post JVs to Carmen and scrub data across every BU, so the
+    gate is the same as the other job triggers (`configs:write`, global admin) — not the
+    `tenants:read` that `viewer` holds.
+    """
+    if not admin.is_global:
+        raise HTTPException(status_code=403, detail="A global admin is required for this job")
+    await log_admin_action(
+        admin_user_id=admin.admin_id,
+        action=AuditAction.JOB_RUN_NOW,
+        resource="jobs",
+        target_id=job_name,
+    )
     if job_name == "pms-process":
         from app.services.pms import process
 
@@ -461,9 +475,11 @@ async def trigger_job_run(
         return {"job_name": job_name, "status": "executed", "result": result}
 
     if job_name == "email-ingest":
-        from app.services.email_automation import ingest
+        from .email_ingest import poll_now
 
-        result = await ingest.poll_mailbox()
+        # Same guards as the Email page's button: IMAP-disabled answer, and a poll that
+        # keeps running (shielded) if the wait expires.
+        result = await poll_now(None, admin)
         return {"job_name": job_name, "status": "executed", "result": result}
 
     if job_name == "email-confirm":

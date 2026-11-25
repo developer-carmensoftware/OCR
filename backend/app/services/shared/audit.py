@@ -42,6 +42,7 @@ class AuditAction:
     ADMIN_USER_UPDATE = "ADMIN_USER_UPDATE"
     ADMIN_USER_PASSWORD_RESET = "ADMIN_USER_PASSWORD_RESET"
     ADMIN_USER_ROLES_REPLACE = "ADMIN_USER_ROLES_REPLACE"
+    JOB_RUN_NOW = "JOB_RUN_NOW"
 
 
 # ── Buffered write queue ──────────────────────────────────────────────────────
