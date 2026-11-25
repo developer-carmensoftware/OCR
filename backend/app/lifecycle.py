@@ -63,6 +63,10 @@ async def lifespan(_app):
     except asyncio.CancelledError:
         pass
 
+    from app.services.shared.llm_usage_logger import drain_llm_usage
+
+    await drain_llm_usage()
+
     from app.services.shared.carmen import close_client as _close_carmen
 
     try:

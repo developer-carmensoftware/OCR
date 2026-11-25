@@ -4,6 +4,7 @@ LLM Usage Logger — inserts LLMUsageLog rows for cost tracking.
 Silent on failure — never disrupts the main OCR flow.
 """
 
+import asyncio
 import logging
 from decimal import Decimal, InvalidOperation
 
@@ -81,3 +82,23 @@ async def log_llm_usage(
         # Never disrupt the OCR flow, but surface as ERROR (not warning): silent loss
         # here means cost/quota tracking drifts and we lose per-module accounting.
         logger.error("log_llm_usage failed — usage/cost not recorded: %s", exc, exc_info=True)
+
+
+# Rows are written after the response is on its way, not before it: the insert is one
+# pooler round trip (~330 ms measured on dev), and the caller already has what it needs.
+# Tasks are held here because the loop keeps only weak references to them; shutdown
+# drains the set so a deploy does not drop the cost rows of calls that just finished.
+_PENDING: set[asyncio.Task] = set()
+
+
+def schedule_llm_usage(**kwargs) -> None:
+    """Fire-and-forget `log_llm_usage`. Context vars (tenant, session) are copied now."""
+    task = asyncio.create_task(log_llm_usage(**kwargs))
+    _PENDING.add(task)
+    task.add_done_callback(_PENDING.discard)
+
+
+async def drain_llm_usage(timeout: float = 10.0) -> None:
+    """Wait for scheduled rows to land (shutdown, tests)."""
+    if _PENDING:
+        await asyncio.wait(set(_PENDING), timeout=timeout)

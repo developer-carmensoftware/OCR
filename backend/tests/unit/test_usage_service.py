@@ -160,3 +160,45 @@ class TestLogLlmUsage:
             )
         # Nothing is charged here — that's the assertion (the logger only logs)
         mock_db.add.assert_called_once()
+
+
+# ── schedule_llm_usage ────────────────────────────────────────────────────────
+
+
+class TestScheduleLlmUsage:
+    async def test_returns_before_the_insert_and_drain_waits_for_it(self):
+        import asyncio
+
+        from app.services.shared import llm_usage_logger as lu
+
+        set_context("t-001", "bu-001")
+        gate = asyncio.Event()
+        seen = {}
+
+        async def slow_log(**kw):
+            await gate.wait()
+            from app.context import current_tenant_id
+
+            seen["tenant"] = current_tenant_id.get()
+            seen["model"] = kw["model"]
+
+        with patch.object(lu, "log_llm_usage", slow_log):
+            lu.schedule_llm_usage(model="m", prompt_tokens=1, completion_tokens=1, total_tokens=2)
+            # the caller got control back while the row is still unwritten, and it is held
+            assert seen == {} and len(lu._PENDING) == 1
+            gate.set()
+            await lu.drain_llm_usage()
+
+        assert seen == {"tenant": "t-001", "model": "m"}  # context copied at schedule time
+        assert not lu._PENDING
+
+    async def test_a_failed_insert_never_escapes(self):
+        from app.services.shared import llm_usage_logger as lu
+
+        with patch.object(lu, "async_session", side_effect=RuntimeError("db down")):
+            lu.schedule_llm_usage(
+                model="m", prompt_tokens=1, completion_tokens=1, total_tokens=2, cost_usd=0.001
+            )
+            await lu.drain_llm_usage()  # log_llm_usage swallows and logs; nothing raised
+
+        assert not lu._PENDING
