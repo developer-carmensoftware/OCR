@@ -126,6 +126,12 @@ export function useAPInvoice() {
     setStep(3)
   }
 
+  const enterAccountStep = () => {
+    setStep(4)
+    submission.loadGLData()
+    submission.autoSuggest()
+  }
+
   const goToAccount = () => {
     if (!vendor.systemVendor.code) {
       showToast(t('ap.warnSelectVendor'), 'warning')
@@ -141,14 +147,12 @@ export function useAPInvoice() {
         cancelText: t('ap.backEdit'),
         onConfirm: () => {
           setModal({ show: false })
-          setStep(4)
-          submission.loadGLData()
+          enterAccountStep()
         },
         onCancel: () => setModal({ show: false }),
       })
     } else {
-      setStep(4)
-      submission.loadGLData()
+      enterAccountStep()
     }
   }
 

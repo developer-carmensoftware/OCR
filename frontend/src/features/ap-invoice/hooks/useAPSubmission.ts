@@ -56,23 +56,26 @@ export function useAPSubmission({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const dupInvNoRef = useRef('')
   const pendingSuggestRef = useRef<unknown[]>([])
+  // The depts the last loadGLData fetched. autoSuggest starts in the same tick as loadGLData,
+  // so runSuggest awaits this instead of reading masterDepts (still the render's empty list).
+  const glDeptsRef = useRef<Promise<GLAccount[]>>(Promise.resolve([]))
 
   const loadGLData = async () => {
     if (glLoaded) return
     setGlLoaded(true)
-    try {
-      const [accs, depts] = await Promise.all([fetchAccountCodes(), fetchDepartments()])
-      setMasterAccounts(
-        accs
-          .filter(a => a.AccCode && a.AccCode !== 'AccCode')
-          .map(a => ({
-            code: a.AccCode as string,
-            name: (a.Description as string) || '',
-            name2: (a.Description2 as string) || '',
-          }))
-      )
-      setMasterDepts(
-        depts
+    const load = async (): Promise<GLAccount[]> => {
+      try {
+        const [accs, depts] = await Promise.all([fetchAccountCodes(), fetchDepartments()])
+        setMasterAccounts(
+          accs
+            .filter(a => a.AccCode && a.AccCode !== 'AccCode')
+            .map(a => ({
+              code: a.AccCode as string,
+              name: (a.Description as string) || '',
+              name2: (a.Description2 as string) || '',
+            }))
+        )
+        const mapped = depts
           .filter(d => d.DeptCode && d.DeptCode !== 'CodeDep')
           .map(d => ({
             code: d.DeptCode as string,
@@ -80,10 +83,14 @@ export function useAPSubmission({
             name2: (d.Description2 as string) || '',
             allowedAccounts: parseDefaultAccount(d.DefaultAccount),
           }))
-      )
-    } catch {
-      /* ignore */
+        setMasterDepts(mapped)
+        return mapped
+      } catch {
+        return []
+      }
     }
+    glDeptsRef.current = load()
+    await glDeptsRef.current
   }
 
   const resetGLLoaded = () => setGlLoaded(false)
@@ -107,6 +114,7 @@ export function useAPSubmission({
         llm_partial?: boolean
       }
       const suggestions = data.suggestions || {}
+      const depts = await glDeptsRef.current
       let suggestedCount = 0
       setLineItems(prev =>
         prev.map((item, idx) => {
@@ -119,7 +127,7 @@ export function useAPSubmission({
           const newAcc =
             (!item.accountCode || item._suggestAcc) &&
             s.accountCode &&
-            isAccountAllowed(effDept, s.accountCode, masterDepts)
+            isAccountAllowed(effDept, s.accountCode, depts)
               ? s.accountCode
               : null
           if (newDept || newAcc) suggestedCount++
@@ -155,18 +163,32 @@ export function useAPSubmission({
     }
   }
 
+  const suggestItems = (want: (item: APLineItem) => boolean) =>
+    lineItems.flatMap((item, idx) =>
+      want(item)
+        ? [
+            {
+              index: idx,
+              category: item.category || '',
+              description: item.description || '',
+              unit_price: parseNum(item.unitPrice ?? item.lineTotal ?? 0),
+            },
+          ]
+        : []
+    )
+
+  /** Entering Step 4: suggest the rows with no codes yet, without waiting for the button.
+   *  Invoice Description is typed on Step 4, so it is empty here and there is no modal; the
+   *  button still asks for it and re-suggests the rows not yet accepted. */
+  const autoSuggest = async () => {
+    const itemsToSuggest = suggestItems(item => !item.deptCode || !item.accountCode)
+    if (itemsToSuggest.length) await runSuggest(itemsToSuggest)
+  }
+
   const handleAISuggest = () => {
-    const itemsToSuggest = lineItems
-      .map((item, idx) => ({
-        index: idx,
-        category: item.category || '',
-        description: item.description || '',
-        unit_price: parseNum(item.unitPrice ?? item.lineTotal ?? 0),
-      }))
-      .filter((_, idx) => {
-        const item = lineItems[idx]
-        return !item.deptCode || !item.accountCode || item._suggestDept || item._suggestAcc
-      })
+    const itemsToSuggest = suggestItems(
+      item => !item.deptCode || !item.accountCode || !!item._suggestDept || !!item._suggestAcc
+    )
 
     if (!itemsToSuggest.length) {
       showToast('All items already have account codes.', 'info')
@@ -381,6 +403,7 @@ export function useAPSubmission({
     invoiceSeq,
     loadGLData,
     resetGLLoaded,
+    autoSuggest,
     handleAISuggest,
     handleAcceptAll,
     handleConfirmSuggest,
