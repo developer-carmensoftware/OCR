@@ -305,27 +305,24 @@ describe('useAPSubmission', () => {
     })
   })
 
-  // ── F2b: autoSuggest (entering Step 4) ───────────────────────────────────────
+  // ── F2b: autoSuggest (entering Step 4) — prefetch only, the button applies ────
 
-  describe('F2b: autoSuggest', () => {
-    it('suggests unmapped rows without the description modal', async () => {
-      apiFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ suggestions: {} }),
-      } as unknown as Response)
-      const props = makeProps({
-        lineItems: UNMAPPED_ITEMS,
-        headerData: { ...MOCK_HEADER, invhDesc: '' },
-      })
+  describe('F2b: autoSuggest prefetch', () => {
+    const answer = (suggestions: object) =>
+      ({ ok: true, json: async () => ({ suggestions }) }) as unknown as Response
+
+    it('asks in the background and applies nothing: no toast, no modal, rows untouched', async () => {
+      apiFetch.mockResolvedValue(answer({ 0: { deptCode: 'FIN', accountCode: '6100' } }))
+      const setLineItems = vi.fn()
+      const props = makeProps({ lineItems: UNMAPPED_ITEMS, setLineItems })
       const { result } = renderHook(() => useAPSubmission(props))
       await act(async () => {
         await result.current.autoSuggest()
       })
+      expect(apiFetch).toHaveBeenCalledTimes(1)
+      expect(setLineItems).not.toHaveBeenCalled()
+      expect(showToast).not.toHaveBeenCalled()
       expect(props.setModal).not.toHaveBeenCalled()
-      expect(apiFetch).toHaveBeenCalledWith(
-        '/api/v1/ap-invoice/suggest',
-        expect.objectContaining({ method: 'POST' })
-      )
     })
 
     it('stays silent when every row already has codes', async () => {
@@ -335,7 +332,65 @@ describe('useAPSubmission', () => {
         await result.current.autoSuggest()
       })
       expect(apiFetch).not.toHaveBeenCalled()
+    })
+
+    it('the button applies the prefetched answer without asking again', async () => {
+      apiFetch.mockResolvedValue(answer({ 0: { deptCode: 'FIN', accountCode: '6100' } }))
+      let items: APLineItem[] = [...UNMAPPED_ITEMS]
+      const props = makeProps({
+        lineItems: items,
+        setLineItems: vi.fn((u: React.SetStateAction<APLineItem[]>) => {
+          items = typeof u === 'function' ? u(items) : u
+        }),
+      })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.autoSuggest()
+      })
+      await act(async () => {
+        result.current.handleAISuggest()
+        await Promise.resolve()
+      })
+      await waitFor(() => expect(items[0].deptCode).toBe('FIN'))
+      expect(items[0].accountCode).toBe('6100')
+      // the toast reports what was applied, not 0 because the updater had not run yet
+      await waitFor(() =>
+        expect(showToast).toHaveBeenCalledWith(
+          expect.stringMatching(/AI suggested 1 account/),
+          'success'
+        )
+      )
+      expect(apiFetch).toHaveBeenCalledTimes(1) // the prefetch was the only request
+    })
+
+    it('asks again when the description changed after the prefetch', async () => {
+      apiFetch.mockResolvedValue(answer({}))
+      const props = makeProps({ lineItems: UNMAPPED_ITEMS })
+      const { result, rerender } = renderHook(p => useAPSubmission(p), { initialProps: props })
+      await act(async () => {
+        await result.current.autoSuggest()
+      })
+      rerender({ ...props, headerData: { ...MOCK_HEADER, invhDesc: 'typed afterwards' } })
+      await act(async () => {
+        result.current.handleAISuggest()
+        await Promise.resolve()
+      })
+      await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2))
+    })
+
+    it('a failed prefetch is silent and the button asks again', async () => {
+      apiFetch.mockRejectedValueOnce(new Error('down')).mockResolvedValue(answer({}))
+      const props = makeProps({ lineItems: UNMAPPED_ITEMS })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.autoSuggest()
+      })
       expect(showToast).not.toHaveBeenCalled()
+      await act(async () => {
+        result.current.handleAISuggest()
+        await Promise.resolve()
+      })
+      await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2))
     })
 
     it('checks a kept dept against the depts loadGLData fetched in the same tick', async () => {
@@ -343,10 +398,7 @@ describe('useAPSubmission', () => {
       fetchDepartments.mockResolvedValue([
         { DeptCode: 'ACC', Description: 'Accounting', DefaultAccount: '[{"AccCode":"5100"}]' },
       ] as unknown as CarmenCodeItem[])
-      apiFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ suggestions: { 0: { deptCode: 'FIN', accountCode: '6100' } } }),
-      } as unknown as Response)
+      apiFetch.mockResolvedValue(answer({ 0: { deptCode: 'FIN', accountCode: '6100' } }))
       let items: APLineItem[] = [{ ...MAPPED_ITEMS[0], deptCode: 'ACC', accountCode: '' }]
       const props = makeProps({
         lineItems: items,
@@ -359,6 +411,12 @@ describe('useAPSubmission', () => {
         void result.current.loadGLData()
         await result.current.autoSuggest()
       })
+      await act(async () => {
+        result.current.handleAISuggest()
+        await Promise.resolve()
+      })
+      await waitFor(() => expect(showToast).toHaveBeenCalled())
+      await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1))
       expect(items[0].deptCode).toBe('ACC') // the user's dept is kept
       expect(items[0].accountCode).toBe('') // 6100 is not allowed under ACC
     })
