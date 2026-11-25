@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { useT } from '@/i18n/LanguageContext'
 import { showToast } from '@/shared/lib/toast'
@@ -129,8 +129,23 @@ export function useAPInvoice() {
   const enterAccountStep = () => {
     setStep(4)
     submission.loadGLData()
-    submission.autoSuggest()
   }
+
+  // Every way into Step 4 asks for the suggestion once, in the background: the 3→4 button
+  // and a restored draft, which lands here without going through enterAccountStep. It has
+  // to be an effect, not a call at the entry point, so it reads the rows and vendor of the
+  // render that has them (a restore sets them in the same batch as the step).
+  const prefetchedRef = useRef(false)
+  useEffect(() => {
+    if (step !== 4) {
+      prefetchedRef.current = false
+      return
+    }
+    if (prefetchedRef.current || extraction.lineItems.length === 0) return
+    prefetchedRef.current = true
+    submission.autoSuggest()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, extraction.lineItems.length])
 
   const goToAccount = () => {
     if (!vendor.systemVendor.code) {

@@ -463,6 +463,24 @@ describe('draft save/restore', () => {
     expect(result.current.modal.show).toBe(false)
   })
 
+  it('restoring onto Step 4 asks for the suggestion in the background and fills nothing', async () => {
+    const { apiFetch } = await import('@/shared/api/client')
+    const calls = vi.mocked(apiFetch)
+    calls.mockClear()
+    const { result } = await mountRestored({
+      headerData: { documentNumber: 'INV-9' },
+      lineItems: [row()],
+      step: 4,
+    })
+    await waitFor(() =>
+      expect(
+        calls.mock.calls.filter(c => String(c[0]).includes('ap-invoice/suggest'))
+      ).toHaveLength(1)
+    )
+    expect(result.current.lineItems[0].deptCode).toBe('')
+    expect(result.current.lineItems[0].accountCode).toBe('')
+  })
+
   it('discarding the offered draft clears it from storage and does not restore', async () => {
     saveDraft('ap', {
       headerData: { documentNumber: 'INV-9' },
