@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import type React from 'react'
+import { flushSync } from 'react-dom'
 import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '@/shared/api/carmen'
 import type { TaxProfileItem } from '@/shared/api/carmen'
 import { apiFetch } from '@/shared/api/client'
@@ -95,50 +96,71 @@ export function useAPSubmission({
 
   const resetGLLoaded = () => setGlLoaded(false)
 
+  type SuggestData = {
+    suggestions?: Record<number, { deptCode?: string; accountCode?: string }>
+    llm_partial?: boolean
+  }
+
+  const fetchSuggest = async (itemsToSuggest: unknown[], desc: string): Promise<SuggestData> => {
+    const res = await apiFetch(API.apInvoice.suggest, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: itemsToSuggest,
+        invoice_desc: desc,
+        vn_code: systemVendor?.code || '',
+      }),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return (await res.json()) as SuggestData
+  }
+
+  // The answer autoSuggest fetched on entering Step 4, keyed by what it was asked, so the
+  // button can use it only when the request would be the same (rows and description).
+  const prefetchRef = useRef<{ key: string; promise: Promise<SuggestData | null> } | null>(null)
+  const suggestKey = (items: unknown[], desc: string) =>
+    JSON.stringify([items, desc, systemVendor?.code || ''])
+
   const runSuggest = async (itemsToSuggest: unknown[]) => {
     setSuggestLoading(true)
     showToast('AI is suggesting account codes...', 'info')
     try {
-      const res = await apiFetch(API.apInvoice.suggest, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: itemsToSuggest,
-          invoice_desc: headerData.invhDesc || '',
-          vn_code: systemVendor?.code || '',
-        }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = (await res.json()) as {
-        suggestions?: Record<number, { deptCode?: string; accountCode?: string }>
-        llm_partial?: boolean
-      }
+      const desc = headerData.invhDesc || ''
+      const pre = prefetchRef.current
+      prefetchRef.current = null // one use: after a click the rows have moved on
+      const data =
+        (pre?.key === suggestKey(itemsToSuggest, desc) ? await pre.promise : null) ??
+        (await fetchSuggest(itemsToSuggest, desc))
       const suggestions = data.suggestions || {}
       const depts = await glDeptsRef.current
       let suggestedCount = 0
-      setLineItems(prev =>
-        prev.map((item, idx) => {
-          const s = suggestions[idx]
-          if (!s) return item
-          const newDept = (!item.deptCode || item._suggestDept) && s.deptCode ? s.deptCode : null
-          // Backend validated the acc against ITS suggested dept — when the user's own
-          // dept is kept, re-check the acc against that dept's DefaultAccount list.
-          const effDept = newDept ?? item.deptCode
-          const newAcc =
-            (!item.accountCode || item._suggestAcc) &&
-            s.accountCode &&
-            isAccountAllowed(effDept, s.accountCode, depts)
-              ? s.accountCode
-              : null
-          if (newDept || newAcc) suggestedCount++
-          return {
-            ...item,
-            deptCode: newDept ?? item.deptCode,
-            accountCode: newAcc ?? item.accountCode,
-            _suggestDept: newDept || undefined,
-            _suggestAcc: newAcc || undefined,
-          }
-        })
+      // flushSync: the count below is read right after, and React may otherwise run this
+      // updater later, which made a successful suggestion toast "could not generate".
+      flushSync(() =>
+        setLineItems(prev =>
+          prev.map((item, idx) => {
+            const s = suggestions[idx]
+            if (!s) return item
+            const newDept = (!item.deptCode || item._suggestDept) && s.deptCode ? s.deptCode : null
+            // Backend validated the acc against ITS suggested dept — when the user's own
+            // dept is kept, re-check the acc against that dept's DefaultAccount list.
+            const effDept = newDept ?? item.deptCode
+            const newAcc =
+              (!item.accountCode || item._suggestAcc) &&
+              s.accountCode &&
+              isAccountAllowed(effDept, s.accountCode, depts)
+                ? s.accountCode
+                : null
+            if (newDept || newAcc) suggestedCount++
+            return {
+              ...item,
+              deptCode: newDept ?? item.deptCode,
+              accountCode: newAcc ?? item.accountCode,
+              _suggestDept: newDept || undefined,
+              _suggestAcc: newAcc || undefined,
+            }
+          })
+        )
       )
       if (data.llm_partial) {
         showToast(
@@ -177,12 +199,19 @@ export function useAPSubmission({
         : []
     )
 
-  /** Entering Step 4: suggest the rows with no codes yet, without waiting for the button.
-   *  Invoice Description is typed on Step 4, so it is empty here and there is no modal; the
-   *  button still asks for it and re-suggests the rows not yet accepted. */
+  /** Entering Step 4: ask for the rows with no codes yet in the background, and apply nothing.
+   *  The button applies the answer when the reader wants it (instantly if it has arrived).
+   *  Invoice Description is typed on Step 4, so it is empty here; if it is typed before the
+   *  click the request differs, the key no longer matches, and the button asks again. */
   const autoSuggest = async () => {
     const itemsToSuggest = suggestItems(item => !item.deptCode || !item.accountCode)
-    if (itemsToSuggest.length) await runSuggest(itemsToSuggest)
+    if (!itemsToSuggest.length) return
+    prefetchRef.current = {
+      key: suggestKey(itemsToSuggest, headerData.invhDesc || ''),
+      // a failed prefetch is not an error to show: the button just asks again
+      promise: fetchSuggest(itemsToSuggest, headerData.invhDesc || '').catch(() => null),
+    }
+    await prefetchRef.current.promise
   }
 
   const handleAISuggest = () => {
