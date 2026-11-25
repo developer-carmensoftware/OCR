@@ -197,8 +197,8 @@ class ExtractedCreditCardData(BaseModel):
 
 
 class CorrectionFeedbackRequest(BaseModel):
-    doc_no: str
-    bank_code: str
+    doc_no: str = Field(..., max_length=100)
+    bank_code: str = Field(..., max_length=20)
     field_name: FieldName
     original_value: str | None = Field(None, max_length=2000)
     corrected_value: str | None = Field(None, max_length=2000)
@@ -218,7 +218,7 @@ class CorrectionFeedbackResponse(BaseModel):
 
 
 class CorrectionFeedbackBatchRequest(BaseModel):
-    corrections: list[CorrectionFeedbackRequest]
+    corrections: list[CorrectionFeedbackRequest] = Field(..., max_length=200)
 
 
 class CorrectionFeedbackBatchResponse(BaseModel):
