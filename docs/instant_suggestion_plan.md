@@ -20,11 +20,29 @@
 - Phase 1 เดิม (cache vendor history, normalize ใน `match_bypass`) ทำไว้แล้วก่อนเอกสารนี้
 - GL master (accounts/departments) **ยังไม่มี cache** (ต่างจากที่เอกสารเดิมบอก) และ `credit_card/gl_suggestion.py` ไม่เกี่ยวกับ flow นี้
 
+### ตัวเลขที่วัดจริง (2026-11-25)
+
+วัดบน dev Carmen (`dev.carmen4.com`), คู่ค้า `C001` (ประวัติ 84 แถว), LLM จริง, รันจากเครื่อง dev (ไม่ใช่ Render); ตัวอย่าง 4–15 ครั้งต่อแบบ จึงใช้ดูสัดส่วน ไม่ใช่ค่า production
+
+| ช่วง | p50 | ช่วงที่เจอ |
+|---|---|---|
+| ดึง account + dept จาก Carmen: ต่อกัน (เดิม) | 74 ms | 67–99 |
+| ดึง account + dept จาก Carmen: `gather` (ใหม่) | 50 ms | 45–69 |
+| ดึงประวัติคู่ค้า, cache ว่าง | 229 ms | 45–1,294 |
+| ดึงประวัติคู่ค้า, cache มี | 0 ms | 0 |
+| ทั้งเส้น: ทุกรายการตรงประวัติ (ไม่เรียก LLM) | 4 ms | 4–5 |
+| ทั้งเส้น: มีรายการใหม่ → LLM | 2,662 ms | 1,152–4,602 (สองชุด) |
+
+อ่านผล:
+- **คอขวดคือ LLM** (ราว 0.8–2.5 วินาที แกว่งมาก) Carmen ทั้งหมดรวมไม่ถึง 300 ms แม้ cache ว่าง
+- **รายการที่ตรงประวัติเร็วอยู่แล้ว** (4 ms) ไม่ต้องทำอะไรเพิ่ม
+- `log_llm_usage` ถูก `await` ใน request path ก่อนตอบกลับ: ประมาณ 330 ms ในการวัด (insert ล้มเหลวเพราะไม่มี tenant context และเครื่องวัดอยู่ไกล DB จึงอาจต่างบน Render) — จุดเดียวในโค้ดเราเองที่ลดได้ ยังไม่ได้แก้
+
 ## 2. สิ่งที่ทำแล้ว (PR #415)
 
 | # | การเปลี่ยนแปลง | ผล |
 |---|---|---|
-| 1 | เรียก `get_account_codes` กับ `get_departments` พร้อมกันด้วย `asyncio.gather` ใน `/suggest`, `email_automation/pipeline.py::_suggest_missing_mappings`, `pms/mapping.py::masters()` | ตัดเวลารอ Carmen จากผลรวมสองครั้งเหลือครั้งที่ช้ากว่า |
+| 1 | เรียก `get_account_codes` กับ `get_departments` พร้อมกันด้วย `asyncio.gather` ใน `/suggest`, `email_automation/pipeline.py::_suggest_missing_mappings`, `pms/mapping.py::masters()` | วัดแล้วประหยัดได้ ~24 ms (74→50 ms p50) น้อยกว่า 1% ของเวลา `/suggest` ที่มี LLM — ถูกต้องแต่แทบไม่รู้สึก |
 | 2 | Step 3→4 (`goToAccount`) เรียก `autoSuggest` อัตโนมัติ เฉพาะแถวที่ยังไม่มี dept/account ไม่เปิด modal ไม่ทับแถวที่ map แล้ว ([useAPSubmission.ts](../frontend/src/features/ap-invoice/hooks/useAPSubmission.ts), [useAPInvoice.ts](../frontend/src/features/ap-invoice/hooks/useAPInvoice.ts)) | ผู้ใช้ไม่ต้องกดปุ่ม AI Suggest เอง; ความหน่วงยังมีแต่เริ่มนับตั้งแต่เข้าหน้า |
 | 3 | `glDeptsRef` (promise) ให้ `runSuggest` รอ departments ก่อนตรวจ DefaultAccount | กัน race: autoSuggest เริ่มใน tick เดียวกับ `loadGLData` ขณะ `masterDepts` ยังว่าง |
 
@@ -40,11 +58,12 @@
 
 ## 4. งานที่ยังเหลือ (เรียงตามคุ้มค่า)
 
-1. **วัดก่อน** — latency ของ `/ap-invoice/suggest` ก่อน/หลัง deploy #415 (p50/p95 ที่ `#/admin/performance`), สัดส่วนบรรทัดที่ผ่าน bypass vs LLM
-2. **ทดสอบ bypass กับคู่ค้าที่มีประวัติจริง** — E2E ที่ผ่านมายังไม่ครอบคลุมเส้นทางนี้
-3. **Cache GL master ฝั่ง backend** (TTL สั้น ต่อ tenant) — คุ้มเมื่อวัดแล้วพบว่า Carmen accounts/depts เป็นส่วนใหญ่ของเวลา
-4. **เปลี่ยนโมเดล AP เป็น GA** `gemini-3.1-flash-lite` (ตอนนี้ `-preview`) — แยก PR หลัง QA; ดู [model_research_report.md](model_research_report.md) (มีข้อมูลบางส่วนที่ต้องตรวจซ้ำก่อนใช้)
-5. release note ประจำเดือน (`releaseNotes.ts`) — user-visible: auto-suggest ตอนเข้า Step 4
+1. **ย้าย `log_llm_usage` ออกจาก request path** (เขียนหลังตอบกลับ) — น่าจะลดได้ราว 300 ms ต่อครั้งที่เรียก LLM; ต้องวัดซ้ำบน Render และระวังไม่ให้ทำให้ log หายเมื่อ process ปิด
+2. **วัดบน production/QA จริง** — `#/admin/performance` มี request ของ `/suggest` แค่ 2 แถวใน 21 วัน ต้องรอ traffic ก่อนอ้างตัวเลข p50/p95
+3. **ทดสอบ E2E ในเบราว์เซอร์กับคู่ค้าที่มีประวัติ** — เส้นทาง bypass วัดระดับ service แล้ว (4 ms) แต่ E2E ผ่านเบราว์เซอร์ยังไม่ครอบคลุม
+4. ~~Cache GL master ฝั่ง backend~~ — **ตัดออก:** Carmen accounts+depts รวมไม่ถึง 300 ms ไม่ใช่คอขวด
+5. **เปลี่ยนโมเดล AP เป็น GA** `gemini-3.1-flash-lite` (ตอนนี้ `-preview`) — แยก PR หลัง QA; ดู [model_research_report.md](model_research_report.md) (ราคา/provider ตรวจกับ API แล้ว; benchmark ความแม่นยำยังไม่มี)
+6. release note ประจำเดือน (`releaseNotes.ts`) — user-visible: auto-suggest ตอนเข้า Step 4
 
 ## 5. สิ่งที่ไม่ควรสัญญา
 
