@@ -63,6 +63,76 @@ class TestLogLlmUsage:
         assert isinstance(added, LLMUsageLog)
         assert added.model == "test-model"
 
+    async def test_log_llm_usage_direct_cost_usd(self):
+        """When cost_usd is supplied directly, it bypasses get_pricing and saves verbatim."""
+        from app.services.shared import llm_usage_logger
+
+        set_context("t-001", "bu-001")
+
+        mock_db = AsyncMock()
+        mock_db.add = MagicMock()
+        mock_db.commit = AsyncMock()
+
+        ctx = AsyncMock()
+        ctx.__aenter__.return_value = mock_db
+        ctx.__aexit__.return_value = None
+
+        mock_get_pricing = AsyncMock()
+
+        with (
+            patch.object(llm_usage_logger, "async_session", return_value=ctx),
+            patch("app.services.shared.llm_usage_logger.get_pricing", mock_get_pricing),
+        ):
+            await llm_usage_logger.log_llm_usage(
+                model="test-model",
+                prompt_tokens=100,
+                completion_tokens=50,
+                total_tokens=150,
+                cost_usd=0.000425,
+            )
+
+        mock_db.add.assert_called_once()
+        mock_get_pricing.assert_not_called()
+        added = mock_db.add.call_args[0][0]
+        assert added.cost_usd == Decimal("0.000425")
+
+    @pytest.mark.parametrize("bad", ["abc", float("nan"), -1.0, 0])
+    async def test_unusable_cost_falls_back_to_catalog_and_keeps_row(self, bad):
+        """A malformed/negative/zero-with-tokens cost must not drop the usage row."""
+        from app.services.shared import llm_usage_logger
+
+        set_context("t-001", "bu-001")
+        mock_db = AsyncMock()
+        mock_db.add = MagicMock()
+        ctx = AsyncMock()
+        ctx.__aenter__.return_value = mock_db
+        ctx.__aexit__.return_value = None
+        rates = (Decimal("1"), Decimal("1"))
+
+        with (
+            patch.object(llm_usage_logger, "async_session", return_value=ctx),
+            patch.object(llm_usage_logger, "get_pricing", AsyncMock(return_value=rates)),
+        ):
+            await llm_usage_logger.log_llm_usage(
+                model="m", prompt_tokens=100, completion_tokens=50, total_tokens=150, cost_usd=bad
+            )
+
+        mock_db.add.assert_called_once()
+        assert mock_db.add.call_args[0][0].cost_usd == estimate_cost(100, 50, rates)
+
+    def test_usage_cost_helper(self):
+        from types import SimpleNamespace as NS
+
+        from app.llm.client import _usage_cost
+
+        assert _usage_cost(NS(cost=0.5)) == 0.5
+        assert _usage_cost(NS(cost=None, model_extra={"cost": 0.25})) == 0.25
+        assert _usage_cost(NS(model_extra=None)) is None
+        assert _usage_cost(NS(cost="x")) is None
+        assert _usage_cost(NS(cost=float("inf"))) is None
+        assert _usage_cost(NS(cost=-1)) is None
+        assert _usage_cost(NS(cost=True)) is None
+
     async def test_B4_6_count_quota_true_is_a_noop(self):
         """count_quota=True is a no-op — a document is charged by consume_document()
         at the router, before the model is ever called."""

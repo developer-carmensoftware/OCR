@@ -1,0 +1,12 @@
+-- llm_usage_logs.cost_usd: numeric(10, 6) -> numeric(12, 8).
+--
+-- OpenRouter's billed cost (`usage.cost`) is now stored as it arrives. A small call costs
+-- about $0.0000027, which numeric(10, 6) rounded to $0.000003 (~10% off); at tens of
+-- thousands of calls a month the per-call rounding no longer averages out. Eight decimals
+-- keep every figure the provider reports.
+--
+-- Widening the scale rewrites each partition under an ACCESS EXCLUSIVE lock; the table is
+-- small (the oldest partitions are purged), so the lock is brief. Applying it to the
+-- partitioned parent carries the change to every partition and to those pg_partman creates
+-- later. No view or index depends on the column.
+alter table llm_usage_logs alter column cost_usd type numeric(12, 8);

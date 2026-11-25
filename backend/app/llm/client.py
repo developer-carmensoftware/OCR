@@ -8,6 +8,7 @@ Never construct AsyncOpenAI elsewhere.
 import asyncio
 import json
 import logging
+import math
 import random
 import time
 from dataclasses import dataclass
@@ -411,6 +412,20 @@ def parse_vision_json(result_text: str) -> dict:
     return parsed
 
 
+def _usage_cost(usage) -> float | None:
+    """OpenRouter's billed cost for this call (`usage.cost`, USD), or None if absent.
+
+    The openai SDK keeps unknown fields in `model_extra`. Anything that is not a finite,
+    non-negative number is treated as absent so the caller falls back to the catalog.
+    """
+    raw = getattr(usage, "cost", None)
+    if raw is None:
+        raw = (getattr(usage, "model_extra", None) or {}).get("cost")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    return float(raw) if math.isfinite(raw) and raw >= 0 else None
+
+
 async def call_vision_llm(
     system_prompt: str,
     user_content: list[Any],
@@ -501,6 +516,7 @@ async def call_vision_llm(
             duration_ms=(time.perf_counter() - start) * 1000,
             count_quota=count_quota,
             call_type="extract",
+            cost_usd=_usage_cost(response.usage),
         )
 
     content = (
@@ -609,6 +625,7 @@ async def call_text_llm(
             # non-suggestion text call ever lands here, give it its own call_type
             # rather than letting it inherit this one.
             call_type="suggest",
+            cost_usd=_usage_cost(response.usage),
         )
 
     content = (
