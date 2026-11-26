@@ -1535,3 +1535,51 @@ describe('the mapping page', () => {
     open.mockRestore()
   })
 })
+
+describe('typing an amount on the JV, key by key', () => {
+  // The field used to show `fmt(value)` on every keystroke, so a real person typing "1200"
+  // got "1.00": the unit tests above set whole values with one change event and never saw it.
+  // Each step below is one keystroke — the value the browser would hand the field next.
+  const type = (el: HTMLElement, keys: string) => {
+    let typed = ''
+    for (const ch of keys) {
+      typed += ch
+      fireEvent.change(el, { target: { value: typed } })
+      expect((el as HTMLInputElement).value).toBe(typed) // what is typed stays as typed
+    }
+  }
+
+  it('keeps what is typed while typing, and formats it on blur', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    const field = await screen.findByLabelText('Credit for Visa line 1')
+    fireEvent.focus(field)
+    type(field, '1200.5')
+    fireEvent.blur(field)
+    expect((field as HTMLInputElement).value).toBe('1,200.50')
+  })
+
+  it('keeps the field and its row when the figure is cleared to be retyped', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    const field = await screen.findByLabelText('Credit for Visa line 1')
+    fireEvent.focus(field)
+    fireEvent.change(field, { target: { value: '' } })
+    // Emptied is not zero-and-gone: the same input is still there to type the new figure in.
+    expect(screen.getByLabelText('Credit for Visa line 1')).toBe(field)
+    expect((field as HTMLInputElement).value).toBe('')
+    type(field, '0.05')
+    fireEvent.blur(field)
+    expect((field as HTMLInputElement).value).toBe('0.05')
+  })
+
+  it('leaves the figure alone when the field is only focused and left', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    const field = await screen.findByLabelText('Credit for Visa line 1')
+    const before = (field as HTMLInputElement).value
+    fireEvent.focus(field)
+    fireEvent.blur(field)
+    expect((field as HTMLInputElement).value).toBe(before)
+  })
+})
