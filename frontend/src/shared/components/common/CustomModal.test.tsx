@@ -100,3 +100,39 @@ describe('CustomModal — a form in the body (wide)', () => {
     expect(document.querySelector('.modal-box--wide')).toBeTruthy()
   })
 })
+
+describe('CustomModal — focus while the page behind re-renders', () => {
+  // Callers pass inline `onCancel`/`onConfirm`, so a dialog whose own inputs update the
+  // parent gets a new identity of each on every key. The 50 ms initial-focus timer sat in
+  // the effect keyed on them and fired again after the first keystroke, moving focus to
+  // Confirm — the next Space/Enter then pressed it.
+  const wait = (ms: number) => new Promise(r => setTimeout(r, ms))
+  const body = <input aria-label="Vendor" />
+
+  it('does not pull focus to Confirm after a re-render with new handlers', async () => {
+    const props = { ...baseProps, inputLabel: undefined, wide: true }
+    const { rerender } = render(
+      <CustomModal {...props} onConfirm={() => {}} onCancel={() => {}}>
+        {body}
+      </CustomModal>
+    )
+    await wait(80) // the one initial focus has happened: Confirm
+    const vendor = screen.getByLabelText('Vendor') as HTMLInputElement
+    vendor.focus() // the user clicks into a field of the dialog…
+    rerender(
+      // …and the parent re-renders with handlers of a new identity, as it does on every key
+      <CustomModal {...props} onConfirm={() => {}} onCancel={() => {}}>
+        {body}
+      </CustomModal>
+    )
+    await wait(80)
+    expect(document.activeElement).toBe(vendor)
+  })
+
+  it('still focuses Confirm once when the dialog opens', async () => {
+    render(<CustomModal {...baseProps} inputLabel={undefined} wide />)
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Unlock' }))
+    )
+  })
+})
