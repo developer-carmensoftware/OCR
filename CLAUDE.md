@@ -79,7 +79,7 @@ a version.
 
 ## Architecture
 
-### Credit Card OCR (5-step wizard)
+### Credit Card OCR (4-step wizard)
 
 ```text
 useOcrWizard hook
