@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Sparkles, Undo2 } from 'lucide-react'
 import CustomSearchSelect from '@/shared/components/common/CustomSearchSelect'
 import NumericInput from '@/shared/components/common/NumericInput'
@@ -503,12 +503,20 @@ function Amount({
   onAmount: (row: JvRow, next: number) => void
 }) {
   const { t } = useT()
+  // What the reviewer is typing while the field has the caret; null the rest of the time.
+  // The field used to show `fmt(value)` on every keystroke, so "1200" came out as "1.00"
+  // (the first key reformatted under the cursor), Backspace at the end of "1,000.00" did
+  // nothing, and clearing the field zeroed the leg, dropped the row, and took the input
+  // with it. Typing is the draft's; the figure is committed upward as it becomes a number,
+  // and finally on blur, where it is formatted again.
+  const [draft, setDraft] = useState<string | null>(null)
   const value = row[side]
   const other = row[side === 'debit' ? 'credit' : 'debit']
   const label = t(side === 'debit' ? 'review.jvDebit' : 'review.jvCredit')
   // A leg with nothing on either side is the display-only zero (a gateway invoice's net);
-  // it is dropped before posting, so it is not a figure to type into.
-  if (!value && other) return <td className="jv-num jv-num--empty">—</td>
+  // it is dropped before posting, so it is not a figure to type into. Not while it is being
+  // typed in: a zero that arrives mid-edit (the field cleared) must not remove the field.
+  if (!value && other && draft === null) return <td className="jv-num jv-num--empty">—</td>
 
   const shared = row.lines.length > 1
   // A settlement report's debit legs come from its total row, not from any one line.
@@ -527,8 +535,20 @@ function Amount({
         aria-label={t(side === 'debit' ? 'review.jvDebitFor' : 'review.jvCreditFor', { field })}
         title={shared ? t('review.jvSharedHint', { count: String(row.lines.length) }) : undefined}
         data-shared={shared || undefined}
-        value={fmt(value)}
-        onChange={v => onAmount(row, parseNum(v))}
+        value={draft ?? fmt(value)}
+        onChange={v => {
+          setDraft(v)
+          // A zero waits for blur: it is what an emptied field reads as, and committing it
+          // mid-edit drops the leg while the reviewer is about to type its new figure.
+          const n = parseNum(v)
+          if (n !== 0) onAmount(row, n)
+        }}
+        onBlur={v => {
+          // Nothing typed, nothing to commit — focusing and leaving must not rewrite a figure.
+          if (draft === null) return
+          setDraft(null)
+          onAmount(row, parseNum(v))
+        }}
       />
     </td>
   )

@@ -148,12 +148,22 @@ export default function CustomModal({
     }
   }, [show])
 
+  // Initial focus, once per opening. It used to sit in the keydown effect below, whose
+  // dependencies include `onCancel`/`onConfirm`: callers pass inline arrows, so every parent
+  // render re-armed the 50 ms timer, and a dialog with its own inputs (the late input-tax
+  // dialog — Vendor, Tax ID, Branch update the parent on each key) pulled focus to the
+  // Confirm button ~50 ms after the first keystroke; the next Space or Enter pressed it.
   useEffect(() => {
     if (!show) return
     const timer = setTimeout(() => {
       if (inputLabel && inputRef.current) inputRef.current.focus()
       else confirmRef.current?.focus()
     }, 50)
+    return () => clearTimeout(timer)
+  }, [show, inputLabel])
+
+  useEffect(() => {
+    if (!show) return
     const handleKeyDown = (e: KeyboardEvent) => {
       if (busy) return
       if (e.key === 'Escape') {
@@ -186,11 +196,8 @@ export default function CustomModal({
       }
     }
     document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      clearTimeout(timer)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [show, onCancel, onConfirm, inputLabel, busy])
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [show, onCancel, onConfirm, busy])
 
   if (type === 'loading') {
     return show
